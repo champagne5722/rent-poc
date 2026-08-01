@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "linear-rent-poc": {
+      "type": "http",
+      "url": "https://mcp.linear.app/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LINEAR_API_KEY}"
+      }
+    },
+    "dottedsign-api": {
+      "type": "http",
+      "url": "https://developer.dottedsign.com/mcp"
+    }
+  }
+}

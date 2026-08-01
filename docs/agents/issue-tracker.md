@@ -1,6 +1,6 @@
 # Issue tracker：Linear
 
-此 repo 的 issue 與 PRD 都放在 Linear 的 **Miles-rent-poc** team。這個 team 是此 repo 專用的——**不要**把此 repo 的 issue 建到其他 team（例如 IDPS，那是另一個 repo 在用的）。所有操作一律透過 Linear MCP 工具（`mcp__linear-server__*`）；若工具尚未載入，先用 ToolSearch 載入。
+此 repo 的 issue 與 PRD 都放在 Linear 的 **Miles-rent-poc** team。這個 team 是此 repo 專用的——**不要**把此 repo 的 issue 建到其他 team（例如 IDPS，那是另一個 repo 在用的）。所有操作一律透過此 repo 專屬的 Linear MCP server **`linear-rentpoc`**（工具名為 `mcp__linear-rentpoc__*`，OAuth 授權到 rent-poc 的 workspace）；若工具尚未載入，先用 ToolSearch 載入。若 session 中出現其他 Linear 連接器（例如授權到 IDPS workspace 的），不要使用。
 
 Issue 編號格式為 `MIL-<n>`。若 `list_teams` 查不到 Miles-rent-poc，代表 Linear 連接器的授權範圍不含這個 team，請提醒使用者重新授權，不要改建到其他 team。
 

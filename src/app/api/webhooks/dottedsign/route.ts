@@ -1,0 +1,46 @@
+import { NextRequest } from 'next/server';
+import { findContractByTaskId } from '@/lib/db';
+import { verifyWebhookSignature } from '@/lib/dottedsign';
+import { applyDsEvent, DsEvent } from '@/lib/transitions';
+
+// 點點簽 webhook 接收端。開發期需以 cloudflared/ngrok 開通道，
+// 並把公開 URL 設定在點點簽開發者後台的 Application 上。
+// payload 欄位：resource_id / resource_type / action_name（見整合筆記）。
+export async function POST(request: NextRequest) {
+  const rawBody = await request.text();
+
+  // 後台儲存 webhook URL 時會送一記空 body 的驗證 ping（無簽章 header），需回 200 否則註冊失敗（實測踩過）
+  if (!rawBody) return Response.json({ ok: true, ping: true });
+
+  // 簽章 header 實測為 `Signature`，值 = HMAC-SHA256(client_secret, raw body) 的 hex（見整合筆記）
+  const signature = request.headers.get('signature');
+  if (!verifyWebhookSignature(rawBody, signature)) {
+    return Response.json({ error: 'invalid signature' }, { status: 401 });
+  }
+
+  let payload: { resource_id?: unknown; resource_type?: string; action_name?: string };
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return Response.json({ error: 'invalid json' }, { status: 400 });
+  }
+
+  const { resource_id, resource_type, action_name } = payload;
+  if (resource_type !== 'task' || resource_id == null || !action_name) {
+    return Response.json({ ok: true, ignored: true });
+  }
+
+  const contract = findContractByTaskId(String(resource_id));
+  if (!contract) return Response.json({ ok: true, ignored: true });
+
+  const eventMap: Record<string, DsEvent> = {
+    signed: 'signed',
+    completed: 'completed',
+    declined: 'declined',
+    voided: 'voided',
+  };
+  const event = eventMap[action_name];
+  if (event) applyDsEvent(contract, event);
+
+  return Response.json({ ok: true });
+}
