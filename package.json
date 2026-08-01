@@ -1,0 +1,36 @@
+{
+  "name": "rentpoc",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:3001": "NEXT_DIST_DIR=.next-dev3001 next dev -p 3001",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^6.3.2",
+    "@ant-design/nextjs-registry": "^1.3.0",
+    "@pdf-lib/fontkit": "^1.1.1",
+    "antd": "^6.5.1",
+    "better-sqlite3": "^13.0.1",
+    "dayjs": "^1.11.21",
+    "next": "16.2.11",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.1.200",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-rnd": "^10.5.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.11",
+    "typescript": "^5",
+    "vitest": "^4.1.10"
+  }
+}
