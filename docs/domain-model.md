@@ -1,0 +1,28 @@
+# 領域模型：合約狀態機與資料模型
+
+詞彙定義見 repo 根目錄 [CONTEXT.md](../CONTEXT.md)；PoC 刻意不做的範圍見[已知簡化清單](./known-simplifications.md)。
+
+## 合約狀態機
+
+簽署順序固定：租客（乙方）先簽、房東（甲方）後簽（點點簽 `has_order: true`）。
+
+```
+draft（草稿）
+  └─ 送簽 → awaiting_tenant（待乙方簽）
+                ├─ 租客簽署 → awaiting_landlord（待甲方簽）
+                │                 ├─ 房東簽署 → completed（已完成，可下載已簽 PDF）
+                │                 └─ 房東撤回 → voided（已撤回）
+                ├─ 租客拒簽 → declined（已拒簽）
+                └─ 房東撤回 → voided（已撤回）
+```
+
+- 狀態轉移由點點簽 webhook 事件驅動（撤回由系統主動呼叫後更新），轉移邏輯集中在 `src/lib/transitions.ts`。
+- `voided` / `declined` 的合約可「複製為新草稿」重走流程。修約（撤回後複製）會記錄衍生關聯；拒簽後的複製為純省時便利，不記關聯（ADR-0006）。續約機制與到期標示不在目前範圍。
+- 程式識別字：`draft` / `awaiting_tenant` / `awaiting_landlord` / `completed` / `declined` / `voided`。
+
+## 資料模型（概念層）
+
+- **Property**：id、name、address、type（整層/套房/雅房）、size（坪）、default_rent、note、equipment（多選）
+- **Contract**：id、property_id、狀態、欄位值（租金、押金、租期起迄、付款日、雙方姓名/email 等）、signature_fields（JSON：簽署方＋頁碼＋座標）、dottedsign_task_id、產出的 PDF、已簽 PDF 下載資訊、點點簽 Audit Trail File（完成時保存，ADR-0007）、衍生自（derived from——撤回修約路徑才記錄，ADR-0006）
+- **Contract Event（合約事件）**：附屬合約的 append-only 里程碑事件序列——型別（建立／送簽／乙方簽署／拒簽／甲方簽署完成／撤回／被複製）、行為者（房東／租客／系統）、時間、附註（拒簽原因、衍生對象等）；webhook 事件與狀態轉移同交易寫入，隨合約保存（ADR-0007）
+- Contract 引用 Property 帶入資料後即自成快照，物件後續修改不回溯影響既有合約。
