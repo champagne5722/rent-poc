@@ -24,6 +24,7 @@ import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
 import type { Contract, ContractStatus, SignatureField } from '@/lib/types';
 import { CONTRACT_STATUS_LABELS } from '@/lib/types';
+import { currentSigner } from '@/lib/signing';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
 
 const STEP_INDEX: Partial<Record<ContractStatus, number>> = {
@@ -40,6 +41,10 @@ function ContractDetail({ id }: { id: string }) {
   const [sigFields, setSigFields] = useState<SignatureField[]>([]);
   const [pdfVersion, setPdfVersion] = useState(0);
   const [sending, setSending] = useState(false);
+  // 連同取得當下的狀態一起存：狀態轉移後舊連結不再屬於當前待簽方，直接失效
+  const [signLinkState, setSignLinkState] = useState<{ forStatus: ContractStatus; link: string } | null>(null);
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const [form] = Form.useForm();
   const loadedOnce = useRef(false);
 
@@ -82,6 +87,8 @@ function ContractDetail({ id }: { id: string }) {
   if (!contract) return null;
   const isDraft = contract.status === 'draft';
   const isSigning = contract.status === 'awaiting_tenant' || contract.status === 'awaiting_landlord';
+  const signer = currentSigner(contract);
+  const signLink = signLinkState?.forStatus === contract.status ? signLinkState.link : null;
 
   const collectFields = () => {
     const v = form.getFieldsValue();
@@ -142,6 +149,25 @@ function ContractDetail({ id }: { id: string }) {
       loadedOnce.current = false;
       router.push(`/contracts/${data.id}`);
     }
+  };
+
+  const fetchSignLink = async () => {
+    setLinkLoading(true);
+    const res = await fetch(`/api/contracts/${id}/sign-link`);
+    const json = await res.json();
+    setLinkLoading(false);
+    if (!res.ok) {
+      message.error(json.error ?? '取得簽署連結失敗');
+      return;
+    }
+    setSignLinkState({ forStatus: contract.status, link: json.data.sign_link });
+  };
+
+  const resend = async () => {
+    setResending(true);
+    const data = await act(`/api/contracts/${id}/resend`);
+    setResending(false);
+    if (data) message.success(`已重寄簽署通知至 ${data.resent_to}`);
   };
 
   const mockAdvance = async (event: string, label: string) => {
@@ -210,6 +236,29 @@ function ContractDetail({ id }: { id: string }) {
             <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
               點點簽任務 ID：{contract.dottedsign_task_id}
             </Typography.Text>
+          )}
+          {!mockMode && isSigning && signer && (
+            <div style={{ marginTop: 12 }}>
+              <Space wrap>
+                <Typography.Text type="secondary">
+                  目前待簽：{signer.role === 'tenant' ? '乙方' : '甲方'} {signer.name}（{signer.email}）
+                </Typography.Text>
+                <Button size="small" loading={linkLoading} onClick={fetchSignLink}>
+                  取得簽署連結
+                </Button>
+                <Button size="small" loading={resending} onClick={resend}>
+                  重寄簽署通知
+                </Button>
+              </Space>
+              {signLink && (
+                <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4, maxWidth: 720 }}>
+                  <Typography.Link href={signLink} target="_blank" ellipsis style={{ flex: 1, minWidth: 0 }}>
+                    {signLink}
+                  </Typography.Link>
+                  <Typography.Text copyable={{ text: signLink, tooltips: ['複製連結', '已複製'] }} />
+                </div>
+              )}
+            </div>
           )}
           {mockMode && isSigning && (
             <Space style={{ marginTop: 12 }}>

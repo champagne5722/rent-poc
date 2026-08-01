@@ -12,6 +12,13 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:3001"],
       "port": 3001
+    },
+    {
+      "name": "dev-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:preview"],
+      "port": 3002,
+      "autoPort": true
     }
   ]
 }

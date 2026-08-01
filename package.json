@@ -5,9 +5,11 @@
   "scripts": {
     "dev": "next dev",
     "dev:3001": "NEXT_DIST_DIR=.next-dev3001 next dev -p 3001",
+    "dev:preview": "NEXT_DIST_DIR=.next-preview next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
@@ -30,6 +32,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

@@ -120,6 +120,31 @@ export async function createSignTask(contract: Contract, pdfBytes: Uint8Array): 
   return { taskId: String(json.data.task_id), mock: false };
 }
 
+// 簽署連結現查（見 CONTEXT.md「簽署連結」）：只對「當前輪到的簽署人」有效，
+// 還沒輪到會回 400_937 stage_not_acting。連結有時效，不落地儲存。
+export async function getSignerShareLink(taskId: string, email: string, redirectUrl?: string): Promise<string> {
+  if (isMockMode()) throw new Error('mock 模式沒有真實簽署任務，無法取得簽署連結');
+  // ⚠️ 文件寫 task_ids[]，sandbox 實測帶方括號（含未編碼）一律回 400998，
+  // 只吃 task_ids=<id>（見整合筆記）
+  let query = `task_ids=${encodeURIComponent(taskId)}&email=${encodeURIComponent(email)}`;
+  if (redirectUrl) query += `&redirect_url=${encodeURIComponent(redirectUrl)}`;
+  const json = (await dsFetch(`/v1/sign_tasks/share_link?${query}`)) as {
+    data?: { share_link?: string };
+  };
+  const link = json.data?.share_link;
+  if (!link) throw new Error('點點簽未回傳簽署連結');
+  return link;
+}
+
+// 重寄簽署通知信給當前待簽方（sandbox 不寄信，只能驗證 API 回應成功）
+export async function resendSignTask(taskId: string): Promise<void> {
+  if (isMockMode()) throw new Error('mock 模式沒有真實簽署任務，無法重寄通知');
+  await dsFetch('/v1/sign_tasks/resend', {
+    method: 'POST',
+    body: JSON.stringify({ task_id: Number(taskId) }),
+  });
+}
+
 export async function voidSignTask(taskId: string): Promise<void> {
   if (isMockMode()) return;
   await dsFetch('/v1/sign_tasks/void', {

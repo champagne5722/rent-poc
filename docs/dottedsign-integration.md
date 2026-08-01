@@ -42,11 +42,12 @@
   - ✅ 回應形狀已實測：`{ data: { task: "<S3 預簽連結>" } }`，key 對應 `file_types[]` 的值。連結會 302 轉址，client 要跟隨。
   - Sandbox 下載的 PDF 蓋有「Sample by DottedSign」浮水印，正式環境無。
 
-## 簽署入口（share link）
+## 簽署連結（share_link API）
 
 - 官方機制：`GET /v1/sign_tasks/share_link?task_ids=...&email=<簽署人>`（scope `sign_tasks.general.write`），回 `{ data: { share_link } }`，可加 `redirect_url`（簽完導回）與 `short=true`。搭配建立任務時 `stage_setting.informable: false`（不寄邀請信）就是官方的「系統自行派發簽署連結」模式，也允許 iframe 內嵌。
 - ⚠️ 參數名實測是 `task_ids`（reference 寫 `task_ids[]` 會被打回 `400998`）。
-- ⚠️ **本 sandbox 帳號呼叫一律回 `403002 not allow for this action`**（2026-08-01 實測）。已排除的假設：簽署人是否為 owner、`informable: false`、token 加帶 `sign_tasks.signing.write`——皆無效。關鍵事證：**任務的 `access_info.share_sign_link` 為 `true`（權限存在）仍回 403002**，且 403002 不在此端點 reference 列出的錯誤清單（`400035`／`400937`／`403036`／`404032`）內，而錯誤碼文件將 403002 定義為「application 或 token 的 scope 設定問題」。研判卡在 **Application 層級的動作閘門**：待確認後台 Application 的 scope 勾選，或此端點是否僅限 Authorization Code Flow 的使用者 token（Client Credentials 不可用）——需向點點簽支援確認。
+- ✅ **403002 已解除**（2026-08-02 實測）：client credentials token 對 task 470 呼叫成功回 `data.share_link`（`https://sandbox.dottedsign.com/task?code=<JWT>`）。2026-08-01 曾一律回 `403002 not allow for this action`（當時已排除 owner、`informable`、scope 等假設，研判是 Application 層級閘門），未改任何設定即恢復，原因不明；若復發，優先向點點簽支援查 Application 動作閘門。系統的「取得簽署連結」按鈕（`GET /api/contracts/[id]/sign-link`）已走此端點。
+- ⚠️ **resend 在 sandbox 不可用**（2026-08-02 實測）：`POST /v1/sign_tasks/resend` 一律回 `403036 task_not_accessible`，任務的 `access_info.resend` 為 `false`；建立任務時帶 `stage_setting.informable: true` 也一樣（task 471 實驗）。研判與 sandbox 不寄信同源，正式環境待驗證。系統的「重寄簽署通知」按鈕在 sandbox 會顯示對應錯誤說明。
 - Sandbox 不寄邀請信，測試時簽署人要從點點簽系統內開啟任務；正式環境預設會寄。
 - Embedded signing（iframe SDK）需 Business/Enterprise 方案 + `embedded_signing` scope（見 ADR-0003），PoC 未使用。
 
@@ -87,4 +88,6 @@
    - [x] webhook 事件名稱與 payload 形狀（另發現 `viewed` 事件）
    - [x] webhook 簽章 header 名稱與驗證方式（`Signature` ＝ HMAC-SHA256）
    - [x] 下載連結回應形狀（`data.task`，302 轉址）
-   - [ ] 拒簽流程（`declined` 事件）尚未實測；撤回僅驗證了「草稿不可 void」的錯誤路徑，執行中任務的 void 尚未實測
+   - [x] 執行中任務的 void（task 471 實測成功；⚠️ start 後立即 void 曾回 403，稍候重試即成功，疑為非同步建立的 race）
+   - [ ] 拒簽流程（`declined` 事件）尚未實測
+   - [ ] resend（重寄通知）sandbox 一律 403036，需正式環境驗證

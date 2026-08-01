@@ -48,3 +48,6 @@ next-env.d.ts
 
 # 第二個 dev server 的 dist dir（prototype 驗證用）
 /.next-dev3001/
+
+# preview 驗證用 dev server 的 dist dir
+/.next-preview/
