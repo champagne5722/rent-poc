@@ -23,7 +23,8 @@
     "pdfjs-dist": "^6.1.200",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "react-rnd": "^10.5.3"
+    "react-rnd": "^10.5.3",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

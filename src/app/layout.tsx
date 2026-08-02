@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
-import { ConfigProvider } from 'antd';
-import zhTW from 'antd/locale/zh_TW';
+import AppConfigProvider from '@/components/AppConfigProvider';
 import AppShell from '@/components/AppShell';
+import { loadDesignTheme } from '@/lib/design-theme-loader';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -15,9 +15,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="zh-Hant-TW">
       <body>
         <AntdRegistry>
-          <ConfigProvider locale={zhTW}>
+          <AppConfigProvider design={loadDesignTheme()}>
             <AppShell>{children}</AppShell>
-          </ConfigProvider>
+          </AppConfigProvider>
         </AntdRegistry>
       </body>
     </html>
