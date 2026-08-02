@@ -22,8 +22,10 @@ draft（草稿）
 
 ## 資料模型（概念層）
 
-- **Property**：id、name、address、type（整層/套房/雅房）、size（坪）、default_rent、note、equipment（多選）
-- **Contract**：id、property_id、狀態、欄位值（租金、押金、租期起迄、付款日、雙方姓名/email 等）、signature_fields（JSON：簽署方＋頁碼＋座標）、dottedsign_task_id、產出的 PDF、已簽 PDF 下載資訊、點點簽 Audit Trail File（完成時保存，ADR-0007）、衍生自（derived from——撤回修約路徑才記錄，ADR-0006）
+- **Property**：id、name、address、type（整層/套房/雅房）、size（坪）、default_rent、note、設備清單（每項：詞彙庫項目＋數量）
+- **Equipment Vocabulary（設備詞彙庫）**：房東層的設備項目字典，平台預設項目＋房東自訂項目同一份；各物件設備清單由此挑選（ADR-0008）
+- **Contract**：id、property_id、狀態、欄位值（租金、押金、租期起迄、付款日、雙方姓名/email 等）、補充合約內容（自由文字，含 `{{合約變數}}`，產出時解析）、設備附件列（每列：項目＋數量＋修繕責任＋備註，建約由物件帶入後逐約調整）、signature_fields（JSON：簽署方＋頁碼＋座標）、dottedsign_task_id、產出的 PDF、已簽 PDF 下載資訊、點點簽 Audit Trail File（完成時保存，ADR-0007）、衍生自（derived from——撤回修約路徑才記錄，ADR-0006）
+- 合約文件三層組裝：主約（公版鎖定）＋補充合約（房東自訂獨立頁）＋設備附件（系統產出表單頁），見 ADR-0008
 - **Contract Event（合約事件）**：附屬合約的 append-only 里程碑事件序列——型別（建立／送簽／乙方簽署／拒簽／甲方簽署完成／撤回／被複製）、行為者（房東／租客／系統）、時間、附註（拒簽原因、衍生對象等）；webhook 事件與狀態轉移同交易寫入，隨合約保存（ADR-0007）
 - **Template（範本）／Optional Clause（選用條款）**：平台資料，皆含版本；PoC 以程式內常數表達（`src/lib/clause-library.ts`），無維護介面（ADR-0005）
 - Contract 引用 Property 帶入資料後即自成快照，物件後續修改不回溯影響既有合約。
