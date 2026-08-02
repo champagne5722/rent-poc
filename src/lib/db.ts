@@ -8,6 +8,8 @@ import type {
   ContractEventType,
   ContractFile,
   ContractFileKind,
+  ContractRelationRef,
+  ContractRelations,
   ContractStatus,
   Property,
 } from './types';
@@ -73,6 +75,15 @@ export function ensureSchema(db: Database.Database): void {
       UNIQUE (contract_id, kind)
     );
   `);
+
+  // 既有資料表補欄位：SQLite 沒有 ADD COLUMN IF NOT EXISTS，先用 PRAGMA table_info 檢查再 ALTER
+  addColumnIfMissing(db, 'contracts', 'derived_from', 'INTEGER REFERENCES contracts(id)');
+}
+
+function addColumnIfMissing(db: Database.Database, table: string, column: string, definition: string): void {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (columns.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
 function createDb(): Database.Database {
@@ -214,18 +225,35 @@ export function insertContractWithEvent(
 }
 
 // 複製為新草稿：新約記「建立」、來源記「被複製為新草稿」，同交易寫入。
-// 衍生來源附註只在撤回修約路徑記錄；拒簽後的複製是純省時便利，不記衍生關聯（ADR-0006）。
+// 衍生關聯（derived_from 欄位＋建立事件附註）只在撤回修約路徑記錄；
+// 拒簽後的複製是純省時便利，不記衍生關聯（ADR-0006）。
 export function copyContractAsDraft(source: Contract, db: Database.Database = getDb()): number {
-  const derivedNote = source.status === 'voided' ? `衍生自合約 #${source.id}（撤回後修約）` : null;
+  const isAmendment = source.status === 'voided';
+  const derivedFrom = isAmendment ? source.id : null;
+  const derivedNote = isAmendment ? `衍生自合約 #${source.id}（撤回後修約）` : null;
   return db.transaction(() => {
     const result = db
-      .prepare('INSERT INTO contracts (property_id, fields, signature_fields) VALUES (?, ?, ?)')
-      .run(source.property_id, JSON.stringify(source.fields), JSON.stringify(source.signature_fields));
+      .prepare('INSERT INTO contracts (property_id, fields, signature_fields, derived_from) VALUES (?, ?, ?, ?)')
+      .run(source.property_id, JSON.stringify(source.fields), JSON.stringify(source.signature_fields), derivedFrom);
     const newId = Number(result.lastInsertRowid);
     appendContractEvent(newId, { type: 'created', actor: 'landlord', note: derivedNote }, db);
     appendContractEvent(source.id, { type: 'copied', actor: 'landlord', note: `複製為新草稿：合約 #${newId}` }, db);
     return newId;
   })();
+}
+
+// 查一份合約的衍生鏈鄰居：前身＝derived_from 指向的合約，後繼＝derived_from 指向本約的合約們。
+// 只回編號與狀態，供詳情頁「關聯合約」分頁連結用。
+export function getContractRelations(contract: Contract, db: Database.Database = getDb()): ContractRelations {
+  const predecessor = contract.derived_from
+    ? ((db.prepare('SELECT id, status FROM contracts WHERE id = ?').get(contract.derived_from) as
+        | ContractRelationRef
+        | undefined) ?? null)
+    : null;
+  const successors = db
+    .prepare('SELECT id, status FROM contracts WHERE derived_from = ? ORDER BY id ASC')
+    .all(contract.id) as ContractRelationRef[];
+  return { derived_from: predecessor, derived_contracts: successors };
 }
 
 // 刪除草稿合約：歷程隨合約走，一起刪掉（UI 沒有單獨刪事件的入口）

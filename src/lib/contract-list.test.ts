@@ -47,6 +47,7 @@ function makeContract(o: MakeOptions = {}): Contract {
     signature_fields: [],
     dottedsign_task_id: null,
     declined_reason: null,
+    derived_from: null,
     created_at: o.created_at ?? '2026-08-01 00:00:00',
     updated_at: o.updated_at === undefined ? null : o.updated_at,
   };

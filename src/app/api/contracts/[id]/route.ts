@@ -1,13 +1,14 @@
 import { NextRequest } from 'next/server';
-import { deleteContractWithEvents, getContract, getDb } from '@/lib/db';
+import { deleteContractWithEvents, getContract, getContractRelations, getDb } from '@/lib/db';
 
 type Ctx = { params: Promise<{ id: string }> };
 
+// 詳情頁一次取回合約本體與衍生鏈鄰居（前身／後繼），關聯合約分頁不必再發一次請求
 export async function GET(_request: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const contract = getContract(Number(id));
   if (!contract) return Response.json({ error: '合約不存在' }, { status: 404 });
-  return Response.json({ data: contract });
+  return Response.json({ data: contract, relations: getContractRelations(contract) });
 }
 
 export async function PUT(request: NextRequest, { params }: Ctx) {
