@@ -3,13 +3,19 @@ import fontkit from '@pdf-lib/fontkit';
 import fs from 'fs';
 import path from 'path';
 import type { ContractFields } from './types';
-
-// A4（PDF points）
-const PAGE_W = 595.28;
-const PAGE_H = 841.89;
-const MARGIN = 56;
-const BODY_SIZE = 11;
-const LINE_GAP = 7;
+// 版面常數集中在 pdf-layout.ts：簽署區編輯器要用同一組數字推簽名欄的預設落點。
+import {
+  BODY_SIZE,
+  LINE_GAP,
+  MARGIN,
+  PAGE_H,
+  PAGE_W,
+  SIGN_BLOCK_TOP_GAP,
+  SIGN_HEADING_GAP_AFTER,
+  SIGN_HEADING_SIZE,
+  SIGN_ROW_GAP_AFTER,
+  SIGN_STAMP_BLANK,
+} from './pdf-layout';
 
 let fontBytesCache: Buffer | null = null;
 function loadFontBytes(): Buffer {
@@ -185,15 +191,16 @@ export async function generateContractPdf(fields: ContractFields): Promise<Uint8
 
   // 簽署欄：僅印出雙方基本資料與簽章提示文字；
   // 實際簽名位置由房東在簽署區域編輯器拖放決定（見 docs/adr/0004）。
+  // 這段的排版順序被 pdf-layout.ts 的 signatureStampBaselines() 重走一遍以推出預設落點，改這裡要一起改。
   w.ensure(180);
-  w.y -= 12;
-  w.text('立契約書人', 13, { gapAfter: 6 });
-  w.text(`甲方（出租人）：${blank(fields.landlordName)}`, BODY_SIZE, { gapAfter: 2 });
-  w.text(`Email：${blank(fields.landlordEmail)}`, BODY_SIZE, { gapAfter: 2 });
-  w.text('簽章：', BODY_SIZE, { gapAfter: 44 });
-  w.text(`乙方（承租人）：${blank(fields.tenantName)}`, BODY_SIZE, { gapAfter: 2 });
-  w.text(`Email：${blank(fields.tenantEmail)}`, BODY_SIZE, { gapAfter: 2 });
-  w.text('簽章：', BODY_SIZE, { gapAfter: 44 });
+  w.y -= SIGN_BLOCK_TOP_GAP;
+  w.text('立契約書人', SIGN_HEADING_SIZE, { gapAfter: SIGN_HEADING_GAP_AFTER });
+  w.text(`甲方（出租人）：${blank(fields.landlordName)}`, BODY_SIZE, { gapAfter: SIGN_ROW_GAP_AFTER });
+  w.text(`Email：${blank(fields.landlordEmail)}`, BODY_SIZE, { gapAfter: SIGN_ROW_GAP_AFTER });
+  w.text('簽章：', BODY_SIZE, { gapAfter: SIGN_STAMP_BLANK });
+  w.text(`乙方（承租人）：${blank(fields.tenantName)}`, BODY_SIZE, { gapAfter: SIGN_ROW_GAP_AFTER });
+  w.text(`Email：${blank(fields.tenantEmail)}`, BODY_SIZE, { gapAfter: SIGN_ROW_GAP_AFTER });
+  w.text('簽章：', BODY_SIZE, { gapAfter: SIGN_STAMP_BLANK });
   w.text(`中華民國　簽約日期以電子簽署完成日為準`, BODY_SIZE);
 
   return doc.save();
