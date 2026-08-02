@@ -295,6 +295,20 @@ function ContractDetail({ id }: { id: string }) {
           children: `${contract.fields.startDate} ~ ${contract.fields.endDate}`,
         },
         {
+          key: 'template',
+          label: '範本',
+          children: contract.fields.templateVersion
+            ? `住宅租賃契約 v${contract.fields.templateVersion}（平台提供）`
+            : '住宅租賃契約（未綁定版本，MIL-26 之前建立）',
+        },
+        {
+          key: 'clauses',
+          label: '選用條款',
+          children: contract.fields.clauses?.length
+            ? contract.fields.clauses.map((c) => c.title).join('、')
+            : '無',
+        },
+        {
           key: 'extra',
           label: '其他約定事項',
           children: contract.fields.extra || '無',
