@@ -48,8 +48,42 @@ export const CONTRACT_STATUS_LABELS: Record<ContractStatus, string> = {
   voided: '已撤回',
 };
 
+// 範本（Template）：平台提供、版面與條款寫死的租約底稿，版本化（ADR-0005）。
+// PoC 只有一份，內容是平台資料而非使用者資料，維護介面屬 Admin 後台（範圍外）。
+export interface ContractTemplate {
+  id: string;
+  name: string;
+  version: number;
+  provider: string;
+  note: string;
+}
+
+// 選用條款（Optional Clause）：平台提供、經法務審閱的可勾選附加條款，逐約勾選後併入合約產出。
+export interface OptionalClause {
+  id: string;
+  title: string;
+  body: string;
+  version: number;
+}
+
+/**
+ * 合約裡的條款快照：形狀與 OptionalClause 相同，但值屬於合約自己的資料。
+ * 建約時整段複製過來，之後平台條款改版不回溯影響（ADR-0005）。
+ */
+export type ClauseSnapshot = OptionalClause;
+
+/**
+ * 合約對範本的綁定與條款快照。收在 ContractFields 的 JSON 裡，不另開資料表欄位。
+ * 三個欄位都可選：MIL-26 之前建立的合約沒有這些值，一律當成「未綁定版本、沒勾條款」。
+ */
+export interface TemplateBinding {
+  templateId?: string;
+  templateVersion?: number;
+  clauses?: ClauseSnapshot[];
+}
+
 // 合約欄位值：建立時由物件帶入快照，之後與物件脫鉤（見 docs/domain-model.md）
-export interface ContractFields {
+export interface ContractFields extends TemplateBinding {
   landlordName: string;
   landlordEmail: string;
   tenantName: string;

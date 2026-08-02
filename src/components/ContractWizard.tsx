@@ -9,6 +9,7 @@ import {
   App as AntApp,
   Button,
   Card,
+  Checkbox,
   Col,
   DatePicker,
   Descriptions,
@@ -36,6 +37,16 @@ import type { Contract, ContractFields, SignatureField } from '@/lib/types';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
 import {
   DEFAULT_TEMPLATE,
+  OPTIONAL_CLAUSES,
+  clauseSnapshots,
+  reselectClauses,
+  selectedClauseIds,
+  templateLabel,
+  upgradeNotice,
+  upgradedTemplateBinding,
+} from '@/lib/clause-library';
+import { extraClauseLabel } from '@/lib/contract-clauses';
+import {
   STEP_CONFIRM,
   STEP_FIELDS,
   STEP_PROPERTY,
@@ -43,6 +54,7 @@ import {
   TENANT_FIRST_NOTICE,
   WIZARD_STEPS,
   checkSignatureFields,
+  mergeEditableFields,
   nextStepBlockReason,
   resumeStepIndex,
   sendBlockReason,
@@ -71,14 +83,82 @@ export function WizardStepsBar({
   );
 }
 
-/** 範本區：單範本時顯示為說明，不做選擇（ADR-0005；選用條款另票）。 */
+/** 範本區：單範本時顯示為說明，不做選擇（ADR-0005）。 */
 export function TemplateNotice() {
   return (
     <Alert
       type="info"
       showIcon
-      message={`範本：${DEFAULT_TEMPLATE.name}，${DEFAULT_TEMPLATE.provider}`}
+      message={`範本：${DEFAULT_TEMPLATE.name} v${DEFAULT_TEMPLATE.version}，${DEFAULT_TEMPLATE.provider}`}
       description={`${DEFAULT_TEMPLATE.note}目前平台僅一份範本，系統自動選用。`}
+    />
+  );
+}
+
+/**
+ * 選用條款勾選清單（規格 §12）：平台提供的條款逐約勾選，勾選當下就把條文快照進合約。
+ * 勾選結果隨草稿保存（按「下一步」自動存），之後平台改版不動這份快照。
+ */
+function OptionalClauseChecklist({
+  fields,
+  onChange,
+}: {
+  fields: ContractFields;
+  onChange: (clauses: ContractFields['clauses']) => void;
+}) {
+  const checked = selectedClauseIds(fields);
+  const toggle = (id: string, on: boolean) => {
+    onChange(reselectClauses(fields, on ? [...checked, id] : checked.filter((x) => x !== id)));
+  };
+  return (
+    <div style={{ marginTop: 12 }}>
+      <Typography.Text strong>選用條款（逐約勾選，併入合約條款區）</Typography.Text>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+        {OPTIONAL_CLAUSES.map((clause) => (
+          <Checkbox
+            key={clause.id}
+            checked={checked.includes(clause.id)}
+            onChange={(e) => toggle(clause.id, e.target.checked)}
+          >
+            <Typography.Text strong>{clause.title}</Typography.Text>
+            <Typography.Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>
+              {clause.body}
+            </Typography.Paragraph>
+          </Checkbox>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 升版提示（規格 §12）：草稿綁的範本或已勾條款有新版時提示可重建，按不按由房東決定。 */
+function TemplateUpgradeNotice({
+  fields,
+  onUpgrade,
+  disabled,
+}: {
+  fields: ContractFields;
+  onUpgrade: () => void;
+  disabled?: boolean;
+}) {
+  const notice = upgradeNotice(fields);
+  if (!notice.hasUpgrade) return null;
+  const parts = [
+    ...(notice.template ? [`範本 v${notice.template.from} → v${notice.template.to}`] : []),
+    ...notice.clauses.map((c) => `${c.title} v${c.from} → v${c.to}`),
+  ];
+  return (
+    <Alert
+      type="warning"
+      showIcon
+      style={{ marginTop: 12 }}
+      message="平台已有新版條文，可升版重建"
+      description={`${parts.join('、')}。這份草稿目前用的是建立當時的版本，升版會重新快照最新條文；不升版也能照樣送簽。`}
+      action={
+        <Button size="small" onClick={onUpgrade} disabled={disabled}>
+          升版重建
+        </Button>
+      }
     />
   );
 }
@@ -183,24 +263,18 @@ export default function ContractWizard({ id }: { id: string }) {
     };
   }, [id, form]);
 
-  // 把表單當下的值併回合約欄位快照（物件相關欄位在建立草稿時已帶入，不在表單編輯）
+  // 把表單當下的值併回合約欄位快照（物件相關欄位在建立草稿時已帶入，不在表單編輯）。
+  // 底稿一律取 fields 狀態而非載入當時的 contract.fields：不然在第①步改過的選用條款勾選，
+  // 會在第②步按下一步時被載入當時的舊快照蓋掉。
   const readFields = useCallback((): ContractFields => {
-    if (!contract) throw new Error('合約尚未載入');
+    if (!fields) throw new Error('合約尚未載入');
     const v = form.getFieldsValue(true) as FormValues;
-    return {
-      ...contract.fields,
-      landlordName: v.landlordName ?? '',
-      landlordEmail: v.landlordEmail ?? '',
-      tenantName: v.tenantName ?? '',
-      tenantEmail: v.tenantEmail ?? '',
-      rent: v.rent ?? null,
-      deposit: v.deposit ?? null,
+    return mergeEditableFields(fields, {
+      ...v,
       startDate: v.startDate ? v.startDate.format('YYYY-MM-DD') : '',
       endDate: v.endDate ? v.endDate.format('YYYY-MM-DD') : '',
-      payDay: v.payDay ?? null,
-      extra: v.extra ?? '',
-    };
-  }, [contract, form]);
+    });
+  }, [fields, form]);
 
   // 每按「下一步」自動存草稿（規格 §7 五點基線第 5 點）
   const saveDraft = useCallback(
@@ -275,6 +349,16 @@ export default function ContractWizard({ id }: { id: string }) {
     setStep(step + 1);
   };
 
+  // 勾選變動只改記憶體裡的草稿；跟其他欄位一樣按「下一步」時才一併存回
+  const changeClauses = (clauses: ContractFields['clauses']) => setFields({ ...fields, clauses });
+
+  // 升版重建＝重新快照最新範本版本與已勾條款條文，並立刻存檔（房東按了才會動）
+  const upgradeTemplate = async () => {
+    const next = { ...fields, ...upgradedTemplateBinding(fields) };
+    setFields(next);
+    if (await saveDraft(next, sigFields)) message.success('已升版重建，條文換成平台最新版本');
+  };
+
   const goPrev = () => {
     if (step === STEP_FIELDS) setFields(readFields());
     setStep(step - 1);
@@ -299,6 +383,7 @@ export default function ContractWizard({ id }: { id: string }) {
     router.push(`/contracts/${id}`);
   };
 
+  const selected = clauseSnapshots(fields);
   const summaryItems = [
     { key: 'property', label: '物件', span: 2, children: fields.propertyName || '—' },
     { key: 'address', label: '地址', span: 2, children: fields.propertyAddress || '—' },
@@ -316,7 +401,23 @@ export default function ContractWizard({ id }: { id: string }) {
     { key: 'deposit', label: '押金', children: money(fields.deposit) },
     { key: 'lease', label: '租期', children: `${fields.startDate} ~ ${fields.endDate}` },
     { key: 'payDay', label: '每月付款日', children: fields.payDay != null ? `${fields.payDay} 日` : '—' },
-    { key: 'template', label: '範本', span: 2, children: `${DEFAULT_TEMPLATE.name}（${DEFAULT_TEMPLATE.provider}）` },
+    { key: 'template', label: '範本', span: 2, children: `${templateLabel(fields)}（${DEFAULT_TEMPLATE.provider}）` },
+    {
+      key: 'clauses',
+      label: '選用條款',
+      span: 2,
+      children: selected.length ? (
+        <Space size={4} wrap>
+          {selected.map((clause) => (
+            <Tag key={clause.id} color="blue">
+              {clause.title} v{clause.version}
+            </Tag>
+          ))}
+        </Space>
+      ) : (
+        '（未勾選）'
+      ),
+    },
     { key: 'extra', label: '其他約定事項', span: 2, children: fields.extra || '（無）' },
     {
       key: 'signature',
@@ -362,8 +463,11 @@ export default function ContractWizard({ id }: { id: string }) {
             ]}
           />
           <TemplateNotice />
+          <OptionalClauseChecklist fields={fields} onChange={changeClauses} />
+          <TemplateUpgradeNotice fields={fields} onUpgrade={upgradeTemplate} disabled={saving} />
           <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0, fontSize: 12 }}>
             物件資料在建立草稿時已帶入成快照，之後修改物件不影響這份合約。要換物件請回合約列表另建一份草稿。
+            選用條款也在勾選當下快照，平台之後改版不影響這份合約。
           </Typography.Paragraph>
         </Card>
       )}
@@ -439,7 +543,11 @@ export default function ContractWizard({ id }: { id: string }) {
                 </Form.Item>
               </Col>
             </Row>
-            <Form.Item name="extra" label="其他約定事項（第八條）" style={{ marginBottom: 0 }}>
+            <Form.Item
+              name="extra"
+              label={`其他約定事項（${extraClauseLabel(fields)}）`}
+              style={{ marginBottom: 0 }}
+            >
               <Input.TextArea rows={3} placeholder="無則留空" />
             </Form.Item>
           </Form>

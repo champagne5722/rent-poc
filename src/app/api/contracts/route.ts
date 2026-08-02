@@ -1,12 +1,14 @@
 import { NextRequest } from 'next/server';
 import { getProperty, insertContractWithEvent, listContracts } from '@/lib/db';
+import { bindTemplate } from '@/lib/clause-library';
 import type { ContractFields } from '@/lib/types';
 
 export async function GET() {
   return Response.json({ data: listContracts() });
 }
 
-// 從物件建立合約草稿：物件資料在此帶入成快照，之後與物件脫鉤（見 docs/domain-model.md）
+// 從物件建立合約草稿：物件資料在此帶入成快照，之後與物件脫鉤（見 docs/domain-model.md）；
+// 範本版本也在此綁定，選用條款在 wizard 第①步勾選後才寫進快照（ADR-0005）
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const property = getProperty(Number(body.property_id));
@@ -28,6 +30,7 @@ export async function POST(request: NextRequest) {
     endDate: '',
     payDay: 5,
     extra: '',
+    ...bindTemplate(),
   };
 
   // 合約與「建立」歷程事件同交易寫入（ADR-0007）

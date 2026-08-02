@@ -25,4 +25,6 @@ draft（草稿）
 - **Property**：id、name、address、type（整層/套房/雅房）、size（坪）、default_rent、note、equipment（多選）
 - **Contract**：id、property_id、狀態、欄位值（租金、押金、租期起迄、付款日、雙方姓名/email 等）、signature_fields（JSON：簽署方＋頁碼＋座標）、dottedsign_task_id、產出的 PDF、已簽 PDF 下載資訊、點點簽 Audit Trail File（完成時保存，ADR-0007）、衍生自（derived from——撤回修約路徑才記錄，ADR-0006）
 - **Contract Event（合約事件）**：附屬合約的 append-only 里程碑事件序列——型別（建立／送簽／乙方簽署／拒簽／甲方簽署完成／撤回／被複製）、行為者（房東／租客／系統）、時間、附註（拒簽原因、衍生對象等）；webhook 事件與狀態轉移同交易寫入，隨合約保存（ADR-0007）
+- **Template（範本）／Optional Clause（選用條款）**：平台資料，皆含版本；PoC 以程式內常數表達（`src/lib/clause-library.ts`），無維護介面（ADR-0005）
 - Contract 引用 Property 帶入資料後即自成快照，物件後續修改不回溯影響既有合約。
+- Contract 對範本的綁定與勾選條款同理：建約時記下範本版本並把條款**條文整段**快照進合約欄位 JSON（`templateId` / `templateVersion` / `clauses`），平台改版不回溯影響既有合約與草稿；草稿遇新版時 wizard 提示可升版重建（＝重新快照），不強制（ADR-0005）。

@@ -25,9 +25,8 @@ function lineAdvance(size: number, gapAfter = 0): number {
 /**
  * 甲乙兩個「簽章：」的 baseline y（PDF 座標）。
  *
- * 這段是把 generateContractPdf 尾段的排版順序原樣重走一遍：範本內文長度剛好讓簽署欄
- * 落在新的一頁頂端，所以起點固定是 `PAGE_H - MARGIN`。其他約定事項寫得極長時簽署欄可能
- * 被擠散，那時預設落點只是近似值，不影響房東再拖曳調整。
+ * 這段是把 generateContractPdf 尾段的排版順序原樣重走一遍：簽署欄一律另起一頁，所以起點
+ * 固定是 `PAGE_H - MARGIN`，勾幾條選用條款、其他約定事項寫多長都不影響這兩個數字。
  * src/lib/pdf-layout.test.ts 會拿真的產出 PDF 對這兩個數字做迴歸。
  */
 export function signatureStampBaselines(): { landlord: number; tenant: number } {

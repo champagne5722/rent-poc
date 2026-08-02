@@ -1,7 +1,7 @@
 'use client';
 
 // 建約 wizard 第①步（規格 §7）：選物件並帶入快照建立草稿，接著進 /contracts/[id]/edit 續走後三步。
-// 範本區單範本時只是說明，不做選擇（ADR-0005；選用條款另票）。
+// 範本區單範本時只是說明，不做選擇（ADR-0005）；選用條款在草稿建立後的第①步勾選。
 
 import { useEffect, useState } from 'react';
 import { App as AntApp, Alert, Button, Card, Descriptions, Select, Space, Spin, Typography } from 'antd';

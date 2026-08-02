@@ -7,6 +7,7 @@ import {
   STEP_PROPERTY,
   STEP_SIGNATURE,
   checkSignatureFields,
+  mergeEditableFields,
   missingFieldLabels,
   nextStepBlockReason,
   resumeStepIndex,
@@ -209,5 +210,53 @@ describe('stepStatuses（Steps 每一步的狀態）', () => {
       'wait',
       'wait',
     ]);
+  });
+});
+
+describe('mergeEditableFields（第②步表單值併回草稿）', () => {
+  const base = fields({
+    templateId: 'residential-lease',
+    templateVersion: 1,
+    clauses: [{ id: 'pet', title: '寵物飼養', body: '（建約當時的條文）', version: 1 }],
+  });
+  const input = {
+    landlordName: '林房東',
+    landlordEmail: 'new-landlord@example.com',
+    tenantName: '陳租客',
+    tenantEmail: 'new-tenant@example.com',
+    rent: 30000,
+    deposit: 60000,
+    startDate: '2026-10-01',
+    endDate: '2027-09-30',
+    payDay: 10,
+    extra: '車位另計。',
+  };
+
+  it('表單欄位覆蓋草稿，其餘欄位原樣保留', () => {
+    const merged = mergeEditableFields(base, input);
+    expect(merged).toMatchObject(input);
+    expect(merged.propertyName).toBe(base.propertyName);
+    expect(merged.equipment).toEqual(base.equipment);
+  });
+
+  it('不動範本綁定與選用條款快照（第①步勾的條款不會被表單蓋掉）', () => {
+    const merged = mergeEditableFields(base, input);
+    expect(merged.templateVersion).toBe(1);
+    expect(merged.clauses).toEqual(base.clauses);
+  });
+
+  it('沒填的欄位一律正規化成空字串或 null，不留 undefined', () => {
+    expect(mergeEditableFields(base, {})).toMatchObject({
+      landlordName: '',
+      landlordEmail: '',
+      tenantName: '',
+      tenantEmail: '',
+      rent: null,
+      deposit: null,
+      startDate: '',
+      endDate: '',
+      payDay: null,
+      extra: '',
+    });
   });
 });

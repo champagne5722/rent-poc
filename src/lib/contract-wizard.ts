@@ -17,12 +17,8 @@ export const STEP_FIELDS = 1;
 export const STEP_SIGNATURE = 2;
 export const STEP_CONFIRM = 3;
 
-// 平台提供的唯一範本（ADR-0005）。單範本時第①步顯示為說明，不做選擇。
-export const DEFAULT_TEMPLATE = {
-  name: '住宅租賃契約 v1',
-  provider: '平台提供',
-  note: '條款全文由平台維護並經法務審閱，房東只編輯欄位。',
-} as const;
+// 平台提供的範本與選用條款庫定義在 src/lib/clause-library.ts（ADR-0005）。
+// 單範本時第①步的範本區顯示為說明不做選擇，選用條款則在該步逐約勾選。
 
 // 乙方先簽（ADR-0003）：確認頁對房東說明送簽後的預期。
 export const TENANT_FIRST_NOTICE =
@@ -53,6 +49,44 @@ export function missingFieldLabels(fields: ContractFields): string[] {
     missing.push('租期迄日（不得早於起日）');
   }
   return missing;
+}
+
+/** 第②步表單真正編輯的欄位；日期在 UI 端轉成 YYYY-MM-DD 字串後才進來。 */
+export type EditableFieldValues = Partial<
+  Pick<
+    ContractFields,
+    | 'landlordName'
+    | 'landlordEmail'
+    | 'tenantName'
+    | 'tenantEmail'
+    | 'rent'
+    | 'deposit'
+    | 'startDate'
+    | 'endDate'
+    | 'payDay'
+    | 'extra'
+  >
+>;
+
+/**
+ * 把第②步表單的值併回草稿欄位快照。
+ * 底稿是草稿當下的完整欄位：物件快照、範本綁定與第①步勾選的條款快照都原樣留著，
+ * 只有表單管的那幾個欄位被覆蓋；沒填的正規化成空字串或 null，不讓 undefined 進資料庫。
+ */
+export function mergeEditableFields(base: ContractFields, values: EditableFieldValues): ContractFields {
+  return {
+    ...base,
+    landlordName: values.landlordName ?? '',
+    landlordEmail: values.landlordEmail ?? '',
+    tenantName: values.tenantName ?? '',
+    tenantEmail: values.tenantEmail ?? '',
+    rent: values.rent ?? null,
+    deposit: values.deposit ?? null,
+    startDate: values.startDate ?? '',
+    endDate: values.endDate ?? '',
+    payDay: values.payDay ?? null,
+    extra: values.extra ?? '',
+  };
 }
 
 export interface SignatureCheck {
