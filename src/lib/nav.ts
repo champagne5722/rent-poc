@@ -16,8 +16,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { key: 'contracts', label: '合約', href: '/contracts' },
 ];
 
-// 常駐建約 CTA 的目的地：建約 wizard 尚未實作，先把人帶到物件頁的「建立合約」入口
-export const CREATE_CONTRACT_HREF = '/properties';
+// 常駐建約 CTA 的目的地＝建約 wizard 的第①步（選物件與範本，規格 §7）
+export const CREATE_CONTRACT_HREF = '/contracts/new';
 
 function matches(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);

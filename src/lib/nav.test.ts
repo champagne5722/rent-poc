@@ -41,7 +41,12 @@ describe('殼層導覽定義', () => {
     }
   });
 
-  it('常駐建約 CTA 指向現行建約入口', () => {
-    expect(CREATE_CONTRACT_HREF).toBe('/properties');
+  it('常駐建約 CTA 指向建約 wizard', () => {
+    expect(CREATE_CONTRACT_HREF).toBe('/contracts/new');
+  });
+
+  it('建約 wizard 屬於合約一級頁面', () => {
+    expect(resolveNavKey(CREATE_CONTRACT_HREF)).toBe('contracts');
+    expect(resolveNavKey('/contracts/42/edit')).toBe('contracts');
   });
 });

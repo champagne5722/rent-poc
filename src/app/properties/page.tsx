@@ -84,7 +84,8 @@ function PropertiesPage() {
       message.error(json.error ?? '建立合約失敗');
       return;
     }
-    router.push(`/contracts/${json.data.id}`);
+    // 從物件建約＝wizard 第①步已完成，直接進 wizard 續走後續步驟
+    router.push(`/contracts/${json.data.id}/edit`);
   };
 
   return (

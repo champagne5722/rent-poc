@@ -138,7 +138,7 @@ function ContractList() {
     return (
       <Space size={4}>
         {c.status === 'draft' && (
-          <Link href={`/contracts/${c.id}`}>
+          <Link href={`/contracts/${c.id}/edit`}>
             <Button size="small" icon={<EditOutlined />}>
               繼續編輯
             </Button>
@@ -253,9 +253,7 @@ function ContractList() {
         ]}
         locale={{
           emptyText:
-            items.length === 0
-              ? '尚無合約，請從「物件」頁的「建立合約」開始'
-              : '此條件下沒有合約',
+            items.length === 0 ? '尚無合約，點側邊選單的「＋建立合約」開始' : '此條件下沒有合約',
         }}
       />
     </>
