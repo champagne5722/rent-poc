@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { getDb, getProperty, listContracts } from '@/lib/db';
+import { getProperty, insertContractWithEvent, listContracts } from '@/lib/db';
 import type { ContractFields } from '@/lib/types';
 
 export async function GET() {
@@ -30,8 +30,10 @@ export async function POST(request: NextRequest) {
     extra: '',
   };
 
-  const result = getDb()
-    .prepare('INSERT INTO contracts (property_id, fields) VALUES (?, ?)')
-    .run(property.id, JSON.stringify(fields));
-  return Response.json({ data: { id: Number(result.lastInsertRowid) } }, { status: 201 });
+  // 合約與「建立」歷程事件同交易寫入（ADR-0007）
+  const id = insertContractWithEvent(
+    { property_id: property.id, fields: JSON.stringify(fields) },
+    { type: 'created', actor: 'landlord' }
+  );
+  return Response.json({ data: { id } }, { status: 201 });
 }

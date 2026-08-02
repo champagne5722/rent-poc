@@ -92,3 +92,44 @@ export interface Contract {
   created_at: string;
   updated_at: string | null;
 }
+
+// 合約歷程（見 CONTEXT.md、ADR-0007）：附屬合約的 append-only 里程碑事件。
+// 只記這七種；草稿編輯流水與下載／查看等讀式操作不記。
+export const CONTRACT_EVENT_TYPES = [
+  'created', // 建立（衍生自撤回合約時附註來源）
+  'sent', // 送簽
+  'tenant_signed', // 乙方簽署
+  'declined', // 拒簽（附註原因）
+  'completed', // 甲方簽署完成
+  'voided', // 撤回
+  'copied', // 被複製為新草稿
+] as const;
+export type ContractEventType = (typeof CONTRACT_EVENT_TYPES)[number];
+
+export const CONTRACT_EVENT_TYPE_LABELS: Record<ContractEventType, string> = {
+  created: '建立合約',
+  sent: '送簽',
+  tenant_signed: '乙方簽署',
+  declined: '拒簽',
+  completed: '甲方簽署完成',
+  voided: '撤回',
+  copied: '被複製為新草稿',
+};
+
+export const CONTRACT_EVENT_ACTORS = ['landlord', 'tenant', 'system'] as const;
+export type ContractEventActor = (typeof CONTRACT_EVENT_ACTORS)[number];
+
+export const CONTRACT_EVENT_ACTOR_LABELS: Record<ContractEventActor, string> = {
+  landlord: '房東',
+  tenant: '租客',
+  system: '系統',
+};
+
+export interface ContractEvent {
+  id: number;
+  contract_id: number;
+  type: ContractEventType;
+  actor: ContractEventActor;
+  note: string | null;
+  created_at: string;
+}
