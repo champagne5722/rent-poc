@@ -90,4 +90,16 @@
    - [x] 下載連結回應形狀（`data.task`，302 轉址）
    - [x] 執行中任務的 void（task 471 實測成功；⚠️ start 後立即 void 曾回 403，稍候重試即成功，疑為非同步建立的 race）
    - [ ] 拒簽流程（`declined` 事件）尚未實測
-   - [ ] resend（重寄通知）sandbox 一律 403036，需正式環境驗證
+   - [ ] resend（重寄通知）sandbox 一律 403036，需正式環境驗證（步驟見下節）
+
+## 接正式環境時的 resend 驗證清單
+
+resend 卡的是 sandbox 環境本身（`access_info.resend: false`），接正式環境時照此驗證：
+
+1. 前置：正式後台建立 Application，`.env.local` 改 `DOTTEDSIGN_API_BASE=https://api.dottedsign.com` 與正式 client id/secret，webhook URL 在正式後台重新設定。⚠️ 正式環境送簽消耗方案任務額度、會真的寄信，測試合約甲乙雙方都填自己的信箱（+alias 手法）。
+2. 送簽測試合約，確認乙方邀請信寄達（email 通道有效是 resend 有意義的前提）。
+3. `GET /v1/sign_tasks?task_id=<id>` 看 `access_info.resend`。此步驟直接裁決假設：
+   - `true` → 證實限制只在 sandbox，續走步驟 4。
+   - `false` → 假設錯誤，限制在 client credentials token 或方案等級，向點點簽支援確認，再決定「重寄簽署通知」按鈕去留。
+4. 按合約頁「重寄簽署通知」，驗兩件事：route 回 200 帶 `resent_to`；信箱再收到一封通知信。
+5. 通過後把上方檢查清單的 resend 項打勾，並刪除 `src/app/api/contracts/[id]/resend/route.ts` 中把 `task_not_accessible` 轉成「sandbox 不提供 resend」的訊息對應，讓真正的 403 原樣浮出。
