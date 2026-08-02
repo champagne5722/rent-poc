@@ -22,6 +22,7 @@ function makeContract(o: MakeOptions = {}): Contract {
   return {
     id: o.id ?? 1,
     property_id: null,
+    derived_from: null,
     status: o.status ?? 'draft',
     fields: {
       landlordName: '林房東',
