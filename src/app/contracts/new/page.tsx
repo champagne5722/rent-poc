@@ -9,6 +9,7 @@ import { RightOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { Property } from '@/lib/types';
+import { toContractEquipment } from '@/lib/equipment';
 import { STEP_PROPERTY } from '@/lib/contract-wizard';
 import { TemplateNotice, WizardStepsBar } from '@/components/ContractWizard';
 
@@ -102,7 +103,7 @@ function NewContractWizard() {
                   {
                     key: 'equipment',
                     label: '附屬設備',
-                    children: selected.equipment.length ? selected.equipment.join('、') : '—',
+                    children: selected.equipment.length ? toContractEquipment(selected.equipment).join('、') : '—',
                   },
                 ]}
               />

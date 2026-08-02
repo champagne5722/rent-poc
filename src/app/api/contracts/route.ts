@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getProperty, insertContractWithEvent, listContracts } from '@/lib/db';
 import { bindTemplate } from '@/lib/clause-library';
+import { toContractEquipment } from '@/lib/equipment';
 import type { ContractFields } from '@/lib/types';
 
 export async function GET() {
@@ -23,7 +24,8 @@ export async function POST(request: NextRequest) {
     propertyAddress: property.address,
     propertyType: property.type,
     propertySize: property.size,
-    equipment: property.equipment,
+    // 過渡橋接（MIL-28）：物件的「項目＋數量」壓平成字串，MIL-29 改成設備附件列後移除
+    equipment: toContractEquipment(property.equipment),
     rent: property.default_rent,
     deposit: property.default_rent != null ? property.default_rent * 2 : null,
     startDate: '',

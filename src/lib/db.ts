@@ -11,8 +11,11 @@ import type {
   ContractRelationRef,
   ContractRelations,
   ContractStatus,
+  EquipmentVocabularyItem,
   Property,
 } from './types';
+import { EQUIPMENT_OPTIONS } from './types';
+import { parseStoredEquipment } from './equipment';
 
 export const DATA_DIR = path.join(process.cwd(), 'data');
 
@@ -74,10 +77,50 @@ export function ensureSchema(db: Database.Database): void {
       saved_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
       UNIQUE (contract_id, kind)
     );
+
+    -- 設備詞彙庫（ADR-0008）：房東層的設備項目字典，平台預設（is_custom=0）與自訂項目（is_custom=1）同一份。
+    -- PoC 沒有登入，實質全系統一份；語意上屬房東，之後補登入時加 landlord_id 即可。
+    CREATE TABLE IF NOT EXISTS equipment_vocabulary (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      is_custom INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
   `);
 
   // 既有資料表補欄位：SQLite 沒有 ADD COLUMN IF NOT EXISTS，先用 PRAGMA table_info 檢查再 ALTER
   addColumnIfMissing(db, 'contracts', 'derived_from', 'INTEGER REFERENCES contracts(id)');
+
+  seedEquipmentVocabulary(db);
+  normalizePropertyEquipment(db);
+}
+
+// 平台預設項目：INSERT OR IGNORE 讓重跑不會重複，也不會把已存在的項目改回預設
+function seedEquipmentVocabulary(db: Database.Database): void {
+  const insert = db.prepare('INSERT OR IGNORE INTO equipment_vocabulary (name, is_custom) VALUES (?, 0)');
+  db.transaction(() => {
+    for (const name of EQUIPMENT_OPTIONS) insert.run(name);
+  })();
+}
+
+/**
+ * 一次性正規化既有物件的設備清單（MIL-28）：
+ * 舊的字串陣列改寫成「項目＋數量」物件陣列，同時把清單裡詞彙庫沒有的名稱補成自訂項目。
+ * 內容沒變的列不寫回，重跑等同 no-op。
+ */
+function normalizePropertyEquipment(db: Database.Database): void {
+  const rows = db.prepare('SELECT id, equipment FROM properties').all() as { id: number; equipment: string }[];
+  if (rows.length === 0) return;
+  const update = db.prepare('UPDATE properties SET equipment = ? WHERE id = ?');
+  const insertName = db.prepare('INSERT OR IGNORE INTO equipment_vocabulary (name, is_custom) VALUES (?, 1)');
+  db.transaction(() => {
+    for (const row of rows) {
+      const items = parseStoredEquipment(row.equipment);
+      const json = JSON.stringify(items);
+      if (json !== row.equipment) update.run(json, row.id);
+      for (const item of items) insertName.run(item.name);
+    }
+  })();
 }
 
 function addColumnIfMissing(db: Database.Database, table: string, column: string, definition: string): void {
@@ -113,7 +156,7 @@ type ContractRow = Omit<Contract, 'fields' | 'signature_fields' | 'status'> & {
 };
 
 export function rowToProperty(row: PropertyRow): Property {
-  return { ...row, equipment: JSON.parse(row.equipment) };
+  return { ...row, equipment: parseStoredEquipment(row.equipment) };
 }
 
 export function rowToContract(row: ContractRow): Contract {
@@ -131,6 +174,41 @@ export function listProperties(): Property[] {
 export function getProperty(id: number): Property | null {
   const row = getDb().prepare('SELECT * FROM properties WHERE id = ?').get(id) as PropertyRow | undefined;
   return row ? rowToProperty(row) : null;
+}
+
+// ── 設備詞彙庫（ADR-0008）───────────────────────────────────────────
+
+// 平台預設在前、自訂項目依新增順序在後，讓房東自己加的項目集中在清單尾巴
+export function listEquipmentVocabulary(db: Database.Database = getDb()): EquipmentVocabularyItem[] {
+  return db
+    .prepare('SELECT * FROM equipment_vocabulary ORDER BY is_custom ASC, id ASC')
+    .all() as EquipmentVocabularyItem[];
+}
+
+/**
+ * 新增一個自訂項目，回傳新項目；名稱空白或與既有項目（含平台預設）同名時回 null。
+ * 擋重複靠 name 的 UNIQUE 約束，INSERT OR IGNORE 後看有沒有真的插進去。
+ */
+export function addCustomEquipmentItem(name: string, db: Database.Database = getDb()): EquipmentVocabularyItem | null {
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  const result = db.prepare('INSERT OR IGNORE INTO equipment_vocabulary (name, is_custom) VALUES (?, 1)').run(trimmed);
+  if (result.changes === 0) return null;
+  return db
+    .prepare('SELECT * FROM equipment_vocabulary WHERE id = ?')
+    .get(Number(result.lastInsertRowid)) as EquipmentVocabularyItem;
+}
+
+/** 存物件時呼叫：清單裡詞彙庫還沒有的名稱補成自訂項目，讓其他物件也選得到。 */
+export function ensureEquipmentVocabulary(names: string[], db: Database.Database = getDb()): void {
+  if (names.length === 0) return;
+  const insert = db.prepare('INSERT OR IGNORE INTO equipment_vocabulary (name, is_custom) VALUES (?, 1)');
+  db.transaction(() => {
+    for (const name of names) {
+      const trimmed = name.trim();
+      if (trimmed) insert.run(trimmed);
+    }
+  })();
 }
 
 export function listContracts(): Contract[] {

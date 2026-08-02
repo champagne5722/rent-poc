@@ -3,6 +3,8 @@
 export const PROPERTY_TYPES = ['整層住家', '套房', '雅房'] as const;
 export type PropertyType = (typeof PROPERTY_TYPES)[number];
 
+// 設備詞彙庫的平台預設項目（ADR-0008）：ensureSchema 開檔時 seed 進 equipment_vocabulary，
+// 房東自訂項目與這些項目同一份字典，之後一律從資料庫讀，不再直接引用這個常數當選項。
 export const EQUIPMENT_OPTIONS = [
   '冷氣',
   '洗衣機',
@@ -16,6 +18,21 @@ export const EQUIPMENT_OPTIONS = [
   '瓦斯爐',
 ] as const;
 
+// 設備詞彙庫的一筆項目：房東層的設備字典，平台預設與自訂項目差在 is_custom
+export interface EquipmentVocabularyItem {
+  id: number;
+  name: string;
+  is_custom: 0 | 1;
+  created_at: string;
+}
+
+// 設備清單的一列：詞彙庫項目＋數量（quantity 為 >= 1 的整數）。
+// 修繕責任與備註屬合約層的設備附件，不在物件這裡（CONTEXT.md）。
+export interface EquipmentItem {
+  name: string;
+  quantity: number;
+}
+
 export interface Property {
   id: number;
   name: string;
@@ -24,7 +41,7 @@ export interface Property {
   size: number | null;
   default_rent: number | null;
   note: string;
-  equipment: string[];
+  equipment: EquipmentItem[];
   created_at: string;
   updated_at: string | null;
 }
@@ -92,6 +109,8 @@ export interface ContractFields extends TemplateBinding {
   propertyAddress: string;
   propertyType: string;
   propertySize: number | null;
+  // 過渡形狀：物件的設備清單建約時壓平成「名稱 ×數量」字串（equipment.ts 的 toContractEquipment）。
+  // MIL-29 會改成設備附件列（項目＋數量＋修繕責任＋備註）的快照。
   equipment: string[];
   rent: number | null;
   deposit: number | null; // 押金（元）
