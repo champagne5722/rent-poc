@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { getContract, getDb } from '@/lib/db';
+import { deleteContractWithEvents, getContract, getDb } from '@/lib/db';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -36,6 +36,7 @@ export async function DELETE(_request: NextRequest, { params }: Ctx) {
   if (contract.status !== 'draft') {
     return Response.json({ error: '僅草稿可刪除' }, { status: 409 });
   }
-  getDb().prepare('DELETE FROM contracts WHERE id=?').run(contract.id);
+  // 歷程隨合約保存，草稿刪除時一併移除
+  deleteContractWithEvents(contract.id);
   return Response.json({ data: { id: contract.id } });
 }

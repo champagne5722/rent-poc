@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { getContract, getDb } from '@/lib/db';
+import { commitTransition, getContract } from '@/lib/db';
 import { generateContractPdf } from '@/lib/pdf';
 import { createSignTask } from '@/lib/dottedsign';
 
@@ -35,11 +35,12 @@ export async function POST(_request: NextRequest, { params }: Ctx) {
   const pdf = await generateContractPdf(f);
   try {
     const { taskId, mock } = await createSignTask(contract, pdf);
-    getDb()
-      .prepare(
-        "UPDATE contracts SET status='awaiting_tenant', dottedsign_task_id=?, updated_at=datetime('now','localtime') WHERE id=?"
-      )
-      .run(taskId, contract.id);
+    // 狀態與「送簽」歷程事件同交易寫入（ADR-0007）
+    commitTransition(contract.id, {
+      status: 'awaiting_tenant',
+      event: { type: 'sent', actor: 'landlord', note: `寄送給乙方 ${contract.fields.tenantEmail}` },
+      dottedsignTaskId: taskId,
+    });
     return Response.json({ data: { id: contract.id, task_id: taskId, mock } });
   } catch (e) {
     return Response.json({ error: e instanceof Error ? e.message : '送簽失敗' }, { status: 502 });

@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: 'invalid signature' }, { status: 401 });
   }
 
-  let payload: { resource_id?: unknown; resource_type?: string; action_name?: string };
+  let payload: { resource_id?: unknown; resource_type?: string; action_name?: string; reason?: unknown };
   try {
     payload = JSON.parse(rawBody);
   } catch {
@@ -40,7 +40,10 @@ export async function POST(request: NextRequest) {
     voided: 'voided',
   };
   const event = eventMap[action_name];
-  if (event) applyDsEvent(contract, event);
+  // 狀態轉移與合約歷程事件同交易寫入（ADR-0007）。
+  // 拒簽原因：sandbox 實測的 payload 未帶，若正式環境有 reason 欄位就一併記進附註。
+  const reason = typeof payload.reason === 'string' ? payload.reason : undefined;
+  if (event) applyDsEvent(contract, event, reason);
 
   return Response.json({ ok: true });
 }
