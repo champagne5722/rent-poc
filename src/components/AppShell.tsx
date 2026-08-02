@@ -39,7 +39,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             overflow: 'hidden',
           }}
         >
-          {collapsed ? 'R' : 'Rent PoC 電子簽約'}
+          {collapsed ? '租' : '租房雲端管理平台'}
         </div>
 
         {/* 常駐建約 CTA：任何頁面都看得到；收合時縮成 icon，靠 tooltip 說明 */}

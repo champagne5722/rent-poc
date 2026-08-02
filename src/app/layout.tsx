@@ -6,8 +6,8 @@ import { loadDesignTheme } from '@/lib/design-theme-loader';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Rent PoC — 電子簽約物業管理',
-  description: '驗證租賃合約電子簽約流程的 PoC',
+  title: '租房雲端管理平台',
+  description: '租賃合約電子簽約與物件管理平台',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

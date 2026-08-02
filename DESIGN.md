@@ -1,23 +1,23 @@
 ---
 version: alpha
-name: rent-poc-admin-design
-description: "深色後台介面：近黑畫布（#010102）、炭黑面板（#0f1011）、淺灰文字（#f7f8f8），以 Linear 式薰衣草藍（#5e6ad2）作為唯一彩色強調。視覺基調取自 Linear 的設計語言，改寫為本專案後台（antd 元件）的使用慣例。"
+name: rent-cloud-admin-design
+description: "亮色後台介面：淺灰畫布（#f7f8f8）、純白面板（#ffffff）、深灰文字（#232529），以 Linear 式薰衣草藍（#5e6ad2）作為唯一彩色強調。視覺基調取自 Linear 的設計語言（亮色版），改寫為本後台（antd 元件）的使用慣例。"
 
 colors:
   primary: "#5e6ad2"
   on-primary: "#ffffff"
-  primary-hover: "#828fff"
-  ink: "#f7f8f8"
-  ink-muted: "#d0d6e0"
+  primary-hover: "#6e79e0"
+  ink: "#232529"
+  ink-muted: "#5d606b"
   ink-subtle: "#8a8f98"
-  canvas: "#010102"
-  surface-1: "#0f1011"
-  surface-2: "#141516"
-  hairline: "#23252a"
-  hairline-strong: "#34343a"
-  semantic-success: "#27a644"
-  semantic-error: "#e5484d"
-  semantic-warning: "#f2994a"
+  canvas: "#f7f8f8"
+  surface-1: "#ffffff"
+  surface-2: "#ffffff"
+  hairline: "#e4e5e8"
+  hairline-strong: "#d0d3d8"
+  semantic-success: "#1f9e3e"
+  semantic-error: "#d93843"
+  semantic-warning: "#e08a2e"
 
 typography:
   body:
@@ -38,7 +38,7 @@ spacing:
   xxl: 48px
 ---
 
-# Rent 後台設計語言
+# 租房雲端管理平台 後台設計語言
 
 ## Overview
 
