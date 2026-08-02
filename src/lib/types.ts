@@ -81,6 +81,31 @@ export interface SignatureField {
   h: number;
 }
 
+// 合約完成時向點點簽取回並隨合約保存的兩份文件（規格第 9 節）
+export const CONTRACT_FILE_KINDS = ['signed_pdf', 'audit_trail'] as const;
+export type ContractFileKind = (typeof CONTRACT_FILE_KINDS)[number];
+
+export const CONTRACT_FILE_LABELS: Record<ContractFileKind, string> = {
+  signed_pdf: '已簽 PDF',
+  audit_trail: 'Audit Trail File',
+};
+
+export type ContractFileStatus = 'saved' | 'failed';
+
+// 保存結果一律入庫：成功記檔案資訊，失敗記錯誤訊息供補抓
+export interface ContractFile {
+  id: number;
+  contract_id: number;
+  kind: ContractFileKind;
+  status: ContractFileStatus;
+  file_name: string;
+  rel_path: string | null; // 相對 data/ 的路徑，失敗時為 null
+  byte_size: number | null;
+  content_type: string | null;
+  error: string | null;
+  saved_at: string;
+}
+
 export interface Contract {
   id: number;
   property_id: number | null;

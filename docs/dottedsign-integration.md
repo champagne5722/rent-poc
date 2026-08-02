@@ -41,6 +41,15 @@
 - 已簽文件下載：`GET /v1/sign_tasks/download_link?task_id=...&file_types[]=task`。回傳的是**下載連結**而非檔案本體。
   - ✅ 回應形狀已實測：`{ data: { task: "<S3 預簽連結>" } }`，key 對應 `file_types[]` 的值。連結會 302 轉址，client 要跟隨。
   - Sandbox 下載的 PDF 蓋有「Sample by DottedSign」浮水印，正式環境無。
+- Audit Trail File：同一個端點加 `file_types[]=audit_trail`（可與 `task` 同一次要求，回應 `data` 會有兩個 key），scope 一樣是 `sign_tasks.download.read`。官方註明 `audit_trail` 需任務為 completed／declined／voided；預簽連結 **15 分鐘失效**。
+
+## 完成時保存文件
+
+- 完成轉移（webhook `completed`，mock 走 `/api/mock/advance`）後呼叫 `saveContractFilesOnCompleted()`（`src/lib/contract-files.ts`）：向 `download_link` 一次要 `task` 與 `audit_trail` 兩種，下載後寫進 `data/contract-files/<合約 id>/`，DB `contract_files` 表記檔名、路徑、大小、狀態。
+- **刻意放在狀態轉移的交易之外**：抓檔是外部 IO，失敗不回滾合約狀態，只把錯誤寫進 `contract_files.status = 'failed'` 與 `error`。掛點吞掉所有例外，避免 webhook 回非 2xx——點點簽會重試，單日 10 次投遞失敗會停掉整個 application 的 webhook。
+- 補抓：`POST /api/contracts/[id]/files`（強制重抓兩份，全成功回 200、有失敗回 207）；下載端點在檔案不存在時也會當場補抓一次。
+- 下載端點：`GET /api/contracts/[id]/signed-pdf`、`GET /api/contracts/[id]/audit-trail`，未完成狀態回 409 與明確訊息；`GET /api/contracts/[id]/files` 列出保存狀態。
+- mock 模式只保存未簽版 PDF 充當已簽 PDF 示意，沒有 Audit Trail File（下載回 409 說明）。
 
 ## 簽署連結（share_link API）
 
@@ -91,6 +100,7 @@
    - [x] 執行中任務的 void（task 471 實測成功；⚠️ start 後立即 void 曾回 403，稍候重試即成功，疑為非同步建立的 race）
    - [ ] 拒簽流程（`declined` 事件）尚未實測
    - [ ] resend（重寄通知）sandbox 一律 403036，需正式環境驗證（步驟見下節）
+   - [ ] 完成時自動保存兩份文件尚未端對端實測：雙方簽完後查 `data/contract-files/<id>/` 有兩個 PDF、`GET /api/contracts/[id]/files` 兩筆皆 `saved`、`audit_trail` 下載得到的確實是稽核文件（格式文件未載明，推測為 PDF）、把檔案刪掉後 `POST /api/contracts/[id]/files` 能補抓回來
 
 ## 接正式環境時的 resend 驗證清單
 
