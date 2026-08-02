@@ -59,6 +59,11 @@ async function dsFetch(path: string, init: RequestInit = {}): Promise<unknown> {
   return res.json();
 }
 
+// 帶 token 的 GET，供其他模組組好 path 後呼叫（例：contract-files.ts 的下載連結查詢）
+export async function dsGetJson(path: string): Promise<unknown> {
+  return dsFetch(path);
+}
+
 // 內部存的簽署區域是相對比例（原點左上、y 向下）；
 // 點點簽 coord 為 [left-x, bottom-y, right-x, top-y]，原點左下。
 // ⚠️ 文件未明說單位，此處假設為 PDF points——真接 sandbox 時需實測驗證（見整合筆記）。
@@ -151,15 +156,6 @@ export async function voidSignTask(taskId: string): Promise<void> {
     method: 'POST',
     body: JSON.stringify({ task_id: Number(taskId) }),
   });
-}
-
-export async function getSignedPdfDownloadLink(taskId: string): Promise<string | null> {
-  if (isMockMode()) return null;
-  const json = (await dsFetch(
-    `/v1/sign_tasks/download_link?task_id=${encodeURIComponent(taskId)}&file_types[]=task`
-  )) as { data?: { task?: string } };
-  // 實測回應形狀：{ data: { task: "<S3 預簽連結>" } }，key 對應 file_types[] 的值
-  return json.data?.task ?? null;
 }
 
 // webhook 簽章（已實測確認）：header `Signature` = HMAC-SHA256(client_secret, raw body) 的 hex

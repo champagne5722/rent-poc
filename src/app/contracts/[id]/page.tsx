@@ -207,9 +207,16 @@ function ContractDetail({ id }: { id: string }) {
             </Popconfirm>
           )}
           {contract.status === 'completed' && (
-            <Button type="primary" icon={<DownloadOutlined />} href={`/api/contracts/${id}/signed-pdf`}>
-              下載已簽 PDF
-            </Button>
+            <>
+              <Button type="primary" icon={<DownloadOutlined />} href={`/api/contracts/${id}/signed-pdf`}>
+                下載已簽 PDF
+              </Button>
+              {!mockMode && (
+                <Button icon={<DownloadOutlined />} href={`/api/contracts/${id}/audit-trail`}>
+                  下載 Audit Trail File
+                </Button>
+              )}
+            </>
           )}
           {(contract.status === 'declined' || contract.status === 'voided') && (
             <Button type="primary" icon={<CopyOutlined />} onClick={copyAsDraft}>

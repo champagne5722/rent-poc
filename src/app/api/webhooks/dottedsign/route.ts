@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { findContractByTaskId } from '@/lib/db';
 import { verifyWebhookSignature } from '@/lib/dottedsign';
 import { applyDsEvent, DsEvent } from '@/lib/transitions';
+import { saveContractFilesOnCompleted } from '@/lib/contract-files';
 
 // 點點簽 webhook 接收端。開發期需以 cloudflared/ngrok 開通道，
 // 並把公開 URL 設定在點點簽開發者後台的 Application 上。
@@ -43,7 +44,11 @@ export async function POST(request: NextRequest) {
   // 狀態轉移與合約歷程事件同交易寫入（ADR-0007）。
   // 拒簽原因：sandbox 實測的 payload 未帶，若正式環境有 reason 欄位就一併記進附註。
   const reason = typeof payload.reason === 'string' ? payload.reason : undefined;
-  if (event) applyDsEvent(contract, event, reason);
+  const next = event ? applyDsEvent(contract, event, reason) : null;
+
+  // 完成後保存已簽 PDF 與 Audit Trail File：外部 IO，放在狀態轉移的交易之外，
+  // 失敗不回滾狀態（只記錄，可用 POST /api/contracts/[id]/files 補抓）
+  if (next === 'completed') await saveContractFilesOnCompleted(contract);
 
   return Response.json({ ok: true });
 }

@@ -51,3 +51,6 @@ next-env.d.ts
 
 # preview 驗證用 dev server 的 dist dir
 /.next-preview/
+
+# agent worktree（session 暫用）
+/.claude/worktrees/
