@@ -1,7 +1,7 @@
 // 後台殼層的導覽定義（規格 §4）：一級頁面＝工作台／物件／合約，層級少於三層，不用 breadcrumb。
 // 純資料＋純函式放這裡，讓高亮規則可以直接測（見 nav.test.ts）；icon 留在 AppShell.tsx。
 
-export type NavKey = 'workbench' | 'properties' | 'contracts';
+export type NavKey = 'workbench' | 'properties' | 'contracts' | 'design';
 
 export type NavItem = {
   key: NavKey;
@@ -14,6 +14,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { key: 'workbench', label: '工作台', href: '/' },
   { key: 'properties', label: '物件', href: '/properties' },
   { key: 'contracts', label: '合約', href: '/contracts' },
+  // 設計樣式頁：呈現 DESIGN.md 目前的 token 與元件樣式，供調整佈局與字級時對照
+  { key: 'design', label: '設計', href: '/design' },
 ];
 
 // 常駐建約 CTA 的目的地＝建約 wizard 的第①步（選物件與範本，規格 §7）

@@ -2,7 +2,13 @@
 
 import { useState } from 'react';
 import { Button, Layout, Menu, Tooltip, Typography, theme } from 'antd';
-import { DashboardOutlined, HomeOutlined, FileTextOutlined, PlusOutlined } from '@ant-design/icons';
+import {
+  DashboardOutlined,
+  HomeOutlined,
+  FileTextOutlined,
+  PlusOutlined,
+  BgColorsOutlined,
+} from '@ant-design/icons';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { NAV_ITEMS, CREATE_CONTRACT_HREF, resolveNavKey, type NavKey } from '@/lib/nav';
@@ -11,6 +17,7 @@ const NAV_ICONS: Record<NavKey, React.ReactNode> = {
   workbench: <DashboardOutlined />,
   properties: <HomeOutlined />,
   contracts: <FileTextOutlined />,
+  design: <BgColorsOutlined />,
 };
 
 // 不做登入：打開即房東視角（見 CONTEXT.md）

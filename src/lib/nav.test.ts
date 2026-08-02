@@ -9,6 +9,7 @@ describe('resolveNavKey（側邊選單高亮）', () => {
   it('一級頁面對應各自的選單項', () => {
     expect(resolveNavKey('/properties')).toBe('properties');
     expect(resolveNavKey('/contracts')).toBe('contracts');
+    expect(resolveNavKey('/design')).toBe('design');
   });
 
   it('子頁面沿用一級頁面的高亮', () => {
@@ -30,9 +31,9 @@ describe('resolveNavKey（側邊選單高亮）', () => {
 });
 
 describe('殼層導覽定義', () => {
-  it('選單就是工作台、物件、合約三項', () => {
-    expect(NAV_ITEMS.map((i) => i.key)).toEqual(['workbench', 'properties', 'contracts']);
-    expect(NAV_ITEMS.map((i) => i.href)).toEqual(['/', '/properties', '/contracts']);
+  it('選單是工作台、物件、合約、設計四項', () => {
+    expect(NAV_ITEMS.map((i) => i.key)).toEqual(['workbench', 'properties', 'contracts', 'design']);
+    expect(NAV_ITEMS.map((i) => i.href)).toEqual(['/', '/properties', '/contracts', '/design']);
   });
 
   it('每個選單項的 href 都會高亮自己', () => {

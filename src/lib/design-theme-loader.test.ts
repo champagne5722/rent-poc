@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { loadDesignTheme } from './design-theme-loader';
+import { loadDesignFrontMatter, loadDesignTheme } from './design-theme-loader';
 
 describe('loadDesignTheme（讀檔與 fallback）', () => {
   const dir = mkdtempSync(join(tmpdir(), 'design-theme-'));
@@ -26,6 +26,15 @@ describe('loadDesignTheme（讀檔與 fallback）', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(loadDesignTheme(file)).toBeUndefined();
     expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('loadDesignFrontMatter 回傳原始 token 資料，讀不到時 fallback undefined', () => {
+    const file = join(dir, 'front-matter.md');
+    writeFileSync(file, '---\nspacing:\n  md: 16px\n---\n');
+    expect(loadDesignFrontMatter(file)?.spacing).toEqual({ md: '16px' });
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(loadDesignFrontMatter(join(dir, 'missing.md'))).toBeUndefined();
     spy.mockRestore();
   });
 

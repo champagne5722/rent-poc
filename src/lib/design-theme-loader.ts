@@ -2,11 +2,16 @@
 // 所以讀檔與純解析（design-theme.ts）分成兩個模組。
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseDesignTheme, type DesignTheme } from './design-theme';
+import {
+  parseDesignFrontMatter,
+  parseDesignTheme,
+  type DesignFrontMatter,
+  type DesignTheme,
+} from './design-theme';
 
-export function loadDesignTheme(
-  filePath: string = join(process.cwd(), 'DESIGN.md'),
-): DesignTheme | undefined {
+const DEFAULT_PATH = () => join(process.cwd(), 'DESIGN.md');
+
+export function loadDesignTheme(filePath: string = DEFAULT_PATH()): DesignTheme | undefined {
   try {
     const design = parseDesignTheme(readFileSync(filePath, 'utf8'));
     if (!design) {
@@ -16,6 +21,18 @@ export function loadDesignTheme(
     return design;
   } catch (error) {
     console.error(`DESIGN.md 解析失敗，改用 antd 預設 theme：${filePath}`, error);
+    return undefined;
+  }
+}
+
+/** 設計頁用：讀 DESIGN.md 的原始 token 資料（未映射），讀不到時回 undefined 並記 error。 */
+export function loadDesignFrontMatter(
+  filePath: string = DEFAULT_PATH(),
+): DesignFrontMatter | undefined {
+  try {
+    return parseDesignFrontMatter(readFileSync(filePath, 'utf8')) ?? undefined;
+  } catch (error) {
+    console.error(`DESIGN.md 讀取失敗：${filePath}`, error);
     return undefined;
   }
 }

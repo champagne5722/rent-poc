@@ -1,6 +1,6 @@
 import { theme as antdTheme } from 'antd';
 import { describe, expect, it } from 'vitest';
-import { parseDesignTheme, toAntdTheme } from './design-theme';
+import { parseDesignFrontMatter, parseDesignTheme, toAntdTheme } from './design-theme';
 
 const md = (frontMatter: string) => `---\n${frontMatter}\n---\n\n# 內文\n`;
 
@@ -72,6 +72,20 @@ describe('parseDesignTheme（DESIGN.md front matter → 可序列化 theme 資�
 
   it('沒有 front matter 時回 null', () => {
     expect(parseDesignTheme('# 只有內文\n')).toBeNull();
+  });
+});
+
+describe('parseDesignFrontMatter（原始 token 資料，給設計頁呈現）', () => {
+  it('照 DESIGN.md 寫的內容回傳具名 scale，不經映射', () => {
+    const data = parseDesignFrontMatter(
+      md('colors:\n  primary: "#5e6ad2"\nspacing:\n  md: 16px\n  lg: 24px'),
+    );
+    expect(data?.colors).toEqual({ primary: '#5e6ad2' });
+    expect(data?.spacing).toEqual({ md: '16px', lg: '24px' });
+  });
+
+  it('沒有 front matter 時回 null', () => {
+    expect(parseDesignFrontMatter('# 只有內文\n')).toBeNull();
   });
 });
 

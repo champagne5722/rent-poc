@@ -9,7 +9,9 @@ export interface DesignTheme {
   dark: boolean;
 }
 
-interface DesignFrontMatter {
+export interface DesignFrontMatter {
+  name?: string;
+  description?: string;
   colors?: Record<string, string>;
   typography?: Record<string, { fontFamily?: string; fontSize?: string }>;
   rounded?: Record<string, string>;
@@ -34,10 +36,16 @@ const COLOR_SEED_MAP: Record<string, string> = {
   'semantic-info': 'colorInfo',
 };
 
-export function parseDesignTheme(content: string): DesignTheme | null {
+/** 取 front matter 的原始 token 資料（未映射），給設計頁呈現與版面程式碼引用。 */
+export function parseDesignFrontMatter(content: string): DesignFrontMatter | null {
   const match = content.match(FRONT_MATTER_PATTERN);
   if (!match) return null;
-  const data = parseYaml(match[1]) as DesignFrontMatter;
+  return parseYaml(match[1]) as DesignFrontMatter;
+}
+
+export function parseDesignTheme(content: string): DesignTheme | null {
+  const data = parseDesignFrontMatter(content);
+  if (!data) return null;
 
   const token: DesignTheme['token'] = {};
   for (const [designKey, seedKey] of Object.entries(COLOR_SEED_MAP)) {
