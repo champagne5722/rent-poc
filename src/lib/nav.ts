@@ -10,7 +10,7 @@ export type NavItem = {
 };
 
 export const NAV_ITEMS: readonly NavItem[] = [
-  // 工作台是預設落地頁；現況 / redirect 到 /properties，工作台頁另開票實作
+  // 工作台是登入後的預設落地頁，/ 直接渲染工作台（規格 §5）
   { key: 'workbench', label: '工作台', href: '/' },
   { key: 'properties', label: '物件', href: '/properties' },
   { key: 'contracts', label: '合約', href: '/contracts' },
