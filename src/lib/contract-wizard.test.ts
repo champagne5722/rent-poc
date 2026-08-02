@@ -48,6 +48,7 @@ function contract(patch: Partial<Contract> = {}): Contract {
     signature_fields: [sig('landlord'), sig('tenant')],
     dottedsign_task_id: null,
     declined_reason: null,
+    derived_from: null,
     created_at: '2026-08-01 10:00:00',
     updated_at: null,
     ...patch,

@@ -27,6 +27,7 @@ function makeContract(status: ContractStatus): Contract {
     signature_fields: [],
     dottedsign_task_id: '123',
     declined_reason: null,
+    derived_from: null,
     created_at: '2026-08-01 00:00:00',
     updated_at: null,
   };

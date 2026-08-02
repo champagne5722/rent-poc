@@ -114,8 +114,22 @@ export interface Contract {
   signature_fields: SignatureField[];
   dottedsign_task_id: string | null;
   declined_reason: string | null;
+  // 衍生自哪份合約（ADR-0006）：只有「撤回後複製為新草稿」的修約路徑會記錄，拒簽後的複製為 null
+  derived_from: number | null;
   created_at: string;
   updated_at: string | null;
+}
+
+// 衍生鏈上的一份合約（詳情頁「關聯合約」分頁只需編號與狀態）
+export interface ContractRelationRef {
+  id: number;
+  status: ContractStatus;
+}
+
+// 一份合約的衍生關聯：前身（本約衍生自誰）與後繼（誰衍生自本約）
+export interface ContractRelations {
+  derived_from: ContractRelationRef | null;
+  derived_contracts: ContractRelationRef[];
 }
 
 // 合約歷程（見 CONTEXT.md、ADR-0007）：附屬合約的 append-only 里程碑事件。
