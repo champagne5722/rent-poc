@@ -8,6 +8,10 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 在此 repo 中，一律使用**繁體中文**：包括對使用者的回覆、commit 訊息、issue 內容，以及所有文件撰寫。程式碼識別字、工具名稱、標籤字串（如 `needs-triage`）維持英文。
 
+### 需求文字的用詞
+
+Spec、ticket 與需求描述的義務詞固定：義務用「必須」，禁止用「不得」，許可用「得」，建議用「建議」並附條件。「應」只用在合約條文。領域詞以 `GLOSSARY.md` 為準：用定義欄的詞，避開 `_Avoid_` 欄的詞。
+
 ## Agent skills
 
 ### Issue tracker
@@ -20,7 +24,7 @@ Issue 追蹤在 Linear（team **Miles-rent-poc**，前綴 `MIL`，此 repo 專�
 
 ### Domain docs
 
-單一 context：repo 根目錄放一份 `CONTEXT.md` 與 `docs/adr/`。詳見 `docs/agents/domain.md`。
+單一 context：repo 根目錄放一份 `GLOSSARY.md` 與 `docs/adr/`。詳見 `docs/agents/domain.md`。
 
 ### DottedSign API 文件
 

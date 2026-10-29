@@ -2,7 +2,7 @@
 
 驗證「房東建立物件與租賃合約 → 設定簽署區域 → 透過點點簽（DottedSign）完成雙方電子簽約」核心流程的 PoC。
 
-- 領域詞彙表：[CONTEXT.md](./CONTEXT.md)
+- 領域詞彙表：[GLOSSARY.md](./GLOSSARY.md)
 - 狀態機與資料模型：[docs/domain-model.md](./docs/domain-model.md)
 - 架構決策：[docs/adr/](./docs/adr/)
 - 點點簽整合筆記（含踩坑與真接檢查清單）：[docs/dottedsign-integration.md](./docs/dottedsign-integration.md)

@@ -2,7 +2,7 @@
 
 本文件彙整「[地圖：租賃合約簽約流程規格](https://linear.app/miles-rent-poc/issue/MIL-7/地圖租賃合約簽約流程規格)」八個決策票的結論，是可直接交付開發的規格。以**完整系統**（SaaS、使用者已登入、資料已隔離）角度撰寫，聚焦簽約流程；實作不在本文件範圍。
 
-- 詞彙以 [CONTEXT.md](../CONTEXT.md) 為準；狀態機與資料模型見 [domain-model.md](./domain-model.md)。
+- 詞彙以 [GLOSSARY.md](../GLOSSARY.md) 為準；狀態機與資料模型見 [domain-model.md](./domain-model.md)。
 - 技術前提（ADR 已定）：React + Ant Design（[ADR-0001](./adr/0001-react-antd-over-vue.md)）、Next.js 全端（[ADR-0002](./adr/0002-nextjs-fullstack-sqlite.md)）、點點簽 email 簽署與乙方先簽（[ADR-0003](./adr/0003-dottedsign-email-signing-client-credentials.md)）。
 - 各節末尾的「決議來源」連到 Linear 票的 resolution comment 與 prototype 資產 branch；細節以票上決議為準，本文件是索引式的整合陳述。
 - PoC 現況的刻意簡化（見[已知簡化清單](./known-simplifications.md)）**不是**本規格的一部分；正式版以本文件為準。

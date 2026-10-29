@@ -125,7 +125,7 @@ export async function createSignTask(contract: Contract, pdfBytes: Uint8Array): 
   return { taskId: String(json.data.task_id), mock: false };
 }
 
-// 簽署連結現查（見 CONTEXT.md「簽署連結」）：只對「當前輪到的簽署人」有效，
+// 簽署連結現查（見 GLOSSARY.md「簽署連結」）：只對「當前輪到的簽署人」有效，
 // 還沒輪到會回 400_937 stage_not_acting。連結有時效，不落地儲存。
 export async function getSignerShareLink(taskId: string, email: string, redirectUrl?: string): Promise<string> {
   if (isMockMode()) throw new Error('mock 模式沒有真實簽署任務，無法取得簽署連結');

@@ -1,4 +1,4 @@
-// 設備清單的解析、驗證與顯示（CONTEXT.md：設備清單、設備詞彙庫；ADR-0008）。
+// 設備清單的解析、驗證與顯示（GLOSSARY.md：設備清單、設備詞彙庫；ADR-0008）。
 // 全部是純函式：資料庫讀寫在 db.ts、API 驗證在 route，畫面只負責呈現。
 
 import type { EquipmentItem } from './types';

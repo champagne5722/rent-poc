@@ -20,7 +20,7 @@ const NAV_ICONS: Record<NavKey, React.ReactNode> = {
   design: <BgColorsOutlined />,
 };
 
-// 不做登入：打開即房東視角（見 CONTEXT.md）
+// 不做登入：打開即房東視角（見 GLOSSARY.md）
 // 殼層＝深色 collapsible side menu（規格 §4）：antd Layout＋Sider＋Menu mode="inline"，不引入 ProLayout
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

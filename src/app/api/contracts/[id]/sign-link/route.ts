@@ -5,7 +5,7 @@ import { currentSigner } from '@/lib/signing';
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// 簽署連結現查（見 CONTEXT.md「簽署連結」）：email 沒收到時的備案。
+// 簽署連結現查（見 GLOSSARY.md「簽署連結」）：email 沒收到時的備案。
 // 依合約狀態決定當前待簽方，向點點簽要該簽署人的連結，簽完導回合約頁。
 export async function GET(request: NextRequest, { params }: Ctx) {
   const { id } = await params;

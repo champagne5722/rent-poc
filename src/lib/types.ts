@@ -1,4 +1,4 @@
-// 領域型別與詞彙，術語定義見 repo 根目錄 CONTEXT.md
+// 領域型別與詞彙，術語定義見 repo 根目錄 GLOSSARY.md
 
 export const PROPERTY_TYPES = ['整層住家', '套房', '雅房'] as const;
 export type PropertyType = (typeof PROPERTY_TYPES)[number];
@@ -27,7 +27,7 @@ export interface EquipmentVocabularyItem {
 }
 
 // 設備清單的一列：詞彙庫項目＋數量（quantity 為 >= 1 的整數）。
-// 修繕責任與備註屬合約層的設備附件，不在物件這裡（CONTEXT.md）。
+// 修繕責任與備註屬合約層的設備附件，不在物件這裡（GLOSSARY.md）。
 export interface EquipmentItem {
   name: string;
   quantity: number;
@@ -185,7 +185,7 @@ export interface ContractRelations {
   derived_contracts: ContractRelationRef[];
 }
 
-// 合約歷程（見 CONTEXT.md、ADR-0007）：附屬合約的 append-only 里程碑事件。
+// 合約歷程（見 GLOSSARY.md、ADR-0007）：附屬合約的 append-only 里程碑事件。
 // 只記這七種；草稿編輯流水與下載／查看等讀式操作不記。
 export const CONTRACT_EVENT_TYPES = [
   'created', // 建立（衍生自撤回合約時附註來源）

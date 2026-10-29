@@ -1,6 +1,6 @@
 # 領域模型：合約狀態機與資料模型
 
-詞彙定義見 repo 根目錄 [CONTEXT.md](../CONTEXT.md)；PoC 刻意不做的範圍見[已知簡化清單](./known-simplifications.md)。
+詞彙定義見 repo 根目錄 [GLOSSARY.md](../GLOSSARY.md)；PoC 刻意不做的範圍見[已知簡化清單](./known-simplifications.md)。
 
 ## 合約狀態機
 
