@@ -1,0 +1,274 @@
+<title>平台記的是鏡子，真相在銀行</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Noto+Serif+TC:wght@700;900&display=swap">
+<style>
+/* 版面：一張圖一個機制，由外往內、由錢到資料 */
+:root{
+  --bg:#f4f6f2; --card:#ffffff; --fg:#1d2628; --muted:#5f6d70; --line:#cfd8d2;
+  --accent:#0d6d69; --accent-soft:#d9efec; --money:#b4761a; --money-soft:#f6e8cf; --danger:#a63d2f; --danger-soft:#f4dcd7; --keep:#2f6f3e; --keep-soft:#dcefdf;
+  --display:"Noto Serif TC","Noto Sans TC",serif; --body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif; --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#131a1b; --card:#1b2426; --fg:#e7ece9; --muted:#9aa8aa; --line:#2c383a;
+  --accent:#63c6bf; --accent-soft:#17403e; --money:#e2a84c; --money-soft:#3e2f14; --danger:#ef8a7a; --danger-soft:#4a2520; --keep:#7fcf92; --keep-soft:#1f3b26; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#131a1b; --card:#1b2426; --fg:#e7ece9; --muted:#9aa8aa; --line:#2c383a;
+  --accent:#63c6bf; --accent-soft:#17403e; --money:#e2a84c; --money-soft:#3e2f14; --danger:#ef8a7a; --danger-soft:#4a2520; --keep:#7fcf92; --keep-soft:#1f3b26; color-scheme:dark }
+body{background:var(--bg);color:var(--fg);font-family:var(--body);line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:32px 64px}
+main{max-width:860px;margin:0 auto;display:grid;gap:56px}
+h1{font-family:var(--display);font-size:clamp(2rem,6vw,3.2rem);line-height:1.15;margin:0;text-wrap:balance}
+h2{font-family:var(--display);font-size:clamp(1.4rem,4vw,1.9rem);margin:0 0 6px;line-height:1.25;text-wrap:balance}
+p{margin:0;max-width:40em;font-size:1.05rem}
+.lede{font-size:1.25rem;color:var(--muted)}
+.eyebrow{font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+section{display:grid;gap:14px}
+figure{margin:0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;overflow-x:auto}
+figure svg{display:block;max-width:100%;height:auto;margin:0 auto;font-family:var(--body)}
+figcaption{margin-top:10px;font-size:.95rem;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0}
+.tile b{display:block;font-size:1.05rem;margin-bottom:4px}
+.tile small{color:var(--muted)}
+.keep{border-left:6px solid var(--keep)} .grow{border-left:6px solid var(--accent)} .swap{border-left:6px solid var(--danger)}
+.note{font-size:.9rem;color:var(--muted)}
+code{font-family:var(--mono);font-size:.9em;background:var(--accent-soft);padding:1px 6px;border-radius:5px}
+.svgtxt{fill:currentColor}
+</style>
+
+<main>
+  <header style="display:grid;gap:12px">
+    <span class="eyebrow">ELI5 · 系統架構</span>
+    <h1>平台記的是鏡子，真相在銀行</h1>
+    <p class="lede">這份圖解說明平台怎麼記錄錢、怎麼認得每一間房子、怎麼讓很多公司共用一套系統而互相看不到。</p>
+  </header>
+
+  <section>
+    <span class="eyebrow">第 1 張圖</span>
+    <h2>系統分四層：人、流程、資料、外面的世界</h2>
+    <figure>
+      <svg viewBox="0 0 760 420" role="img" aria-label="四層架構：最上層是房東、租客、代管業者、銀行的介面；第二層是案件流程；第三層是物件、合約、帳務、文件、權限模組；最下層是點點簽、銀行、地政資料等外部系統">
+        <defs><marker id="b1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+        <!-- 人 -->
+        <g font-size="13" font-weight="700" class="svgtxt" text-anchor="middle">
+          <rect x="40" y="20" width="150" height="44" rx="22" fill="var(--accent-soft)" stroke="currentColor"/><text x="115" y="48">房東</text>
+          <rect x="215" y="20" width="150" height="44" rx="22" fill="var(--accent-soft)" stroke="currentColor"/><text x="290" y="48">租客</text>
+          <rect x="390" y="20" width="150" height="44" rx="22" fill="var(--accent-soft)" stroke="currentColor"/><text x="465" y="48">代管業者</text>
+          <rect x="565" y="20" width="150" height="44" rx="22" fill="var(--money-soft)" stroke="var(--money)"/><text x="640" y="48">銀行、建經</text>
+        </g>
+        <text x="380" y="88" text-anchor="middle" font-size="11" fill="var(--muted)">每個人只看到自己案件裡該看的東西</text>
+        <!-- 流程層 -->
+        <rect x="40" y="105" width="680" height="60" rx="10" fill="var(--accent)"/>
+        <text x="380" y="131" text-anchor="middle" font-size="16" font-weight="900" fill="#fff">案件流程層</text>
+        <text x="380" y="152" text-anchor="middle" font-size="11" fill="#fff">一筆租賃或一筆買賣就是一個案件。它記得現在走到哪一步、該誰做事。</text>
+        <!-- 模組層 -->
+        <g font-size="13" font-weight="700" class="svgtxt" text-anchor="middle">
+          <rect x="40" y="195" width="124" height="70" rx="8" fill="var(--card)" stroke="currentColor"/><text x="102" y="224">物件</text><text x="102" y="244" font-size="10" font-weight="400" fill="var(--muted)">錨點、單位</text>
+          <rect x="179" y="195" width="124" height="70" rx="8" fill="var(--keep-soft)" stroke="var(--keep)"/><text x="241" y="224">合約</text><text x="241" y="244" font-size="10" font-weight="400" fill="var(--muted)">沿用 rent-poc</text>
+          <rect x="318" y="195" width="124" height="70" rx="8" fill="var(--card)" stroke="currentColor"/><text x="380" y="224">帳務</text><text x="380" y="244" font-size="10" font-weight="400" fill="var(--muted)">鏡像帳、押金</text>
+          <rect x="457" y="195" width="124" height="70" rx="8" fill="var(--card)" stroke="currentColor"/><text x="519" y="224">文件</text><text x="519" y="244" font-size="10" font-weight="400" fill="var(--muted)">謄本、授權書</text>
+          <rect x="596" y="195" width="124" height="70" rx="8" fill="var(--card)" stroke="currentColor"/><text x="658" y="224">權限與稽核</text><text x="658" y="244" font-size="10" font-weight="400" fill="var(--muted)">誰能看、誰改過</text>
+        </g>
+        <!-- 外部 -->
+        <g font-size="13" font-weight="700" class="svgtxt" text-anchor="middle">
+          <rect x="120" y="320" width="150" height="50" rx="8" fill="var(--bg)" stroke="currentColor" stroke-dasharray="6 4"/><text x="195" y="350">點點簽</text>
+          <rect x="305" y="320" width="150" height="50" rx="8" fill="var(--bg)" stroke="var(--money)" stroke-dasharray="6 4"/><text x="380" y="350">銀行信託專戶</text>
+          <rect x="490" y="320" width="150" height="50" rx="8" fill="var(--bg)" stroke="currentColor" stroke-dasharray="6 4"/><text x="565" y="350">地政資料</text>
+        </g>
+        <g stroke="currentColor" stroke-width="1.5" fill="none">
+          <line x1="241" y1="265" x2="195" y2="316" marker-end="url(#b1)"/>
+          <line x1="380" y1="265" x2="380" y2="316" marker-end="url(#b1)"/>
+          <line x1="519" y1="265" x2="565" y2="316" marker-end="url(#b1)"/>
+        </g>
+        <text x="380" y="400" text-anchor="middle" font-size="12" class="svgtxt">虛線框在平台外面。簽名、錢、產權資料的真相都在那裡。</text>
+      </svg>
+      <figcaption>上面是人，中間是流程與模組，下面是外部系統。平台不複製外面的真相，只記錄「已經發生」的事件。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <span class="eyebrow">第 2 張圖</span>
+    <h2>怎麼認得一間房子？用政府的建號，加上它住在哪個段</h2>
+    <figure>
+      <svg viewBox="0 0 760 330" role="img" aria-label="樹狀圖：縣市、鄉鎮市區、段小段、建號組成唯一鍵；同一建號下掛整戶單位 0000 與分租單位 A、B；一棟大樓的共有部分有另一個建號">
+        <defs><marker id="b2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+        <g font-size="13" class="svgtxt" text-anchor="middle">
+          <rect x="40" y="30" width="110" height="40" rx="8" fill="var(--card)" stroke="currentColor"/><text x="95" y="55">臺北市</text>
+          <rect x="190" y="30" width="110" height="40" rx="8" fill="var(--card)" stroke="currentColor"/><text x="245" y="55">大安區</text>
+          <rect x="340" y="30" width="110" height="40" rx="8" fill="var(--card)" stroke="currentColor"/><text x="395" y="55">仁愛段三小段</text>
+          <rect x="490" y="30" width="130" height="40" rx="8" fill="var(--accent)" /><text x="555" y="55" fill="#fff" font-weight="900">建號 01234</text>
+        </g>
+        <g stroke="currentColor" stroke-width="1.5" fill="none">
+          <line x1="150" y1="50" x2="186" y2="50" marker-end="url(#b2)"/><line x1="300" y1="50" x2="336" y2="50" marker-end="url(#b2)"/><line x1="450" y1="50" x2="486" y2="50" marker-end="url(#b2)"/>
+        </g>
+        <text x="380" y="98" text-anchor="middle" font-size="12" fill="var(--danger)" font-weight="700">四個合在一起才唯一。建號 01234 在別的段也會出現。</text>
+        <!-- anchor -->
+        <rect x="230" y="125" width="300" height="46" rx="10" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+        <text x="380" y="153" text-anchor="middle" font-size="14" font-weight="900" class="svgtxt">產權錨點：這間房子在平台裡只能登錄一次</text>
+        <!-- units -->
+        <g stroke="currentColor" stroke-width="1.5" fill="none">
+          <line x1="300" y1="171" x2="180" y2="222" marker-end="url(#b2)"/><line x1="380" y1="171" x2="380" y2="222" marker-end="url(#b2)"/><line x1="460" y1="171" x2="580" y2="222" marker-end="url(#b2)"/>
+        </g>
+        <g font-size="13" class="svgtxt" text-anchor="middle">
+          <rect x="110" y="226" width="140" height="44" rx="8" fill="var(--card)" stroke="currentColor"/><text x="180" y="245">整戶出租</text><text x="180" y="262" font-size="10" fill="var(--muted)">單位 0000</text>
+          <rect x="310" y="226" width="140" height="44" rx="8" fill="var(--card)" stroke="currentColor"/><text x="380" y="245">分租套房 A</text><text x="380" y="262" font-size="10" fill="var(--muted)">平台自己編號</text>
+          <rect x="510" y="226" width="140" height="44" rx="8" fill="var(--card)" stroke="currentColor"/><text x="580" y="245">分租套房 B</text><text x="580" y="262" font-size="10" fill="var(--muted)">政府沒有這一層</text>
+        </g>
+        <text x="380" y="305" text-anchor="middle" font-size="12" class="svgtxt">一棟大樓的樓梯、電梯是「共有部分」，有另一個建號，當關聯資料存。</text>
+      </svg>
+      <figcaption>建號只在一個地段內唯一，所以主鍵是四段複合鍵。分租套房沒有政府編號，平台自己編，掛在錨點底下。</figcaption>
+    </figure>
+    <div class="grid">
+      <div class="tile"><b>硬規則</b><small>同一個複合鍵只能有一筆。第二次登錄會被擋下。</small></div>
+      <div class="tile"><b>軟規則</b><small>地址、座標、樓層、房號很像的，標記疑似重複，請人看。</small></div>
+      <div class="tile"><b>還沒有建號怎麼辦</b><small>先登錄成「待驗證」，留門牌與座標。上傳謄本後補建號。</small></div>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">第 3 張圖</span>
+    <h2>平台怎麼知道錢進了專戶？三種來源，變成一個事件</h2>
+    <figure>
+      <svg viewBox="0 0 760 300" role="img" aria-label="三個入帳來源：人工上傳匯款證明、銀行對帳檔、銀行推送，經轉接層統一成 DepositConfirmed 事件，先進 inbox 去重，再推進案件狀態">
+        <defs><marker id="b3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+        <g font-size="13" class="svgtxt" text-anchor="middle">
+          <rect x="30" y="40" width="170" height="52" rx="8" fill="var(--card)" stroke="currentColor"/><text x="115" y="62">人工上傳匯款證明</text><text x="115" y="80" font-size="10" fill="var(--muted)">最弱，第一版就有</text>
+          <rect x="30" y="124" width="170" height="52" rx="8" fill="var(--card)" stroke="currentColor"/><text x="115" y="146">銀行每日對帳檔</text><text x="115" y="164" font-size="10" fill="var(--muted)">批次，要銀行配合</text>
+          <rect x="30" y="208" width="170" height="52" rx="8" fill="var(--card)" stroke="var(--money)"/><text x="115" y="230">銀行或建經推送</text><text x="115" y="248" font-size="10" fill="var(--muted)">最強，還沒有公開規格</text>
+        </g>
+        <g stroke="currentColor" stroke-width="1.5" fill="none">
+          <line x1="200" y1="66" x2="270" y2="140" marker-end="url(#b3)"/><line x1="200" y1="150" x2="270" y2="150" marker-end="url(#b3)"/><line x1="200" y1="234" x2="270" y2="160" marker-end="url(#b3)"/>
+        </g>
+        <rect x="275" y="110" width="150" height="80" rx="10" fill="var(--accent)"/>
+        <text x="350" y="145" text-anchor="middle" font-size="14" font-weight="900" fill="#fff">轉接層</text>
+        <text x="350" y="166" text-anchor="middle" font-size="10" fill="#fff">換來源不用改流程</text>
+        <line x1="425" y1="150" x2="480" y2="150" stroke="currentColor" stroke-width="2" marker-end="url(#b3)"/>
+        <rect x="485" y="118" width="130" height="64" rx="10" fill="var(--money-soft)" stroke="var(--money)" stroke-width="2"/>
+        <text x="550" y="145" text-anchor="middle" font-size="12" font-weight="900" class="svgtxt">DepositConfirmed</text>
+        <text x="550" y="166" text-anchor="middle" font-size="10" fill="var(--muted)">一個標準事件</text>
+        <line x1="615" y1="150" x2="665" y2="150" stroke="currentColor" stroke-width="2" marker-end="url(#b3)"/>
+        <rect x="670" y="110" width="70" height="80" rx="10" fill="var(--card)" stroke="currentColor"/>
+        <text x="705" y="140" text-anchor="middle" font-size="12" font-weight="700" class="svgtxt">inbox</text>
+        <text x="705" y="158" text-anchor="middle" font-size="10" fill="var(--muted)">同一筆</text>
+        <text x="705" y="172" text-anchor="middle" font-size="10" fill="var(--muted)">只算一次</text>
+        <text x="380" y="285" text-anchor="middle" font-size="12" class="svgtxt">事件寫進 inbox 之後，才推進案件狀態。兩件事在同一個資料庫交易裡完成。</text>
+      </svg>
+      <figcaption>第一版靠人工上傳就能跑。之後接到銀行，流程層一行都不用改。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <span class="eyebrow">第 4 張圖</span>
+    <h2>鏡像帳：平台抄一份銀行的帳，只能往後加，錯了用一筆沖掉</h2>
+    <figure>
+      <svg viewBox="0 0 760 260" role="img" aria-label="左邊是銀行的真帳本，右邊是平台的鏡像帳，鏡像帳只增不改，錯誤分錄用沖銷分錄更正，每筆分錄連到一個業務事件">
+        <defs><marker id="b4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+        <rect x="40" y="40" width="250" height="170" rx="12" fill="var(--money-soft)" stroke="var(--money)" stroke-width="2"/>
+        <text x="165" y="72" text-anchor="middle" font-size="15" font-weight="900" class="svgtxt">銀行的帳本</text>
+        <text x="165" y="96" text-anchor="middle" font-size="12" fill="var(--muted)">真相在這裡</text>
+        <text x="165" y="130" text-anchor="middle" font-size="12" class="svgtxt">押金入帳 +20,000</text>
+        <text x="165" y="152" text-anchor="middle" font-size="12" class="svgtxt">退租撥款 −18,000</text>
+        <text x="165" y="174" text-anchor="middle" font-size="12" class="svgtxt">扣修繕費 −2,000</text>
+        <line x1="290" y1="125" x2="430" y2="125" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#b4)"/>
+        <text x="360" y="112" text-anchor="middle" font-size="11" class="svgtxt">對帳</text>
+        <rect x="435" y="40" width="290" height="170" rx="12" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+        <text x="580" y="72" text-anchor="middle" font-size="15" font-weight="900" class="svgtxt">平台的鏡像帳</text>
+        <text x="580" y="96" text-anchor="middle" font-size="12" fill="var(--muted)">只能往後加一列，不能改舊的</text>
+        <g font-size="12" class="svgtxt">
+          <text x="455" y="130">#1 押金入帳 +20,000 → 事件 E101</text>
+          <text x="455" y="152">#2 撥款 −18,000（打錯）→ 事件 E140</text>
+          <text x="455" y="174" fill="var(--danger)">#3 沖銷 #2 +18,000 → 事件 E141</text>
+          <text x="455" y="196">#4 撥款 −18,000（正確）→ 事件 E141</text>
+        </g>
+        <text x="380" y="240" text-anchor="middle" font-size="12" class="svgtxt">每一列都指向一個業務事件。查帳時能回答「為什麼有這一筆」。</text>
+      </svg>
+      <figcaption>鏡像帳是銀行專戶的副本。它讓房東、代管業者、稽核人員不用登入銀行就能看懂錢的來龍去脈。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <span class="eyebrow">第 5 張圖</span>
+    <h2>很多公司共用一套系統，為什麼互相看不到</h2>
+    <figure>
+      <svg viewBox="0 0 760 240" role="img" aria-label="一個 PostgreSQL 資料庫，每一列資料都有組織標籤，資料庫的 Row Level Security 像門禁，只讓該組織的查詢看到自己的列">
+        <rect x="40" y="40" width="680" height="150" rx="12" fill="var(--card)" stroke="currentColor"/>
+        <text x="380" y="68" text-anchor="middle" font-size="14" font-weight="900" class="svgtxt">同一個 PostgreSQL 資料庫</text>
+        <g font-size="12" class="svgtxt">
+          <rect x="70" y="90" width="300" height="26" rx="5" fill="var(--accent-soft)"/><text x="80" y="108">組織 A ｜ 租賃單位 ｜ 押金 20,000</text>
+          <rect x="70" y="122" width="300" height="26" rx="5" fill="var(--money-soft)"/><text x="80" y="140">組織 B ｜ 租賃單位 ｜ 押金 30,000</text>
+          <rect x="70" y="154" width="300" height="26" rx="5" fill="var(--accent-soft)"/><text x="80" y="172">組織 A ｜ 合約 ｜ 已簽署</text>
+        </g>
+        <rect x="420" y="88" width="270" height="92" rx="8" fill="var(--bg)" stroke="var(--accent)" stroke-width="2"/>
+        <text x="555" y="112" text-anchor="middle" font-size="13" font-weight="900" class="svgtxt">門禁：Row Level Security</text>
+        <text x="555" y="134" text-anchor="middle" font-size="11" fill="var(--muted)">組織 A 的查詢只看得到 A 的列</text>
+        <text x="555" y="152" text-anchor="middle" font-size="11" fill="var(--muted)">忘了加條件也擋得住</text>
+        <text x="555" y="170" text-anchor="middle" font-size="11" fill="var(--danger)">管理員帳號不受限，要另外管</text>
+        <text x="380" y="220" text-anchor="middle" font-size="12" class="svgtxt">大客戶要完全分開時，再給它自己的資料庫。這是升級路徑，第一版不做。</text>
+      </svg>
+      <figcaption>每一列資料貼上公司標籤，資料庫自己當門禁。程式少寫一個條件也不會漏資料。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <span class="eyebrow">第 6 張圖</span>
+    <h2>一筆租賃案件會經過的站</h2>
+    <figure>
+      <svg viewBox="0 0 760 170" role="img" aria-label="租賃案件狀態：登錄物件、驗證權源、簽約、押金待入、執行中、退租點交、結算完成；押金撥出是不可回頭的一步">
+        <defs><marker id="b6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+        <g font-size="12" class="svgtxt" text-anchor="middle" font-weight="700">
+          <rect x="20" y="50" width="92" height="44" rx="22" fill="var(--card)" stroke="currentColor"/><text x="66" y="77">登錄物件</text>
+          <rect x="128" y="50" width="92" height="44" rx="22" fill="var(--card)" stroke="currentColor"/><text x="174" y="77">驗證權源</text>
+          <rect x="236" y="50" width="92" height="44" rx="22" fill="var(--keep-soft)" stroke="var(--keep)"/><text x="282" y="77">簽約</text>
+          <rect x="344" y="50" width="92" height="44" rx="22" fill="var(--money-soft)" stroke="var(--money)"/><text x="390" y="77">押金待入</text>
+          <rect x="452" y="50" width="92" height="44" rx="22" fill="var(--card)" stroke="currentColor"/><text x="498" y="77">執行中</text>
+          <rect x="560" y="50" width="92" height="44" rx="22" fill="var(--card)" stroke="currentColor"/><text x="606" y="77">退租點交</text>
+          <rect x="668" y="50" width="80" height="44" rx="22" fill="var(--money-soft)" stroke="var(--money)"/><text x="708" y="77">結算</text>
+        </g>
+        <g stroke="currentColor" stroke-width="1.5" fill="none">
+          <line x1="112" y1="72" x2="124" y2="72" marker-end="url(#b6)"/><line x1="220" y1="72" x2="232" y2="72" marker-end="url(#b6)"/><line x1="328" y1="72" x2="340" y2="72" marker-end="url(#b6)"/>
+          <line x1="436" y1="72" x2="448" y2="72" marker-end="url(#b6)"/><line x1="544" y1="72" x2="556" y2="72" marker-end="url(#b6)"/><line x1="652" y1="72" x2="664" y2="72" marker-end="url(#b6)"/>
+        </g>
+        <text x="282" y="120" text-anchor="middle" font-size="10" fill="var(--keep)">沿用 rent-poc 的狀態機</text>
+        <text x="390" y="120" text-anchor="middle" font-size="10" fill="var(--money)">等 DepositConfirmed</text>
+        <text x="708" y="120" text-anchor="middle" font-size="10" fill="var(--danger)">撥款後不可回頭</text>
+        <text x="380" y="155" text-anchor="middle" font-size="12" class="svgtxt">通知、文件可以補救；撥款、過戶登記完成就不能倒帶。流程層依這個分類決定能不能重試。</text>
+      </svg>
+      <figcaption>一個案件就是一台狀態機。每個站記錄誰在什麼時候做了什麼，只增不改。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <span class="eyebrow">第 7 張圖</span>
+    <h2>既有的 rent-poc 哪些留、哪些長、哪些換</h2>
+    <div class="grid">
+      <div class="tile keep"><b>留</b><small>Next.js、antd、點點簽整合、三層合約文件、設備附件、合約不可變衍生。</small></div>
+      <div class="tile grow"><b>長</b><small>合約狀態機長成案件流程層。稽核紀錄從簽署擴到金流與權限。</small></div>
+      <div class="tile swap"><b>換</b><small>SQLite 換成 PostgreSQL。原因：需要列級門禁，也需要多人同時寫入。</small></div>
+      <div class="tile grow"><b>新增</b><small>組織與案件成員、鏡像帳、入帳轉接層、身分驗證分級、文件庫。</small></div>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">第 8 張圖</span>
+    <h2>身分驗證像爬樓梯，做的事越重要，爬得越高</h2>
+    <figure>
+      <svg viewBox="0 0 760 230" role="img" aria-label="四級身分驗證階梯：第一級 Email 或簡訊看合約，第二級證件加人工審核簽租約，第三級自然人憑證簽買賣與撥款指示，第四級臨櫃或公證辦物權移轉">
+        <g font-size="12" class="svgtxt">
+          <rect x="30" y="160" width="170" height="50" rx="8" fill="var(--card)" stroke="currentColor"/><text x="115" y="182" text-anchor="middle" font-weight="900">第 1 級</text><text x="115" y="200" text-anchor="middle" font-size="10" fill="var(--muted)">Email、簡訊驗證碼</text>
+          <rect x="210" y="120" width="170" height="90" rx="8" fill="var(--card)" stroke="currentColor"/><text x="295" y="142" text-anchor="middle" font-weight="900">第 2 級</text><text x="295" y="160" text-anchor="middle" font-size="10" fill="var(--muted)">證件影像加人工審核</text><text x="295" y="178" text-anchor="middle" font-size="10" fill="var(--muted)">或行動身分 App</text>
+          <rect x="390" y="80" width="170" height="130" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="475" y="102" text-anchor="middle" font-weight="900">第 3 級</text><text x="475" y="120" text-anchor="middle" font-size="10" fill="var(--muted)">行動自然人憑證</text><text x="475" y="138" text-anchor="middle" font-size="10" fill="var(--muted)">工商憑證</text>
+          <rect x="570" y="40" width="170" height="170" rx="8" fill="var(--money-soft)" stroke="var(--money)" stroke-width="2"/><text x="655" y="62" text-anchor="middle" font-weight="900">第 4 級</text><text x="655" y="80" text-anchor="middle" font-size="10" fill="var(--muted)">臨櫃、公證人面對面</text>
+        </g>
+        <g font-size="11" class="svgtxt" text-anchor="middle" font-weight="700">
+          <text x="115" y="150">看自己的合約</text>
+          <text x="295" y="110">簽一般租約</text>
+          <text x="475" y="70">簽買賣契約、撥款指示</text>
+          <text x="655" y="30">不動產物權移轉</text>
+        </g>
+      </svg>
+      <figcaption>哪個動作對應哪一級，目前是調研員擬定，還要法務確認。第 4 級本來就由地政士與地政機關處理，平台只管流程。</figcaption>
+    </figure>
+  </section>
+
+  <footer class="note">依據：docs/research/asset-mgmt-platform 的調研報告第 8、9 章與 architecture.md，2026-10-29。這是概念圖，欄位與介面以 architecture.md 為準。</footer>
+</main>
