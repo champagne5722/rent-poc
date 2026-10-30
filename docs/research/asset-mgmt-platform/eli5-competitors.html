@@ -1,0 +1,233 @@
+<title>競品橫向對比圖解</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Noto+Serif+TC:wght@700;900&display=swap">
+<style>
+/* 版面：一張圖一個比較軸，十家競品固定順序與顏色 */
+:root{
+  --bg:#f4f6f2; --card:#ffffff; --fg:#1d2628; --muted:#5f6d70; --line:#cfd8d2;
+  --accent:#0d6d69; --accent-soft:#d9efec; --money:#b4761a; --money-soft:#f6e8cf; --danger:#a63d2f; --danger-soft:#f4dcd7;
+  --has:#0d6d69; --part:#b4761a; --none:#d5dbd6; --tw:#3b5fa8; --us:#7a4ea3;
+  --display:"Noto Serif TC","Noto Sans TC",serif; --body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#131a1b; --card:#1b2426; --fg:#e7ece9; --muted:#9aa8aa; --line:#2c383a;
+  --accent:#63c6bf; --accent-soft:#17403e; --money:#e2a84c; --money-soft:#3e2f14; --danger:#ef8a7a; --danger-soft:#4a2520;
+  --has:#63c6bf; --part:#e2a84c; --none:#2c383a; --tw:#8fa9e8; --us:#c49be6; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#131a1b; --card:#1b2426; --fg:#e7ece9; --muted:#9aa8aa; --line:#2c383a;
+  --accent:#63c6bf; --accent-soft:#17403e; --money:#e2a84c; --money-soft:#3e2f14; --danger:#ef8a7a; --danger-soft:#4a2520;
+  --has:#63c6bf; --part:#e2a84c; --none:#2c383a; --tw:#8fa9e8; --us:#c49be6; color-scheme:dark }
+body{background:var(--bg);color:var(--fg);font-family:var(--body);line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:32px 64px}
+main{max-width:900px;margin:0 auto;display:grid;gap:56px}
+h1{font-family:var(--display);font-size:clamp(2rem,6vw,3rem);line-height:1.15;margin:0;text-wrap:balance}
+h2{font-family:var(--display);font-size:clamp(1.3rem,4vw,1.8rem);margin:0 0 6px;line-height:1.25;text-wrap:balance}
+p{margin:0;max-width:42em;font-size:1.02rem}
+.lede{font-size:1.2rem;color:var(--muted)}
+.eyebrow{font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+section{display:grid;gap:14px}
+figure{margin:0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;overflow-x:auto}
+figure svg{display:block;max-width:100%;height:auto;margin:0 auto;font-family:var(--body)}
+figcaption{margin-top:10px;font-size:.92rem;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0}
+.tile b{display:block;font-size:1.02rem;margin-bottom:4px}
+.tile small{color:var(--muted)}
+.q{border-left:6px solid var(--danger)}
+.note{font-size:.9rem;color:var(--muted)}
+.svgtxt{fill:currentColor}
+</style>
+
+<main>
+  <header style="display:grid;gap:12px">
+    <span class="eyebrow">競品橫向對比圖解 · 2026-10-30</span>
+    <h1>競品橫向對比圖解</h1>
+    <p class="lede">十家競品：台灣五家（591、Bananas、JGB、僑馥、第一建經）、國外五家（AppFolio、Buildium、Yardi、貝殼、PropertyGuru）。六張圖比較它們的位置、模組、收入、資料模型，以及平台要站的空白。</p>
+  </header>
+
+  <section>
+    <span class="eyebrow">第 1 張圖 · 定位地圖</span>
+    <h2>橫軸是買賣到租賃，縱軸是獲客到管理，右下角是空的</h2>
+    <figure>
+      <svg viewBox="0 0 860 460" role="img" aria-label="二維定位圖：橫軸左為買賣、右為租賃；縱軸上為獲客與交易、下為租後管理與資產。十家競品分布後，屋主自管加買賣租賃合一的區域沒有競品">
+        <defs><marker id="c1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+        <line x1="80" y1="400" x2="820" y2="400" stroke="currentColor" stroke-width="1.5" marker-end="url(#c1)"/>
+        <line x1="80" y1="400" x2="80" y2="40" stroke="currentColor" stroke-width="1.5" marker-end="url(#c1)"/>
+        <text x="110" y="425" font-size="12" class="svgtxt">買賣</text><text x="790" y="425" font-size="12" class="svgtxt" text-anchor="end">租賃</text>
+        <text x="60" y="60" font-size="12" class="svgtxt" text-anchor="end">獲客、交易</text><text x="60" y="390" font-size="12" class="svgtxt" text-anchor="end">管理、資產</text>
+        <line x1="450" y1="40" x2="450" y2="400" stroke="var(--line)" stroke-dasharray="4 4"/><line x1="80" y1="220" x2="820" y2="220" stroke="var(--line)" stroke-dasharray="4 4"/>
+        <g font-size="12" font-weight="700" text-anchor="middle">
+          <circle cx="330" cy="90" r="9" fill="var(--tw)"/><text x="330" y="78" class="svgtxt">591</text>
+          <circle cx="260" cy="130" r="9" fill="var(--us)"/><text x="260" y="118" class="svgtxt">貝殼</text>
+          <circle cx="360" cy="150" r="9" fill="var(--us)"/><text x="360" y="172" class="svgtxt">PropertyGuru</text>
+          <circle cx="150" cy="200" r="9" fill="var(--tw)"/><text x="150" y="188" class="svgtxt">僑馥</text>
+          <circle cx="200" cy="215" r="9" fill="var(--tw)"/><text x="200" y="238" class="svgtxt">第一建經</text>
+          <circle cx="620" cy="290" r="9" fill="var(--tw)"/><text x="620" y="278" class="svgtxt">JGB</text>
+          <circle cx="690" cy="310" r="9" fill="var(--tw)"/><text x="690" y="332" class="svgtxt">Bananas</text>
+          <circle cx="720" cy="350" r="9" fill="var(--us)"/><text x="720" y="372" class="svgtxt">AppFolio</text>
+          <circle cx="770" cy="300" r="9" fill="var(--us)"/><text x="770" y="288" class="svgtxt">Buildium</text>
+          <circle cx="650" cy="365" r="9" fill="var(--us)"/><text x="650" y="387" class="svgtxt">Yardi</text>
+        </g>
+        <rect x="120" y="250" width="420" height="130" rx="12" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2" stroke-dasharray="8 5"/>
+        <text x="330" y="300" text-anchor="middle" font-size="15" font-weight="900" fill="var(--accent)">空白：屋主自管入口</text>
+        <text x="330" y="324" text-anchor="middle" font-size="12" class="svgtxt">買賣、租賃、資產總覽放在同一個入口</text>
+        <text x="330" y="346" text-anchor="middle" font-size="11" fill="var(--muted)">十家都沒有；只有國外 Roofstock、東急リバブル接近</text>
+        <text x="450" y="448" text-anchor="middle" font-size="11" fill="var(--muted)">藍點是台灣，紫點是國外。位置由各家主營收與模組推得，屬推論。</text>
+      </svg>
+      <figcaption>獲客平台（上方）不做租後，租賃 SaaS（右下）不碰買賣，建經（左）只管價金。平台要站的是左下到右下的橫向整合。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <span class="eyebrow">第 2 張圖 · 系統模組矩陣</span>
+    <h2>十家乘十類模組：誰有什麼，一眼看完</h2>
+    <figure>
+      <svg viewBox="0 0 900 420" role="img" aria-label="熱圖：十家競品對十類模組，綠色有、金色部分、灰色未查到或無。租賃 SaaS 在帳務、維修、入口、API 齊全；獲客平台只有刊登；建經只有案件與專戶">
+        <g font-size="10" class="svgtxt" text-anchor="middle">
+          <text x="200" y="40" transform="rotate(-30 200 40)">物件與單位</text><text x="260" y="40" transform="rotate(-30 260 40)">租賃與合約</text><text x="320" y="40" transform="rotate(-30 320 40)">買賣與交易</text><text x="380" y="40" transform="rotate(-30 380 40)">帳務與金流</text><text x="440" y="40" transform="rotate(-30 440 40)">維修與工單</text><text x="500" y="40" transform="rotate(-30 500 40)">租客或買方入口</text><text x="560" y="40" transform="rotate(-30 560 40)">身分與權限</text><text x="620" y="40" transform="rotate(-30 620 40)">報表</text><text x="680" y="40" transform="rotate(-30 680 40)">整合與 API</text><text x="740" y="40" transform="rotate(-30 740 40)">行動裝置</text>
+        </g>
+        <!-- rows: y = 70 + i*34 ; cols x = 170 + j*60 ; cell 54x26 -->
+        <g font-size="12" class="svgtxt" font-weight="700">
+          <text x="150" y="88" text-anchor="end">591</text>
+          <text x="150" y="122" text-anchor="end">Bananas</text>
+          <text x="150" y="156" text-anchor="end">JGB</text>
+          <text x="150" y="190" text-anchor="end">僑馥</text>
+          <text x="150" y="224" text-anchor="end">第一建經</text>
+          <text x="150" y="258" text-anchor="end">AppFolio</text>
+          <text x="150" y="292" text-anchor="end">Buildium</text>
+          <text x="150" y="326" text-anchor="end">Yardi</text>
+          <text x="150" y="360" text-anchor="end">貝殼</text>
+          <text x="150" y="394" text-anchor="end">PropertyGuru</text>
+        </g>
+        <g rx="4">
+          <!-- 591 -->
+          <rect x="173" y="70" width="54" height="26" rx="4" fill="var(--part)"/><rect x="233" y="70" width="54" height="26" rx="4" fill="var(--part)"/><rect x="293" y="70" width="54" height="26" rx="4" fill="var(--part)"/><rect x="353" y="70" width="54" height="26" rx="4" fill="var(--none)"/><rect x="413" y="70" width="54" height="26" rx="4" fill="var(--part)"/><rect x="473" y="70" width="54" height="26" rx="4" fill="var(--has)"/><rect x="533" y="70" width="54" height="26" rx="4" fill="var(--has)"/><rect x="593" y="70" width="54" height="26" rx="4" fill="var(--none)"/><rect x="653" y="70" width="54" height="26" rx="4" fill="var(--none)"/><rect x="713" y="70" width="54" height="26" rx="4" fill="var(--has)"/>
+          <!-- Bananas -->
+          <rect x="173" y="104" width="54" height="26" rx="4" fill="var(--part)"/><rect x="233" y="104" width="54" height="26" rx="4" fill="var(--has)"/><rect x="293" y="104" width="54" height="26" rx="4" fill="var(--none)"/><rect x="353" y="104" width="54" height="26" rx="4" fill="var(--has)"/><rect x="413" y="104" width="54" height="26" rx="4" fill="var(--has)"/><rect x="473" y="104" width="54" height="26" rx="4" fill="var(--has)"/><rect x="533" y="104" width="54" height="26" rx="4" fill="var(--has)"/><rect x="593" y="104" width="54" height="26" rx="4" fill="var(--has)"/><rect x="653" y="104" width="54" height="26" rx="4" fill="var(--none)"/><rect x="713" y="104" width="54" height="26" rx="4" fill="var(--has)"/>
+          <!-- JGB -->
+          <rect x="173" y="138" width="54" height="26" rx="4" fill="var(--has)"/><rect x="233" y="138" width="54" height="26" rx="4" fill="var(--has)"/><rect x="293" y="138" width="54" height="26" rx="4" fill="var(--part)"/><rect x="353" y="138" width="54" height="26" rx="4" fill="var(--has)"/><rect x="413" y="138" width="54" height="26" rx="4" fill="var(--has)"/><rect x="473" y="138" width="54" height="26" rx="4" fill="var(--has)"/><rect x="533" y="138" width="54" height="26" rx="4" fill="var(--has)"/><rect x="593" y="138" width="54" height="26" rx="4" fill="var(--has)"/><rect x="653" y="138" width="54" height="26" rx="4" fill="var(--part)"/><rect x="713" y="138" width="54" height="26" rx="4" fill="var(--none)"/>
+          <!-- 僑馥 -->
+          <rect x="173" y="172" width="54" height="26" rx="4" fill="var(--part)"/><rect x="233" y="172" width="54" height="26" rx="4" fill="var(--none)"/><rect x="293" y="172" width="54" height="26" rx="4" fill="var(--has)"/><rect x="353" y="172" width="54" height="26" rx="4" fill="var(--has)"/><rect x="413" y="172" width="54" height="26" rx="4" fill="var(--none)"/><rect x="473" y="172" width="54" height="26" rx="4" fill="var(--has)"/><rect x="533" y="172" width="54" height="26" rx="4" fill="var(--has)"/><rect x="593" y="172" width="54" height="26" rx="4" fill="var(--part)"/><rect x="653" y="172" width="54" height="26" rx="4" fill="var(--part)"/><rect x="713" y="172" width="54" height="26" rx="4" fill="var(--has)"/>
+          <!-- 第一建經 -->
+          <rect x="173" y="206" width="54" height="26" rx="4" fill="var(--part)"/><rect x="233" y="206" width="54" height="26" rx="4" fill="var(--none)"/><rect x="293" y="206" width="54" height="26" rx="4" fill="var(--has)"/><rect x="353" y="206" width="54" height="26" rx="4" fill="var(--has)"/><rect x="413" y="206" width="54" height="26" rx="4" fill="var(--none)"/><rect x="473" y="206" width="54" height="26" rx="4" fill="var(--has)"/><rect x="533" y="206" width="54" height="26" rx="4" fill="var(--has)"/><rect x="593" y="206" width="54" height="26" rx="4" fill="var(--part)"/><rect x="653" y="206" width="54" height="26" rx="4" fill="var(--part)"/><rect x="713" y="206" width="54" height="26" rx="4" fill="var(--has)"/>
+          <!-- AppFolio -->
+          <rect x="173" y="240" width="54" height="26" rx="4" fill="var(--has)"/><rect x="233" y="240" width="54" height="26" rx="4" fill="var(--has)"/><rect x="293" y="240" width="54" height="26" rx="4" fill="var(--part)"/><rect x="353" y="240" width="54" height="26" rx="4" fill="var(--has)"/><rect x="413" y="240" width="54" height="26" rx="4" fill="var(--has)"/><rect x="473" y="240" width="54" height="26" rx="4" fill="var(--has)"/><rect x="533" y="240" width="54" height="26" rx="4" fill="var(--has)"/><rect x="593" y="240" width="54" height="26" rx="4" fill="var(--has)"/><rect x="653" y="240" width="54" height="26" rx="4" fill="var(--has)"/><rect x="713" y="240" width="54" height="26" rx="4" fill="var(--has)"/>
+          <!-- Buildium -->
+          <rect x="173" y="274" width="54" height="26" rx="4" fill="var(--has)"/><rect x="233" y="274" width="54" height="26" rx="4" fill="var(--has)"/><rect x="293" y="274" width="54" height="26" rx="4" fill="var(--none)"/><rect x="353" y="274" width="54" height="26" rx="4" fill="var(--has)"/><rect x="413" y="274" width="54" height="26" rx="4" fill="var(--has)"/><rect x="473" y="274" width="54" height="26" rx="4" fill="var(--has)"/><rect x="533" y="274" width="54" height="26" rx="4" fill="var(--has)"/><rect x="593" y="274" width="54" height="26" rx="4" fill="var(--has)"/><rect x="653" y="274" width="54" height="26" rx="4" fill="var(--has)"/><rect x="713" y="274" width="54" height="26" rx="4" fill="var(--none)"/>
+          <!-- Yardi -->
+          <rect x="173" y="308" width="54" height="26" rx="4" fill="var(--has)"/><rect x="233" y="308" width="54" height="26" rx="4" fill="var(--has)"/><rect x="293" y="308" width="54" height="26" rx="4" fill="var(--part)"/><rect x="353" y="308" width="54" height="26" rx="4" fill="var(--has)"/><rect x="413" y="308" width="54" height="26" rx="4" fill="var(--has)"/><rect x="473" y="308" width="54" height="26" rx="4" fill="var(--has)"/><rect x="533" y="308" width="54" height="26" rx="4" fill="var(--part)"/><rect x="593" y="308" width="54" height="26" rx="4" fill="var(--has)"/><rect x="653" y="308" width="54" height="26" rx="4" fill="var(--has)"/><rect x="713" y="308" width="54" height="26" rx="4" fill="var(--has)"/>
+          <!-- 貝殼 -->
+          <rect x="173" y="342" width="54" height="26" rx="4" fill="var(--has)"/><rect x="233" y="342" width="54" height="26" rx="4" fill="var(--part)"/><rect x="293" y="342" width="54" height="26" rx="4" fill="var(--has)"/><rect x="353" y="342" width="54" height="26" rx="4" fill="var(--part)"/><rect x="413" y="342" width="54" height="26" rx="4" fill="var(--part)"/><rect x="473" y="342" width="54" height="26" rx="4" fill="var(--has)"/><rect x="533" y="342" width="54" height="26" rx="4" fill="var(--has)"/><rect x="593" y="342" width="54" height="26" rx="4" fill="var(--none)"/><rect x="653" y="342" width="54" height="26" rx="4" fill="var(--none)"/><rect x="713" y="342" width="54" height="26" rx="4" fill="var(--has)"/>
+          <!-- PropertyGuru -->
+          <rect x="173" y="376" width="54" height="26" rx="4" fill="var(--part)"/><rect x="233" y="376" width="54" height="26" rx="4" fill="var(--none)"/><rect x="293" y="376" width="54" height="26" rx="4" fill="var(--part)"/><rect x="353" y="376" width="54" height="26" rx="4" fill="var(--none)"/><rect x="413" y="376" width="54" height="26" rx="4" fill="var(--none)"/><rect x="473" y="376" width="54" height="26" rx="4" fill="var(--has)"/><rect x="533" y="376" width="54" height="26" rx="4" fill="var(--has)"/><rect x="593" y="376" width="54" height="26" rx="4" fill="var(--part)"/><rect x="653" y="376" width="54" height="26" rx="4" fill="var(--none)"/><rect x="713" y="376" width="54" height="26" rx="4" fill="var(--none)"/>
+        </g>
+        <g font-size="11" class="svgtxt">
+          <rect x="790" y="80" width="14" height="14" rx="3" fill="var(--has)"/><text x="810" y="92">有</text>
+          <rect x="790" y="104" width="14" height="14" rx="3" fill="var(--part)"/><text x="810" y="116">部分</text>
+          <rect x="790" y="128" width="14" height="14" rx="3" fill="var(--none)"/><text x="810" y="140">未查到或無</text>
+        </g>
+      </svg>
+      <figcaption>依第二輪報告第 5.3 節的矩陣著色，「部分」含只到廣告層或案件制。貝殼與 PropertyGuru 沒有公開功能頁，信心中低。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <span class="eyebrow">第 3 張圖 · 收入結構</span>
+    <h2>國外靠附加服務賺錢，台灣停在刊登費與管理費</h2>
+    <figure>
+      <svg viewBox="0 0 860 330" role="img" aria-label="橫條圖：AppFolio 營收 76% 來自附加服務、24% 軟體；591 69% 來自刊登；貝殼佣金為主；Bananas 租金 6%；建經每案履保費">
+        <g font-size="12" class="svgtxt">
+          <text x="20" y="50" font-weight="700">AppFolio $951M【中】</text>
+          <rect x="230" y="36" width="144" height="22" fill="var(--tw)"/><text x="302" y="52" fill="#fff" text-anchor="middle" font-size="11">軟體 24%</text>
+          <rect x="374" y="36" width="456" height="22" fill="var(--money)"/><text x="602" y="52" fill="#fff" text-anchor="middle" font-size="11">附加服務 76%：支付、篩選、保險、維修</text>
+          <text x="20" y="100" font-weight="700">數字科技 23.19 億元【中】</text>
+          <rect x="230" y="86" width="414" height="22" fill="var(--tw)"/><text x="437" y="102" fill="#fff" text-anchor="middle" font-size="11">591 刊登費 69%</text>
+          <rect x="644" y="86" width="186" height="22" fill="var(--none)"/><text x="737" y="102" text-anchor="middle" font-size="11" class="svgtxt">8591、8891、518</text>
+          <text x="20" y="150" font-weight="700">貝殼 RMB 94.6B【中】</text>
+          <rect x="230" y="136" width="158" height="22" fill="var(--tw)"/><text x="309" y="152" fill="#fff" text-anchor="middle" font-size="11">存量房 26%</text>
+          <rect x="388" y="136" width="194" height="22" fill="var(--us)"/><text x="485" y="152" fill="#fff" text-anchor="middle" font-size="11">新房 32%</text>
+          <rect x="582" y="136" width="139" height="22" fill="var(--has)"/><text x="651" y="152" fill="#fff" text-anchor="middle" font-size="11">租賃 23%</text>
+          <rect x="721" y="136" width="98" height="22" fill="var(--money)"/><text x="770" y="152" fill="#fff" text-anchor="middle" font-size="11">裝修 16%</text>
+          <text x="20" y="200" font-weight="700">Bananas（自述）【低】</text>
+          <rect x="230" y="186" width="600" height="22" fill="var(--has)"/><text x="530" y="202" fill="#fff" text-anchor="middle" font-size="11">租金約 6% 管理費，另有租金保障</text>
+          <text x="20" y="250" font-weight="700">僑馥、第一建經【低】</text>
+          <rect x="230" y="236" width="600" height="22" fill="var(--money)"/><text x="530" y="252" fill="#fff" text-anchor="middle" font-size="11">每案履保費，行情約成交價萬分之六，費率未公開</text>
+          <text x="20" y="300" font-weight="700">Buildium【高】</text>
+          <rect x="230" y="286" width="300" height="22" fill="var(--tw)"/><text x="380" y="302" fill="#fff" text-anchor="middle" font-size="11">月費 $65 至 $420 起</text>
+          <rect x="530" y="286" width="300" height="22" fill="var(--money)"/><text x="680" y="302" fill="#fff" text-anchor="middle" font-size="11">交易費、篩選、保險、eSign 加購</text>
+        </g>
+      </svg>
+      <figcaption>台灣要走附加服務這條線，支付要持牌通道、篩選要徵信授權、保險要產險夥伴。能先上的是電子簽與租金保障險分潤。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <span class="eyebrow">第 4 張圖 · 資料模型</span>
+    <h2>Buildium 的四層資料模型最清楚，屋主是獨立資源</h2>
+    <figure>
+      <svg viewBox="0 0 860 260" role="img" aria-label="Buildium API 的資料層級：rentals 物件下有 units 單位與 owners 屋主；leases 租約是頂層，下有 tenants 承租人；associations 社區協會是另一條平行資料線">
+        <defs><marker id="c4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+        <g font-size="12" class="svgtxt" text-anchor="middle" font-weight="700">
+          <rect x="60" y="40" width="170" height="44" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="145" y="67">/v1/rentals（物件）</text>
+          <rect x="20" y="130" width="120" height="44" rx="8" fill="var(--card)" stroke="currentColor"/><text x="80" y="157">units 單位</text>
+          <rect x="160" y="130" width="130" height="44" rx="8" fill="var(--card)" stroke="currentColor"/><text x="225" y="157">owners 屋主</text>
+          <rect x="360" y="40" width="170" height="44" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="445" y="67">/v1/leases（租約）</text>
+          <rect x="380" y="130" width="130" height="44" rx="8" fill="var(--card)" stroke="currentColor"/><text x="445" y="157">tenants 承租人</text>
+          <rect x="640" y="40" width="190" height="44" rx="8" fill="var(--money-soft)" stroke="var(--money)"/><text x="735" y="67">/v1/associations（社區）</text>
+          <rect x="670" y="130" width="130" height="44" rx="8" fill="var(--card)" stroke="currentColor"/><text x="735" y="157">另一條資料線</text>
+        </g>
+        <g stroke="currentColor" stroke-width="1.5" fill="none">
+          <line x1="120" y1="84" x2="85" y2="126" marker-end="url(#c4)"/><line x1="170" y1="84" x2="215" y2="126" marker-end="url(#c4)"/><line x1="445" y1="84" x2="445" y2="126" marker-end="url(#c4)"/><line x1="735" y1="84" x2="735" y2="126" marker-end="url(#c4)"/>
+        </g>
+        <text x="430" y="215" text-anchor="middle" font-size="12" class="svgtxt">共 298 條路徑【中】，租約是頂層資源，不掛在物件下。平台沿用四層，屋主獨立成資源。</text>
+        <text x="430" y="240" text-anchor="middle" font-size="11" fill="var(--muted)">AppFolio 公開 API 只有 15 個唯讀端點，沒有 lease；JGB 的租約快照與物件脫鉤，和 rent-poc 做法一致。</text>
+      </svg>
+      <figcaption>台灣「社區」與「單戶」可以參考 Buildium 的兩條平行資料線。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <span class="eyebrow">第 5 張圖 · 台灣供給矩陣</span>
+    <h2>仲介集團有買、租、管、保四塊，沒有資產總覽與傳承</h2>
+    <figure>
+      <svg viewBox="0 0 860 300" role="img" aria-label="熱圖：六家台灣仲介集團對七個服務塊，租賃媒合與買賣仲介都有，代管部分有，交易履保部分有，物件管理、資產總覽、稅務傳承都未查到">
+        <g font-size="10" class="svgtxt" text-anchor="middle">
+          <text x="220" y="40">物件管理</text><text x="300" y="40">租賃媒合</text><text x="380" y="40">租賃管理</text><text x="460" y="40">買賣仲介</text><text x="540" y="40">履保信託</text><text x="620" y="40">資產總覽</text><text x="700" y="40">稅務傳承</text>
+        </g>
+        <g font-size="12" class="svgtxt" font-weight="700">
+          <text x="180" y="78" text-anchor="end">信義</text><text x="180" y="112" text-anchor="end">永慶</text><text x="180" y="146" text-anchor="end">台灣房屋</text><text x="180" y="180" text-anchor="end">中信房屋</text><text x="180" y="214" text-anchor="end">住商</text><text x="180" y="248" text-anchor="end">21 世紀</text>
+        </g>
+        <g>
+          <rect x="195" y="60" width="50" height="26" rx="4" fill="var(--none)"/><rect x="275" y="60" width="50" height="26" rx="4" fill="var(--has)"/><rect x="355" y="60" width="50" height="26" rx="4" fill="var(--none)"/><rect x="435" y="60" width="50" height="26" rx="4" fill="var(--has)"/><rect x="515" y="60" width="50" height="26" rx="4" fill="var(--has)"/><rect x="595" y="60" width="50" height="26" rx="4" fill="var(--none)"/><rect x="675" y="60" width="50" height="26" rx="4" fill="var(--none)"/>
+          <rect x="195" y="94" width="50" height="26" rx="4" fill="var(--none)"/><rect x="275" y="94" width="50" height="26" rx="4" fill="var(--has)"/><rect x="355" y="94" width="50" height="26" rx="4" fill="var(--has)"/><rect x="435" y="94" width="50" height="26" rx="4" fill="var(--has)"/><rect x="515" y="94" width="50" height="26" rx="4" fill="var(--part)"/><rect x="595" y="94" width="50" height="26" rx="4" fill="var(--none)"/><rect x="675" y="94" width="50" height="26" rx="4" fill="var(--part)"/>
+          <rect x="195" y="128" width="50" height="26" rx="4" fill="var(--none)"/><rect x="275" y="128" width="50" height="26" rx="4" fill="var(--has)"/><rect x="355" y="128" width="50" height="26" rx="4" fill="var(--part)"/><rect x="435" y="128" width="50" height="26" rx="4" fill="var(--has)"/><rect x="515" y="128" width="50" height="26" rx="4" fill="var(--part)"/><rect x="595" y="128" width="50" height="26" rx="4" fill="var(--none)"/><rect x="675" y="128" width="50" height="26" rx="4" fill="var(--none)"/>
+          <rect x="195" y="162" width="50" height="26" rx="4" fill="var(--none)"/><rect x="275" y="162" width="50" height="26" rx="4" fill="var(--has)"/><rect x="355" y="162" width="50" height="26" rx="4" fill="var(--part)"/><rect x="435" y="162" width="50" height="26" rx="4" fill="var(--has)"/><rect x="515" y="162" width="50" height="26" rx="4" fill="var(--none)"/><rect x="595" y="162" width="50" height="26" rx="4" fill="var(--none)"/><rect x="675" y="162" width="50" height="26" rx="4" fill="var(--part)"/>
+          <rect x="195" y="196" width="50" height="26" rx="4" fill="var(--none)"/><rect x="275" y="196" width="50" height="26" rx="4" fill="var(--has)"/><rect x="355" y="196" width="50" height="26" rx="4" fill="var(--part)"/><rect x="435" y="196" width="50" height="26" rx="4" fill="var(--has)"/><rect x="515" y="196" width="50" height="26" rx="4" fill="var(--has)"/><rect x="595" y="196" width="50" height="26" rx="4" fill="var(--none)"/><rect x="675" y="196" width="50" height="26" rx="4" fill="var(--none)"/>
+          <rect x="195" y="230" width="50" height="26" rx="4" fill="var(--none)"/><rect x="275" y="230" width="50" height="26" rx="4" fill="var(--has)"/><rect x="355" y="230" width="50" height="26" rx="4" fill="var(--part)"/><rect x="435" y="230" width="50" height="26" rx="4" fill="var(--has)"/><rect x="515" y="230" width="50" height="26" rx="4" fill="var(--none)"/><rect x="595" y="230" width="50" height="26" rx="4" fill="var(--none)"/><rect x="675" y="230" width="50" height="26" rx="4" fill="var(--none)"/>
+        </g>
+        <rect x="590" y="54" width="140" height="208" rx="8" fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="6 4"/>
+        <text x="660" y="285" text-anchor="middle" font-size="12" fill="var(--accent)" font-weight="900">兩欄全空：平台的位置</text>
+        <g font-size="11" class="svgtxt">
+          <rect x="760" y="80" width="14" height="14" rx="3" fill="var(--has)"/><text x="780" y="92">有</text>
+          <rect x="760" y="104" width="14" height="14" rx="3" fill="var(--part)"/><text x="780" y="116">部分</text>
+          <rect x="760" y="128" width="14" height="14" rx="3" fill="var(--none)"/><text x="780" y="140">未查到</text>
+        </g>
+      </svg>
+      <figcaption>只讀集團首頁與少量深層頁，「未查到」不等於沒有。東森房屋本輪未查。銀行走轉介，力興資產已與至多六家公股銀行合作【中】。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <span class="eyebrow">第 6 張圖 · 威脅與對策</span>
+    <h2>對手會從仲介集團與銀行來，不會從租賃 SaaS 來</h2>
+    <div class="grid">
+      <div class="tile q"><b>仲介集團自建屋主入口</b><small>住商、永慶已往代管走。對策：先綁持照者與銀行當通路；錨點與移交包做差異化。</small></div>
+      <div class="tile q"><b>銀行與力興擴大整合</b><small>六家公股銀行轉介合作。對策：把銀行當通路候選，提供資料層給銀行。</small></div>
+      <div class="tile q"><b>Bananas 向上延伸</b><small>591 創辦人投資。對策：平台不與代管業者競爭，服務它們。</small></div>
+      <div class="tile q"><b>591 加管理功能</b><small>流量優勢。對策：不爭流量，做租後與資產層。</small></div>
+    </div>
+    <p class="note">國外整合先例：Roofstock 把買、管、賣與資產儀表板放一起；東急リバブル租賣同窗口加雙重估價；Foxtons 租賃、買賣、金融三塊交叉銷售。三者都沒有稅務與傳承。</p>
+  </section>
+
+  <footer class="note">依據：docs/research/asset-mgmt-platform 的 competitive-brief.md、第二輪調研報告第 4、5 章、筆記 r13 與 r15。數字後的【高】【中】【低】是信心。</footer>
+</main>

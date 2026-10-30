@@ -1,240 +1,312 @@
-<title>錢在銀行，平台管流程</title>
+<title>商業模式圖解</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Noto+Serif+TC:wght@700;900&display=swap">
 <style>
-/* 版面：一張圖一個主張，上下堆疊，像翻一本圖畫書 */
+/* 版面：一張圖一個主張，上下堆疊；圖內標出模組名稱與邊界 */
 :root{
   --bg:#f4f6f2; --card:#ffffff; --fg:#1d2628; --muted:#5f6d70; --line:#cfd8d2;
   --accent:#0d6d69; --accent-soft:#d9efec; --money:#b4761a; --money-soft:#f6e8cf; --danger:#a63d2f; --danger-soft:#f4dcd7;
+  --p1:#0d6d69; --p2:#3b5fa8; --p3:#7a4ea3; --p1s:#d9efec; --p2s:#dde5f5; --p3s:#eadff3;
   --display:"Noto Serif TC","Noto Sans TC",serif; --body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
   --bg:#131a1b; --card:#1b2426; --fg:#e7ece9; --muted:#9aa8aa; --line:#2c383a;
-  --accent:#63c6bf; --accent-soft:#17403e; --money:#e2a84c; --money-soft:#3e2f14; --danger:#ef8a7a; --danger-soft:#4a2520; color-scheme:dark } }
+  --accent:#63c6bf; --accent-soft:#17403e; --money:#e2a84c; --money-soft:#3e2f14; --danger:#ef8a7a; --danger-soft:#4a2520;
+  --p1:#63c6bf; --p2:#8fa9e8; --p3:#c49be6; --p1s:#17403e; --p2s:#1f2b45; --p3s:#352447; color-scheme:dark } }
 :root[data-theme="dark"]{
   --bg:#131a1b; --card:#1b2426; --fg:#e7ece9; --muted:#9aa8aa; --line:#2c383a;
-  --accent:#63c6bf; --accent-soft:#17403e; --money:#e2a84c; --money-soft:#3e2f14; --danger:#ef8a7a; --danger-soft:#4a2520; color-scheme:dark }
+  --accent:#63c6bf; --accent-soft:#17403e; --money:#e2a84c; --money-soft:#3e2f14; --danger:#ef8a7a; --danger-soft:#4a2520;
+  --p1:#63c6bf; --p2:#8fa9e8; --p3:#c49be6; --p1s:#17403e; --p2s:#1f2b45; --p3s:#352447; color-scheme:dark }
 body{background:var(--bg);color:var(--fg);font-family:var(--body);line-height:1.6;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:32px 64px}
-main{max-width:860px;margin:0 auto;display:grid;gap:56px}
-h1{font-family:var(--display);font-size:clamp(2rem,6vw,3.2rem);line-height:1.15;margin:0;text-wrap:balance}
-h2{font-family:var(--display);font-size:clamp(1.4rem,4vw,1.9rem);margin:0 0 6px;line-height:1.25;text-wrap:balance}
-p{margin:0;max-width:40em;font-size:1.05rem}
-.lede{font-size:1.25rem;color:var(--muted)}
-.eyebrow{font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+main{max-width:900px;margin:0 auto;display:grid;gap:56px}
+h1{font-family:var(--display);font-size:clamp(2rem,6vw,3rem);line-height:1.15;margin:0;text-wrap:balance}
+h2{font-family:var(--display);font-size:clamp(1.3rem,4vw,1.8rem);margin:0 0 6px;line-height:1.25;text-wrap:balance}
+p{margin:0;max-width:42em;font-size:1.02rem}
+.lede{font-size:1.2rem;color:var(--muted)}
+.eyebrow{font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
 section{display:grid;gap:14px}
 figure{margin:0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;overflow-x:auto}
 figure svg{display:block;max-width:100%;height:auto;margin:0 auto;font-family:var(--body)}
-figcaption{margin-top:10px;font-size:.95rem;color:var(--muted)}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0}
-.tile b{display:block;font-size:1.1rem;margin-bottom:4px}
-.tile.q{border-left:6px solid var(--danger)}
+figcaption{margin-top:10px;font-size:.92rem;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0}
+.tile b{display:block;font-size:1.02rem;margin-bottom:4px}
 .tile small{color:var(--muted)}
-.big{font-size:clamp(1.6rem,5vw,2.4rem);font-weight:900;font-family:var(--display);line-height:1.2}
+.q{border-left:6px solid var(--danger)}
 .note{font-size:.9rem;color:var(--muted)}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:700;font-size:.8rem;letter-spacing:.04em}
 .svgtxt{fill:currentColor}
-@media (prefers-reduced-motion:no-preference){ figure{transition:border-color .2s} }
 </style>
 
 <main>
   <header style="display:grid;gap:12px">
-    <span class="eyebrow">ELI5 · 商業模式</span>
-    <h1>錢在銀行，平台管流程</h1>
-    <p class="lede">一個不動產平台最容易出事的地方是「錢」。這份圖解說明我們為什麼把錢留在銀行，平台只管合約、文件、狀態與對帳。</p>
+    <span class="eyebrow">商業模式圖解 · v2 · 2026-10-30</span>
+    <h1>商業模式圖解</h1>
+    <p class="lede">十張圖說明平台怎麼切入、服務模組有哪些、錢怎麼走、三階段怎麼排、風險在哪。每張圖標出模組名稱與邊界。數字後的【高】【中】【低】是信心。</p>
   </header>
 
   <section>
-    <span class="eyebrow">第 1 張圖</span>
-    <h2>平台像一位盡責的流程員，錢永遠放在銀行的保險箱</h2>
+    <span class="eyebrow">第 1 張圖 · 市場現況</span>
+    <h2>四種牌照把服務切成四段，屋主自己用試算表串</h2>
     <figure>
-      <svg viewBox="0 0 760 300" role="img" aria-label="租客把押金匯進銀行信託專戶，銀行依雙方指示撥款給房東，平台只收到狀態通知並記錄">
-        <defs>
-          <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
-          <marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--money)"/></marker>
-        </defs>
-        <!-- 租客 -->
-        <circle cx="90" cy="120" r="34" fill="var(--accent-soft)" stroke="currentColor"/>
-        <text x="90" y="126" text-anchor="middle" font-size="16" font-weight="700" class="svgtxt">租客</text>
-        <!-- 銀行 -->
-        <rect x="290" y="70" width="180" height="100" rx="10" fill="var(--money-soft)" stroke="var(--money)" stroke-width="2"/>
-        <text x="380" y="108" text-anchor="middle" font-size="17" font-weight="900" class="svgtxt">銀行信託專戶</text>
-        <text x="380" y="134" text-anchor="middle" font-size="12" fill="var(--muted)">錢只進這裡</text>
-        <text x="380" y="152" text-anchor="middle" font-size="12" fill="var(--muted)">不能被平台拿走</text>
-        <!-- 房東 -->
-        <circle cx="670" cy="120" r="34" fill="var(--accent-soft)" stroke="currentColor"/>
-        <text x="670" y="126" text-anchor="middle" font-size="16" font-weight="700" class="svgtxt">房東</text>
-        <!-- 錢的箭頭 -->
-        <line x1="128" y1="120" x2="284" y2="120" stroke="var(--money)" stroke-width="4" marker-end="url(#m1)"/>
-        <text x="206" y="108" text-anchor="middle" font-size="13" fill="var(--money)" font-weight="700">押金、租金</text>
-        <line x1="476" y1="120" x2="630" y2="120" stroke="var(--money)" stroke-width="4" marker-end="url(#m1)"/>
-        <text x="553" y="108" text-anchor="middle" font-size="13" fill="var(--money)" font-weight="700">雙方同意才撥款</text>
-        <!-- 平台 -->
-        <rect x="260" y="220" width="240" height="56" rx="10" fill="var(--accent)" />
-        <text x="380" y="248" text-anchor="middle" font-size="16" font-weight="900" fill="#fff">平台</text>
-        <text x="380" y="266" text-anchor="middle" font-size="11" fill="#fff">合約、文件、狀態、對帳</text>
-        <!-- 狀態箭頭 -->
-        <line x1="380" y1="172" x2="380" y2="214" stroke="currentColor" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#a1)"/>
-        <text x="392" y="198" font-size="12" class="svgtxt">「已入帳」通知</text>
-        <line x1="128" y1="150" x2="262" y2="232" stroke="currentColor" stroke-width="1.5" stroke-dasharray="5 4"/>
-        <line x1="632" y1="150" x2="498" y2="232" stroke="currentColor" stroke-width="1.5" stroke-dasharray="5 4"/>
-        <text x="150" y="212" font-size="12" class="svgtxt">簽約、看狀態</text>
-        <text x="530" y="212" font-size="12" class="svgtxt">簽約、看報表</text>
+      <svg viewBox="0 0 860 300" role="img" aria-label="仲介、代管業、地政士、銀行四段服務各有牌照，屋主在中間自己串接">
+        <g font-size="13" class="svgtxt" text-anchor="middle" font-weight="700">
+          <rect x="30" y="40" width="180" height="90" rx="10" fill="var(--card)" stroke="currentColor"/><text x="120" y="70">仲介</text>
+          <text x="120" y="92" font-size="11" font-weight="400" fill="var(--muted)">買賣與媒合</text><text x="120" y="112" font-size="11" font-weight="400" fill="var(--danger)">經紀條例</text>
+          <rect x="240" y="40" width="180" height="90" rx="10" fill="var(--card)" stroke="currentColor"/><text x="330" y="70">代管業</text>
+          <text x="330" y="92" font-size="11" font-weight="400" fill="var(--muted)">收租、押金、修繕</text><text x="330" y="112" font-size="11" font-weight="400" fill="var(--danger)">租賃條例</text>
+          <rect x="450" y="40" width="180" height="90" rx="10" fill="var(--card)" stroke="currentColor"/><text x="540" y="70">地政士</text>
+          <text x="540" y="92" font-size="11" font-weight="400" fill="var(--muted)">登記與契約文件</text><text x="540" y="112" font-size="11" font-weight="400" fill="var(--danger)">地政士法</text>
+          <rect x="660" y="40" width="180" height="90" rx="10" fill="var(--money-soft)" stroke="var(--money)"/><text x="750" y="70">銀行</text>
+          <text x="750" y="92" font-size="11" font-weight="400" fill="var(--muted)">信託與價金保管</text><text x="750" y="112" font-size="11" font-weight="400" fill="var(--danger)">信託業法</text>
+        </g>
+        <circle cx="435" cy="225" r="40" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+        <text x="435" y="222" text-anchor="middle" font-size="14" font-weight="900" class="svgtxt">屋主</text>
+        <text x="435" y="240" text-anchor="middle" font-size="10" fill="var(--muted)">試算表、LINE</text>
+        <g stroke="currentColor" stroke-width="1.5" stroke-dasharray="5 4" fill="none">
+          <line x1="120" y1="130" x2="405" y2="200"/><line x1="330" y1="130" x2="425" y2="185"/><line x1="540" y1="130" x2="450" y2="185"/><line x1="750" y1="130" x2="470" y2="200"/>
+        </g>
+        <text x="435" y="288" text-anchor="middle" font-size="12" class="svgtxt">3 戶以上非自住屋主約 4.1 萬人【中】，每一位都在做這件事。</text>
       </svg>
-      <figcaption>金色實線是錢，只在租客、銀行、房東之間走。黑色虛線是資訊。平台只收資訊，不收錢。</figcaption>
+      <figcaption>四段各有法律與主管機關。沒有人負責把它們串起來，這是空白所在。</figcaption>
     </figure>
   </section>
 
   <section>
-    <span class="eyebrow">第 2 張圖</span>
-    <h2>為什麼不能自己收錢？因為前面有三道鎖著的門</h2>
+    <span class="eyebrow">第 2 張圖 · 平台定位與服務模組</span>
+    <h2>平台是屋主入口加協作層，十個模組，執行交持照網路</h2>
     <figure>
-      <svg viewBox="0 0 760 250" role="img" aria-label="三道門：保管別人的錢需要信託業牌照、代收代付需要第三方支付登錄、替房東收租管押金需要代管業牌照，每道門都有罰則">
-        <g>
-          <rect x="30" y="40" width="210" height="160" rx="10" fill="var(--danger-soft)" stroke="var(--danger)" stroke-width="2"/>
-          <text x="135" y="78" text-anchor="middle" font-size="15" font-weight="900" class="svgtxt">替很多人保管錢</text>
-          <text x="135" y="104" text-anchor="middle" font-size="12" fill="var(--muted)">只有銀行等信託業能做</text>
-          <text x="135" y="140" text-anchor="middle" font-size="13" fill="var(--danger)" font-weight="700">3 到 10 年徒刑</text>
-          <text x="135" y="160" text-anchor="middle" font-size="12" fill="var(--danger)">得併科千萬到兩億罰金</text>
-          <text x="135" y="188" text-anchor="middle" font-size="11" fill="var(--muted)">信託業法 §33、§48</text>
-        </g>
-        <g>
-          <rect x="275" y="40" width="210" height="160" rx="10" fill="var(--danger-soft)" stroke="var(--danger)" stroke-width="2"/>
-          <text x="380" y="78" text-anchor="middle" font-size="15" font-weight="900" class="svgtxt">幫人代收代付</text>
-          <text x="380" y="104" text-anchor="middle" font-size="12" fill="var(--muted)">要向數位發展部登錄</text>
-          <text x="380" y="122" text-anchor="middle" font-size="12" fill="var(--muted)">錢還是要全額進信託</text>
-          <text x="380" y="150" text-anchor="middle" font-size="13" fill="var(--danger)" font-weight="700">未登錄：2 年以下徒刑</text>
-          <text x="380" y="188" text-anchor="middle" font-size="11" fill="var(--muted)">洗錢防制法 §6</text>
-        </g>
-        <g>
-          <rect x="520" y="40" width="210" height="160" rx="10" fill="var(--danger-soft)" stroke="var(--danger)" stroke-width="2"/>
-          <text x="625" y="78" text-anchor="middle" font-size="15" font-weight="900" class="svgtxt">替房東收租、管押金</text>
-          <text x="625" y="104" text-anchor="middle" font-size="12" fill="var(--muted)">這叫「代管業務」</text>
-          <text x="625" y="122" text-anchor="middle" font-size="12" fill="var(--muted)">要有代管業牌照</text>
-          <text x="625" y="150" text-anchor="middle" font-size="13" fill="var(--danger)" font-weight="700">4 到 20 萬罰鍰</text>
-          <text x="625" y="188" text-anchor="middle" font-size="11" fill="var(--muted)">租賃條例 §3、§36</text>
-        </g>
-        <text x="380" y="232" text-anchor="middle" font-size="13" class="svgtxt">平台不開這三道門。保管找銀行，代管找持照業者。</text>
-      </svg>
-      <figcaption>三道門都已對照法條原文核對過。平台第一階段不領任何牌照，所以一道門都不開。</figcaption>
-    </figure>
-  </section>
-
-  <section>
-    <span class="eyebrow">第 3 張圖</span>
-    <h2>兆基事件：錢混在一個口袋，和分開放，差在哪</h2>
-    <figure>
-      <svg viewBox="0 0 760 260" role="img" aria-label="左邊：代管業者一個口袋混放自有資金、租金、押金，公司出事全部凍結。右邊：押金在銀行專戶、租金直接進房東、業者只有服務費，公司出事只凍結服務費">
-        <defs><marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
-        <text x="190" y="30" text-anchor="middle" font-size="15" font-weight="900" fill="var(--danger)">以前：一個口袋</text>
-        <rect x="70" y="50" width="240" height="150" rx="14" fill="var(--danger-soft)" stroke="var(--danger)" stroke-width="2"/>
-        <text x="190" y="90" text-anchor="middle" font-size="14" class="svgtxt">公司自己的錢</text>
-        <text x="190" y="118" text-anchor="middle" font-size="14" class="svgtxt">房東的租金</text>
-        <text x="190" y="146" text-anchor="middle" font-size="14" class="svgtxt">租客的押金</text>
-        <text x="190" y="180" text-anchor="middle" font-size="12" fill="var(--danger)" font-weight="700">公司出事，全部一起被凍結</text>
-        <text x="190" y="232" text-anchor="middle" font-size="12" fill="var(--muted)">2026 年 8 月，上萬戶受影響</text>
-
-        <text x="570" y="30" text-anchor="middle" font-size="15" font-weight="900" fill="var(--accent)">以後：三個口袋</text>
-        <rect x="430" y="50" width="130" height="60" rx="10" fill="var(--money-soft)" stroke="var(--money)" stroke-width="2"/>
-        <text x="495" y="78" text-anchor="middle" font-size="13" font-weight="700" class="svgtxt">押金</text>
-        <text x="495" y="96" text-anchor="middle" font-size="11" fill="var(--muted)">銀行專戶</text>
-        <rect x="580" y="50" width="130" height="60" rx="10" fill="var(--money-soft)" stroke="var(--money)" stroke-width="2"/>
-        <text x="645" y="78" text-anchor="middle" font-size="13" font-weight="700" class="svgtxt">租金</text>
-        <text x="645" y="96" text-anchor="middle" font-size="11" fill="var(--muted)">直接進房東帳戶</text>
-        <rect x="505" y="130" width="130" height="60" rx="10" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
-        <text x="570" y="158" text-anchor="middle" font-size="13" font-weight="700" class="svgtxt">服務費</text>
-        <text x="570" y="176" text-anchor="middle" font-size="11" fill="var(--muted)">業者唯一碰的錢</text>
-        <text x="570" y="222" text-anchor="middle" font-size="12" fill="var(--accent)" font-weight="700">公司出事，只凍結服務費</text>
-        <text x="570" y="242" text-anchor="middle" font-size="11" fill="var(--muted)">平台幫業者證明這件事</text>
-      </svg>
-      <figcaption>內政部 2026 年 8 月表示要研議押金專戶。平台賣的就是右邊這張圖的證明。</figcaption>
-    </figure>
-  </section>
-
-  <section>
-    <span class="eyebrow">第 4 張圖</span>
-    <h2>買房子的錢，什麼時候進專戶、什麼時候出來</h2>
-    <figure>
-      <svg viewBox="0 0 760 240" role="img" aria-label="買賣七段流程時間線：簽約、用印、完稅各存約一成進專戶，過戶後銀行撥貸款，點交後專戶餘額匯給賣方">
-        <defs><marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
-        <line x1="40" y1="120" x2="730" y2="120" stroke="currentColor" stroke-width="2" marker-end="url(#a4)"/>
+      <svg viewBox="0 0 860 470" role="img" aria-label="三層：屋主入口與三種身分；平台十個服務模組；持照網路與銀行。平台不持有資金、不居間、不代管">
+        <defs><marker id="m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+        <!-- 入口 -->
         <g font-size="13" font-weight="700" class="svgtxt" text-anchor="middle">
-          <text x="80" y="150">簽約前</text><text x="180" y="150">簽約</text><text x="280" y="150">用印</text>
-          <text x="380" y="150">完稅</text><text x="480" y="150">過戶</text><text x="580" y="150">點交</text><text x="680" y="150">結案</text>
+          <rect x="60" y="20" width="200" height="46" rx="23" fill="var(--accent-soft)" stroke="currentColor"/><text x="160" y="49">甲方（屋主、出租人）</text>
+          <rect x="330" y="20" width="200" height="46" rx="23" fill="var(--accent-soft)" stroke="currentColor"/><text x="430" y="49">乙方（承租人、買方）</text>
+          <rect x="600" y="20" width="200" height="46" rx="23" fill="var(--accent-soft)" stroke="currentColor"/><text x="700" y="49">經理人（代管、經紀）</text>
         </g>
-        <g fill="currentColor"><circle cx="80" cy="120" r="6"/><circle cx="180" cy="120" r="6"/><circle cx="280" cy="120" r="6"/><circle cx="380" cy="120" r="6"/><circle cx="480" cy="120" r="6"/><circle cx="580" cy="120" r="6"/><circle cx="680" cy="120" r="6"/></g>
-        <!-- 錢進 -->
-        <g stroke="var(--money)" stroke-width="3" fill="none">
-          <line x1="180" y1="60" x2="180" y2="110"/><line x1="280" y1="60" x2="280" y2="110"/><line x1="380" y1="60" x2="380" y2="110"/>
+        <text x="430" y="88" text-anchor="middle" font-size="11" fill="var(--muted)">三種身分，經理人必須通過證照驗證才能開通</text>
+        <!-- 平台 -->
+        <rect x="30" y="105" width="800" height="200" rx="14" fill="var(--card)" stroke="var(--accent)" stroke-width="2"/>
+        <text x="430" y="130" text-anchor="middle" font-size="15" font-weight="900" fill="var(--accent)">平台：資料與協作層（不持有資金、不居間、不代管）</text>
+        <g font-size="12" font-weight="700" class="svgtxt" text-anchor="middle">
+          <rect x="50" y="145" width="140" height="56" rx="8" fill="var(--p1s)" stroke="var(--p1)"/><text x="120" y="168">身分與組織</text><text x="120" y="186" font-size="10" font-weight="400" fill="var(--muted)">P1</text>
+          <rect x="205" y="145" width="140" height="56" rx="8" fill="var(--p1s)" stroke="var(--p1)"/><text x="275" y="168">經理人驗證</text><text x="275" y="186" font-size="10" font-weight="400" fill="var(--muted)">P1 · 執業主體與人員</text>
+          <rect x="360" y="145" width="140" height="56" rx="8" fill="var(--p1s)" stroke="var(--p1)"/><text x="430" y="168">物件與單位</text><text x="430" y="186" font-size="10" font-weight="400" fill="var(--muted)">P1 · 錨點、權源</text>
+          <rect x="515" y="145" width="140" height="56" rx="8" fill="var(--p1s)" stroke="var(--p1)"/><text x="585" y="168">合約與簽章</text><text x="585" y="186" font-size="10" font-weight="400" fill="var(--muted)">P1 · 三層文件、分流</text>
+          <rect x="670" y="145" width="140" height="56" rx="8" fill="var(--p1s)" stroke="var(--p1)"/><text x="740" y="168">帳務與押金</text><text x="740" y="186" font-size="10" font-weight="400" fill="var(--muted)">P1 · 鏡像帳</text>
+          <rect x="50" y="225" width="140" height="56" rx="8" fill="var(--p1s)" stroke="var(--p1)"/><text x="120" y="248">報表與資產總覽</text><text x="120" y="266" font-size="10" font-weight="400" fill="var(--muted)">P1 v1 · P3 全資產</text>
+          <rect x="205" y="225" width="140" height="56" rx="8" fill="var(--p2s)" stroke="var(--p2)"/><text x="275" y="248">案件流程</text><text x="275" y="266" font-size="10" font-weight="400" fill="var(--muted)">P2 · 買賣七段</text>
+          <rect x="360" y="225" width="140" height="56" rx="8" fill="var(--p2s)" stroke="var(--p2)"/><text x="430" y="248">信託狀態轉接</text><text x="430" y="266" font-size="10" font-weight="400" fill="var(--muted)">P2 · 只存狀態</text>
+          <rect x="515" y="225" width="140" height="56" rx="8" fill="var(--p3s)" stroke="var(--p3)"/><text x="585" y="248">文件庫與提醒</text><text x="585" y="266" font-size="10" font-weight="400" fill="var(--muted)">P1 謄本 · P3 繼承</text>
+          <rect x="670" y="225" width="140" height="56" rx="8" fill="var(--card)" stroke="currentColor"/><text x="740" y="248">稽核紀錄</text><text x="740" y="266" font-size="10" font-weight="400" fill="var(--muted)">全階段</text>
         </g>
-        <g fill="var(--money)" font-size="12" text-anchor="middle" font-weight="700">
-          <text x="180" y="48">約 10% 進專戶</text><text x="280" y="48">約 10% 進專戶</text><text x="380" y="48">約 10% 進專戶</text>
-          <text x="380" y="30">無貸款者：尾款也在這裡存入</text>
+        <!-- 持照網路 -->
+        <g font-size="12" font-weight="700" class="svgtxt" text-anchor="middle">
+          <rect x="40" y="350" width="130" height="48" rx="8" fill="var(--bg)" stroke="currentColor" stroke-dasharray="6 4"/><text x="105" y="370">代管業</text><text x="105" y="388" font-size="10" font-weight="400" fill="var(--muted)">收租、修繕</text>
+          <rect x="190" y="350" width="130" height="48" rx="8" fill="var(--bg)" stroke="currentColor" stroke-dasharray="6 4"/><text x="255" y="370">經紀業</text><text x="255" y="388" font-size="10" font-weight="400" fill="var(--muted)">居間、簽章</text>
+          <rect x="340" y="350" width="130" height="48" rx="8" fill="var(--bg)" stroke="currentColor" stroke-dasharray="6 4"/><text x="405" y="370">地政士</text><text x="405" y="388" font-size="10" font-weight="400" fill="var(--muted)">登記</text>
+          <rect x="490" y="350" width="130" height="48" rx="8" fill="var(--bg)" stroke="var(--money)" stroke-dasharray="6 4"/><text x="555" y="370">建經與銀行</text><text x="555" y="388" font-size="10" font-weight="400" fill="var(--muted)">信託專戶</text>
+          <rect x="640" y="350" width="130" height="48" rx="8" fill="var(--bg)" stroke="currentColor" stroke-dasharray="6 4"/><text x="705" y="370">會計師、律師</text><text x="705" y="388" font-size="10" font-weight="400" fill="var(--muted)">P3 申報、文件</text>
         </g>
-        <!-- 錢出 -->
-        <g stroke="var(--money)" stroke-width="3" fill="none">
-          <line x1="480" y1="130" x2="480" y2="180"/><line x1="580" y1="130" x2="580" y2="180"/>
+        <g stroke="currentColor" stroke-width="1.5" fill="none">
+          <line x1="160" y1="66" x2="160" y2="101" marker-end="url(#m2)"/><line x1="430" y1="66" x2="430" y2="101" marker-end="url(#m2)"/><line x1="700" y1="66" x2="700" y2="101" marker-end="url(#m2)"/>
+          <line x1="430" y1="305" x2="430" y2="346" marker-end="url(#m2)"/>
         </g>
-        <g fill="var(--money)" font-size="12" text-anchor="middle" font-weight="700">
-          <text x="480" y="198">銀行撥貸款進專戶</text><text x="580" y="198">餘額匯給賣方</text>
-          <text x="580" y="216">房子鑰匙換新權狀</text>
-        </g>
-        <text x="80" y="200" text-anchor="middle" font-size="11" fill="var(--muted)">定金</text>
-        <text x="680" y="200" text-anchor="middle" font-size="11" fill="var(--muted)">文件歸檔</text>
+        <text x="430" y="330" text-anchor="middle" font-size="11" class="svgtxt">狀態、文件、待辦往下；執行結果往上</text>
+        <text x="430" y="445" text-anchor="middle" font-size="12" class="svgtxt">虛線框在平台外面。簽名、錢、產權、申報的真相都在那裡。</text>
       </svg>
-      <figcaption>以僑馥建經的流程為骨架。比例是業界常見做法，法律沒有規定。平台在每一段通知該誰做事，錢由建經與銀行處理。</figcaption>
+      <figcaption>顏色代表階段：綠 Phase 1、藍 Phase 2、紫 Phase 3。平台不開四種牌照的門。</figcaption>
     </figure>
   </section>
 
   <section>
-    <span class="eyebrow">第 5 張圖</span>
-    <h2>那平台靠什麼賺錢？向用工具的人收，每月、每份、每件</h2>
-    <div class="grid">
-      <div class="tile"><span class="eyebrow">現在</span><b>每個租賃單位每月</b><small>代管業者與多戶房東付訂閱費。假設每月 30 到 80 元，待訪談確認。</small></div>
-      <div class="tile"><span class="eyebrow">現在</span><b>每份電子合約</b><small>沿用既有的點點簽簽約。假設每份 100 到 300 元。</small></div>
-      <div class="tile"><span class="eyebrow">現在</span><b>每個物件驗證</b><small>房東上傳謄本，平台驗證並歸檔。</small></div>
-      <div class="tile"><span class="eyebrow">下一步</span><b>每件信託專戶案件</b><small>要先找到願意合作的銀行。假設每件 500 到 2,000 元。</small></div>
-      <div class="tile"><span class="eyebrow">之後</span><b>每件買賣流程</b><small>向建經或仲介收。它們已有系統，要用合作的方式進入。</small></div>
-      <div class="tile"><span class="eyebrow">之後</span><b>導流分潤</b><small>租金保障險、搬家、清潔。保險分潤要先確認資格。</small></div>
-    </div>
-    <p class="note">國外經驗：管理軟體公司約四分之三的營收來自金流與附加服務，訂閱費只是入口。台灣要先過牌照這關，所以附加服務排在後面。</p>
-  </section>
-
-  <section>
-    <span class="eyebrow">第 6 張圖</span>
-    <h2>先做租賃，再做專戶，最後做買賣</h2>
+    <span class="eyebrow">第 3 張圖 · 錢的流向</span>
+    <h2>Phase 1 錢直接進出租人帳戶，Phase 2 進銀行信託專戶，平台只拿狀態</h2>
     <figure>
-      <svg viewBox="0 0 760 230" role="img" aria-label="三個階梯：Now 租賃管理與合規函詢、Next 信託專戶與自有房源、Later 買賣流程層與信託財產管理">
-        <rect x="30" y="140" width="220" height="60" rx="8" fill="var(--accent)"/>
-        <text x="140" y="165" text-anchor="middle" font-size="15" font-weight="900" fill="#fff">Now · 0 到 6 個月</text>
-        <text x="140" y="186" text-anchor="middle" font-size="11" fill="#fff">合約、物件錨點、押金台帳、函詢</text>
-        <rect x="270" y="90" width="220" height="110" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
-        <text x="380" y="118" text-anchor="middle" font-size="15" font-weight="900" class="svgtxt">Next · 6 到 18 個月</text>
-        <text x="380" y="140" text-anchor="middle" font-size="11" fill="var(--muted)">銀行信託專戶、移交包</text>
-        <text x="380" y="158" text-anchor="middle" font-size="11" fill="var(--muted)">自有房源上架</text>
-        <text x="380" y="184" text-anchor="middle" font-size="11" fill="var(--danger)" font-weight="700">前提：銀行簽約、函詢有結果</text>
-        <rect x="510" y="40" width="220" height="160" rx="8" fill="var(--card)" stroke="var(--line)" stroke-width="2"/>
-        <text x="620" y="68" text-anchor="middle" font-size="15" font-weight="900" class="svgtxt">Later · 18 個月後</text>
-        <text x="620" y="92" text-anchor="middle" font-size="11" fill="var(--muted)">買賣七段流程層</text>
-        <text x="620" y="110" text-anchor="middle" font-size="11" fill="var(--muted)">信託財產的出租管理</text>
-        <text x="620" y="128" text-anchor="middle" font-size="11" fill="var(--muted)">資料 API 給建經與銀行</text>
-        <text x="620" y="184" text-anchor="middle" font-size="11" fill="var(--danger)" font-weight="700">前提：建經或銀行願意推送狀態</text>
-        <text x="380" y="222" text-anchor="middle" font-size="12" class="svgtxt">每一階的前提沒過，就不往上走。</text>
+      <svg viewBox="0 0 860 300" role="img" aria-label="左：Phase 1 承租人直接匯款給出租人，平台記鏡像帳。右：Phase 2 買方匯入銀行信託專戶，建經依指示撥款給賣方，平台收入帳狀態">
+        <defs><marker id="m3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--money)"/></marker>
+        <marker id="m3b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+        <text x="215" y="30" text-anchor="middle" font-size="14" font-weight="900" fill="var(--p1)">Phase 1 租賃</text>
+        <circle cx="60" cy="110" r="32" fill="var(--accent-soft)" stroke="currentColor"/><text x="60" y="115" text-anchor="middle" font-size="13" font-weight="700" class="svgtxt">承租人</text>
+        <circle cx="370" cy="110" r="32" fill="var(--accent-soft)" stroke="currentColor"/><text x="370" y="115" text-anchor="middle" font-size="13" font-weight="700" class="svgtxt">出租人</text>
+        <line x1="96" y1="110" x2="332" y2="110" stroke="var(--money)" stroke-width="4" marker-end="url(#m3)"/>
+        <text x="215" y="98" text-anchor="middle" font-size="12" fill="var(--money)" font-weight="700">押金、租金直接匯款</text>
+        <rect x="130" y="180" width="170" height="52" rx="8" fill="var(--p1)"/><text x="215" y="202" text-anchor="middle" font-size="13" font-weight="900" fill="#fff">平台鏡像帳</text><text x="215" y="220" text-anchor="middle" font-size="10" fill="#fff">押金台帳、逾期提醒、報表</text>
+        <line x1="215" y1="118" x2="215" y2="176" stroke="currentColor" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#m3b)"/>
+        <text x="232" y="150" font-size="11" class="svgtxt">上傳或對帳檔</text>
+        <text x="215" y="270" text-anchor="middle" font-size="11" fill="var(--muted)">平台不碰錢，所以不需代管業牌照（代操作除外）</text>
+
+        <line x1="440" y1="40" x2="440" y2="280" stroke="var(--line)" stroke-width="1"/>
+        <text x="655" y="30" text-anchor="middle" font-size="14" font-weight="900" fill="var(--p2)">Phase 2 買賣</text>
+        <circle cx="500" cy="110" r="30" fill="var(--accent-soft)" stroke="currentColor"/><text x="500" y="115" text-anchor="middle" font-size="13" font-weight="700" class="svgtxt">買方</text>
+        <rect x="585" y="78" width="140" height="64" rx="8" fill="var(--money-soft)" stroke="var(--money)" stroke-width="2"/><text x="655" y="104" text-anchor="middle" font-size="13" font-weight="900" class="svgtxt">銀行信託專戶</text><text x="655" y="124" text-anchor="middle" font-size="10" fill="var(--muted)">建經當委託人</text>
+        <circle cx="810" cy="110" r="30" fill="var(--accent-soft)" stroke="currentColor"/><text x="810" y="115" text-anchor="middle" font-size="13" font-weight="700" class="svgtxt">賣方</text>
+        <line x1="532" y1="110" x2="580" y2="110" stroke="var(--money)" stroke-width="4" marker-end="url(#m3)"/>
+        <line x1="727" y1="110" x2="775" y2="110" stroke="var(--money)" stroke-width="4" marker-end="url(#m3)"/>
+        <text x="751" y="98" text-anchor="middle" font-size="10" fill="var(--money)" font-weight="700">依指示撥款</text>
+        <rect x="570" y="180" width="170" height="52" rx="8" fill="var(--p2)"/><text x="655" y="202" text-anchor="middle" font-size="13" font-weight="900" fill="#fff">平台狀態轉接層</text><text x="655" y="220" text-anchor="middle" font-size="10" fill="#fff">只存案件識別碼與款項狀態</text>
+        <line x1="655" y1="142" x2="655" y2="176" stroke="currentColor" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#m3b)"/>
+        <text x="672" y="163" font-size="11" class="svgtxt">「已入帳」</text>
+        <text x="655" y="270" text-anchor="middle" font-size="11" fill="var(--muted)">查帳連結導回銀行或建經頁，由買賣方本人驗證【高】</text>
       </svg>
-      <figcaption>每一階都有法規或合作前提。Now 階段不依賴任何銀行，押金先進房東帳戶，平台只記帳。</figcaption>
+      <figcaption>金色實線是錢，黑色虛線是資訊。經理人或平台直接向銀行查帳沒有法源，要靠委託人書面授權，銀行是否接受待確認【高風險】。</figcaption>
     </figure>
   </section>
 
   <section>
-    <span class="eyebrow">還沒有答案的三件事</span>
-    <h2>主管機關沒說過，所以要寫信去問</h2>
-    <div class="grid">
-      <div class="tile q"><b>平台幫房東刊登，算仲介嗎？</b><small>法律只說「居間或代理」要牌照，沒說網路平台算不算。平台先只收固定費、不帶看、不議價。</small></div>
-      <div class="tile q"><b>平台提醒收租、算押金，算代管嗎？</b><small>法律把「收租與押金管理」列為代管業務。平台先只做房東自己操作的工具。</small></div>
-      <div class="tile q"><b>平台傳撥款指示，算代收代付嗎？</b><small>平台不碰錢，只把雙方簽好的指示交給銀行。要向金管會與數位發展部確認。</small></div>
-    </div>
-    <p class="note">三封函詢可以同時寄。等回覆期間，只做不碰錢、不代操作的功能。</p>
+    <span class="eyebrow">第 4 張圖 · 經理人驗證</span>
+    <h2>經理人不是法定名詞，開通前要驗公司與人兩層</h2>
+    <figure>
+      <svg viewBox="0 0 860 260" role="img" aria-label="經理人驗證流程：上傳證書與公司資料，商工 API 查公司，resim 人工核對證書，通過後顯示法定稱謂與標章，效期前六個月提醒換證">
+        <defs><marker id="m4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+        <g font-size="12" class="svgtxt" text-anchor="middle" font-weight="700">
+          <rect x="20" y="60" width="150" height="70" rx="8" fill="var(--card)" stroke="currentColor"/><text x="95" y="88">上傳證書與統編</text><text x="95" y="108" font-size="10" font-weight="400" fill="var(--muted)">經理人自己做</text>
+          <rect x="200" y="30" width="170" height="60" rx="8" fill="var(--p1s)" stroke="var(--p1)"/><text x="285" y="53">執業主體</text><text x="285" y="72" font-size="10" font-weight="400" fill="var(--muted)">商工 API：狀態、營業項目</text>
+          <rect x="200" y="110" width="170" height="60" rx="8" fill="var(--p1s)" stroke="var(--p1)"/><text x="285" y="133">執業人員</text><text x="285" y="152" font-size="10" font-weight="400" fill="var(--muted)">resim 人工核對證號與效期</text>
+          <rect x="400" y="60" width="150" height="70" rx="8" fill="var(--card)" stroke="currentColor"/><text x="475" y="88">專任規則檢查</text><text x="475" y="108" font-size="10" font-weight="400" fill="var(--muted)">管理人員兩家即擋；經紀人員提示</text>
+          <rect x="580" y="60" width="150" height="70" rx="8" fill="var(--accent)"/><text x="655" y="88" fill="#fff">已驗證</text><text x="655" y="108" font-size="10" font-weight="400" fill="#fff">顯示法定稱謂加標章</text>
+          <rect x="760" y="60" width="90" height="70" rx="8" fill="var(--danger-soft)" stroke="var(--danger)"/><text x="805" y="88">已失效</text><text x="805" y="108" font-size="10" font-weight="400" fill="var(--muted)">逾期、廢止</text>
+        </g>
+        <g stroke="currentColor" stroke-width="1.5" fill="none">
+          <line x1="170" y1="95" x2="196" y2="60" marker-end="url(#m4)"/><line x1="170" y1="95" x2="196" y2="140" marker-end="url(#m4)"/>
+          <line x1="370" y1="60" x2="396" y2="90" marker-end="url(#m4)"/><line x1="370" y1="140" x2="396" y2="100" marker-end="url(#m4)"/>
+          <line x1="550" y1="95" x2="576" y2="95" marker-end="url(#m4)"/><line x1="730" y1="95" x2="756" y2="95" marker-end="url(#m4)"/>
+        </g>
+        <text x="805" y="150" text-anchor="middle" font-size="10" fill="var(--muted)">效期 4 年</text>
+        <text x="430" y="210" text-anchor="middle" font-size="12" class="svgtxt">標章文字只寫「證書資料已核對」，不寫「平台保證合法」。</text>
+        <text x="430" y="235" text-anchor="middle" font-size="11" fill="var(--muted)">resim 查詢有圖形驗證碼，自動化要先向內政部地政司申請【高】。</text>
+      </svg>
+      <figcaption>寄售走經紀條例（經紀人、營業員），代管走租賃條例（租賃住宅管理人員）。兩種都做要兩種資格。</figcaption>
+    </figure>
   </section>
 
-  <footer class="note">依據：docs/research/asset-mgmt-platform 的調研報告與 BRD，2026-10-29。法條已對照全國法規資料庫原文。費率與定價為假設，待訪談驗證。</footer>
+  <section>
+    <span class="eyebrow">第 5 張圖 · 商業模式畫布</span>
+    <h2>九格一次看完：向屋主與經理人收訂閱，向案件與高端客戶收費</h2>
+    <figure>
+      <svg viewBox="0 0 860 400" role="img" aria-label="商業模式畫布九格：關鍵夥伴、關鍵活動、關鍵資源、價值主張、顧客關係、通路、客群、成本結構、收入來源">
+        <g font-size="11" class="svgtxt">
+          <rect x="10" y="10" width="165" height="250" rx="8" fill="var(--card)" stroke="currentColor"/><text x="20" y="32" font-weight="900">關鍵夥伴</text>
+          <text x="20" y="56">點點簽</text><text x="20" y="76">代管業、經紀業</text><text x="20" y="96">地政士</text><text x="20" y="116">銀行信託部、建經</text><text x="20" y="136">產險（租金保障）</text><text x="20" y="156">內政部、數發部</text><text x="20" y="176" fill="var(--muted)">（憑證介接）</text>
+          <rect x="180" y="10" width="165" height="120" rx="8" fill="var(--card)" stroke="currentColor"/><text x="190" y="32" font-weight="900">關鍵活動</text>
+          <text x="190" y="56">證照驗證</text><text x="190" y="76">合約與文件流程</text><text x="190" y="96">對帳與報表</text><text x="190" y="116">持照者協調、合規</text>
+          <rect x="180" y="140" width="165" height="120" rx="8" fill="var(--card)" stroke="currentColor"/><text x="190" y="162" font-weight="900">關鍵資源</text>
+          <text x="190" y="186">產權錨點資料</text><text x="190" y="206">持照者網路</text><text x="190" y="226">合約與簽章能力</text><text x="190" y="246">案件狀態機、函釋</text>
+          <rect x="350" y="10" width="165" height="250" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/><text x="360" y="32" font-weight="900">價值主張</text>
+          <text x="360" y="56" font-weight="700">屋主</text><text x="360" y="74">一個入口管所有物件</text><text x="360" y="92">錢的狀態看得到</text>
+          <text x="360" y="118" font-weight="700">經理人</text><text x="360" y="136">證照驗證、屋主報表</text><text x="360" y="154">接案不違規</text>
+          <text x="360" y="180" font-weight="700">承租人</text><text x="360" y="198">有權出租可查</text>
+          <text x="360" y="224" font-weight="700">持照者</text><text x="360" y="242">案件狀態自動流轉</text>
+          <rect x="520" y="10" width="165" height="120" rx="8" fill="var(--card)" stroke="currentColor"/><text x="530" y="32" font-weight="900">顧客關係</text>
+          <text x="530" y="56">自助工具</text><text x="530" y="76">經理人服務屋主</text><text x="530" y="96">高端客戶由持照者</text><text x="530" y="116">面對面</text>
+          <rect x="520" y="140" width="165" height="120" rx="8" fill="var(--card)" stroke="currentColor"/><text x="530" y="162" font-weight="900">通路</text>
+          <text x="530" y="186">經理人帶屋主（B2B2C）</text><text x="530" y="206">銀行與力興類轉介</text><text x="530" y="226">自有房源入口（P2 後）</text>
+          <rect x="690" y="10" width="160" height="250" rx="8" fill="var(--card)" stroke="currentColor"/><text x="700" y="32" font-weight="900">客群</text>
+          <text x="700" y="56">多屋者 4.1 萬【中】</text><text x="700" y="76">經理人 2,254 家【中】</text><text x="700" y="96">承租人（免費）</text><text x="700" y="122">P2 買賣當事人</text><text x="700" y="142">地政士、建經</text><text x="700" y="168">P3 高端客戶</text><text x="700" y="188">12.3 萬人【中】</text><text x="700" y="208">信託銀行</text>
+          <rect x="10" y="270" width="415" height="120" rx="8" fill="var(--danger-soft)" stroke="var(--danger)"/><text x="20" y="292" font-weight="900">成本結構</text>
+          <text x="20" y="316">工程、法務與函詢</text><text x="20" y="336">憑證與 API 介接費</text><text x="20" y="356">客服與人工審核</text><text x="20" y="376">持照者分潤</text>
+          <rect x="435" y="270" width="415" height="120" rx="8" fill="var(--money-soft)" stroke="var(--money)"/><text x="445" y="292" font-weight="900">收入來源</text>
+          <text x="445" y="316">P1 屋主訂閱、經理人訂閱、電子合約、物件驗證</text><text x="445" y="336">P2 買賣案件流程費、建經特約分潤、自有房源上架</text><text x="445" y="356">P3 資產管理年費、持照者轉介分潤</text><text x="445" y="376" fill="var(--muted)">定價全部待訪談【低】</text>
+        </g>
+      </svg>
+      <figcaption>依 Osterwalder 的九格。平台不收成交佣金、不收保管費，所以收入集中在訂閱與案件費。</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <span class="eyebrow">第 6 張圖 · 市場規模</span>
+    <h2>Phase 1 的池子不大：1,000 萬年營收要約 351 位屋主</h2>
+    <figure>
+      <svg viewBox="0 0 860 300" role="img" aria-label="漏斗：TAM 全國出租住宅 82 至 432 億元；SAM 三戶以上屋主出租戶 8.4 至 14.7 億元；SOM 三年滲透 1% 到 5% 約 841 萬到 7,336 萬元">
+        <g font-size="12" class="svgtxt" text-anchor="middle">
+          <polygon points="60,40 800,40 700,120 160,120" fill="var(--accent-soft)" stroke="var(--accent)"/>
+          <text x="430" y="70" font-size="14" font-weight="900">TAM 全國出租住宅 100 萬至 300 萬戶</text><text x="430" y="95" font-size="12">年費池 82.6 億至 432 億元【低】</text>
+          <polygon points="160,130 700,130 620,210 240,210" fill="var(--money-soft)" stroke="var(--money)"/>
+          <text x="430" y="160" font-size="14" font-weight="900">SAM 3 戶以上屋主的出租戶 約 10.2 萬戶</text><text x="430" y="185" font-size="12">8.4 億至 14.7 億元【低】，相當於現有代管業營收的 43%</text>
+          <polygon points="240,220 620,220 560,280 300,280" fill="var(--card)" stroke="currentColor"/>
+          <text x="430" y="248" font-size="13" font-weight="900">SOM 滲透 1% 至 5%：412 至 2,059 位屋主</text><text x="430" y="270" font-size="11">841 萬至 7,336 萬元【低】</text>
+        </g>
+      </svg>
+      <figcaption>三層共用同一個單位（出租中的住宅戶）、同一組假設（每人 3.53 戶、出租 70%、費率 8%）。SAM 偏高，實際上限更低。公司收入要靠 Phase 2 與 3。</figcaption>
+    </figure>
+    <div class="grid">
+      <div class="tile"><b>Phase 2 每案</b><small>履保費行情約成交價萬分之六【低】。2,000 萬成交約 12,000 元。平台流程費假設每案 1,000 至 3,000 元。</small></div>
+      <div class="tile"><b>Phase 3 天花板</b><small>高資產者不動產管理費池 40 億至 242 億元一年【低】。現實遠低。繼承協調上限約 22 億元。</small></div>
+      <div class="tile"><b>反推客戶數</b><small>12,000 元租金情境每位屋主年費約 2.85 萬元。1,000 萬營收需約 351 位【低】。</small></div>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">第 7 張圖 · 產品路線甘特圖</span>
+    <h2>36 個月三階段，三個關卡依證據放行</h2>
+    <figure>
+      <svg viewBox="0 0 900 520" role="img" aria-label="甘特圖：Phase 1 第 1 至 9 月，Phase 2 第 9 至 21 月，Phase 3 第 21 至 36 月，各有合規、產品、驗證工作流與關卡 G1、G2、G3">
+        <!-- 月份刻度：x = 250 + (m-1)*18 ，36 月 -->
+        <g font-size="10" fill="var(--muted)" text-anchor="middle">
+          <text x="250" y="28">M1</text><text x="322" y="28">M5</text><text x="412" y="28">M10</text><text x="502" y="28">M15</text><text x="592" y="28">M20</text><text x="682" y="28">M25</text><text x="772" y="28">M30</text><text x="880" y="28">M36</text>
+        </g>
+        <g stroke="var(--line)" stroke-width="1">
+          <line x1="250" y1="34" x2="250" y2="500"/><line x1="322" y1="34" x2="322" y2="500"/><line x1="412" y1="34" x2="412" y2="500"/><line x1="502" y1="34" x2="502" y2="500"/><line x1="592" y1="34" x2="592" y2="500"/><line x1="682" y1="34" x2="682" y2="500"/><line x1="772" y1="34" x2="772" y2="500"/><line x1="880" y1="34" x2="880" y2="500"/>
+        </g>
+        <!-- 列：y 每 26 -->
+        <g font-size="11" class="svgtxt">
+          <text x="10" y="56" font-weight="900" fill="var(--p1)">Phase 1 物件管理與租賃</text>
+          <text x="20" y="82">函詢三個灰區</text><rect x="250" y="70" width="54" height="16" rx="4" fill="var(--p1)"/>
+          <text x="20" y="108">resim 與憑證介接申請</text><rect x="250" y="96" width="72" height="16" rx="4" fill="var(--p1)"/>
+          <text x="20" y="134">代管業與經紀業特約 3 家</text><rect x="268" y="122" width="90" height="16" rx="4" fill="var(--p1)"/>
+          <text x="20" y="160">產權錨點與租賃單位</text><rect x="250" y="148" width="54" height="16" rx="4" fill="var(--p1)" opacity=".75"/>
+          <text x="20" y="186">組織、三種身分、經理人驗證</text><rect x="268" y="174" width="72" height="16" rx="4" fill="var(--p1)" opacity=".75"/>
+          <text x="20" y="212">簽章分流（代管、包租）</text><rect x="286" y="200" width="54" height="16" rx="4" fill="var(--p1)" opacity=".75"/>
+          <text x="20" y="238">鏡像帳、押金台帳、報表</text><rect x="304" y="226" width="72" height="16" rx="4" fill="var(--p1)" opacity=".75"/>
+          <text x="20" y="264">屋主資產總覽 v1、移交包</text><rect x="340" y="252" width="72" height="16" rx="4" fill="var(--p1)" opacity=".75"/>
+          <text x="20" y="290">屋主訪談 20 位、費率詢價</text><rect x="250" y="278" width="54" height="16" rx="4" fill="var(--money)"/>
+          <text x="20" y="316">pilot 3 家經理人 300 單位</text><rect x="340" y="304" width="72" height="16" rx="4" fill="var(--money)"/>
+          <line x1="394" y1="44" x2="394" y2="330" stroke="var(--danger)" stroke-width="2" stroke-dasharray="4 3"/><text x="394" y="342" text-anchor="middle" font-size="11" fill="var(--danger)" font-weight="900">G1 第 9 月</text>
+
+          <text x="10" y="368" font-weight="900" fill="var(--p2)">Phase 2 物件銷售與信託</text>
+          <text x="20" y="394">經紀業合作、建經特約、銀行回覆</text><rect x="394" y="382" width="90" height="16" rx="4" fill="var(--p2)"/>
+          <text x="20" y="420">案件 orchestrator、七段待辦</text><rect x="412" y="408" width="90" height="16" rx="4" fill="var(--p2)" opacity=".75"/>
+          <text x="20" y="446">信託狀態轉接、查帳連結、雙簽</text><rect x="466" y="434" width="90" height="16" rx="4" fill="var(--p2)" opacity=".75"/>
+          <text x="20" y="472">自有房源上架、驗證標章</text><rect x="502" y="460" width="108" height="16" rx="4" fill="var(--p2)" opacity=".75"/>
+          <line x1="610" y1="356" x2="610" y2="480" stroke="var(--danger)" stroke-width="2" stroke-dasharray="4 3"/><text x="610" y="494" text-anchor="middle" font-size="11" fill="var(--danger)" font-weight="900">G2 第 21 月</text>
+        </g>
+        <g font-size="11" class="svgtxt">
+          <text x="640" y="368" font-weight="900" fill="var(--p3)">Phase 3 全資產管理</text>
+          <rect x="610" y="382" width="108" height="16" rx="4" fill="var(--p3)"/><text x="722" y="394" font-size="10">金管會諮詢、持照者合作</text>
+          <rect x="628" y="408" width="144" height="16" rx="4" fill="var(--p3)" opacity=".75"/><text x="776" y="420" font-size="10">清冊、提醒、文件庫</text>
+          <rect x="736" y="434" width="144" height="16" rx="4" fill="var(--p3)" opacity=".75"/><text x="640" y="446" font-size="10" text-anchor="end">繼承協調、轉介</text>
+          <line x1="880" y1="356" x2="880" y2="480" stroke="var(--danger)" stroke-width="2" stroke-dasharray="4 3"/><text x="862" y="494" text-anchor="middle" font-size="11" fill="var(--danger)" font-weight="900">G3 第 36 月</text>
+        </g>
+      </svg>
+      <figcaption>深色是合規與合作，淺色是產品，金色是市場驗證。月份是相對月，不是承諾日期。每一階段買的是下一階段的選擇權。</figcaption>
+    </figure>
+    <table>
+      <thead><tr><th>關卡</th><th>必須有的證據</th><th>放行</th><th>停止</th></tr></thead>
+      <tbody>
+        <tr><td>G1 第 9 月</td><td>三個函詢有回覆；pilot 300 單位；付費屋主 50 或付費經理人 3 家</td><td>兩項付費目標達成</td><td>付費為零，回到需求重新定義</td></tr>
+        <tr><td>G2 第 21 月</td><td>一家銀行或建經書面同意查帳授權；經紀業合作簽訂；30 件跑完七段</td><td>授權與案件都成立</td><td>無持照者合作，停在流程通知</td></tr>
+        <tr><td>G3 第 36 月</td><td>金管會或法務確認協作層不構成信託業與投顧；高端客戶 10 戶付費</td><td>兩項成立</td><td>被認定需牌照，轉為純轉介</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <span class="eyebrow">第 8 張圖 · 風險</span>
+    <h2>八項高風險，每項有配套</h2>
+    <div class="grid">
+      <div class="tile q"><b>屋主付費意願不足</b><small>需求只有供給端訊號。配套：同時收經理人訂閱；訪談 20 位先於開發。</small></div>
+      <div class="tile q"><b>費率沒有一手依據</b><small>代管費、AUM 費、傳承費都沒公開價。配套：pilot 前取得 3 家報價。</small></div>
+      <div class="tile q"><b>對帳與提醒被認定為代管</b><small>配套：函詢國土署；功能分「屋主自操作」與「代操作」。</small></div>
+      <div class="tile q"><b>自有房源上架被認定為仲介</b><small>配套：函詢地政司；固定費、不帶看、不議價；放 Phase 2。</small></div>
+      <div class="tile q"><b>銀行不接受委託人指定經理人查帳</b><small>配套：平台當建經特約通路；查帳連結回銀行頁；G2 有條件放行。</small></div>
+      <div class="tile q"><b>無照者接案，平台連帶責任</b><small>配套：開通前驗證；標章不寫保證；專任規則分流阻擋。</small></div>
+      <div class="tile q"><b>仲介集團或銀行推出屋主入口</b><small>配套：先綁持照者與銀行當通路；錨點與移交包做差異化。</small></div>
+      <div class="tile q"><b>謄本資料違反個資法或協議</b><small>配套：禁爬蟲；使用者上傳；對外不顯示完整建號與姓名。</small></div>
+    </div>
+  </section>
+
+  <footer class="note">依據：docs/research/asset-mgmt-platform 的 brd.md v2、第二輪調研報告、financial-model.xlsx。法條已對照全國法規資料庫原文。費率與定價為假設，待訪談驗證。</footer>
 </main>
