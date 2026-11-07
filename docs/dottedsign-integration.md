@@ -1,6 +1,6 @@
 # 點點簽（DottedSign）整合筆記
 
-給接手開發團隊的整合備忘。程式碼入口：`src/lib/dottedsign.ts`（API client）、`src/app/api/webhooks/dottedsign/route.ts`（webhook 接收）。文件來源：<https://developer.dottedsign.com/v1.0-sandbox/>（AI 可讀清單：`/v1.0-sandbox/llms.txt`）。
+給接手開發團隊的整合備忘。程式碼入口：`src/lib/signing-module/dottedsign-adapter.ts`（點點簽 adapter：請求組裝、簽章驗證、webhook 解析）、`src/lib/dottedsign.ts`（HTTP client 與 token）。route handler 只呼叫簽署模組（ADR-0010）。文件來源：<https://developer.dottedsign.com/v1.0-sandbox/>（AI 可讀清單：`/v1.0-sandbox/llms.txt`）。
 
 ## 認證
 
@@ -63,7 +63,7 @@
 ## Webhook
 
 - Webhook URL 在點點簽開發者後台**建立 Application 時**設定。
-- ⚠️ **後台儲存 webhook URL 時會送一記空 body、無簽章 header 的驗證 ping**，endpoint 必須回 200，否則 webhook 註冊無效、之後的事件都不會送（實測踩過：ping 被簽章驗證擋掉回 401，乙方簽署事件就沒有進來）。route 已對空 body 早退回 200。
+- ⚠️ **後台儲存 webhook URL 時會送一記空 body、無簽章 header 的驗證 ping**，endpoint 必須回 200，否則 webhook 註冊無效、之後的事件都不會送（實測踩過：ping 被簽章驗證擋掉回 401，乙方簽署事件就沒有進來）。adapter 把空 body 解析成 ping，簽署模組回 200。
 - 本機開發需開通道：`cloudflared tunnel --url http://localhost:3000` 或 ngrok，把公開 URL + `/api/webhooks/dottedsign` 填到後台。
 - 本機與 demo 環境各用一個 sandbox Application，兩邊的金鑰與單日失敗計數互相獨立：
 
@@ -81,8 +81,8 @@
   - `completed`（全員完成）→ 已完成
   - `declined` → 已拒簽
   - `voided` → 已撤回
-  - ✅ 實測另有 `viewed` 事件（簽署人開啟文件時觸發），route 未映射、自動忽略，無妨。
-- ✅ 簽章驗證已實測確認：header 名稱就叫 **`Signature`**，值 = **HMAC-SHA256(client secret, raw JSON body) 的 hex 字串**（64 字元小寫）。`verifyWebhookSignature()` 已按此實作。
+  - ✅ 實測另有 `viewed` 事件（簽署人開啟文件時觸發），adapter 解析成「忽略」，回 200。
+- ✅ 簽章驗證已實測確認：header 名稱就叫 **`Signature`**，值 = **HMAC-SHA256(client secret, raw JSON body) 的 hex 字串**（64 字元小寫）。adapter 的 `parseWebhook` 已按此實作。
 
 ## Mock 模式
 
@@ -122,4 +122,4 @@ resend 卡的是 sandbox 環境本身（`access_info.resend: false`），接正�
    - `true` → 證實限制只在 sandbox，續走步驟 4。
    - `false` → 假設錯誤，限制在 client credentials token 或方案等級，向點點簽支援確認，再決定「重寄簽署通知」按鈕去留。
 4. 按合約頁「重寄簽署通知」，驗兩件事：route 回 200 帶 `resent_to`；信箱再收到一封通知信。
-5. 通過後把上方檢查清單的 resend 項打勾，並刪除 `src/app/api/contracts/[id]/resend/route.ts` 中把 `task_not_accessible` 轉成「sandbox 不提供 resend」的訊息對應，讓真正的 403 原樣浮出。
+5. 通過後把上方檢查清單的 resend 項打勾，並刪除 `src/lib/signing-module/dottedsign-adapter.ts` 的 `resend` 中把 `task_not_accessible` 轉成「sandbox 不提供 resend」的訊息對應，讓真正的 403 原樣浮出。
