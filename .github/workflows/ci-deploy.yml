@@ -26,7 +26,7 @@ jobs:
         with:
           node-version: 26
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - name: 型別檢查
         run: npx next typegen && npx tsc --noEmit
       - name: ESLint
@@ -88,6 +88,8 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
+          # provenance 會多出 attestation 的 digest，可能佔掉 Artifact Registry 保留的版本數
+          provenance: false
           tags: ${{ env.IMAGE }}
           cache-from: type=gha
       - id: runtime-secrets
@@ -129,5 +131,7 @@ jobs:
             DEMO_BASIC_AUTH_USER=demo
             LITESTREAM_GCS_BUCKET=${{ vars.LITESTREAM_BUCKET }}
           secrets: ${{ steps.runtime-secrets.outputs.value }}
+          # DOTTEDSIGN_ENABLED 改回 false 時，要真的卸除點點簽 secrets
+          secrets_update_strategy: overwrite
       - name: 確認新版本能回應
         run: curl --fail --silent --show-error --retry 5 --retry-delay 5 "$APP_ORIGIN/api/health"

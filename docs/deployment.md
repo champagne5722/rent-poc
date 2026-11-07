@@ -63,16 +63,18 @@ GitHub 不存任何 secret。
 1. demo 開始前，讓實例保持開機：
 
    ```bash
-   gcloud run services update rent-poc-demo --region asia-east1 --project "$PROJECT" --min-instances=1
+   gcloud run services update rent-poc-demo --region asia-east1 --project "$PROJECT" --min=1
    ```
 
 2. demo 結束後，改回去：
 
    ```bash
-   gcloud run services update rent-poc-demo --region asia-east1 --project "$PROJECT" --min-instances=0
+   gcloud run services update rent-poc-demo --region asia-east1 --project "$PROJECT" --min=default
    ```
 
-**注意：** `min-instances=1` 每天約 US$1.73。忘記改回去時，每月約 US$48。
+`--min` 是 service 層級的設定，不會部署新 revision。不得改用 `--min-instances`，它會部署新 revision，並存期間的寫入會遺失。
+
+**注意：** 保持開機每天約 US$1.73。忘記改回去時，每月約 US$48。
 
 ### 量測冷啟動秒數
 
@@ -96,12 +98,28 @@ curl -s -o /dev/null -w '%{time_total}s\n' "https://rent-poc-demo-<專案編號>
    gcloud run services update-traffic rent-poc-demo --region asia-east1 --project "$PROJECT" --to-revisions REVISION=100
    ```
 
+3. 問題修好後，把流量切回最新版。如果沒有做這一步，之後的部署都拿不到流量：
+
+   ```bash
+   gcloud run services update-traffic rent-poc-demo --region asia-east1 --project "$PROJECT" --to-latest
+   ```
+
 回滾不會回復資料。新實例還原的是 `CURRENT` 指向的最新資料。
 
 ### 換 Basic Auth 密碼
 
-1. 重跑 `deploy/first-deploy-wizard.sh`，在密碼步驟選擇換新密碼。
-2. 在 GitHub Actions 手動執行 `ci-deploy`，讓新實例讀到新密碼。
+1. 產生新密碼，存入 Secret Manager，並顯示在畫面上：
+
+   ```bash
+   NEW_PASSWORD=$(openssl rand -base64 18); printf '%s' "$NEW_PASSWORD" | gcloud secrets versions add demo-basic-auth-password --data-file=- --project "$PROJECT"; echo "$NEW_PASSWORD"
+   ```
+
+2. 把新密碼存到你的密碼管理工具。
+3. 重新部署，讓新實例讀到新密碼：
+
+   ```bash
+   gh workflow run ci-deploy.yml --ref main
+   ```
 
 ### 清空 demo 資料
 
@@ -113,7 +131,11 @@ curl -s -o /dev/null -w '%{time_total}s\n' "https://rent-poc-demo-<專案編號>
    gcloud storage rm "gs://<bucket>/CURRENT"
    ```
 
-2. 在 GitHub Actions 手動執行 `ci-deploy`。新實例會用空資料庫啟動。
+2. 重新部署。新實例會用空資料庫啟動：
+
+   ```bash
+   gh workflow run ci-deploy.yml --ref main
+   ```
 
 ## 資料保存規則
 

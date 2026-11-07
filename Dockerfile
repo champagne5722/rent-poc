@@ -6,7 +6,9 @@ ARG NODE_VERSION=26-slim
 FROM node:${NODE_VERSION} AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# better-sqlite3 有 binding.gyp，npm 會隱含執行 node-gyp，slim 映像沒有 Python 會失敗。
+# prebuild 隨套件發佈，不需要編譯。
+RUN npm ci --ignore-scripts
 
 FROM node:${NODE_VERSION} AS build
 WORKDIR /app

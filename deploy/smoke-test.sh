@@ -48,7 +48,7 @@ expect_status() {
   local expected="$1" description="$2"
   shift 2
   local actual
-  actual="$(curl -s -o /dev/null -w '%{http_code}' "$@")"
+  actual="$(curl -s -o /dev/null -w '%{http_code}' "$@" || true)"
   [ "$actual" = "$expected" ] || fail "${description}：預期 ${expected}，實際 ${actual}"
   echo "通過：${description}"
 }
@@ -67,12 +67,12 @@ expect_status 200 "帳號密碼正確時放行" -u "$AUTH" "${BASE}/properties"
 expect_status 200 "webhook 驗證 ping 不需要帳號密碼" -X POST "${BASE}/api/webhooks/dottedsign"
 expect_status 401 "webhook 帶錯誤簽章時擋下" -X POST -H 'signature: bad' -d '{"resource_id":1}' "${BASE}/api/webhooks/dottedsign"
 
-PROPERTY_ID="$(create_property 'CURRENT 移動前' | sed -n 's/.*"id":\([0-9]*\).*/\1/p')"
+PROPERTY_ID="$(create_property 'CURRENT 移動前' | sed -n 's/.*"id":\([0-9]*\).*/\1/p' || true)"
 [ -n "$PROPERTY_ID" ] || fail "建立物件失敗"
 CONTRACT_ID="$(curl -s -u "$AUTH" -X POST "${BASE}/api/contracts" -H 'content-type: application/json' \
-  -d "{\"property_id\":${PROPERTY_ID}}" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')"
+  -d "{\"property_id\":${PROPERTY_ID}}" | sed -n 's/.*"id":\([0-9]*\).*/\1/p' || true)"
 [ -n "$CONTRACT_ID" ] || fail "建立合約失敗"
-PDF_SIZE="$(curl -sL -u "$AUTH" -o /dev/null -w '%{size_download}' "${BASE}/api/contracts/${CONTRACT_ID}/pdf")"
+PDF_SIZE="$(curl -sL -u "$AUTH" -o /dev/null -w '%{size_download}' "${BASE}/api/contracts/${CONTRACT_ID}/pdf" || echo 0)"
 [ "$PDF_SIZE" -gt 1000000 ] || fail "合約 PDF 只有 ${PDF_SIZE} bytes，字型可能沒有進映像"
 echo "通過：合約 PDF ${PDF_SIZE} bytes"
 
@@ -88,7 +88,7 @@ create_property 'SIGTERM 前最後寫入' >/dev/null
 docker stop -t 10 "$CONTAINER" >/dev/null
 start_container
 
-LIST="$(curl -s -u "$AUTH" "${BASE}/api/properties")"
+LIST="$(curl -s -u "$AUTH" "${BASE}/api/properties" || true)"
 echo "$LIST" | grep -q 'CURRENT 移動前' || fail "重啟後遺失 CURRENT 移動前寫入的物件"
 echo "通過：重啟後還原 CURRENT 移動前的資料"
 echo "$LIST" | grep -q 'SIGTERM 前最後寫入' || fail "SIGTERM 前的最後寫入沒有同步到複寫路徑"

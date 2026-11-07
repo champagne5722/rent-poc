@@ -12,17 +12,20 @@
 //   兩個都沒有時不複寫，資料隨容器消失。
 //   LITESTREAM_BIN         Litestream 執行檔路徑，預設 litestream
 
-import { spawn, spawnSync } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import Database from 'better-sqlite3';
 
 const APP_DIR = process.cwd();
 const DB_PATH = path.join(APP_DIR, 'data', 'rent-poc.db');
 const LITESTREAM = process.env.LITESTREAM_BIN ?? 'litestream';
+const execFileAsync = promisify(execFile);
 const VERIFY_INTERVAL_MS = 3_000;
+const MAX_QUIET_VERIFY_ATTEMPTS = 5;
 // Cloud Run 在 SIGTERM 後 10 秒送 SIGKILL，兩段等待加總要低於 10 秒
 const SERVER_STOP_TIMEOUT_MS = 3_000;
 const LITESTREAM_STOP_TIMEOUT_MS = 6_000;
@@ -74,13 +77,15 @@ function fileStore(root) {
   };
 }
 
-function restoreTo(outputPath, replicaUrl) {
-  const result = spawnSync(LITESTREAM, ['restore', '-o', outputPath, replicaUrl], {
-    encoding: 'utf8',
-    timeout: 60_000,
-  });
-  if (result.status === 0 && existsSync(outputPath)) return { ok: true };
-  return { ok: false, detail: result.error?.message ?? result.stderr?.trim() ?? `exit ${result.status}` };
+// 用非同步執行，還原卡住時 SIGTERM 的處理才不會被擋住
+async function restoreTo(outputPath, replicaUrl) {
+  try {
+    await execFileAsync(LITESTREAM, ['restore', '-o', outputPath, replicaUrl], { timeout: 60_000 });
+    if (existsSync(outputPath)) return { ok: true };
+    return { ok: false, detail: 'restore 成功結束，但沒有產生檔案' };
+  } catch (e) {
+    return { ok: false, detail: e.stderr?.trim() || e.message };
+  }
 }
 
 // 啟動時讀不到 CURRENT 就結束，讓 Cloud Run 重試。不得當成沒有資料而從空資料庫開始。
@@ -138,7 +143,7 @@ async function runWithReplication(store) {
   const previous = await readCurrentWithRetry(store);
   if (previous) {
     log(`從 ${previous} 還原`);
-    const restored = restoreTo(DB_PATH, store.replicaUrl(previous));
+    const restored = await restoreTo(DB_PATH, store.replicaUrl(previous));
     if (!restored.ok) {
       // demo 資料能重建，所以用空資料庫啟動。舊路徑不動，需要時能手動救回。
       log(`還原失敗，改用空資料庫啟動。舊資料仍在 ${previous}：${restored.detail}`);
@@ -160,12 +165,16 @@ async function runWithReplication(store) {
   const litestream = spawn(LITESTREAM, ['replicate', '-config', configPath], { stdio: 'inherit' });
   const server = startServer();
 
+  let stopping = false;
   let verifyTimer;
+  let verifyAttempts = 0;
   const verifyPath = path.join(tmpdir(), 'litestream-verify.db');
   async function moveCurrentWhenRestorable() {
+    verifyAttempts += 1;
     removeDatabaseFiles(verifyPath);
-    const verified = restoreTo(verifyPath, store.replicaUrl(replicaPath));
+    const verified = await restoreTo(verifyPath, store.replicaUrl(replicaPath));
     removeDatabaseFiles(verifyPath);
+    if (stopping) return;
     if (verified.ok) {
       try {
         await store.writeCurrent(replicaPath);
@@ -174,12 +183,14 @@ async function runWithReplication(store) {
       } catch (e) {
         log(`寫入 CURRENT 失敗，稍後重試：${e.message}`);
       }
+    } else if (verifyAttempts >= MAX_QUIET_VERIFY_ATTEMPTS) {
+      // 啟動後前幾次一定還沒有快照，不記錄。之後還失敗就是權限或路徑有問題。
+      log(`新路徑還不能還原（第 ${verifyAttempts} 次）：${verified.detail}`);
     }
     verifyTimer = setTimeout(moveCurrentWhenRestorable, VERIFY_INTERVAL_MS);
   }
   verifyTimer = setTimeout(moveCurrentWhenRestorable, VERIFY_INTERVAL_MS);
 
-  let stopping = false;
   // 先停 server 才停 Litestream，最後一筆寫入才進得了最後一次同步
   async function stop(exitCode) {
     if (stopping) return;

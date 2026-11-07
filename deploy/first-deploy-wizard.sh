@@ -237,12 +237,35 @@ store_secret() {
 
 # run_deploy：手動觸發一次 workflow，並等它結束
 run_deploy() {
+  local before run_id="" attempt
+  before=$(latest_dispatch_run)
   gh workflow run "$WORKFLOW" --ref main
   say "等待 GitHub 建立這次執行。"
-  sleep 8
-  local run_id
-  run_id=$(gh run list --workflow "$WORKFLOW" --branch main --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId')
+  for attempt in $(seq 1 30); do
+    run_id=$(latest_dispatch_run)
+    [[ -n "$run_id" && "$run_id" != "$before" ]] && break
+    run_id=""
+    sleep 3
+  done
+  if [[ -z "$run_id" ]]; then
+    warn "等了 90 秒還看不到新的執行。請到 GitHub Actions 頁面查看。"
+    return 1
+  fi
   gh run watch "$run_id" --exit-status
+}
+
+latest_dispatch_run() {
+  gh run list --workflow "$WORKFLOW" --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId // ""'
+}
+
+# ask_required_secret KEY "Prompt"：空白輸入要重問，避免把空字串存進 Secret Manager
+ask_required_secret() {
+  local key="$1" prompt="$2"
+  ask_secret "$key" "$prompt"
+  until [[ -n "${!key}" ]]; do
+    warn "不能是空白。"
+    ask_secret "$key" "$prompt"
+  done
 }
 
 run_wizard() {
@@ -283,9 +306,11 @@ create_if_missing "專案 $GCP_PROJECT_ID" \
   "gcloud projects describe '$GCP_PROJECT_ID'" \
   "gcloud projects create '$GCP_PROJECT_ID'"
 gcloud config set project "$GCP_PROJECT_ID" --quiet >/dev/null 2>&1
+# gcloud 可能把這個專案當 quota project，帳單 API 沒有啟用時，下面的檢查會一直失敗
+gcloud services enable cloudbilling.googleapis.com --quiet >/dev/null 2>&1 || true
 open_url "https://console.cloud.google.com/billing/linkedaccount?project=${GCP_PROJECT_ID}"
 step "在這個頁面把專案連結到帳單帳戶。沒有帳單帳戶時，先照畫面建立一個。"
-until [[ "$(gcloud billing projects describe "$GCP_PROJECT_ID" --format='value(billingEnabled)' 2>/dev/null)" == "True" ]]; do
+until [[ "$(gcloud billing projects describe "$GCP_PROJECT_ID" --format='value(billingEnabled)')" == "True" ]]; do
   pause "完成帳單連結後，按 Enter 重新檢查。"
 done
 GCP_PROJECT_NUMBER=$(gcloud projects describe "$GCP_PROJECT_ID" --format='value(projectNumber)')
@@ -394,7 +419,8 @@ else
   warn "這組密碼只顯示這一次。請存到你的密碼管理工具。"
   unset DEMO_PASSWORD
 fi
-pause "存好密碼後，按 Enter。畫面會清除。"
+pause "存好密碼後，按 Enter。畫面與捲動紀錄都會清除。"
+printf '\033[3J'
 
 stage "寫入 GitHub repo variables"
 say "這些都不是機密。repo 是 public，執行紀錄裡看得到。機密都放在 Secret Manager。"
@@ -432,11 +458,16 @@ step "Webhook URL 填：${APP_ORIGIN}/api/webhooks/dottedsign"
 step "scope 勾選：sign_tasks.general.write、sign_tasks.general.read、sign_tasks.management.write、sign_tasks.download.read"
 note "實際按鈕與欄位名稱以後台畫面為準，這份腳本沒有逐一核對畫面。"
 note "儲存時後台會打一次 webhook URL，服務會回 200。"
-ask_secret DOTTEDSIGN_CLIENT_ID "貼上 client id（輸入不會顯示）："
-ask_secret DOTTEDSIGN_CLIENT_SECRET "貼上 client secret（輸入不會顯示）："
-store_secret dottedsign-client-id "$DOTTEDSIGN_CLIENT_ID"
-store_secret dottedsign-client-secret "$DOTTEDSIGN_CLIENT_SECRET"
-unset DOTTEDSIGN_CLIENT_ID DOTTEDSIGN_CLIENT_SECRET
+if gcloud secrets versions access latest --secret=dottedsign-client-secret >/dev/null 2>&1 \
+    && ! confirm "點點簽金鑰已存在。要重新輸入嗎？"; then
+  note "沿用現有的點點簽金鑰。"
+else
+  ask_required_secret DOTTEDSIGN_CLIENT_ID "貼上 client id（輸入不會顯示）："
+  ask_required_secret DOTTEDSIGN_CLIENT_SECRET "貼上 client secret（輸入不會顯示）："
+  store_secret dottedsign-client-id "$DOTTEDSIGN_CLIENT_ID"
+  store_secret dottedsign-client-secret "$DOTTEDSIGN_CLIENT_SECRET"
+  unset DOTTEDSIGN_CLIENT_ID DOTTEDSIGN_CLIENT_SECRET
+fi
 set_var DOTTEDSIGN_ENABLED "true"
 pause "按 Enter 繼續。"
 

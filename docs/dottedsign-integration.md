@@ -74,7 +74,7 @@
 
   建立 demo Application 前，服務必須已上線，後台的驗證 ping 才拿得到 200。步驟見 `deploy/first-deploy-wizard.sh`，設定見 `docs/deployment.md`。
 - demo 環境有 Basic Auth，`/api/webhooks/dottedsign` 不經過 Basic Auth，由下方的簽章驗證保護。mock 模式不驗簽，所以 demo 環境在 mock 模式下任何人都能打這個端點。只有測試資料，影響限於 demo 合約的狀態。
-- 冷啟動風險：`min-instances=0` 時 webhook 可能打到冷啟動中的實例。點點簽的等待秒數未查到。demo 當天設 `min-instances=1`，指令見 `docs/deployment.md`。
+- 冷啟動風險：`min-instances=0` 時 webhook 可能打到冷啟動中的實例。點點簽的等待秒數未查到。demo 當天讓實例保持開機，指令見 `docs/deployment.md`。
 - Payload 欄位：`resource_id`（= task_id）、`resource_type`（`task`）、`action_name`、`event_datetime`、`event_email` 等。
 - 事件對應（`src/lib/transitions.ts`）：
   - `signed`（個別簽署人完成）→ 待乙方簽 → 待甲方簽

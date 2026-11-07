@@ -16,7 +16,7 @@
 這個方案有 3 個已知代價：
 
 - **換版會遺失資料：** 換版時新舊實例短暫並存，並存期間寫入舊實例的資料會遺失。demo 接受這個代價，pilot 不得沿用（見第 6 節）。
-- **冷啟動風險：** `min-instances=0` 會冷啟動。點點簽 webhook 的等待秒數未知，因此有投遞失敗的風險。demo 當天把 `min-instances` 改成 1，每天約 US$1.73。
+- **冷啟動風險：** `min-instances=0` 會冷啟動。點點簽 webhook 的等待秒數未知，因此有投遞失敗的風險。demo 當天用 service 層級的 `--min=1` 保持開機，每天約 US$1.73。
 - **費用只是下限：** 這是一人間歇使用的費用。如果每月活動超過 66.7 小時，就開始收 vCPU 費用，每小時約 US$0.065。
 
 pilot 不沿用這個方案。必須先完成架構 v2 M1 到 M2 的 PostgreSQL 遷移，再進 pilot。
@@ -129,7 +129,7 @@ C 的流量是本評估的保守假設。BRD 的 G1（第 9 月）目標同樣�
 敏感度：
 
 - 活動 100 小時：(360,000 − 240,000) × 0.000018 = 多 US$2.16。
-- demo 當天 `min-instances=1`：86,400 秒 ×（0.000018 + 0.000002）= US$1.73 每天，先扣免費額度。
+- demo 當天保持開機：86,400 秒 ×（0.000018 + 0.000002）= US$1.73 每天，先扣免費額度。
 - 整月 `min-instances=1`：US$47.85。
 - GCP 新帳號有 US$300 試用額度，效期 90 天。
 - CI：repo 是 public，GitHub Actions 標準 runner 免費。如果轉 private，估計每月 US$1.7，低於 Free 方案的 US$12 額度。
@@ -161,7 +161,7 @@ ADR-0010 必須決定 Cloud SQL 或 Neon。兩者的決策依據：
 |---|---|---|---|
 | 換版時新舊實例並存（`max-instances` 能短暫超過）。官方行為推論，未實測 | 並存期間寫入舊實例的合約狀態遺失 | 每次實例啟動都複寫到新路徑，避免損毀複寫資料。demo 接受遺失。部署時不做 demo | demo 接受，pilot 不得沿用 |
 | 實例閒置最多 15 分鐘後關閉，崩潰時最多遺失約 1 秒資料 | SIGTERM 有 10 秒能同步。崩潰時遺失最後一次同步之後的寫入 | demo 接受 | demo 接受 |
-| 冷啟動與 webhook。點點簽的等待秒數未查到 | 冷啟動逾時算投遞失敗，會重試 3 次。單日 10 次失敗會暫停 webhook | 第一次部署後實測冷啟動秒數。demo 當天設 `min-instances=1`。demo 用獨立的 Application，隔離影響 | 須實測 |
+| 冷啟動與 webhook。點點簽的等待秒數未查到 | 冷啟動逾時算投遞失敗，會重試 3 次。單日 10 次失敗會暫停 webhook | 第一次部署後實測冷啟動秒數。demo 當天用 `--min=1` 保持開機。demo 用獨立的 Application，隔離影響 | 須實測 |
 | Basic Auth 強度低 | 密碼外洩就能看到全部資料 | 不得輸入真實個資。密碼放 Secret Manager。sandbox 的已簽 PDF 有浮水印 | 接受 |
 | 簽署完成導回網址會跳出 Basic Auth 對話框 | 承租人簽完後看到登入視窗 | 用 sandbox 測試帳號 demo。pilot 前換正式登入 | 接受 |
 | Litestream 在 Cloud Run 容器內只有社群範例 | 還原失敗時 demo 資料清空 | 還原失敗時用空資料庫啟動並記錄錯誤 | 須實測 |
@@ -192,7 +192,8 @@ ADR-0010 必須決定 Cloud SQL 或 Neon。兩者的決策依據：
 相對於第 2 節的硬限制，實作時的決定如下：
 
 - 映像用 `node:26-slim`，與本機開發同版。稽核查到 better-sqlite3 13.0.1 的 arm64 prebuild 需要 `GLIBC_2.38`，bookworm 不夠。Node 26 預設 trixie，兩個架構都能載入（glibc 版本是依文件推論，未實測）。
-- 不需要 `outputFileTracingIncludes`。實測 standalone 已帶入字型、`DESIGN.md` 與 `.node`。
+- 字型與 `DESIGN.md` 不需要 `outputFileTracingIncludes`，實測 standalone 已帶入。`linux-x64.node` 明確帶入，因為 macOS 建置只追蹤到 `darwin-arm64.node`，Linux 上無法在本機驗證。
+- 映像用 `npm ci --ignore-scripts`。better-sqlite3 有 `binding.gyp`，npm 會隱含執行 node-gyp，slim 映像沒有 Python 會失敗。
 - `src/` 以外的改動：`eslint.config.mjs` 忽略 `.claude/**` 與 `public/pdf.worker.min.mjs`，並把 3 個 UI 檔案的 5 個既有錯誤降為 warning。否則 CI 的 ESLint 永遠失敗。
 
 ### 驗證狀態

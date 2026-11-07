@@ -10,4 +10,6 @@ docs
 *.md
 !DESIGN.md
 Dockerfile
+# google-github-actions/auth 寫在 workspace 的憑證檔
+gha-creds-*.json
 .dockerignore
