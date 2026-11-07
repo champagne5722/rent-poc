@@ -81,6 +81,26 @@ function describeProviderContract(name: string, setup: () => ContractSetup) {
       }
     });
 
+    it('下載已簽 PDF 回傳非空的位元組', async () => {
+      const { provider } = setup();
+      const { taskRef } = await provider.createTask({ subject, document, signers });
+      const bytes = await provider.downloadFile(taskRef, 'signed_pdf');
+      expect(bytes).toBeInstanceOf(Uint8Array);
+      expect(bytes.length).toBeGreaterThan(0);
+    });
+
+    it('下載 Audit Trail File：有宣告不支援時以宣告的訊息拒絕，否則回傳位元組', async () => {
+      const { provider } = setup();
+      const { taskRef } = await provider.createTask({ subject, document, signers });
+      const result = provider.downloadFile(taskRef, 'audit_trail');
+      const unsupported = provider.unsupported.files?.audit_trail;
+      if (unsupported) {
+        await expect(result).rejects.toThrow(unsupported);
+      } else {
+        await expect(result).resolves.toBeInstanceOf(Uint8Array);
+      }
+    });
+
     it('空 body 是驗證 ping，不需要簽章', () => {
       const { provider } = setup();
       expect(provider.parseWebhook('', new Headers())).toEqual({ kind: 'ping' });
@@ -133,10 +153,14 @@ describeProviderContract('點點簽', () => {
     if (path.startsWith('/v1/sign_tasks/share_link')) {
       return { data: { share_link: 'https://sandbox.dottedsign.com/task?code=abc' } };
     }
+    if (path.startsWith('/v1/sign_tasks/download_link')) {
+      return { data: { task: 'https://s3.example/task.pdf', audit_trail: 'https://s3.example/audit.pdf' } };
+    }
     return { data: { task_id: 470 } };
   };
+  const fetchFile = async (url: string) => new Response(new TextEncoder().encode(`pdf-from-${url}`));
   return {
-    provider: createDottedSignProvider({ request, clientSecret }),
+    provider: createDottedSignProvider({ request, clientSecret, fetchFile }),
     headersFor: (rawBody) =>
       new Headers({ signature: crypto.createHmac('sha256', clientSecret).update(rawBody).digest('hex') }),
   };
