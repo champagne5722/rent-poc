@@ -54,7 +54,12 @@ export function parseDesignTheme(content: string): DesignTheme | null {
   }
 
   const body = data.typography?.body;
-  if (body?.fontFamily) token.fontFamily = `"${body.fontFamily}", sans-serif`;
+  if (body?.fontFamily) {
+    // 含逗號代表已是完整字體堆疊（含 fallback），原樣使用；單一字體名才補引號與 sans-serif。
+    token.fontFamily = body.fontFamily.includes(',')
+      ? body.fontFamily
+      : `"${body.fontFamily}", sans-serif`;
+  }
   const fontSize = toPx(body?.fontSize);
   if (fontSize !== null) token.fontSize = fontSize;
 

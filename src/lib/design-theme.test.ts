@@ -65,6 +65,18 @@ describe('parseDesignTheme（DESIGN.md front matter → 可序列化 theme 資�
     });
   });
 
+  it('fontFamily 含逗號時視為完整字體堆疊，原樣輸出不加引號', () => {
+    const design = parseDesignTheme(
+      md('typography:\n  body:\n    fontFamily: IBM Plex Sans, PingFang TC, sans-serif'),
+    );
+    expect(design?.token.fontFamily).toBe('IBM Plex Sans, PingFang TC, sans-serif');
+  });
+
+  it('rounded.md 為 0px 時 borderRadius 為 0（直角）', () => {
+    const design = parseDesignTheme(md('rounded:\n  md: 0px'));
+    expect(design?.token.borderRadius).toBe(0);
+  });
+
   it('front matter 沒提供的欄位不出現在 token，交給 antd 預設', () => {
     const design = parseDesignTheme(md('colors:\n  primary: "#5e6ad2"'));
     expect(design?.token).toEqual({ colorPrimary: '#5e6ad2' });
