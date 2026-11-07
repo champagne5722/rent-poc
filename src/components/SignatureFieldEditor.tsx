@@ -17,7 +17,7 @@ import {
 
 // 簽署區域編輯器：pdf.js 逐頁渲染 + react-rnd 拖放簽名框。
 // 內部座標一律存「相對該頁的比例」（原點左上、y 向下）；
-// 送簽時才由後端轉成點點簽的 coord（原點左下），見 lib/dottedsign.ts。
+// 送簽時才由後端轉成點點簽的 coord（原點左下），見 lib/signing-module/dottedsign-adapter.ts。
 // 預設落點、吸附／對齊線、出界夾回與重疊偵測都是 lib/signature-layout.ts 的純函式，這裡只做換算與畫面。
 interface Props {
   pdfUrl: string;

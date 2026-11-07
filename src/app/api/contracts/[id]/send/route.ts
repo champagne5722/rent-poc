@@ -1,11 +1,12 @@
 import { NextRequest } from 'next/server';
-import { commitTransition, getContract } from '@/lib/db';
-import { generateContractPdf } from '@/lib/pdf';
-import { createSignTask } from '@/lib/dottedsign';
+import { getContract } from '@/lib/db';
+import { generateContractPdf, PDF_PAGE_SIZE } from '@/lib/pdf';
+import { contractDocumentFileName, contractSignerSequence } from '@/lib/signing';
+import { contractSubject, signing, signingErrorResponse } from '@/lib/signing-module';
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// 送簽：驗證欄位 → 產出 PDF → 建立點點簽簽署任務 → 進入「待乙方簽」
+// 送簽：驗證欄位 → 產出 PDF → 交給簽署模組（建立簽署任務，合約進入「待乙方簽」）
 export async function POST(_request: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const contract = getContract(Number(id));
@@ -34,15 +35,16 @@ export async function POST(_request: NextRequest, { params }: Ctx) {
 
   const pdf = await generateContractPdf(f);
   try {
-    const { taskId, mock } = await createSignTask(contract, pdf);
-    // 狀態與「送簽」歷程事件同交易寫入（ADR-0007）
-    commitTransition(contract.id, {
-      status: 'awaiting_tenant',
-      event: { type: 'sent', actor: 'landlord', note: `寄送給乙方 ${contract.fields.tenantEmail}` },
-      dottedsignTaskId: taskId,
+    const task = await signing.send(
+      contractSubject(contract.id),
+      { fileName: contractDocumentFileName(contract), pdf, pageSize: PDF_PAGE_SIZE },
+      contractSignerSequence(contract)
+    );
+    // task_id 是既有回應欄位，由合約欄位讀取。簽署模組不對外提供服務商任務編號。
+    return Response.json({
+      data: { id: contract.id, task_id: getContract(contract.id)?.dottedsign_task_id, mock: task.mode === 'mock' },
     });
-    return Response.json({ data: { id: contract.id, task_id: taskId, mock } });
   } catch (e) {
-    return Response.json({ error: e instanceof Error ? e.message : '送簽失敗' }, { status: 502 });
+    return signingErrorResponse(e, '送簽失敗');
   }
 }
