@@ -153,7 +153,7 @@ export interface ContractFields extends TemplateBinding, EquipmentAnnexSnapshot 
 export type SignerRole = 'landlord' | 'tenant';
 
 // 簽署區域：座標為「相對該頁的比例值」（0~1，原點左上、y 向下，同瀏覽器慣例）。
-// 送簽時由 dottedsign.ts 轉成 PDF points（原點左下）。
+// 送簽時由點點簽 adapter 轉成 PDF points（原點左下）。
 export interface SignatureField {
   id: string;
   signer: SignerRole;
