@@ -9,7 +9,9 @@ const UNSUPPORTED = {
 
 // Mock adapter：未設定點點簽金鑰時使用。不打外部 API。
 // webhook 沿用點點簽的 payload 形狀，只是不驗證簽章。
-export function createMockProvider(): SigningProvider {
+// 部署環境的 webhook 路徑是公開的，mock 沒有 client secret 能驗簽，所以要拒收非空事件。
+// 空 body 的 ping 仍回應，點點簽後台才能儲存 webhook URL。模擬簽署走 simulateEvent，不受影響。
+export function createMockProvider(options: { rejectWebhookEvents?: boolean } = {}): SigningProvider {
   return {
     mode: 'mock',
     unsupported: UNSUPPORTED,
@@ -23,6 +25,10 @@ export function createMockProvider(): SigningProvider {
       throw new Error(UNSUPPORTED.resend);
     },
     voidTask: async () => {},
-    parseWebhook: (rawBody) => (rawBody ? parseDottedSignPayload(rawBody) : { kind: 'ping' }),
+    parseWebhook: (rawBody) => {
+      if (!rawBody) return { kind: 'ping' };
+      if (options.rejectWebhookEvents) return { kind: 'invalid', status: 401, reason: 'mock 模式不接受 webhook 事件' };
+      return parseDottedSignPayload(rawBody);
+    },
   };
 }
