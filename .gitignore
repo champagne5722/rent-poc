@@ -54,3 +54,6 @@ next-env.d.ts
 
 # agent worktree（session 暫用）
 /.claude/worktrees/
+
+# 行銷網站用的 UI skill，assets 37 MB，不納入版控；後台用的 impeccable、ui-ux-pro-max、design-system 有 commit
+/.claude/skills/design-taste-frontend/
