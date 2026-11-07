@@ -2,7 +2,7 @@
 <!-- 交接文件給 agent 讀，內容是指向既有文件的清單，句長規則不適用 -->
 # F 線交接：屋主資產總覽 v1 與移交包
 
-先讀 `README.md`。這條線還沒有 spec。它是六條線裡唯一能在 A 線之前開始做畫面的，資料接線等 E 線。
+先讀 `README.md`。spec 是 MIL-94，決議在 ADR-0024。它是六條線裡唯一能在 A 線之前開始做畫面的，資料接線等 B、C、E 線。
 
 ## 範圍與依據
 
@@ -29,3 +29,11 @@
 1. 開一個 Opus 子對話寫規格，流程見 README 第 3 節。prototype 分支是起點，規格要引用 MIL-47 的欄位清單。
 2. spec 發 Linear 時 related MIL-35、MIL-47。畫面票不設 blocked-by，接線票 blocked-by 對應線的票。
 3. 畫面票能立刻派實作，載入 impeccable。
+
+## 現況（spec 發佈後）
+
+- spec：MIL-94。ADR-0024 跨組織移交以後繼案件承接、協調列放 `control.handovers`。ADR-0016 決議 10 加註由 ADR-0024 修正。GLOSSARY 新增需要注意清單、帳務更新日、後繼案件。以上在分支 `line-f-spec`。
+- ADR 編號：E 線的分支已用 0022、0023，F 線取 0024。併 main 前再確認一次。
+- 票：畫面票 MIL-95 到 MIL-98，用假資料或記憶體 adapter，能立刻派。接線票 MIL-99、MIL-101、MIL-102、MIL-105、MIL-107、MIL-110。票號對照在 MIL-94 的留言。
+- 待補關聯：接線票描述最上方寫了 B、C、E 線待補。各線 spec 發佈後，照 MIL-94 Further Notes 的「待補的跨線關聯」表補 blocked-by。
+- 待知會：A 線要在 `control` 的權限規則與 CI 清單放行 `control.handovers`。C 線要提供 `currentOwnerSession()` 與 spec 列的介面。E 線的 `ledger` 模組要接受 F 線加 `recordHandoverRelease`、`recordHandoverReceipt`。
