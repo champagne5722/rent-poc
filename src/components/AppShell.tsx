@@ -11,7 +11,7 @@ import {
 } from '@ant-design/icons';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { NAV_ITEMS, CREATE_CONTRACT_HREF, resolveNavKey, type NavKey } from '@/lib/nav';
+import { NAV_ITEMS, CREATE_CONTRACT_HREF, resolveNavKey, shellFor, type NavKey } from '@/lib/nav';
 
 const NAV_ICONS: Record<NavKey, React.ReactNode> = {
   workbench: <DashboardOutlined />,
@@ -20,10 +20,17 @@ const NAV_ICONS: Record<NavKey, React.ReactNode> = {
   design: <BgColorsOutlined />,
 };
 
-// 不做登入：打開即房東視角（見 GLOSSARY.md）
-// 殼層＝深色 collapsible side menu（規格 §4）：antd Layout＋Sider＋Menu mode="inline"，不引入 ProLayout
+// 殼層依路徑分派（MIL-94）：/owner 底下交給 src/app/owner/layout.tsx 掛 OwnerShell，
+// 因為屋主身分要在 server 端讀，只限屋主端的請求；其他路徑用後台殼層。
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  if (shellFor(pathname) === 'owner') return children;
+  return <AdminShell pathname={pathname}>{children}</AdminShell>;
+}
+
+// 不做登入：打開即房東視角（見 GLOSSARY.md）
+// 後台殼層＝深色 collapsible side menu（規格 §4）：antd Layout＋Sider＋Menu mode="inline"，不引入 ProLayout
+function AdminShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const { token } = theme.useToken();
