@@ -43,7 +43,7 @@ rent-poc 是台灣租賃電子簽約系統，正演進為不動產資產管理�
 - main 最新含：ADR-0010 到 0021、新版 GLOSSARY、Phase 1 研究筆記、簽署模組 MIL-53、MIL-55、MIL-56 的程式碼、Cloud Run 部署設定。vitest 456 個。
 - demo 已部署：Cloud Run asia-east1，網址在 `docs/deployment.md` 與 `.env.deploy`（不進版控）。Basic Auth 保護，點點簽 demo Application 已設定。資料庫仍是 SQLite 加 Litestream（ADR-0011）。
 - Phase 1 決策地圖 MIL-35 已結案，決議摘要在它的 Decisions so far。
-- 簽署模組（spec MIL-52，票 MIL-53 到 MIL-60）由原主控對話繼續，不屬六條線。MIL-57 到 MIL-60 做完後會在 MIL-60 留言，並通知 A 線主控。
+- 簽署模組（spec MIL-52，票 MIL-53 到 MIL-60）由 D 線主控接管，2026-11-08 起。這四張票直接開 PR 併 main，不走 D 線整合分支。MIL-60 結案後 D 線主控在票上留言並通知 A 線主控。原主控對話已封存。
 - 已有 spec 與 tickets 的線：A（MIL-78，票 MIL-79 到 MIL-93）、D（MIL-64，票 MIL-65 到 MIL-77）。B、C、E、F 還沒有 spec。
 - 使用者的待辦在 `docs/research/asset-mgmt-platform/TASKS.md`。
 - 既有票：MIL-34 eslint 既有錯誤、MIL-61 規劃文件對齊、MIL-62 法務清單。MIL-48 與 MIL-49 是上線閘門。MIL-54 sandbox 實測併入 MIL-57。
