@@ -45,11 +45,13 @@
 
 ## 完成時保存文件
 
-- 完成轉移（webhook `completed`，mock 走 `/api/mock/advance`）後呼叫 `saveContractFilesOnCompleted()`（`src/lib/contract-files.ts`）：向 `download_link` 一次要 `task` 與 `audit_trail` 兩種，下載後寫進 `data/contract-files/<合約 id>/`，DB `contract_files` 表記檔名、路徑、大小、狀態。
-- **刻意放在狀態轉移的交易之外**：抓檔是外部 IO，失敗不回滾合約狀態，只把錯誤寫進 `contract_files.status = 'failed'` 與 `error`。掛點吞掉所有例外，避免 webhook 回非 2xx——點點簽會重試，單日 10 次投遞失敗會停掉整個 application 的 webhook。
-- 補抓：`POST /api/contracts/[id]/files`（強制重抓兩份，全成功回 200、有失敗回 207）；下載端點在檔案不存在時也會當場補抓一次。
+- 文件保存歸簽署模組（MIL-58、ADR-0010 決議 10），以簽署任務為鍵。全員完成的交易提交後，模組逐種呼叫 adapter 的 `downloadFile`。
+- 點點簽 adapter 每種文件各打一次 `download_link`，再下載預簽連結。檔案寫進 `data/sign-task-files/<簽署任務 id>/`，`sign_task_files` 表記檔名、路徑、大小與狀態。
+- MIL-58 前的紀錄由 `contract_files` 回填進 `sign_task_files`，路徑仍指向 `data/contract-files/<合約 id>/`，舊檔案不搬。
+- **刻意放在狀態轉移的交易之外**：抓檔是外部 IO，失敗不回滾合約狀態，只把錯誤寫進 `sign_task_files.status = 'failed'` 與 `error`。模組吞掉所有例外，避免 webhook 回非 2xx。點點簽會重試，單日 10 次投遞失敗會停掉整個 application 的 webhook。
+- 補抓：`POST /api/contracts/[id]/files`（強制重抓，全成功回 200、有失敗回 207）。下載端點在檔案不存在時也會當場補抓一次。
 - 下載端點：`GET /api/contracts/[id]/signed-pdf`、`GET /api/contracts/[id]/audit-trail`，未完成狀態回 409 與明確訊息；`GET /api/contracts/[id]/files` 列出保存狀態。
-- mock 模式只保存未簽版 PDF 充當已簽 PDF 示意，沒有 Audit Trail File（下載回 409 說明）。
+- mock adapter 保存送簽時收到的 PDF（`data/mock-signing/<任務編號>.pdf`），充當已簽 PDF 示意。沒有 Audit Trail File，下載回 409 說明。MIL-58 前送簽、之後才完成的 mock 合約沒有這份 PDF，保存會失敗。
 
 ## 簽署連結（share_link API）
 
@@ -89,7 +91,7 @@
 - 未設定 `DOTTEDSIGN_CLIENT_ID` / `DOTTEDSIGN_CLIENT_SECRET` 時自動啟用（`isMockMode()`）。
 - 送簽回假 task id（`mock-<合約id>-<亂數>`），不打點點簽。
 - UI 會出現「模擬乙方簽署／拒簽／甲方完成」按鈕，走 `/api/mock/advance` → **與真 webhook 共用同一套 `applyDsEvent()` 轉移邏輯**，確保模擬與真接行為一致。
-- 已完成合約的「下載已簽 PDF」在 mock 模式回未簽版 PDF 充當示意。
+- 已完成合約的「下載已簽 PDF」在 mock 模式回送簽時的 PDF 充當示意。
 
 ## 踩坑記錄
 
@@ -110,7 +112,7 @@
    - [x] 執行中任務的 void（task 471 實測成功；⚠️ start 後立即 void 曾回 403，稍候重試即成功，疑為非同步建立的 race）
    - [ ] 拒簽流程（`declined` 事件）尚未實測
    - [ ] resend（重寄通知）sandbox 一律 403036，需正式環境驗證（步驟見下節）
-   - [ ] 完成時自動保存兩份文件尚未端對端實測：雙方簽完後查 `data/contract-files/<id>/` 有兩個 PDF、`GET /api/contracts/[id]/files` 兩筆皆 `saved`、`audit_trail` 下載得到的確實是稽核文件（格式文件未載明，推測為 PDF）、把檔案刪掉後 `POST /api/contracts/[id]/files` 能補抓回來
+   - [ ] 完成時自動保存兩份文件尚未端對端實測：雙方簽完後查 `data/sign-task-files/<簽署任務 id>/` 有兩個 PDF、`GET /api/contracts/[id]/files` 兩筆皆 `saved`、`audit_trail` 下載得到的確實是稽核文件（格式文件未載明，推測為 PDF）、把檔案刪掉後 `POST /api/contracts/[id]/files` 能補抓回來
 
 ## 接正式環境時的 resend 驗證清單
 

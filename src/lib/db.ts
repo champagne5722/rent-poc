@@ -6,8 +6,6 @@ import type {
   ContractEvent,
   ContractEventActor,
   ContractEventType,
-  ContractFile,
-  ContractFileKind,
   ContractRelationRef,
   ContractRelations,
   ContractStatus,
@@ -17,7 +15,8 @@ import type {
 } from './types';
 import { EQUIPMENT_OPTIONS } from './types';
 import { parseStoredEquipment } from './equipment';
-import { backfillContractSignTasks } from './signing-module/contract-backfill';
+import { backfillContractFiles, backfillContractSignTasks } from './signing-module/contract-backfill';
+import { ensureSignTaskFileTable } from './signing-module/sign-task-files';
 import { ensureSignTaskTables } from './signing-module/sign-task-store';
 
 export const DATA_DIR = path.join(process.cwd(), 'data');
@@ -66,7 +65,8 @@ export function ensureSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_contract_events_contract ON contract_events (contract_id, id);
 
-    -- 合約完成時保存的已簽 PDF 與 Audit Trail File（檔案本體在 data/contract-files/ 下）
+    -- MIL-58 前的合約文件紀錄，以合約為鍵。現在只當回填來源：文件改由簽署模組以簽署任務為鍵保存（sign_task_files）。
+    -- 表與舊檔案 data/contract-files/ 都不刪，回填後的紀錄仍指向舊路徑。
     CREATE TABLE IF NOT EXISTS contract_files (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       contract_id INTEGER NOT NULL REFERENCES contracts(id),
@@ -94,11 +94,14 @@ export function ensureSchema(db: Database.Database): void {
   // 既有資料表補欄位：SQLite 沒有 ADD COLUMN IF NOT EXISTS，先用 PRAGMA table_info 檢查再 ALTER
   addColumnIfMissing(db, 'contracts', 'derived_from', 'INTEGER REFERENCES contracts(id)');
   ensureSignTaskTables(db);
+  ensureSignTaskFileTable(db);
 
   seedEquipmentVocabulary(db);
   normalizePropertyEquipment(db);
   convertLegacySignerRoles(db);
   backfillContractSignTasks(db);
+  // 要在簽署任務回填之後：文件紀錄靠簽署任務找鍵
+  backfillContractFiles(db);
 }
 
 // 平台預設項目：INSERT OR IGNORE 讓重跑不會重複，也不會把已存在的項目改回預設
@@ -382,37 +385,4 @@ export function deleteContractWithEvents(contractId: number, db: Database.Databa
     db.prepare('DELETE FROM contract_events WHERE contract_id = ?').run(contractId);
     db.prepare('DELETE FROM contracts WHERE id = ?').run(contractId);
   })();
-}
-
-// ── 合約文件（已簽 PDF／Audit Trail File）─────────────────────────────
-
-export type ContractFileInput = Omit<ContractFile, 'id' | 'saved_at'>;
-
-// 一份合約的每種檔案只留一筆：補抓成功會覆蓋先前的失敗紀錄
-export function upsertContractFile(file: ContractFileInput): void {
-  getDb()
-    .prepare(
-      `INSERT INTO contract_files (contract_id, kind, status, file_name, rel_path, byte_size, content_type, error, saved_at)
-       VALUES (@contract_id, @kind, @status, @file_name, @rel_path, @byte_size, @content_type, @error, datetime('now', 'localtime'))
-       ON CONFLICT (contract_id, kind) DO UPDATE SET
-         status = excluded.status,
-         file_name = excluded.file_name,
-         rel_path = excluded.rel_path,
-         byte_size = excluded.byte_size,
-         content_type = excluded.content_type,
-         error = excluded.error,
-         saved_at = excluded.saved_at`
-    )
-    .run(file);
-}
-
-export function getContractFile(contractId: number, kind: ContractFileKind): ContractFile | null {
-  const row = getDb().prepare('SELECT * FROM contract_files WHERE contract_id = ? AND kind = ?').get(contractId, kind) as
-    | ContractFile
-    | undefined;
-  return row ?? null;
-}
-
-export function listContractFiles(contractId: number): ContractFile[] {
-  return getDb().prepare('SELECT * FROM contract_files WHERE contract_id = ? ORDER BY kind').all(contractId) as ContractFile[];
 }
