@@ -26,6 +26,10 @@ Issue 追蹤在 Linear（team **Miles-rent-poc**，前綴 `MIL`，此 repo 專�
 
 單一 context：repo 根目錄放一份 `GLOSSARY.md` 與 `docs/adr/`。詳見 `docs/agents/domain.md`。
 
+### UI/UX skills
+
+實作或修改任何前端畫面（頁面、元件、表單、空狀態、PDF 以外的視覺）時，必須先用 Skill tool 載入專案 `.claude/skills/impeccable`，照它的流程做，並以 `DESIGN.md` 為 token 單一來源（ADR-0009）。需要查設計決策（配色、字體配對、UX 準則、圖表類型）時用 `ui-ux-pro-max`。`design-taste-frontend` 只用於行銷網站，後台不用。純後端、資料層、測試的工作不受此限。
+
 ### DottedSign API 文件
 
 查點點簽 API 規格一律用 `dottedsign-api` MCP server（已設定在 `.mcp.json`）：先 `search-endpoints` 或 `list-endpoints` 找目標，再用 `get-endpoint` 取得完整定義。不要憑記憶或舊文件寫 API 呼叫。`execute-request` 只用來查文件範例，不要帶真實 token 呼叫正式 API。
