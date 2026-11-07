@@ -13,6 +13,7 @@ const UNSUPPORTED = {
 // 空 body 的 ping 仍回應，點點簽後台才能儲存 webhook URL。模擬簽署走 simulateEvent，不受影響。
 export function createMockProvider(options: { rejectWebhookEvents?: boolean } = {}): SigningProvider {
   return {
+    id: 'mock',
     mode: 'mock',
     unsupported: UNSUPPORTED,
     createTask: async ({ subject }) => ({
