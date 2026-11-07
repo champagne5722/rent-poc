@@ -149,8 +149,8 @@ describe('generateContractPdf 併入選用條款', () => {
     const expected = signatureStampBaselines();
     expect(stamps).toHaveLength(2);
     // 簽署欄之後只剩設備附件頁（本測試的 fixture 有一項設備）
-    expect(stamps[0]).toEqual({ page: doc.numPages - 2, y: expect.closeTo(expected.landlord, 2) });
-    expect(stamps[1]).toEqual({ page: doc.numPages - 2, y: expect.closeTo(expected.tenant, 2) });
+    expect(stamps[0]).toEqual({ page: doc.numPages - 2, y: expect.closeTo(expected.party_a, 2) });
+    expect(stamps[1]).toEqual({ page: doc.numPages - 2, y: expect.closeTo(expected.party_b, 2) });
     // 產 PDF＋讀回文字在冷啟動時偏慢，給寬一點的時限避免偶發超時
   }, 20000);
 });

@@ -42,7 +42,7 @@ import type {
   ContractRelations,
   ContractStatus,
 } from '@/lib/types';
-import { CONTRACT_STATUS_LABELS } from '@/lib/types';
+import { CONTRACT_STATUS_LABELS, SIGNER_ROLE_LABELS } from '@/lib/types';
 import { currentSigner } from '@/lib/signing';
 import {
   contractChainNodes,
@@ -402,7 +402,7 @@ function ContractDetail({ id }: { id: string }) {
             <div style={{ marginTop: 12 }}>
               <Space wrap>
                 <Typography.Text type="secondary">
-                  目前待簽：{signer.role === 'tenant' ? '乙方' : '甲方'} {signer.name}（{signer.email}）
+                  目前待簽：{SIGNER_ROLE_LABELS[signer.role]} {signer.name}（{signer.email}）
                 </Typography.Text>
                 <Button size="small" loading={linkLoading} onClick={fetchSignLink}>
                   取得簽署連結

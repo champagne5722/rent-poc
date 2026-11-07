@@ -6,10 +6,10 @@ import type { Contract } from './types';
 export function currentSigner(contract: Contract): CurrentSigner | null {
   const f = contract.fields;
   if (contract.status === 'awaiting_tenant') {
-    return { role: 'tenant', name: f.tenantName, email: f.tenantEmail };
+    return { role: 'party_b', name: f.tenantName, email: f.tenantEmail };
   }
   if (contract.status === 'awaiting_landlord') {
-    return { role: 'landlord', name: f.landlordName, email: f.landlordEmail };
+    return { role: 'party_a', name: f.landlordName, email: f.landlordEmail };
   }
   return null;
 }
@@ -19,16 +19,16 @@ export function contractSignerSequence(contract: Contract): Signer[] {
   const { fields, signature_fields } = contract;
   return [
     {
-      role: 'tenant',
+      role: 'party_b',
       name: fields.tenantName,
       email: fields.tenantEmail,
-      signatureFields: signature_fields.filter((f) => f.signer === 'tenant'),
+      signatureFields: signature_fields.filter((f) => f.signer === 'party_b'),
     },
     {
-      role: 'landlord',
+      role: 'party_a',
       name: fields.landlordName,
       email: fields.landlordEmail,
-      signatureFields: signature_fields.filter((f) => f.signer === 'landlord'),
+      signatureFields: signature_fields.filter((f) => f.signer === 'party_a'),
     },
   ];
 }

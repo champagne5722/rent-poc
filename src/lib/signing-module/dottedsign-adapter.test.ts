@@ -10,7 +10,7 @@ const A4 = { width: 595.28, height: 841.89 };
 describe('toDsCoord（簽署區域座標轉換）', () => {
   const field = (f: Partial<SignatureField>): SignatureField => ({
     id: 'f1',
-    signer: 'tenant',
+    signer: 'party_b',
     page: 0,
     x: 0,
     y: 0,
@@ -64,16 +64,16 @@ describe('建立任務的請求組裝', () => {
   };
   const signers: Signer[] = [
     {
-      role: 'tenant',
+      role: 'party_b',
       name: '王租客',
       email: 'tenant@example.com',
-      signatureFields: [{ id: 'f1', signer: 'tenant', page: 2, x: 0.1, y: 0.8, w: 0.2, h: 0.1 }],
+      signatureFields: [{ id: 'f1', signer: 'party_b', page: 2, x: 0.1, y: 0.8, w: 0.2, h: 0.1 }],
     },
     {
-      role: 'landlord',
+      role: 'party_a',
       name: '林房東',
       email: 'landlord@example.com',
-      signatureFields: [{ id: 'f2', signer: 'landlord', page: 2, x: 0, y: 0, w: 1, h: 1 }],
+      signatureFields: [{ id: 'f2', signer: 'party_a', page: 2, x: 0, y: 0, w: 1, h: 1 }],
     },
   ];
 

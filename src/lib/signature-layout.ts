@@ -11,7 +11,7 @@ import {
   SIGN_STAMP_BLANK,
   signatureStampBaselines,
 } from './pdf-layout';
-import type { SignatureField, SignerRole } from './types';
+import type { ContractPartyRole, SignatureField } from './types';
 
 /** 相對頁面的矩形（0..1）。 */
 export interface Rect {
@@ -47,7 +47,7 @@ function toRatioRect(left: number, topY: number, width: number, height: number):
 }
 
 /** 範本簽名頁上甲乙簽名欄的落點。 */
-function stampRect(signer: SignerRole): Rect {
+function stampRect(signer: ContractPartyRole): Rect {
   const baseline = signatureStampBaselines()[signer];
   return toRatioRect(
     MARGIN + STAMP_LABEL_W + STAMP_LABEL_GAP,
@@ -58,16 +58,16 @@ function stampRect(signer: SignerRole): Rect {
 }
 
 /** 不是簽名頁時的備援落點：靠右下角，甲方在上、乙方在下。 */
-function fallbackRect(signer: SignerRole): Rect {
+function fallbackRect(signer: ContractPartyRole): Rect {
   const topY =
-    signer === 'landlord'
+    signer === 'party_a'
       ? MARGIN + SIGN_STAMP_BLANK * 2 + FALLBACK_GAP
       : MARGIN + SIGN_STAMP_BLANK;
   return toRatioRect(PAGE_W - MARGIN - STAMP_BOX_W, topY, STAMP_BOX_W, SIGN_STAMP_BLANK);
 }
 
 export interface DefaultFieldRectInput {
-  signer: SignerRole;
+  signer: ContractPartyRole;
   /** 要放框的頁碼（0-based）。 */
   page: number;
   /** 範本簽名欄所在的頁碼（0-based），實務上是 PDF 最後一頁。 */

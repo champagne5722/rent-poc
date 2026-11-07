@@ -49,8 +49,8 @@ describe('signatureStampBaselines', () => {
     const stamps = await readStampPositions();
     const expected = signatureStampBaselines();
     expect(stamps).toHaveLength(2);
-    expect(stamps[0].y).toBeCloseTo(expected.landlord, 2);
-    expect(stamps[1].y).toBeCloseTo(expected.tenant, 2);
+    expect(stamps[0].y).toBeCloseTo(expected.party_a, 2);
+    expect(stamps[1].y).toBeCloseTo(expected.party_b, 2);
   });
 
   // 簽署欄之後只剩設備附件頁（ADR-0008：附件排在本文與簽章之後）
