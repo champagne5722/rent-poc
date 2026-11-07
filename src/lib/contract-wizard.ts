@@ -1,7 +1,9 @@
 // 建約 wizard 的步驟定義與檢核邏輯（規格 §7）。
 // 全部是純函式，UI 只負責蒐集輸入與畫畫面；擋下一步、擋送簽與續作步驟推導都集中在這裡。
 
-import type { Contract, ContractFields, SignatureField } from './types';
+import { upgradedTemplateBinding } from './clause-library';
+import { contractEquipmentAnnex } from './equipment';
+import type { Contract, ContractFields, ContractTemplate, OptionalClause, SignatureField } from './types';
 
 export const WIZARD_STEPS = [
   { key: 'property', title: '物件與範本' },
@@ -86,6 +88,24 @@ export function mergeEditableFields(base: ContractFields, values: EditableFieldV
     endDate: values.endDate ?? '',
     payDay: values.payDay ?? null,
     extra: values.extra ?? '',
+  };
+}
+
+/**
+ * 草稿升版重建（ADR-0005）：綁上平台最新範本版本、已勾條款重取最新條文，
+ * 並把 v1 只有壓平字串的設備欄位轉成範本 v2 的設備附件列（ADR-0008）。
+ * 回傳新物件，原草稿欄位不被就地改寫。
+ */
+export function upgradeDraftFields(
+  fields: ContractFields,
+  options: { template?: ContractTemplate; library?: readonly OptionalClause[] } = {}
+): ContractFields {
+  return {
+    ...fields,
+    ...upgradedTemplateBinding(fields, options),
+    equipmentAnnex: contractEquipmentAnnex(fields),
+    // 轉出附件列後舊欄位就沒有用途了；undefined 在 JSON.stringify 時會被丟掉
+    equipment: undefined,
   };
 }
 

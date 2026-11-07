@@ -6,6 +6,7 @@
 // src/lib/pdf.ts 排 PDF 條款區、wizard 顯示條號與確認頁摘要，都吃這一份，避免兩邊條號各算各的。
 
 import { clauseSnapshots } from './clause-library';
+import { contractEquipmentAnnex } from './equipment';
 import type { ContractFields, TemplateBinding } from './types';
 
 export interface ContractClause {
@@ -26,6 +27,23 @@ export function clauseNumeral(n: number): string {
   return `十${CN_DIGITS[n - 11]}`;
 }
 
+/**
+ * 這份合約綁的範本版本。
+ * 沒綁版本的早期合約（MIL-26 之前）視為 v1：當時平台就只有 v1，條文照 v1 產出。
+ * 注意這裡的預設值與 upgradeNotice() 的 0 不同——那邊是為了讓沒綁版本的草稿也看得到升版提示。
+ */
+export function boundTemplateVersion(binding: TemplateBinding): number {
+  return binding.templateVersion ?? 1;
+}
+
+/**
+ * 附屬設備條文是否改為引用附件（範本 v2 起，ADR-0008）。
+ * v1 的合約與草稿仍在本文列舉品項，平台改版不回溯影響既有合約；要換成 v2 得走 wizard 的升版重建。
+ */
+export function usesEquipmentAnnex(binding: TemplateBinding): boolean {
+  return boundTemplateVersion(binding) >= 2;
+}
+
 function fmtMoney(n: number | null): string {
   return n == null ? '＿＿＿＿' : `新臺幣 ${n.toLocaleString('zh-TW')} 元整`;
 }
@@ -39,6 +57,23 @@ function fmtDate(d: string): string {
 /** 空欄位在合約上留底線，不留空白 */
 export function blank(s: string | null | undefined): string {
   return s && s.trim() ? s : '＿＿＿＿＿＿';
+}
+
+/**
+ * 附屬設備條文。
+ * v2（ADR-0008）：不在本文列舉品項，改引用附件頁，逐列的修繕責任與備註都在附件上。
+ * v1：維持原本在本文列舉品項的寫法，既有合約與草稿的產出不因平台改版而改變。
+ */
+function equipmentClauseBody(f: ContractFields): string {
+  if (!usesEquipmentAnnex(f)) {
+    const legacy = f.equipment ?? [];
+    return legacy.length > 0
+      ? `本房屋現有附屬設備如下：${legacy.join('、')}。乙方應以善良管理人之注意義務使用，如因可歸責於乙方之事由致損壞，應負修繕或賠償責任。`
+      : '本房屋無附屬設備。';
+  }
+  return contractEquipmentAnnex(f).length > 0
+    ? '本房屋附屬設備詳如附件「附屬設備清單」。乙方應以善良管理人之注意義務使用，如因可歸責於乙方之事由致損壞，應依該附件所載修繕責任歸屬負修繕或賠償責任。'
+    : '本房屋無附屬設備。';
 }
 
 function leadingClauses(f: ContractFields): ContractClause[] {
@@ -69,10 +104,7 @@ function leadingClauses(f: ContractFields): ContractClause[] {
     },
     {
       title: '附屬設備',
-      body:
-        f.equipment.length > 0
-          ? `本房屋現有附屬設備如下：${f.equipment.join('、')}。乙方應以善良管理人之注意義務使用，如因可歸責於乙方之事由致損壞，應負修繕或賠償責任。`
-          : '本房屋無附屬設備。',
+      body: equipmentClauseBody(f),
     },
     {
       title: '使用約定',

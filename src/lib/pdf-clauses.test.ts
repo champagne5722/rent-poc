@@ -13,7 +13,7 @@ function fields(patch: Partial<ContractFields> = {}): ContractFields {
     propertyAddress: '台北市中正區測試路 1 號',
     propertyType: '整層住家',
     propertySize: 25,
-    equipment: ['冷氣'],
+    equipmentAnnex: [{ name: '冷氣', quantity: 1, repair: 'landlord', note: '' }],
     landlordName: '王大明',
     landlordEmail: 'landlord@example.com',
     tenantName: '李小華',
@@ -77,6 +77,36 @@ describe('buildContractClauses', () => {
   });
 });
 
+describe('附屬設備條文（範本 v2，ADR-0008）', () => {
+  const equipmentClause = (f: ContractFields) =>
+    buildContractClauses(f).find((c) => c.title.includes('附屬設備'))!;
+
+  it('有設備附件列時改為引用附件，不再列舉品項', () => {
+    const body = equipmentClause(fields()).body;
+    expect(body).toContain('詳如附件');
+    expect(body).toContain('附屬設備清單');
+    expect(body).toContain('善良管理人');
+    expect(body).not.toContain('冷氣');
+  });
+
+  it('沒有設備時維持「本房屋無附屬設備」', () => {
+    expect(equipmentClause(fields({ equipmentAnnex: [] })).body).toBe('本房屋無附屬設備。');
+  });
+
+  // v1 與 v2 並存（ADR-0008）：平台改版不回溯改變既有合約的條文
+  it('v1 合約維持在本文列舉品項', () => {
+    const v1 = fields({ templateVersion: 1, equipmentAnnex: undefined, equipment: ['冷氣 ×2', '洗衣機'] });
+    const body = equipmentClause(v1).body;
+    expect(body).toContain('本房屋現有附屬設備如下：冷氣 ×2、洗衣機');
+    expect(body).not.toContain('詳如附件');
+  });
+
+  it('沒綁範本版本的早期合約視為 v1', () => {
+    const legacy = fields({ templateVersion: undefined, equipmentAnnex: undefined, equipment: ['冷氣'] });
+    expect(equipmentClause(legacy).body).toContain('本房屋現有附屬設備如下：冷氣');
+  });
+});
+
 describe('clauseNumeral / extraClauseLabel', () => {
   it('條號的中文數字到十九都對', () => {
     expect([1, 7, 9, 10, 11, 14].map(clauseNumeral)).toEqual(['一', '七', '九', '十', '十一', '十四']);
@@ -118,8 +148,9 @@ describe('generateContractPdf 併入選用條款', () => {
     }
     const expected = signatureStampBaselines();
     expect(stamps).toHaveLength(2);
-    expect(stamps[0]).toEqual({ page: doc.numPages - 1, y: expect.closeTo(expected.landlord, 2) });
-    expect(stamps[1]).toEqual({ page: doc.numPages - 1, y: expect.closeTo(expected.tenant, 2) });
+    // 簽署欄之後只剩設備附件頁（本測試的 fixture 有一項設備）
+    expect(stamps[0]).toEqual({ page: doc.numPages - 2, y: expect.closeTo(expected.landlord, 2) });
+    expect(stamps[1]).toEqual({ page: doc.numPages - 2, y: expect.closeTo(expected.tenant, 2) });
     // 產 PDF＋讀回文字在冷啟動時偏慢，給寬一點的時限避免偶發超時
   }, 20000);
 });

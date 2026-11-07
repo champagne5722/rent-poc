@@ -7,6 +7,7 @@ import {
   contractEventTypeLabel,
   contractFileRows,
   detailActions,
+  equipmentAnnexSummary,
 } from './contract-detail';
 
 function makeContract(o: { id?: number; status?: ContractStatus; derived_from?: number | null } = {}): Contract {
@@ -24,7 +25,7 @@ function makeContract(o: { id?: number; status?: ContractStatus; derived_from?: 
       propertyAddress: '台北市測試路 1 號',
       propertyType: '套房',
       propertySize: 10,
-      equipment: [],
+      equipmentAnnex: [],
       rent: 15000,
       deposit: 30000,
       startDate: '2026-01-01',
@@ -225,5 +226,30 @@ describe('contractChainNodes', () => {
       derived_contracts: [{ id: 5, status: 'draft' }],
     });
     expect(nodes.map((n) => n.role)).toEqual(['self', 'successor']);
+  });
+});
+
+describe('equipmentAnnexSummary（詳情頁的設備附件摘要）', () => {
+  it('一列一行，標示數量與修繕責任，有備註才加上', () => {
+    expect(
+      equipmentAnnexSummary({
+        equipmentAnnex: [
+          { name: '冷氣', quantity: 2, repair: 'landlord', note: '客廳與主臥各一台' },
+          { name: '洗衣機', quantity: 1, repair: 'tenant', note: '' },
+        ],
+      })
+    ).toEqual(['冷氣 ×2｜修繕：出租方｜客廳與主臥各一台', '洗衣機｜修繕：承租方']);
+  });
+
+  it('沒有設備附件列時是空陣列（UI 顯示「無」）', () => {
+    expect(equipmentAnnexSummary({ equipmentAnnex: [] })).toEqual([]);
+  });
+
+  // MIL-29 之前的合約只有壓平成字串的 equipment
+  it('舊合約的字串設備欄位一樣讀得出摘要，修繕責任顯示預設的出租方', () => {
+    expect(equipmentAnnexSummary({ equipment: ['冷氣 ×2', '洗衣機'] })).toEqual([
+      '冷氣 ×2｜修繕：出租方',
+      '洗衣機｜修繕：出租方',
+    ]);
   });
 });

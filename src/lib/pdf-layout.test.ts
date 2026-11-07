@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateContractPdf } from './pdf';
 import { signatureStampBaselines } from './pdf-layout';
+import { bindTemplate } from './clause-library';
 import type { ContractFields } from './types';
 
 // signatureStampBaselines() 是把 generateContractPdf 的排版順序重走一遍推出來的，
@@ -11,7 +12,10 @@ const fields: ContractFields = {
   propertyAddress: '台北市中正區測試路 1 號',
   propertyType: '整層住家',
   propertySize: 25,
-  equipment: ['冷氣', '洗衣機'],
+  equipmentAnnex: [
+    { name: '冷氣', quantity: 2, repair: 'landlord', note: '' },
+    { name: '洗衣機', quantity: 1, repair: 'tenant', note: '' },
+  ],
   landlordName: '王大明',
   landlordEmail: 'landlord@example.com',
   tenantName: '李小華',
@@ -22,11 +26,12 @@ const fields: ContractFields = {
   endDate: '2026-12-31',
   payDay: 5,
   extra: '',
+  ...bindTemplate(),
 };
 
 /** 從產出的 PDF 讀回兩個「簽章：」的頁碼與 baseline y。 */
-async function readStampPositions(): Promise<{ page: number; y: number }[]> {
-  const bytes = await generateContractPdf(fields);
+async function readStampPositions(f: ContractFields = fields): Promise<{ page: number; y: number }[]> {
+  const bytes = await generateContractPdf(f);
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const doc = await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise;
   const found: { page: number; y: number }[] = [];
@@ -48,11 +53,21 @@ describe('signatureStampBaselines', () => {
     expect(stamps[1].y).toBeCloseTo(expected.tenant, 2);
   });
 
-  it('簽署欄落在 PDF 最後一頁，兩個簽章欄在同一頁', async () => {
+  // 簽署欄之後只剩設備附件頁（ADR-0008：附件排在本文與簽章之後）
+  it('簽署欄自成一頁，兩個簽章欄在同一頁，其後只有設備附件頁', async () => {
     const bytes = await generateContractPdf(fields);
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
     const numPages = (await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise).numPages;
     const stamps = await readStampPositions();
+    expect(stamps[0].page).toBe(stamps[1].page);
+    expect(stamps[0].page).toBe(numPages - 2);
+  });
+
+  it('沒有設備附件時簽署欄就是最後一頁', async () => {
+    const stamps = await readStampPositions({ ...fields, equipmentAnnex: [] });
+    const bytes = await generateContractPdf({ ...fields, equipmentAnnex: [] });
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const numPages = (await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise).numPages;
     expect(stamps[0].page).toBe(numPages - 1);
     expect(stamps[1].page).toBe(numPages - 1);
   });

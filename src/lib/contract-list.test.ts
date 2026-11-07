@@ -36,7 +36,7 @@ function makeContract(o: MakeOptions = {}): Contract {
       propertyAddress: '台北市測試路 1 號',
       propertyType: '套房',
       propertySize: 10,
-      equipment: [],
+      equipmentAnnex: [],
       rent: 15000,
       deposit: 30000,
       startDate: o.startDate ?? '2026-09-01',

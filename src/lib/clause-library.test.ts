@@ -20,6 +20,12 @@ const BUMPED: OptionalClause[] = OPTIONAL_CLAUSES.map((c) =>
 );
 const BUMPED_TEMPLATE = { ...DEFAULT_TEMPLATE, version: DEFAULT_TEMPLATE.version + 1 };
 
+describe('範本（平台資料）', () => {
+  it('目前是 v2：附屬設備條文改為引用附件（ADR-0008）', () => {
+    expect(DEFAULT_TEMPLATE.version).toBe(2);
+  });
+});
+
 describe('選用條款庫（平台資料）', () => {
   it('提供 3〜5 條，每條都有 id、標題、條文與版本', () => {
     expect(OPTIONAL_CLAUSES.length).toBeGreaterThanOrEqual(3);

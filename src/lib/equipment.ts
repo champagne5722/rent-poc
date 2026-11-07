@@ -1,7 +1,13 @@
 // 設備清單的解析、驗證與顯示（GLOSSARY.md：設備清單、設備詞彙庫；ADR-0008）。
 // 全部是純函式：資料庫讀寫在 db.ts、API 驗證在 route，畫面只負責呈現。
 
-import type { EquipmentItem } from './types';
+import type {
+  EquipmentAnnexRow,
+  EquipmentAnnexSnapshot,
+  EquipmentItem,
+  RepairResponsibility,
+} from './types';
+import { REPAIR_RESPONSIBILITIES } from './types';
 
 /** 把任意值收斂成一個合法項目；名稱空白或形狀不對回 null。 */
 function coerceItem(value: unknown): EquipmentItem | null {
@@ -73,10 +79,61 @@ export function formatEquipmentItem(item: EquipmentItem): string {
   return item.quantity > 1 ? `${item.name} ×${item.quantity}` : item.name;
 }
 
+/** formatEquipmentItem 的反向解析：「冷氣 ×2」→ 冷氣兩台；沒有數量後綴的視為 1。 */
+export function parseEquipmentLabel(label: string): EquipmentItem {
+  const matched = /^(.*?)\s*×\s*(\d+)$/.exec(label.trim());
+  if (!matched) return { name: label.trim(), quantity: 1 };
+  const quantity = Number(matched[2]);
+  return { name: matched[1].trim(), quantity: quantity >= 1 ? quantity : 1 };
+}
+
+// ── 設備附件（ADR-0008）─────────────────────────────────────────────
+
+/** 修繕責任預設出租方（GLOSSARY.md：呼應內政部範本第八條精神）。 */
+export const DEFAULT_REPAIR: RepairResponsibility = 'landlord';
+
+function annexRow(item: EquipmentItem): EquipmentAnnexRow {
+  return { name: item.name, quantity: item.quantity, repair: DEFAULT_REPAIR, note: '' };
+}
+
+/** 空白的一列，供 wizard 從詞彙庫加列用。 */
+export function newAnnexRow(name = ''): EquipmentAnnexRow {
+  return { name, quantity: 1, repair: DEFAULT_REPAIR, note: '' };
+}
+
+/** 建約帶入：物件的設備清單 → 設備附件列（修繕責任預設出租方、備註空）。 */
+export function toEquipmentAnnex(items: EquipmentItem[]): EquipmentAnnexRow[] {
+  return items.map(annexRow);
+}
+
+/** 把任意值收斂成一列附件；名稱空白回 null，其餘欄位壞掉一律保底。 */
+function coerceAnnexRow(value: unknown): EquipmentAnnexRow | null {
+  // 舊形狀混進來的「名稱 ×N」字串一樣吃得下
+  if (typeof value === 'string') {
+    const item = parseEquipmentLabel(value);
+    return item.name ? annexRow(item) : null;
+  }
+  if (typeof value !== 'object' || value === null) return null;
+  const { name, quantity, repair, note } = value as Record<string, unknown>;
+  if (typeof name !== 'string' || !name.trim()) return null;
+  const n = typeof quantity === 'number' && Number.isFinite(quantity) ? Math.floor(quantity) : 1;
+  return {
+    name: name.trim(),
+    quantity: n >= 1 ? n : 1,
+    repair: REPAIR_RESPONSIBILITIES.includes(repair as RepairResponsibility)
+      ? (repair as RepairResponsibility)
+      : DEFAULT_REPAIR,
+    note: typeof note === 'string' ? note : '',
+  };
+}
+
 /**
- * 建約時的過渡橋接：ContractFields.equipment 在 MIL-29 改成設備附件列之前仍是 string[]，
- * 這裡把物件的設備清單壓平成顯示字串，數量資訊不至於在建約時掉光。
+ * 讀一份合約的設備附件列。
+ * MIL-29 之前的合約沒有 equipmentAnnex，只有壓平成字串的 equipment，這裡轉成附件列
+ * （數量從「名稱 ×N」解析回來、修繕責任出租方、備註空），比照 TemplateBinding 的可選欄位慣例。
  */
-export function toContractEquipment(items: EquipmentItem[]): string[] {
-  return items.map(formatEquipmentItem);
+export function contractEquipmentAnnex(snapshot: EquipmentAnnexSnapshot): EquipmentAnnexRow[] {
+  const raw = snapshot.equipmentAnnex ?? snapshot.equipment ?? [];
+  if (!Array.isArray(raw)) return [];
+  return raw.map(coerceAnnexRow).filter((row): row is EquipmentAnnexRow => row !== null);
 }

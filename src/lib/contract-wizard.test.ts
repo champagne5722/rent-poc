@@ -13,7 +13,9 @@ import {
   resumeStepIndex,
   sendBlockReason,
   stepStatuses,
+  upgradeDraftFields,
 } from './contract-wizard';
+import { DEFAULT_TEMPLATE, findClause, upgradeNotice } from './clause-library';
 
 function fields(patch: Partial<ContractFields> = {}): ContractFields {
   return {
@@ -25,7 +27,7 @@ function fields(patch: Partial<ContractFields> = {}): ContractFields {
     propertyAddress: '台北市大安區和平東路二段 100 號 3 樓',
     propertyType: '整層住家',
     propertySize: 25,
-    equipment: ['冷氣'],
+    equipmentAnnex: [{ name: '冷氣', quantity: 1, repair: 'landlord', note: '' }],
     rent: 28000,
     deposit: 56000,
     startDate: '2026-09-01',
@@ -236,7 +238,7 @@ describe('mergeEditableFields（第②步表單值併回草稿）', () => {
     const merged = mergeEditableFields(base, input);
     expect(merged).toMatchObject(input);
     expect(merged.propertyName).toBe(base.propertyName);
-    expect(merged.equipment).toEqual(base.equipment);
+    expect(merged.equipmentAnnex).toEqual(base.equipmentAnnex);
   });
 
   it('不動範本綁定與選用條款快照（第①步勾的條款不會被表單蓋掉）', () => {
@@ -258,5 +260,46 @@ describe('mergeEditableFields（第②步表單值併回草稿）', () => {
       payDay: null,
       extra: '',
     });
+  });
+});
+
+describe('upgradeDraftFields（草稿升版重建，ADR-0005 v1→v2）', () => {
+  // v1 建立的草稿：範本 v1、設備只有壓平成字串的舊欄位
+  const v1Draft = fields({
+    templateId: 'residential-lease',
+    templateVersion: 1,
+    clauses: [{ id: 'pet', title: '寵物飼養', body: '（建約當時的條文）', version: 1 }],
+    equipmentAnnex: undefined,
+    equipment: ['冷氣 ×2', '洗衣機'],
+  });
+
+  it('綁上平台最新範本版本並重取已勾條款條文', () => {
+    const upgraded = upgradeDraftFields(v1Draft);
+    expect(upgraded.templateVersion).toBe(DEFAULT_TEMPLATE.version);
+    expect(upgraded.clauses).toEqual([{ ...findClause('pet')! }]);
+    expect(upgradeNotice(upgraded).hasUpgrade).toBe(false);
+  });
+
+  it('設備附件列從舊欄位轉出來：數量解析回來、修繕責任出租方、備註空', () => {
+    expect(upgradeDraftFields(v1Draft).equipmentAnnex).toEqual([
+      { name: '冷氣', quantity: 2, repair: 'landlord', note: '' },
+      { name: '洗衣機', quantity: 1, repair: 'landlord', note: '' },
+    ]);
+  });
+
+  it('轉出附件列後不再留著舊欄位', () => {
+    expect(upgradeDraftFields(v1Draft).equipment).toBeUndefined();
+  });
+
+  it('已經有附件列的草稿升版時原樣保留逐約調整過的內容', () => {
+    const tweaked = [{ name: '冷氣', quantity: 1, repair: 'tenant' as const, note: '房客自購' }];
+    expect(upgradeDraftFields(fields({ equipmentAnnex: tweaked })).equipmentAnnex).toEqual(tweaked);
+  });
+
+  it('不就地改寫原本的草稿欄位', () => {
+    upgradeDraftFields(v1Draft);
+    expect(v1Draft.templateVersion).toBe(1);
+    expect(v1Draft.equipmentAnnex).toBeUndefined();
+    expect(v1Draft.equipment).toEqual(['冷氣 ×2', '洗衣機']);
   });
 });

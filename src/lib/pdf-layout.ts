@@ -17,6 +17,19 @@ export const SIGN_ROW_GAP_AFTER = 2;
 /** 「簽章：」之後預留給簽名的空白高度，也就是簽名框的預設高度。 */
 export const SIGN_STAMP_BLANK = 44;
 
+/**
+ * 設備附件頁（ADR-0008）的版面參數。附件排在簽署欄之後（內政部慣例：附件在本文與簽章之後），
+ * 所以附件多長都不會動到上面的簽署欄落點。
+ */
+export const ANNEX_TITLE = '附屬設備清單';
+export const ANNEX_TITLE_SIZE = 15;
+export const ANNEX_TITLE_GAP_AFTER = 8;
+export const ANNEX_COLUMNS = ['項目', '數量', '修繕責任', '備註'] as const;
+/** 四欄寬度合計＝版心寬（PAGE_W - MARGIN * 2）。 */
+export const ANNEX_COLUMN_WIDTHS = [170, 55, 80, 178.28] as const;
+export const ANNEX_CELL_PAD_X = 6;
+export const ANNEX_CELL_PAD_Y = 5;
+
 /** 一行文字往下推進的距離（字級＋行距＋段後空白）。 */
 function lineAdvance(size: number, gapAfter = 0): number {
   return size + LINE_GAP + gapAfter;

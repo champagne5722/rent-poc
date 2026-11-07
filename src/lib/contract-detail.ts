@@ -12,13 +12,16 @@ import type {
   ContractFileKind,
   ContractRelations,
   ContractStatus,
+  EquipmentAnnexSnapshot,
 } from './types';
 import {
   CONTRACT_EVENT_ACTOR_LABELS,
   CONTRACT_EVENT_TYPE_LABELS,
   CONTRACT_FILE_KINDS,
   CONTRACT_FILE_LABELS,
+  REPAIR_RESPONSIBILITY_LABELS,
 } from './types';
+import { contractEquipmentAnnex, formatEquipmentItem } from './equipment';
 
 // ── 頁首操作 ─────────────────────────────────────────────────
 
@@ -175,6 +178,20 @@ export function contractFileRows(
       hint: contract.status === 'completed' ? '尚未保存，可手動補抓' : '合約完成簽署後產生',
       error: null,
     };
+  });
+}
+
+// ── 設備附件摘要 ─────────────────────────────────────────────
+
+/**
+ * 詳情頁「合約摘要」的設備附件列，一列一行：「冷氣 ×2｜修繕：出租方｜備註」。
+ * 讀的是合約自己的快照，舊合約的字串設備欄位由 contractEquipmentAnnex 轉出來（MIL-29）。
+ */
+export function equipmentAnnexSummary(fields: EquipmentAnnexSnapshot): string[] {
+  return contractEquipmentAnnex(fields).map((row) => {
+    const parts = [formatEquipmentItem(row), `修繕：${REPAIR_RESPONSIBILITY_LABELS[row.repair]}`];
+    if (row.note.trim()) parts.push(row.note.trim());
+    return parts.join('｜');
   });
 }
 

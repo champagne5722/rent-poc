@@ -2,11 +2,20 @@ import { PDFDocument, PDFFont, PDFPage, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import fs from 'fs';
 import path from 'path';
-import type { ContractFields } from './types';
+import type { ContractFields, EquipmentAnnexRow } from './types';
+import { REPAIR_RESPONSIBILITY_LABELS } from './types';
 // 條款全文與條號集中在 contract-clauses.ts：wizard 也要顯示同一組條號與勾選條款。
-import { blank, buildContractClauses } from './contract-clauses';
+import { blank, buildContractClauses, usesEquipmentAnnex } from './contract-clauses';
+import { contractEquipmentAnnex } from './equipment';
 // 版面常數集中在 pdf-layout.ts：簽署區編輯器要用同一組數字推簽名欄的預設落點。
 import {
+  ANNEX_CELL_PAD_X,
+  ANNEX_CELL_PAD_Y,
+  ANNEX_COLUMNS,
+  ANNEX_COLUMN_WIDTHS,
+  ANNEX_TITLE,
+  ANNEX_TITLE_GAP_AFTER,
+  ANNEX_TITLE_SIZE,
   BODY_SIZE,
   LINE_GAP,
   MARGIN,
@@ -88,6 +97,47 @@ class Writer {
     this.y -= opts.gapAfter ?? 0;
   }
 
+  /** 表格一列的高度：每格逐字斷行後取最高的一格。 */
+  rowHeight(cells: readonly string[], size = BODY_SIZE): number {
+    const maxLines = Math.max(
+      ...cells.map((cell, i) => this.wrap(cell, size, ANNEX_COLUMN_WIDTHS[i] - ANNEX_CELL_PAD_X * 2).length)
+    );
+    return maxLines * (size + LINE_GAP) - LINE_GAP + ANNEX_CELL_PAD_Y * 2;
+  }
+
+  /** 畫一列表格（含格線），列高由內容決定；呼叫端負責換頁。 */
+  tableRow(cells: readonly string[], opts: { head?: boolean; size?: number } = {}) {
+    const size = opts.size ?? BODY_SIZE;
+    const height = this.rowHeight(cells, size);
+    const bottom = this.y - height;
+    let x = MARGIN;
+    cells.forEach((cell, i) => {
+      const width = ANNEX_COLUMN_WIDTHS[i];
+      this.page.drawRectangle({
+        x,
+        y: bottom,
+        width,
+        height,
+        borderWidth: 0.5,
+        borderColor: rgb(0.6, 0.6, 0.6),
+        color: opts.head ? rgb(0.94, 0.94, 0.94) : undefined,
+      });
+      let textY = this.y - ANNEX_CELL_PAD_Y - size;
+      for (const line of this.wrap(cell, size, width - ANNEX_CELL_PAD_X * 2)) {
+        this.page.drawText(line, {
+          x: x + ANNEX_CELL_PAD_X,
+          y: textY,
+          size,
+          font: this.font,
+          color: rgb(0.1, 0.1, 0.1),
+        });
+        textY -= size + LINE_GAP;
+      }
+      x += width;
+    });
+    this.y = bottom;
+  }
+
   center(text: string, size: number, gapAfter = 0) {
     this.ensure(size + LINE_GAP);
     const w = this.font.widthOfTextAtSize(text, size);
@@ -99,6 +149,25 @@ class Writer {
       color: rgb(0.1, 0.1, 0.1),
     });
     this.y -= size + LINE_GAP + gapAfter;
+  }
+}
+
+/**
+ * 設備附件頁（ADR-0008）：另起一頁，表格欄位＝項目／數量／修繕責任／備註。
+ * 列數多到一頁放不下就續頁並重畫表頭。
+ */
+function drawEquipmentAnnex(w: Writer, rows: EquipmentAnnexRow[]): void {
+  w.addPage();
+  w.center(`附件　${ANNEX_TITLE}`, ANNEX_TITLE_SIZE, ANNEX_TITLE_GAP_AFTER);
+  w.text('本附件為本契約之一部分，所列設備由甲方於交屋時點交予乙方使用。', BODY_SIZE, { gapAfter: 8 });
+  w.tableRow(ANNEX_COLUMNS, { head: true });
+  for (const row of rows) {
+    const cells = [row.name, String(row.quantity), REPAIR_RESPONSIBILITY_LABELS[row.repair], row.note || '—'];
+    if (w.y - w.rowHeight(cells) < MARGIN) {
+      w.addPage();
+      w.tableRow(ANNEX_COLUMNS, { head: true });
+    }
+    w.tableRow(cells);
   }
 }
 
@@ -138,6 +207,12 @@ export async function generateContractPdf(fields: ContractFields): Promise<Uint8
   w.text(`Email：${blank(fields.tenantEmail)}`, BODY_SIZE, { gapAfter: SIGN_ROW_GAP_AFTER });
   w.text('簽章：', BODY_SIZE, { gapAfter: SIGN_STAMP_BLANK });
   w.text(`中華民國　簽約日期以電子簽署完成日為準`, BODY_SIZE);
+
+  // 設備附件頁排在簽署欄之後（內政部慣例：附件在本文與簽章之後），所以附件多長都不影響簽名框落點；
+  // 沒有設備附件列就不產這一頁（主約條文同步寫「本房屋無附屬設備」）。
+  // 範本 v1 的合約仍把設備列在本文，沒有附件頁。
+  const annex = usesEquipmentAnnex(fields) ? contractEquipmentAnnex(fields) : [];
+  if (annex.length > 0) drawEquipmentAnnex(w, annex);
 
   return doc.save();
 }

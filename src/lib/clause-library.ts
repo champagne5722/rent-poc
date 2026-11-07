@@ -10,7 +10,8 @@ import type { ClauseSnapshot, ContractTemplate, OptionalClause, TemplateBinding 
 export const DEFAULT_TEMPLATE: ContractTemplate = {
   id: 'residential-lease',
   name: '住宅租賃契約',
-  version: 1,
+  // v2（ADR-0008）：附屬設備條文由列舉品項改為引用「附屬設備清單」附件頁。
+  version: 2,
   provider: '平台提供',
   note: '條款全文由平台維護並經法務審閱，房東只編輯欄位。',
 };

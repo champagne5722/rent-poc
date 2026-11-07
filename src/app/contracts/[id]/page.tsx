@@ -50,6 +50,7 @@ import {
   contractFileDownloadHref,
   contractFileRows,
   detailActions,
+  equipmentAnnexSummary,
   type ContractFileRow,
   type DetailAction,
 } from '@/lib/contract-detail';
@@ -153,6 +154,7 @@ function ContractDetail({ id }: { id: string }) {
   const signLink = signLinkState?.forStatus === contract.status ? signLinkState.link : null;
   const eventEntries = contractEventEntries(events);
   const fileRows = contractFileRows(contract, files, { mock: mockMode });
+  const annexSummary = equipmentAnnexSummary(contract.fields);
   const chain = contractChainNodes(contract, relations);
 
   const voidContract = async () => {
@@ -307,6 +309,19 @@ function ContractDetail({ id }: { id: string }) {
           children: contract.fields.clauses?.length
             ? contract.fields.clauses.map((c) => c.title).join('、')
             : '無',
+        },
+        {
+          key: 'equipmentAnnex',
+          label: '設備附件',
+          children: annexSummary.length ? (
+            <Space orientation="vertical" size={2}>
+              {annexSummary.map((line) => (
+                <Typography.Text key={line}>{line}</Typography.Text>
+              ))}
+            </Space>
+          ) : (
+            '無附屬設備'
+          ),
         },
         {
           key: 'extra',

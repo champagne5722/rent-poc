@@ -17,23 +17,35 @@ import {
   Input,
   InputNumber,
   Row,
+  Select,
   Space,
   Spin,
   Steps,
+  Table,
   Tag,
   Typography,
 } from 'antd';
 import {
   CheckCircleTwoTone,
   CloseCircleTwoTone,
+  DeleteOutlined,
   LeftOutlined,
+  PlusOutlined,
   RightOutlined,
   SendOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
-import type { Contract, ContractFields, SignatureField } from '@/lib/types';
+import type {
+  Contract,
+  ContractFields,
+  EquipmentAnnexRow,
+  EquipmentVocabularyItem,
+  SignatureField,
+} from '@/lib/types';
+import { REPAIR_RESPONSIBILITIES, REPAIR_RESPONSIBILITY_LABELS } from '@/lib/types';
+import { contractEquipmentAnnex, formatEquipmentItem, newAnnexRow } from '@/lib/equipment';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
 import {
   DEFAULT_TEMPLATE,
@@ -43,9 +55,9 @@ import {
   selectedClauseIds,
   templateLabel,
   upgradeNotice,
-  upgradedTemplateBinding,
 } from '@/lib/clause-library';
-import { extraClauseLabel } from '@/lib/contract-clauses';
+import { extraClauseLabel, usesEquipmentAnnex } from '@/lib/contract-clauses';
+import { equipmentAnnexSummary } from '@/lib/contract-detail';
 import {
   STEP_CONFIRM,
   STEP_FIELDS,
@@ -59,6 +71,7 @@ import {
   resumeStepIndex,
   sendBlockReason,
   stepStatuses,
+  upgradeDraftFields,
 } from '@/lib/contract-wizard';
 
 /** 四步進度條；`/contracts/new` 的第①步也共用這一條。 */
@@ -128,6 +141,127 @@ function OptionalClauseChecklist({
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * 設備附件編輯表格（ADR-0008）：建約時由物件的設備清單帶入，之後逐約增刪列、改數量、
+ * 切修繕責任、填備註，送簽時隨合約凍結為快照。可從設備詞彙庫加列。
+ * 同名允許多列（例如同型冷氣分屬不同修繕責任），所以一律以列索引操作。
+ */
+function EquipmentAnnexEditor({
+  rows,
+  onChange,
+}: {
+  rows: EquipmentAnnexRow[];
+  onChange: (rows: EquipmentAnnexRow[]) => void;
+}) {
+  const [vocabulary, setVocabulary] = useState<EquipmentVocabularyItem[]>([]);
+  const [picked, setPicked] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/equipment-vocabulary')
+      .then((r) => (r.ok ? r.json() : { data: [] }))
+      .then((j) => setVocabulary(j.data ?? []))
+      .catch(() => setVocabulary([]));
+  }, []);
+
+  const patch = (index: number, values: Partial<EquipmentAnnexRow>) =>
+    onChange(rows.map((row, i) => (i === index ? { ...row, ...values } : row)));
+
+  const addRow = () => {
+    if (!picked) return;
+    onChange([...rows, newAnnexRow(picked)]);
+    setPicked(null);
+  };
+
+  return (
+    <>
+      <Table<EquipmentAnnexRow>
+        size="small"
+        rowKey={(_, index) => String(index)}
+        dataSource={rows}
+        pagination={false}
+        style={{ marginTop: 8 }}
+        locale={{ emptyText: '沒有設備附件列，合約條文會寫「本房屋無附屬設備」' }}
+        columns={[
+          {
+            title: '項目',
+            render: (_, row, index) => (
+              <Input size="small" value={row.name} onChange={(e) => patch(index, { name: e.target.value })} />
+            ),
+          },
+          {
+            title: '數量',
+            width: 90,
+            render: (_, row, index) => (
+              <InputNumber
+                size="small"
+                min={1}
+                precision={0}
+                style={{ width: '100%' }}
+                value={row.quantity}
+                onChange={(v) => patch(index, { quantity: v ?? 1 })}
+              />
+            ),
+          },
+          {
+            title: '修繕責任',
+            width: 110,
+            render: (_, row, index) => (
+              <Select
+                size="small"
+                style={{ width: '100%' }}
+                value={row.repair}
+                onChange={(v) => patch(index, { repair: v })}
+                options={REPAIR_RESPONSIBILITIES.map((r) => ({
+                  value: r,
+                  label: REPAIR_RESPONSIBILITY_LABELS[r],
+                }))}
+              />
+            ),
+          },
+          {
+            title: '備註',
+            render: (_, row, index) => (
+              <Input
+                size="small"
+                placeholder="選填"
+                value={row.note}
+                onChange={(e) => patch(index, { note: e.target.value })}
+              />
+            ),
+          },
+          {
+            title: '',
+            width: 44,
+            render: (_, __, index) => (
+              <Button
+                size="small"
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => onChange(rows.filter((_, i) => i !== index))}
+              />
+            ),
+          },
+        ]}
+      />
+      <Space.Compact style={{ marginTop: 8, width: 320 }}>
+        <Select
+          size="small"
+          showSearch
+          style={{ width: '100%' }}
+          placeholder="從設備詞彙庫挑一項加列"
+          value={picked}
+          onChange={setPicked}
+          options={vocabulary.map((v) => ({ value: v.name, label: v.name }))}
+        />
+        <Button size="small" icon={<PlusOutlined />} disabled={!picked} onClick={addRow}>
+          加一列
+        </Button>
+      </Space.Compact>
+    </>
   );
 }
 
@@ -352,9 +486,13 @@ export default function ContractWizard({ id }: { id: string }) {
   // 勾選變動只改記憶體裡的草稿；跟其他欄位一樣按「下一步」時才一併存回
   const changeClauses = (clauses: ContractFields['clauses']) => setFields({ ...fields, clauses });
 
-  // 升版重建＝重新快照最新範本版本與已勾條款條文，並立刻存檔（房東按了才會動）
+  // 設備附件同理：改完先放記憶體，按「下一步」時隨草稿一起存
+  const changeAnnex = (equipmentAnnex: EquipmentAnnexRow[]) => setFields({ ...fields, equipmentAnnex });
+
+  // 升版重建＝重新快照最新範本版本與已勾條款條文（v1→v2 一併把舊設備欄位轉成附件列），
+  // 並立刻存檔（房東按了才會動）
   const upgradeTemplate = async () => {
-    const next = { ...fields, ...upgradedTemplateBinding(fields) };
+    const next = upgradeDraftFields(fields);
     setFields(next);
     if (await saveDraft(next, sigFields)) message.success('已升版重建，條文換成平台最新版本');
   };
@@ -384,6 +522,10 @@ export default function ContractWizard({ id }: { id: string }) {
   };
 
   const selected = clauseSnapshots(fields);
+  // 編輯器綁在原始快照上：名稱打到剩空字串時整列不會被正規化掉；
+  // v1 舊草稿沒有這一欄，先由舊的設備欄位轉一份出來當編輯起點。
+  const annexRows = fields.equipmentAnnex ?? contractEquipmentAnnex(fields);
+  const annexSummary = equipmentAnnexSummary(fields);
   const summaryItems = [
     { key: 'property', label: '物件', span: 2, children: fields.propertyName || '—' },
     { key: 'address', label: '地址', span: 2, children: fields.propertyAddress || '—' },
@@ -416,6 +558,20 @@ export default function ContractWizard({ id }: { id: string }) {
         </Space>
       ) : (
         '（未勾選）'
+      ),
+    },
+    {
+      key: 'equipmentAnnex',
+      label: '設備附件',
+      span: 2,
+      children: annexSummary.length ? (
+        <Space orientation="vertical" size={2}>
+          {annexSummary.map((line) => (
+            <Typography.Text key={line}>{line}</Typography.Text>
+          ))}
+        </Space>
+      ) : (
+        '（無附屬設備）'
       ),
     },
     { key: 'extra', label: '其他約定事項', span: 2, children: fields.extra || '（無）' },
@@ -458,7 +614,10 @@ export default function ContractWizard({ id }: { id: string }) {
               {
                 key: 'equipment',
                 label: '附屬設備',
-                children: fields.equipment.length ? fields.equipment.join('、') : '—',
+                children: (() => {
+                  const items = contractEquipmentAnnex(fields);
+                  return items.length ? items.map(formatEquipmentItem).join('、') : '—';
+                })(),
               },
             ]}
           />
@@ -551,6 +710,32 @@ export default function ContractWizard({ id }: { id: string }) {
               <Input.TextArea rows={3} placeholder="無則留空" />
             </Form.Item>
           </Form>
+
+          <Typography.Text strong style={{ display: 'block', marginTop: 16 }}>
+            設備附件（附屬設備清單）
+          </Typography.Text>
+          {usesEquipmentAnnex(fields) ? (
+            <>
+              <Typography.Paragraph type="secondary" style={{ margin: '4px 0 0', fontSize: 12 }}>
+                由物件的設備清單帶入，可逐約增刪列、調整數量與修繕責任；產出的合約以「詳如附件」引用這張清單，
+                清單本身另成一頁排在簽署欄之後。修繕責任預設出租方。
+              </Typography.Paragraph>
+              <EquipmentAnnexEditor rows={annexRows} onChange={changeAnnex} />
+            </>
+          ) : (
+            // v1 草稿的附屬設備仍寫在主約本文（ADR-0005 不回溯）：這裡只唸不編，升版後才開放附件編輯
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginTop: 8 }}
+              message="此草稿綁定範本 v1，附屬設備列在主約本文，不產出附件頁"
+              description={
+                annexSummary.length
+                  ? `目前品項：${annexSummary.join('、')}。升版為 v2 後，才能逐約編輯設備附件。`
+                  : '目前沒有附屬設備。升版為 v2 後，才能逐約編輯設備附件。'
+              }
+            />
+          )}
         </Card>
       )}
 

@@ -33,6 +33,25 @@ export interface EquipmentItem {
   quantity: number;
 }
 
+// 修繕責任（GLOSSARY.md）：設備附件每列的修繕歸屬，預設出租方（呼應內政部範本第八條精神）。
+// 只存在合約層，物件的設備清單不記責任。
+export const REPAIR_RESPONSIBILITIES = ['landlord', 'tenant'] as const;
+export type RepairResponsibility = (typeof REPAIR_RESPONSIBILITIES)[number];
+
+export const REPAIR_RESPONSIBILITY_LABELS: Record<RepairResponsibility, string> = {
+  landlord: '出租方',
+  tenant: '承租方',
+};
+
+// 設備附件的一列（ADR-0008）：項目＋數量＋修繕責任＋備註。
+// 同名可以有多列（例如同型號冷氣兩台分屬不同修繕責任），故不做名稱唯一性限制。
+export interface EquipmentAnnexRow {
+  name: string;
+  quantity: number;
+  repair: RepairResponsibility;
+  note: string;
+}
+
 export interface Property {
   id: number;
   name: string;
@@ -99,8 +118,22 @@ export interface TemplateBinding {
   clauses?: ClauseSnapshot[];
 }
 
+/**
+ * 合約的設備附件快照（ADR-0008）。兩個欄位都可選，比照 TemplateBinding 的處理慣例：
+ * - equipmentAnnex：MIL-29 起的正式形狀，建約由物件設備清單帶入、逐約調整後隨合約凍結。
+ * - equipment：MIL-29 之前壓平成「名稱 ×數量」字串的舊形狀，只讀不寫。
+ *
+ * 一律用 equipment.ts 的 contractEquipmentAnnex() 讀，該函式會把舊形狀轉成附件列
+ * （數量從字串解析回來、修繕責任出租方、備註空）。
+ */
+export interface EquipmentAnnexSnapshot {
+  equipmentAnnex?: EquipmentAnnexRow[];
+  /** @deprecated 舊合約相容用，新程式一律寫 equipmentAnnex */
+  equipment?: string[];
+}
+
 // 合約欄位值：建立時由物件帶入快照，之後與物件脫鉤（見 docs/domain-model.md）
-export interface ContractFields extends TemplateBinding {
+export interface ContractFields extends TemplateBinding, EquipmentAnnexSnapshot {
   landlordName: string;
   landlordEmail: string;
   tenantName: string;
@@ -109,9 +142,6 @@ export interface ContractFields extends TemplateBinding {
   propertyAddress: string;
   propertyType: string;
   propertySize: number | null;
-  // 過渡形狀：物件的設備清單建約時壓平成「名稱 ×數量」字串（equipment.ts 的 toContractEquipment）。
-  // MIL-29 會改成設備附件列（項目＋數量＋修繕責任＋備註）的快照。
-  equipment: string[];
   rent: number | null;
   deposit: number | null; // 押金（元）
   startDate: string; // YYYY-MM-DD
