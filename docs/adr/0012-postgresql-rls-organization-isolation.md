@@ -144,6 +144,7 @@ status: accepted
 2. 確認 Cloud SQL 支援的 PostgreSQL 主版本，並與 PGlite 對齊。
 3. CI 加 RLS 與 FORCE 檢查、view 的 `security_invoker` 檢查、跨組織滲透測試。
 4. A 線 spec 決定 migration 工具。
+5. 測試 harness 必須在每次 `clone()` 後重新 `SET ROLE app_rw`。實測 `clone()` 之後 `current_user` 回到 `postgres`，RLS 測試會全部假通過（2026-11-08，PGlite 0.5.15）。
 
 ## 編號對應
 
