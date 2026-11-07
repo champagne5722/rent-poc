@@ -55,7 +55,7 @@ export interface SigningProvider {
     signLink?: string;
     resend?: string;
     simulate?: string;
-    // 服務商沒有的文件種類。簽署模組不保存這些種類，下載時回這裡的訊息。
+    // 服務商沒有的檔案種類。簽署模組不保存這些種類，下載時回這裡的訊息。
     files?: Partial<Record<ContractFileKind, string>>;
   };
   createTask(input: {

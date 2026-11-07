@@ -68,6 +68,12 @@ export interface SaveFileResult {
   error?: string;
 }
 
+// 保存文件的範圍。沒給 kinds 時保存服務商有的全部種類。沒帶 force 時已保存的不重抓。
+export interface SaveFilesOptions {
+  kinds?: readonly ContractFileKind[];
+  force?: boolean;
+}
+
 // 下載端點回給使用者的文件
 export interface DownloadedFile {
   fileName: string;
@@ -108,7 +114,7 @@ export function createSigningModule({ provider, dataDir }: SigningModuleDeps) {
   // 服務商沒有的種類不保存。沒帶 force 時，已保存的種類不重抓。
   async function saveTaskFiles(
     subject: SigningSubject,
-    options: { kinds?: readonly ContractFileKind[]; force?: boolean }
+    options: SaveFilesOptions
   ): Promise<SaveFileResult[]> {
     const db = getDb();
     const kinds = (options.kinds ?? CONTRACT_FILE_KINDS).filter((kind) => !provider.unsupported.files?.[kind]);
@@ -153,9 +159,8 @@ export function createSigningModule({ provider, dataDir }: SigningModuleDeps) {
   }
 
   // 檔案被刪掉時視為未保存，交給呼叫端補抓
-  function readSavedFile(subject: SigningSubject, kind: ContractFileKind): DownloadedFile | null {
-    const task = findSignTask(getDb(), subject);
-    const file = task && getSignTaskFile(getDb(), task.id, kind);
+  function readSavedFile(signTaskId: number, kind: ContractFileKind): DownloadedFile | null {
+    const file = getSignTaskFile(getDb(), signTaskId, kind);
     if (!file || file.status !== 'saved' || !file.rel_path) return null;
     const absPath = path.join(dataDir, file.rel_path);
     if (!fs.existsSync(absPath)) return null;
@@ -169,7 +174,7 @@ export function createSigningModule({ provider, dataDir }: SigningModuleDeps) {
   return {
     mode: async () => provider.mode,
 
-    // 服務商任務編號仍雙寫到合約的欄位，留給文件保存那張票讀取。狀態機仍是兩位簽署人。
+    // 服務商任務編號仍雙寫到合約的欄位，send route 的 task_id 回應還在讀，移除屬 MIL-60。狀態機仍是兩位簽署人。
     async send(subject: SigningSubject, document: SignableDocument, signers: Signer[]): Promise<SignTask> {
       const contract = requireContract(subject);
       const db = getDb();
@@ -262,7 +267,7 @@ export function createSigningModule({ provider, dataDir }: SigningModuleDeps) {
     // 補抓文件。完成當下保存失敗（服務商暫時性錯誤、連結過期等）時的補救手段。
     async saveFiles(
       subject: SigningSubject,
-      options: { kinds?: readonly ContractFileKind[]; force?: boolean } = {}
+      options: SaveFilesOptions = {}
     ): Promise<SaveFileResult[]> {
       const contract = requireContract(subject);
       if (contract.status !== 'completed') throw new SigningRefusal(409, '合約尚未完成簽署，沒有可保存的文件');
@@ -281,14 +286,13 @@ export function createSigningModule({ provider, dataDir }: SigningModuleDeps) {
       const label = CONTRACT_FILE_LABELS[kind];
       if (contract.status !== 'completed') throw new SigningRefusal(409, `合約尚未完成簽署，${label}尚未產生`);
       refuseIfUnsupported(provider.unsupported.files?.[kind], 409);
-      if (!findSignTask(getDb(), subject)) {
-        throw new SigningRefusal(409, `合約沒有對應的簽署任務，無法取得${label}`);
-      }
+      const task = findSignTask(getDb(), subject);
+      if (!task) throw new SigningRefusal(409, `合約沒有對應的簽署任務，無法取得${label}`);
 
-      const saved = readSavedFile(subject, kind);
+      const saved = readSavedFile(task.id, kind);
       if (saved) return saved;
       const results = await saveTaskFiles(subject, { kinds: [kind], force: true });
-      const refetched = readSavedFile(subject, kind);
+      const refetched = readSavedFile(task.id, kind);
       if (refetched) return refetched;
       const failure = results.find((r) => r.kind === kind)?.error ?? '未知原因';
       throw new SigningRefusal(502, `取得${label}失敗：${failure}`);

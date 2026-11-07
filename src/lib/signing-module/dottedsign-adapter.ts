@@ -95,7 +95,7 @@ export function createDottedSignProvider(deps: {
   };
 }
 
-// 文件種類對點點簽 file_types[] 的值。官方註明 audit_trail 需任務為 completed、declined 或 voided。
+// 檔案種類對點點簽 file_types[] 的值。官方註明 audit_trail 需任務為 completed、declined 或 voided。
 const DS_FILE_TYPES: Record<ContractFileKind, string> = {
   signed_pdf: 'task',
   audit_trail: 'audit_trail',
