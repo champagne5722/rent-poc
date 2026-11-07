@@ -5,7 +5,7 @@
 使用者待辦，2026-11-07 更新。順序依「擋住什麼」排。
 
 - [ ] **MIL-54 點點簽 sandbox 實測三位簽署人** - 使用者。等 demo 環境上線後做，步驟在票內。擋住 MIL-57 N 位簽署人
-- [ ] **執行部署 wizard 腳本：開 GCP 專案、授權 GitHub、填 secrets、點點簽後台建 demo 用 sandbox Application** - 使用者。等部署子對話交出腳本
+- [ ] **第一次部署** - 使用者。順序：push main 讓 CI 建映像並通過 → 在終端機跑 `deploy/first-deploy-wizard.sh`（11 階段：裝 gcloud、開 GCP 專案與帳單、建資源、第一次 mock 部署）→ 點點簽後台建 demo Application 並填回腳本 → 驗收。說明見 `docs/deployment.md`
 - [ ] **MIL-28 在 Linear 手動改 Done** - 使用者。agent 更新被權限擋下
 - [ ] **填財務模型的 35 列待補** - 使用者：固定成本、滲透率、單價
 - [ ] **寄出三封函詢** - 使用者：地政司、國土署、金管會與數發部
