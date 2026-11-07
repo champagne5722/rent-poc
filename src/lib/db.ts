@@ -17,6 +17,8 @@ import type {
 } from './types';
 import { EQUIPMENT_OPTIONS } from './types';
 import { parseStoredEquipment } from './equipment';
+import { backfillContractSignTasks } from './signing-module/contract-backfill';
+import { ensureSignTaskTables } from './signing-module/sign-task-store';
 
 export const DATA_DIR = path.join(process.cwd(), 'data');
 
@@ -91,10 +93,12 @@ export function ensureSchema(db: Database.Database): void {
 
   // 既有資料表補欄位：SQLite 沒有 ADD COLUMN IF NOT EXISTS，先用 PRAGMA table_info 檢查再 ALTER
   addColumnIfMissing(db, 'contracts', 'derived_from', 'INTEGER REFERENCES contracts(id)');
+  ensureSignTaskTables(db);
 
   seedEquipmentVocabulary(db);
   normalizePropertyEquipment(db);
   convertLegacySignerRoles(db);
+  backfillContractSignTasks(db);
 }
 
 // 平台預設項目：INSERT OR IGNORE 讓重跑不會重複，也不會把已存在的項目改回預設
@@ -262,13 +266,6 @@ export function listContracts(): Contract[] {
 
 export function getContract(id: number): Contract | null {
   const row = getDb().prepare('SELECT * FROM contracts WHERE id = ?').get(id) as ContractRow | undefined;
-  return row ? rowToContract(row) : null;
-}
-
-export function findContractByTaskId(taskId: string): Contract | null {
-  const row = getDb().prepare('SELECT * FROM contracts WHERE dottedsign_task_id = ?').get(taskId) as
-    | ContractRow
-    | undefined;
   return row ? rowToContract(row) : null;
 }
 

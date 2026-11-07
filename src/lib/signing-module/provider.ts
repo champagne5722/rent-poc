@@ -44,7 +44,11 @@ export type ParsedWebhook =
 
 export type WebhookHeaders = Pick<Headers, 'get'>;
 
+// 簽署服務商的識別字，記在簽署任務上
+export type SigningProviderId = 'dottedsign' | 'mock';
+
 export interface SigningProvider {
+  readonly id: SigningProviderId;
   readonly mode: 'mock' | 'live';
   // 服務商不支援的操作與對外訊息。簽署模組會先看這裡，再做其他檢查。
   readonly unsupported: {

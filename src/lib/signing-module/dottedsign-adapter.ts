@@ -21,6 +21,7 @@ export function createDottedSignProvider(deps: { request: DottedSignRequest; cli
     request(path, { method: 'POST', body: JSON.stringify({ task_id: Number(taskRef) }) });
 
   return {
+    id: 'dottedsign',
     mode: 'live',
     unsupported: { simulate: 'live 模式下請走真實 webhook' },
 

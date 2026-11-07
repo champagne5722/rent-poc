@@ -32,6 +32,8 @@ function seed(status: ContractStatus, taskRef: string | null = null) {
   const result = db
     .prepare('INSERT INTO contracts (property_id, status, fields, dottedsign_task_id) VALUES (NULL, ?, ?, ?)')
     .run(status, FIELDS, taskRef);
+  // 再跑一次 ensureSchema()，由回填建立簽署任務，等同升級前就在這個狀態的合約
+  ensureSchema(db);
   return { type: 'contract', id: Number(result.lastInsertRowid) } as const;
 }
 
@@ -52,6 +54,7 @@ const signers: Signer[] = [
 
 // live 模式下的 adapter 替身：實作都成功，各測試再覆寫要失敗的操作
 const liveProvider = (overrides: Partial<SigningProvider> = {}): SigningProvider => ({
+  id: 'dottedsign',
   mode: 'live',
   unsupported: { simulate: 'live 模式下請走真實 webhook' },
   createTask: async () => ({ taskRef: '470' }),
@@ -63,6 +66,11 @@ const liveProvider = (overrides: Partial<SigningProvider> = {}): SigningProvider
 });
 
 const refusal = (status: number, message: string) => expect.objectContaining({ name: 'SigningRefusal', status, message });
+
+// 讓合約歷程寫入失敗，用來驗證同一交易的回滾
+const failContractEventWrites = () =>
+  db.exec(`CREATE TRIGGER fail_contract_events BEFORE INSERT ON contract_events
+           BEGIN SELECT RAISE(ABORT, '歷程寫入失敗'); END`);
 
 describe('送簽', () => {
   it('回傳平台的簽署任務，合約進入待乙方簽並記送簽歷程', async () => {
@@ -92,6 +100,227 @@ describe('送簽', () => {
     await expect(moduleWith(provider).send(subject, document, signers)).rejects.toThrow('點點簽 API 失敗（500）');
     expect(statusOf(subject.id)).toBe('draft');
     expect(eventTypes(subject.id)).toEqual([]);
+  });
+
+  it('同一個簽署標的不能再送簽，也不呼叫服務商', async () => {
+    const subject = seed('draft');
+    const createTask = vi.fn(async () => ({ taskRef: crypto.randomUUID() }));
+    const signing = moduleWith(liveProvider({ createTask }));
+    await signing.send(subject, document, signers);
+
+    await expect(signing.send(subject, document, signers)).rejects.toEqual(refusal(409, '這個簽署標的已有簽署任務'));
+    expect(createTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('服務商任務編號已被其他簽署標的使用時，第二份合約維持草稿', async () => {
+    const signing = moduleWith(liveProvider({ createTask: async () => ({ taskRef: '470' }) }));
+    await signing.send(seed('draft'), document, signers);
+
+    const second = seed('draft');
+    await expect(signing.send(second, document, signers)).rejects.toEqual(
+      refusal(409, '簽署標的或服務商任務編號已有簽署任務')
+    );
+    expect(statusOf(second.id)).toBe('draft');
+    expect(getContract(second.id)?.dottedsign_task_id).toBeNull();
+    expect(eventTypes(second.id)).toEqual([]);
+    await expect(signing.getProgress(second)).resolves.toBeNull();
+  });
+
+  it('合約歷程寫入失敗時，簽署任務與合約狀態一起回滾', async () => {
+    const subject = seed('draft');
+    failContractEventWrites();
+
+    await expect(moduleWith().send(subject, document, signers)).rejects.toThrow('歷程寫入失敗');
+
+    expect(statusOf(subject.id)).toBe('draft');
+    await expect(moduleWith().getProgress(subject)).resolves.toBeNull();
+  });
+});
+
+describe('查簽署進度', () => {
+  it('送簽後回傳簽署序列、各位狀態與當前簽署人', async () => {
+    const subject = seed('draft');
+    const signing = moduleWith();
+    await signing.send(subject, document, signers);
+
+    await expect(signing.getProgress(subject)).resolves.toEqual({
+      status: 'in_progress',
+      signers: [
+        { role: 'party_b', name: '王租客', email: 'tenant@example.com', status: 'pending', signedAt: null },
+        { role: 'party_a', name: '林房東', email: 'landlord@example.com', status: 'pending', signedAt: null },
+      ],
+      currentSigner: { role: 'party_b', name: '王租客', email: 'tenant@example.com' },
+    });
+  });
+
+  it('沒有簽署任務時回傳 null', async () => {
+    await expect(moduleWith().getProgress(seed('draft'))).resolves.toBeNull();
+  });
+
+  it('送簽後改合約欄位，簽署序列不變', async () => {
+    const subject = seed('draft');
+    const signing = moduleWith();
+    await signing.send(subject, document, signers);
+    db.prepare('UPDATE contracts SET fields = ? WHERE id = ?').run(
+      JSON.stringify({ tenantName: '別人', tenantEmail: 'other@example.com' }),
+      subject.id
+    );
+
+    const progress = await signing.getProgress(subject);
+    expect(progress?.currentSigner).toEqual({ role: 'party_b', name: '王租客', email: 'tenant@example.com' });
+  });
+
+  async function sent() {
+    const subject = seed('draft');
+    const signing = moduleWith();
+    await signing.send(subject, document, signers);
+    return { subject, signing };
+  }
+
+  it('乙方簽署後，當前簽署人換成甲方，並記簽署時間', async () => {
+    const { subject, signing } = await sent();
+    await signing.simulateEvent(subject, 'signed');
+
+    const progress = await signing.getProgress(subject);
+    expect(progress?.status).toBe('in_progress');
+    expect(progress?.signers.map((s) => s.status)).toEqual(['signed', 'pending']);
+    expect(progress?.signers[0].signedAt).toEqual(expect.any(String));
+    expect(progress?.currentSigner).toEqual({ role: 'party_a', name: '林房東', email: 'landlord@example.com' });
+  });
+
+  it('甲方的 signed 事件不推進，等全員完成才標為已簽', async () => {
+    const { subject, signing } = await sent();
+    await signing.simulateEvent(subject, 'signed');
+    await signing.simulateEvent(subject, 'signed').catch(() => {});
+
+    const progress = await signing.getProgress(subject);
+    expect(progress?.signers.map((s) => s.status)).toEqual(['signed', 'pending']);
+  });
+
+  it('全員完成把未簽者標為已簽，任務完成，沒有當前簽署人', async () => {
+    const { subject, signing } = await sent();
+    await signing.simulateEvent(subject, 'completed');
+
+    const progress = await signing.getProgress(subject);
+    expect(progress?.status).toBe('completed');
+    expect(progress?.signers.map((s) => s.status)).toEqual(['signed', 'signed']);
+    expect(progress?.signers.every((s) => s.signedAt)).toBe(true);
+    expect(progress?.currentSigner).toBeNull();
+  });
+
+  it('甲方拒簽時，甲方標為拒簽，乙方維持已簽', async () => {
+    const { subject, signing } = await sent();
+    await signing.simulateEvent(subject, 'signed');
+    await signing.simulateEvent(subject, 'declined', '想再考慮');
+
+    const progress = await signing.getProgress(subject);
+    expect(progress?.status).toBe('declined');
+    expect(progress?.signers.map((s) => s.status)).toEqual(['signed', 'declined']);
+    expect(progress?.signers[1].signedAt).toBeNull();
+    expect(progress?.currentSigner).toBeNull();
+  });
+
+  it('撤回後任務已撤回，簽署人狀態不變', async () => {
+    const { subject, signing } = await sent();
+    await signing.simulateEvent(subject, 'signed');
+    await signing.voidTask(subject);
+
+    const progress = await signing.getProgress(subject);
+    expect(progress?.status).toBe('voided');
+    expect(progress?.signers.map((s) => s.status)).toEqual(['signed', 'pending']);
+    expect(progress?.currentSigner).toBeNull();
+  });
+
+  it('合約狀態不接受的事件不推進簽署進度', async () => {
+    const { subject, signing } = await sent();
+    await signing.simulateEvent(subject, 'completed');
+    await expect(signing.simulateEvent(subject, 'declined', '太晚了')).rejects.toEqual(
+      refusal(409, '目前狀態（completed）不接受此事件')
+    );
+
+    const progress = await signing.getProgress(subject);
+    expect(progress?.status).toBe('completed');
+    expect(progress?.signers.map((s) => s.status)).toEqual(['signed', 'signed']);
+  });
+
+  it('合約歷程寫入失敗時，簽署進度與合約狀態一起回滾', async () => {
+    const { subject, signing } = await sent();
+    failContractEventWrites();
+
+    await expect(signing.simulateEvent(subject, 'signed')).rejects.toThrow('歷程寫入失敗');
+
+    expect(statusOf(subject.id)).toBe('awaiting_tenant');
+    const progress = await signing.getProgress(subject);
+    expect(progress?.signers.map((s) => s.status)).toEqual(['pending', 'pending']);
+  });
+
+  it('簽署進度寫入失敗時，合約狀態與合約歷程一起回滾', async () => {
+    const { subject, signing } = await sent();
+    db.exec(`CREATE TRIGGER fail_signers BEFORE UPDATE ON signers
+             BEGIN SELECT RAISE(ABORT, '進度寫入失敗'); END`);
+
+    await expect(signing.simulateEvent(subject, 'signed')).rejects.toThrow('進度寫入失敗');
+
+    expect(statusOf(subject.id)).toBe('awaiting_tenant');
+    expect(eventTypes(subject.id)).toEqual(['sent']);
+  });
+});
+
+describe('任務比對與當前簽署人讀簽署任務', () => {
+  // 舊欄位只雙寫，不再被讀取：送簽後把它改掉，操作仍要對到建立時的任務與簽署人
+  async function sentThenLegacyColumnsChanged(provider: SigningProvider) {
+    const subject = seed('draft');
+    const signing = moduleWith(provider);
+    await signing.send(subject, document, signers);
+    db.prepare('UPDATE contracts SET fields = ?, dottedsign_task_id = ? WHERE id = ?').run(
+      JSON.stringify({ tenantName: '別人', tenantEmail: 'other@example.com' }),
+      'stale-ref',
+      subject.id
+    );
+    return { subject, signing };
+  }
+  const WANG = { role: 'party_b', name: '王租客', email: 'tenant@example.com' };
+
+  it('取簽署連結', async () => {
+    const getSignLink = vi.fn(async () => 'https://sign.example/abc');
+    const { subject, signing } = await sentThenLegacyColumnsChanged(liveProvider({ getSignLink }));
+
+    await expect(signing.getSignLink(subject)).resolves.toMatchObject({ signer: WANG });
+    expect(getSignLink).toHaveBeenCalledWith('470', 'tenant@example.com', undefined);
+  });
+
+  it('重寄', async () => {
+    const resend = vi.fn(async () => {});
+    const { subject, signing } = await sentThenLegacyColumnsChanged(liveProvider({ resend }));
+
+    await expect(signing.resend(subject)).resolves.toEqual({ signer: WANG });
+    expect(resend).toHaveBeenCalledWith('470');
+  });
+
+  it('撤回', async () => {
+    const voidTask = vi.fn(async () => {});
+    const { subject, signing } = await sentThenLegacyColumnsChanged(liveProvider({ voidTask }));
+
+    await signing.voidTask(subject);
+    expect(voidTask).toHaveBeenCalledWith('470');
+  });
+
+  it('webhook', async () => {
+    const parseWebhook: SigningProvider['parseWebhook'] = (rawBody) => ({
+      kind: 'event',
+      taskRef: rawBody,
+      event: { type: 'signed' },
+    });
+    const { subject, signing } = await sentThenLegacyColumnsChanged(liveProvider({ parseWebhook }));
+
+    await expect(signing.ingestWebhook('stale-ref', new Headers())).resolves.toEqual({
+      status: 200,
+      body: { ok: true, ignored: true },
+    });
+    expect(statusOf(subject.id)).toBe('awaiting_tenant');
+
+    await signing.ingestWebhook('470', new Headers());
+    expect(statusOf(subject.id)).toBe('awaiting_landlord');
   });
 });
 
@@ -128,8 +357,8 @@ describe('接收 webhook', () => {
   });
 
   it('忽略的事件回 200 ignored', async () => {
-    const subject = seed('awaiting_tenant', 'task-1');
-    await expect(moduleWith().ingestWebhook(webhook('task-1', 'viewed'), new Headers())).resolves.toEqual({
+    const subject = seed('awaiting_tenant', 'mock-task-1');
+    await expect(moduleWith().ingestWebhook(webhook('mock-task-1', 'viewed'), new Headers())).resolves.toEqual({
       status: 200,
       body: { ok: true, ignored: true },
     });
@@ -144,17 +373,17 @@ describe('接收 webhook', () => {
   });
 
   it('走完乙方簽署到全員完成：狀態、歷程都推進，完成後保存文件一次', async () => {
-    const subject = seed('awaiting_tenant', 'task-1');
+    const subject = seed('awaiting_tenant', 'mock-task-1');
     const signing = moduleWith();
 
-    await expect(signing.ingestWebhook(webhook('task-1', 'signed'), new Headers())).resolves.toEqual({
+    await expect(signing.ingestWebhook(webhook('mock-task-1', 'signed'), new Headers())).resolves.toEqual({
       status: 200,
       body: { ok: true },
     });
     expect(statusOf(subject.id)).toBe('awaiting_landlord');
     expect(onCompleted).not.toHaveBeenCalled();
 
-    await signing.ingestWebhook(webhook('task-1', 'completed'), new Headers());
+    await signing.ingestWebhook(webhook('mock-task-1', 'completed'), new Headers());
     expect(statusOf(subject.id)).toBe('completed');
     expect(eventTypes(subject.id)).toEqual(['tenant_signed', 'completed']);
     expect(onCompleted).toHaveBeenCalledTimes(1);
@@ -162,10 +391,10 @@ describe('接收 webhook', () => {
   });
 
   it('重複的 completed 回 200，不再推進，也不再保存文件', async () => {
-    const subject = seed('awaiting_landlord', 'task-1');
+    const subject = seed('awaiting_landlord', 'mock-task-1');
     const signing = moduleWith();
-    await signing.ingestWebhook(webhook('task-1', 'completed'), new Headers());
-    await expect(signing.ingestWebhook(webhook('task-1', 'completed'), new Headers())).resolves.toEqual({
+    await signing.ingestWebhook(webhook('mock-task-1', 'completed'), new Headers());
+    await expect(signing.ingestWebhook(webhook('mock-task-1', 'completed'), new Headers())).resolves.toEqual({
       status: 200,
       body: { ok: true },
     });
@@ -174,8 +403,8 @@ describe('接收 webhook', () => {
   });
 
   it('拒簽原因寫進合約與歷程附註', async () => {
-    const subject = seed('awaiting_tenant', 'task-1');
-    await moduleWith().ingestWebhook(webhook('task-1', 'declined', { reason: '租金認知有落差' }), new Headers());
+    const subject = seed('awaiting_tenant', 'mock-task-1');
+    await moduleWith().ingestWebhook(webhook('mock-task-1', 'declined', { reason: '租金認知有落差' }), new Headers());
     expect(getContract(subject.id)).toMatchObject({ status: 'declined', declined_reason: '租金認知有落差' });
     expect(listContractEvents(subject.id, db)[0]).toMatchObject({ type: 'declined', note: '租金認知有落差' });
   });
