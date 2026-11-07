@@ -8,7 +8,9 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function GET(request: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const contractId = Number(id);
-  const redirectUrl = `${new URL(request.url).origin}/contracts/${contractId}`;
+  // standalone 在反向代理後方時，request.url 的 origin 是 0.0.0.0:<port>，所以部署環境必須設定 APP_ORIGIN
+  const origin = process.env.APP_ORIGIN ?? new URL(request.url).origin;
+  const redirectUrl = `${origin}/contracts/${contractId}`;
   try {
     const { signer, url } = await signing.getSignLink(contractSubject(contractId), redirectUrl);
     return Response.json({

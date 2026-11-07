@@ -1,0 +1,137 @@
+# PR：跑檢查與映像冒煙測試。push main：同樣的檢查通過後部署 demo 環境。
+# 部署用 Workload Identity Federation，repo 內沒有長期金鑰。設定值與步驟見 docs/deployment.md。
+name: ci-deploy
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # 改了 repo variables 或 Secret Manager 之後，用這個重新部署
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  REGION: asia-east1
+  SERVICE: rent-poc-demo
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: 型別檢查
+        run: npx next typegen && npx tsc --noEmit
+      - name: ESLint
+        run: npm run lint
+      - name: vitest
+        run: npm test
+
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: 建置映像
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: rent-poc:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max,ignore-error=true
+      - name: 冒煙測試
+        run: deploy/smoke-test.sh rent-poc:smoke
+
+  deploy:
+    # 使用者還沒完成 GCP 設定時略過，不讓 main 變紅
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.GCP_PROJECT_ID != ''
+    needs: [check, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: deploy-demo
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      IMAGE: asia-east1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/rent-poc/app:${{ github.sha }}
+      APP_ORIGIN: https://rent-poc-demo-${{ vars.GCP_PROJECT_NUMBER }}.asia-east1.run.app
+    steps:
+      - uses: actions/checkout@v7
+      - id: auth
+        name: 用 Workload Identity Federation 登入 GCP
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SA }}
+          token_format: access_token
+      - uses: docker/login-action@v4
+        with:
+          registry: asia-east1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+      - uses: docker/setup-buildx-action@v4
+      - name: 建置並推送映像
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          # provenance 會多出 attestation 的 digest，可能佔掉 Artifact Registry 保留的版本數
+          provenance: false
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha
+      - id: runtime-secrets
+        name: 組出要掛載的 secrets
+        env:
+          DOTTEDSIGN_ENABLED: ${{ vars.DOTTEDSIGN_ENABLED }}
+        run: |
+          {
+            echo 'value<<EOF'
+            echo 'DEMO_BASIC_AUTH_PASSWORD=demo-basic-auth-password:latest'
+            if [ "$DOTTEDSIGN_ENABLED" = "true" ]; then
+              echo 'DOTTEDSIGN_CLIENT_ID=dottedsign-client-id:latest'
+              echo 'DOTTEDSIGN_CLIENT_SECRET=dottedsign-client-secret:latest'
+            fi
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+      - id: deploy
+        name: 部署到 Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ env.REGION }}
+          image: ${{ env.IMAGE }}
+          # max-instances=1 與 instance-based（no-cpu-throttling）是 SQLite 加 Litestream 的必要條件，
+          # 見 ADR-0011。遷移 PostgreSQL 後才能改。
+          flags: >-
+            --service-account=${{ vars.RUNTIME_SA }}
+            --execution-environment=gen2
+            --cpu=1
+            --memory=1Gi
+            --no-cpu-throttling
+            --cpu-boost
+            --min-instances=0
+            --max-instances=1
+            --allow-unauthenticated
+            --startup-probe=httpGet.path=/api/health,httpGet.port=8080,periodSeconds=3,timeoutSeconds=3,failureThreshold=40
+          env_vars: |-
+            APP_ORIGIN=${{ env.APP_ORIGIN }}
+            DEMO_BASIC_AUTH_USER=demo
+            LITESTREAM_GCS_BUCKET=${{ vars.LITESTREAM_BUCKET }}
+          secrets: ${{ steps.runtime-secrets.outputs.value }}
+          # DOTTEDSIGN_ENABLED 改回 false 時，要真的卸除點點簽 secrets
+          secrets_update_strategy: overwrite
+      - name: 確認新版本能回應
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 5 "$APP_ORIGIN/api/health"

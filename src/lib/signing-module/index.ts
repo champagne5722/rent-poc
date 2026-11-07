@@ -9,7 +9,8 @@ import type { SigningSubject } from './provider';
 // contract-files.ts 仍有自己的 mock 特例，留給文件保存那張票。
 export const signing = createSigningModule({
   provider: isMockMode()
-    ? createMockProvider()
+    ? // Cloud Run 一定會注入 K_SERVICE
+      createMockProvider({ rejectWebhookEvents: Boolean(process.env.K_SERVICE) })
     : createDottedSignProvider({ request: dsFetch, clientSecret: dsClientSecret() }),
   onCompleted: saveContractFilesOnCompleted,
 });

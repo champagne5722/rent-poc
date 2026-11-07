@@ -1,0 +1,15 @@
+.git
+.github
+.claude
+.next*
+node_modules
+data
+docs
+.env*
+.mcp.json
+*.md
+!DESIGN.md
+Dockerfile
+# google-github-actions/auth 寫在 workspace 的憑證檔
+gha-creds-*.json
+.dockerignore
