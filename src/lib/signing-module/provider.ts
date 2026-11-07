@@ -1,4 +1,4 @@
-import type { SignatureField, SignerRole } from '../types';
+import type { ContractFileKind, SignatureField, SignerRole } from '../types';
 
 // 簽署模組與簽署服務商之間的 seam（ADR-0010）。adapter 只翻譯服務商 API，不含領域邏輯。
 
@@ -57,6 +57,8 @@ export interface SigningProvider {
     signLink?: string;
     resend?: string;
     simulate?: string;
+    // 服務商沒有的檔案種類。簽署模組不保存這些種類，下載時回這裡的訊息。
+    files?: Partial<Record<ContractFileKind, string>>;
   };
   createTask(input: {
     subject: SigningSubject;
@@ -66,5 +68,7 @@ export interface SigningProvider {
   getSignLink(taskRef: string, email: string, redirectUrl?: string): Promise<string>;
   resend(taskRef: string): Promise<void>;
   voidTask(taskRef: string): Promise<void>;
+  // 下載任務的文件本體。失敗時拋出的訊息會記進保存失敗紀錄。
+  downloadFile(taskRef: string, kind: ContractFileKind): Promise<Uint8Array>;
   parseWebhook(rawBody: string, headers: WebhookHeaders): ParsedWebhook;
 }

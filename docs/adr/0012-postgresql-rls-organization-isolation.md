@@ -12,7 +12,7 @@ status: accepted
 
 1. **隔離模型。** 所有組織共用一個資料庫。每張組織表有 `org_id`，設定 `ENABLE` 與 `FORCE ROW LEVEL SECURITY`。組織脈絡只用 `set_config('app.org_id', $1, true)` 設定，禁止 session 層級的 `SET`。
 
-2. **託管。** pilot 起用 Cloud SQL asia-east1。實際開機前，必須依當時的費用與資料量再確認一次。demo 與 preview 用 Neon，只放測試資料。理由見下方「託管費用」。
+2. **託管。** pilot 起用 Cloud SQL asia-east1。實際開機前，必須依當時的費用與資料量再確認一次。demo 與 preview 用 Neon，只放測試資料。理由見下方「託管費用」。2026-11-08 修訂：demo 改用 Cloud SQL 最小規格，見 Consequences 的修訂段。
 
 3. **schema 分五區。** `tenant` 這個字在程式碼表示承租人，不得再當 schema 名稱，所以組織資料區改名 `org`。
 
@@ -72,11 +72,11 @@ status: accepted
     | 5、6 RLS、角色、其他 schema | 保留，加 `control` |
     | 7 搬資料 | 保留。依 P0-06 AC5，每個物件都建租賃單位與待驗證錨點，刪除架構 3.9 的「遷移期允許空值」 |
     | 8 檔案搬到物件儲存 | 保留 |
-    | 9 切換正式環境 | A 線合併當天 demo 切到 Neon，Litestream 退場 |
+    | 9 切換正式環境 | A 線合併當天 demo 切到 Cloud SQL，Litestream 退場。2026-11-08 修訂前寫 Neon |
     | 10 `SignerRole` 改名 | 刪除，ADR-0010 已提前執行 |
     | 11 移除 SQLite | 併入 A 線合併 |
 
-12. **與部署的銜接。** demo 在 A 線完成前，維持 Cloud Run 加 SQLite 與 Litestream（ADR-0011）。A 線合併當天 demo 切到 Neon，Litestream 退場。pilot 起用 Cloud SQL。
+12. **與部署的銜接。** demo 在 A 線完成前，維持 Cloud Run 加 SQLite 與 Litestream（ADR-0011）。A 線合併當天 demo 切到 Cloud SQL 最小規格，Litestream 退場。pilot 把同一個執行個體升到 pilot 規格。2026-11-08 修訂前，demo 寫 Neon。
 
 13. **測試。** vitest 預設用 PGlite，每個測試用 `clone()` 隔離。不用架構 6.4 的交易回滾，因為它會蓋掉 `withTx` 本身的行為。測試必須 `SET ROLE app_rw`，否則 RLS 測試全部假通過。CI 另開真實 PostgreSQL 容器，跑滲透測試、併發與角色檢查。
 
@@ -96,7 +96,7 @@ status: accepted
 
 | 方案 | demo | pilot（300 租賃單位） | Phase 1 結束 |
 |---|---|---|---|
-| Cloud Run 加 Cloud SQL | 不適用 | NT$1,480 | NT$3,793 至 8,933 |
+| Cloud Run 加 Cloud SQL | NT$324（2026-11-08 修訂補估，見 Consequences） | NT$1,480 | NT$3,793 至 8,933 |
 | Cloud Run 加 Neon | NT$48 | NT$858 至 1,550 | NT$2,816 至 4,732 |
 
 選 Cloud SQL 的理由有兩個。第一，資料在台灣，不用等法務確認境外傳輸。第二，`withTx` 每次至少 N+3 次往返，新加坡的 RTT 推估 50 至 80 ms，跨雲延遲沒有實測。代價是 Phase 1 結束時費用較高。
@@ -135,12 +135,38 @@ status: accepted
 - A 線合併當下就是切換，中間不能部分上線。A 線必須等簽署抽象層收尾。
 - MIL-37 的 6.5 至 10 人日只能當基準，它不含 ID 改寫，也不含步驟 3 到 5。ID 改寫涉及 production 約 51 行、20 個檔案。這是 grep 計數，沒有逐行核對。
 - 每次讀取都是一個交易，所以往返次數比直接查詢多。
-- Neon 專案的初始 owner 有 `BYPASSRLS`。`app_rw` 必須用 SQL 建立，不得用 Console 建立。
+- Neon 專案的初始 owner 有 `BYPASSRLS`。`app_rw` 必須用 SQL 建立，不得用 Console 建立。這條規則在 Cloud SQL 同樣適用，見下方修訂段。
 - 延伸 ADR-0010：A 線承接它留給遷移線的 inbox 與 outbox。簽署進度的同交易改由 `withTx` 提供。
+
+### 修訂 2026-11-08：demo 改用 Cloud SQL 最小規格
+
+使用者決定 demo 一開始就用 Cloud SQL asia-east1，不用 Neon。理由有三個。第一，少一家供應商。第二，資料從第一天就在台灣。第三，pilot 不必再從 Neon 搬到 Cloud SQL。本段取代決議 2、11 的步驟 9 與 12 裡的 Neon 字樣。
+
+demo 規格與每月費用如下。價格取自官方定價頁，區域切到 Taiwan (asia-east1)，查詢日期 2026-11-08。來源：<https://cloud.google.com/sql/pricing>。
+
+| 計費項 | 規格 | 算式 | 美元 |
+|---|---|---|---|
+| 執行個體 | `db-f1-micro`，Enterprise 版，shared core，0.6 GiB，單區 | US$0.0105 × 730 小時 | 7.67 |
+| SSD 儲存 | 10 GiB，Cloud SQL 的磁碟下限 | 10 × US$0.000232877 × 730 | 1.70 |
+| 備份 | 1 GiB，demo 資料量估計 | 1 × US$0.000109589 × 730 | 0.08 |
+| Cloud Run 與其他 | 沿用 `hosting-evaluation.md` 情境 A | | 0.36 |
+| 合計 | | | 9.81 |
+
+換算台幣約 NT$324，匯率沿用 `hosting-evaluation.md` 的 33。Neon 方案是 NT$48，差額每月約 NT$276。GCP 新帳號有 US$300 試用額度，效期 90 天，足以涵蓋 demo 期間。
+
+這個規格的限制與對策：
+
+- shared core 機型不在 Cloud SQL SLA 範圍內。demo 接受。pilot 前升到 `db-g1-small` 或 Enterprise 版 1 vCPU，費用見上表的 pilot 欄。
+- 記憶體只有 0.6 GiB，連線數上限低。Cloud Run 的 `max-instances` 與 `pg.Pool` 的連線數必須相乘後低於上限。具體數字在 MIL-92 實測後記錄。
+- 建立時必須明確指定 Enterprise 版。用 gcloud 或 API 建立時，PostgreSQL 16 以上預設是 Enterprise Plus，而 Enterprise Plus 沒有 shared core。
+- 連線走 Cloud Run 內建的 Cloud SQL 連線器，掛 Unix socket `/cloudsql/<project>:asia-east1:<instance>`。執行個體用公開 IP 即可，不建 VPC 連接器，也不加收網路費。
+- 沒有外部連線池，`pg.Pool` 直連。交易範圍的 `set_config(..., true)` 行為與 PGlite 實測相同，仍須在 MIL-92 實測一次。
+- Cloud SQL 的 `postgres` 使用者屬於 `cloudsqlsuperuser`，不是真正的 superuser。`app_rw` 仍必須用 SQL 建立，並用系統目錄確認沒有 `BYPASSRLS`。
+- 測試不變：本機與 vitest 用 PGlite，CI 用真實 PostgreSQL 容器。
 
 ## Action Items
 
-1. 在 Cloud SQL 與 Neon 實測連線池下的 `set_config(..., true)`。
+1. 在 Cloud SQL 實測 `pg.Pool` 下的 `set_config(..., true)`。Neon 已不在範圍內（2026-11-08 修訂）。
 2. 確認 Cloud SQL 支援的 PostgreSQL 主版本，並與 PGlite 對齊。
 3. CI 加 RLS 與 FORCE 檢查、view 的 `security_invoker` 檢查、跨組織滲透測試。
 4. A 線 spec 決定 migration 工具。

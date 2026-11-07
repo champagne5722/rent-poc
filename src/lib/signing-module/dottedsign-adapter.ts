@@ -1,5 +1,6 @@
 import crypto from 'crypto';
-import type { SignatureField } from '../types';
+import { CONTRACT_FILE_LABELS } from '../types';
+import type { ContractFileKind, SignatureField } from '../types';
 import type {
   ParsedWebhook,
   SignableDocument,
@@ -14,8 +15,15 @@ import type {
 
 export type DottedSignRequest = (path: string, init?: RequestInit) => Promise<unknown>;
 
-export function createDottedSignProvider(deps: { request: DottedSignRequest; clientSecret: string }): SigningProvider {
-  const { request, clientSecret } = deps;
+// 下載預簽連結用。連結指向 S3，不帶點點簽的 token。
+export type FetchFile = (url: string) => Promise<Response>;
+
+export function createDottedSignProvider(deps: {
+  request: DottedSignRequest;
+  clientSecret: string;
+  fetchFile?: FetchFile;
+}): SigningProvider {
+  const { request, clientSecret, fetchFile = (url) => fetch(url) } = deps;
 
   const postTaskId = (path: string, taskRef: string) =>
     request(path, { method: 'POST', body: JSON.stringify({ task_id: Number(taskRef) }) });
@@ -60,6 +68,22 @@ export function createDottedSignProvider(deps: { request: DottedSignRequest; cli
       await postTaskId('/v1/sign_tasks/void', taskRef);
     },
 
+    // 先取預簽連結再下載。scope 是 sign_tasks.download.read。
+    // ⚠️ 參數名是 `file_types[]`，下載端點實測可用方括號，與 share_link 的 task_ids 不同（見整合筆記）。
+    // 回應形狀：{ data: { task: "<S3 預簽連結>" } }，key 對應 file_types[] 的值。
+    async downloadFile(taskRef, kind) {
+      const fileType = DS_FILE_TYPES[kind];
+      const json = (await request(
+        `/v1/sign_tasks/download_link?task_id=${encodeURIComponent(taskRef)}&file_types[]=${fileType}`
+      )) as { data?: Record<string, unknown> } | null;
+      const link = json?.data?.[fileType];
+      if (typeof link !== 'string' || !link) throw new Error(`點點簽未回傳${CONTRACT_FILE_LABELS[kind]}的下載連結`);
+      // 預簽連結 15 分鐘失效且會 302 轉址，fetch 預設跟隨
+      const res = await fetchFile(link);
+      if (!res.ok) throw new Error(`下載連結回應 ${res.status}`);
+      return new Uint8Array(await res.arrayBuffer());
+    },
+
     parseWebhook(rawBody, headers) {
       // 後台儲存 webhook URL 時會送一記空 body 的驗證 ping（無簽章 header），需回 200 否則註冊失敗（實測踩過）
       if (!rawBody) return { kind: 'ping' };
@@ -70,6 +94,12 @@ export function createDottedSignProvider(deps: { request: DottedSignRequest; cli
     },
   };
 }
+
+// 檔案種類對點點簽 file_types[] 的值。官方註明 audit_trail 需任務為 completed、declined 或 voided。
+const DS_FILE_TYPES: Record<ContractFileKind, string> = {
+  signed_pdf: 'task',
+  audit_trail: 'audit_trail',
+};
 
 // 內部存的簽署區域是相對比例（原點左上、y 向下）；
 // 點點簽 coord 為 [left-x, bottom-y, right-x, top-y]，原點左下，單位是 PDF points（已實測）。

@@ -45,6 +45,21 @@ export function backfillContractSignTasks(db: Database.Database): void {
   })();
 }
 
+// 一次性回填（MIL-58）：既有合約文件紀錄改以簽署任務為鍵。rel_path 原樣保留，舊檔案不搬。
+// 已有紀錄的種類不動，所以重跑等同 no-op，也不會蓋掉之後補抓的結果。
+// 對不到簽署任務的合約沒有東西可回填：那些合約原本就無法向服務商取文件。
+export function backfillContractFiles(db: Database.Database): void {
+  // INSERT ... SELECT 接 ON CONFLICT 時，SQLite 需要 WHERE 才能解析
+  db.prepare(
+    `INSERT INTO sign_task_files (sign_task_id, kind, status, file_name, rel_path, byte_size, content_type, error, saved_at)
+     SELECT t.id, f.kind, f.status, f.file_name, f.rel_path, f.byte_size, f.content_type, f.error, f.saved_at
+       FROM contract_files f
+       JOIN sign_tasks t ON t.subject_type = 'contract' AND t.subject_id = CAST(f.contract_id AS TEXT)
+      WHERE 1 = 1
+     ON CONFLICT (sign_task_id, kind) DO NOTHING`
+  ).run();
+}
+
 function toNewSignTask(row: LegacyContractRow, events: LegacyEventRow[]): NewSignTask | null {
   const fields = parseFields(row.fields);
   if (!fields) return null;

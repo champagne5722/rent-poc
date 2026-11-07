@@ -222,3 +222,62 @@ describe('簽署連結、重寄與撤回', () => {
     await expect(failing('點點簽 API 失敗（500）').resend('470')).rejects.toThrow('點點簽 API 失敗（500）');
   });
 });
+
+// 下載走 /v1/sign_tasks/download_link 取預簽連結，再下載連結本體。兩段都替換掉，不打網路。
+describe('下載文件', () => {
+  const links = { data: { task: 'https://s3.example/task.pdf', audit_trail: 'https://s3.example/audit.pdf' } };
+
+  function downloading(response: unknown, fetchFile = async (url: string) => new Response(`bytes-of-${url}`)) {
+    const paths: string[] = [];
+    const fetched: string[] = [];
+    const provider = createDottedSignProvider({
+      request: async (path) => {
+        paths.push(path);
+        return response;
+      },
+      clientSecret: 'test-secret',
+      fetchFile: async (url) => {
+        fetched.push(url);
+        return fetchFile(url);
+      },
+    });
+    return { provider, paths, fetched };
+  }
+
+  it.each([
+    ['signed_pdf', 'task', 'https://s3.example/task.pdf'],
+    ['audit_trail', 'audit_trail', 'https://s3.example/audit.pdf'],
+  ] as const)('%s 對應官方 file_types[]=%s，下載回應中的連結', async (kind, fileType, link) => {
+    const { provider, paths, fetched } = downloading(links);
+    const bytes = await provider.downloadFile('470', kind);
+    expect(paths).toEqual([`/v1/sign_tasks/download_link?task_id=470&file_types[]=${fileType}`]);
+    expect(fetched).toEqual([link]);
+    expect(new TextDecoder().decode(bytes)).toBe(`bytes-of-${link}`);
+  });
+
+  it('task_id 會做 URL 編碼', async () => {
+    const { provider, paths } = downloading(links);
+    await provider.downloadFile('4 7/0', 'signed_pdf');
+    expect(paths[0]).toBe('/v1/sign_tasks/download_link?task_id=4%207%2F0&file_types[]=task');
+  });
+
+  it.each([
+    ['缺少該種類的 key', { data: { audit_trail: 'https://s3.example/audit.pdf' } }],
+    ['回應沒有 data', {}],
+    ['回應是 null', null],
+  ])('%s 時回報點點簽未回傳下載連結', async (_label, response) => {
+    const { provider } = downloading(response);
+    await expect(provider.downloadFile('470', 'signed_pdf')).rejects.toThrow('點點簽未回傳已簽 PDF的下載連結');
+  });
+
+  it('預簽連結回應非 2xx 時帶狀態碼', async () => {
+    const { provider } = downloading(links, async () => new Response('denied', { status: 403 }));
+    await expect(provider.downloadFile('470', 'audit_trail')).rejects.toThrow('下載連結回應 403');
+  });
+
+  it('取連結失敗時原樣往外拋', async () => {
+    await expect(failing('點點簽 API 失敗（500）').downloadFile('470', 'signed_pdf')).rejects.toThrow(
+      '點點簽 API 失敗（500）'
+    );
+  });
+});

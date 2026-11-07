@@ -25,6 +25,38 @@ function matches(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+// 殼層分派（MIL-94）：屋主端在 /owner 底下，其他路徑維持後台殼層。既有頁面不搬目錄。
+export type ShellKind = 'admin' | 'owner';
+
+export const OWNER_ROOT_HREF = '/owner';
+
+export function shellFor(pathname: string): ShellKind {
+  return matches(pathname, OWNER_ROOT_HREF) ? 'owner' : 'admin';
+}
+
+// 屋主端選單：只有資產總覽與移交，不放「建立合約」（P0-09 不允許屋主替代管案件擬約）
+export type OwnerNavKey = 'overview' | 'handovers';
+
+export type OwnerNavItem = {
+  key: OwnerNavKey;
+  label: string;
+  href: string;
+};
+
+export const OWNER_NAV_ITEMS: readonly OwnerNavItem[] = [
+  { key: 'overview', label: '資產總覽', href: OWNER_ROOT_HREF },
+  { key: 'handovers', label: '移交', href: `${OWNER_ROOT_HREF}/handovers` },
+];
+
+/** 屋主端上方列的高亮；/owner 本身是資產總覽，其他子路徑比照後台的前綴規則。 */
+export function resolveOwnerNavKey(pathname: string): OwnerNavKey | null {
+  if (pathname === OWNER_ROOT_HREF || pathname === `${OWNER_ROOT_HREF}/`) return 'overview';
+  const hit = OWNER_NAV_ITEMS.find(
+    (item) => item.href !== OWNER_ROOT_HREF && matches(pathname, item.href),
+  );
+  return hit?.key ?? null;
+}
+
 /** 依目前路徑決定側邊選單要高亮哪一項；不屬於任何一級頁面時回傳 null。 */
 export function resolveNavKey(pathname: string): NavKey | null {
   if (pathname === '/') return 'workbench';

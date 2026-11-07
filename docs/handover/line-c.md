@@ -2,7 +2,7 @@
 <!-- 交接文件給 agent 讀，內容是指向既有文件的清單，句長規則不適用 -->
 # C 線交接：登入與組織、三種身分、經理人驗證、案件
 
-先讀 `README.md`。這條線還沒有 spec，第一步是寫規格。
+先讀 `README.md`。spec 已發佈，見下方「現況」。
 
 ## 範圍與依據
 
@@ -23,8 +23,17 @@
 
 登入與帳號（屋主、經理人、承租人 OTP、session、`requestContext()`）；組織建立、成員、角色、`authorize()` 的形狀；三種身分的切換與法定稱謂顯示；執業主體與執業人員登錄、平台營運者審核台；核對紀錄欄位與證據檔（vault）；專任規則四個判定點；效期、換證提醒、每月重查的 worker job（接 ADR-0020）；案件如何從現有合約流程長出來、案件成員指派、案件清單與詳情；委託管理案件與委託範圍限制；接手 `practitionerDirectory`；介面換字集中成標籤對照表；屋主端與承租人端的殼層；與 A 線 MIL-82、D 線 MIL-69 的邊界；測試 seam。
 
-## 第一步
+## 現況，2026-11-08
 
-1. 開一個 Opus 子對話寫規格，流程見 README 第 3 節。
-2. spec 發 Linear 時 related MIL-35、MIL-78、MIL-64。tickets 第一張 blocked-by MIL-82。
-3. 規格發完後等待 A 線通知 MIL-82 完成，再派實作。
+- spec：MIL-100，related MIL-35、MIL-78、MIL-64、MIL-94。tickets 12 張，parent 都是 MIL-100：MIL-103、106、108、109、111、112、113、115、116、119、121、122。第一張 MIL-103 blocked by MIL-82。P1 票 MIL-124（識別字與資料庫欄位改名）不在序列裡。
+- ADR：0022（email OTP 與伺服器端 session，身分是可切換的脈絡）、0023（案件從建約流程長出，代操作以委託範圍授權，引用 0024）、0017 補充（證據檔與同意書保留）。GLOSSARY 新增身分、組織角色、審核台、代操作。
+- 跨線：MIL-78、MIL-64 已留言告知。F 線 MIL-94 的 7 項介面需求對應的票號已送 F 線主控。`currentOwnerSession()` 由 MIL-103 實作，介面換字 MIL-122 只動 `AppShell` 內容與標籤對照表，不碰 `OwnerShell` 與 `shellFor`。
+- 待法務確認的 4 項已補進 MIL-62 第 11 到 14 題。真實寄信服務的選定是上線閘門，由使用者 pilot 前決定。
+- seam 名稱以 ADR-0021 的 `practiceRegistry` 為準，本文上方的 `practitionerDirectory` 是舊名。
+- 採用的決定清單在共用筆記 `line-c-spec-handover.md`。
+
+## 下一步
+
+1. 等 A 線通知 MIL-82 併進 `integration/line-a`。
+2. 從 `integration/line-a` 建 `integration/line-c`，照 MIL-103 起的順序派實作子對話，每張票一個 Opus 子對話、自己的 worktree，流程見 README 第 3 節。
+3. 動到畫面的票先載入 `impeccable`。

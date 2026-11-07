@@ -2,7 +2,7 @@
 // 請求內容的翻譯在 signing-module/dottedsign-adapter.ts。
 //
 // 模式切換：設好 DOTTEDSIGN_CLIENT_ID 與 DOTTEDSIGN_CLIENT_SECRET 即為 live，否則為 mock。
-// 只有 signing-module/index.ts 用它選 adapter。contract-files.ts 的 mock 特例留給文件保存那張票。
+// 只有 signing-module/index.ts 用它選 adapter。
 
 const API_BASE = process.env.DOTTEDSIGN_API_BASE ?? 'https://api.sandbox.dottedsign.com';
 const CLIENT_ID = process.env.DOTTEDSIGN_CLIENT_ID;
@@ -58,9 +58,4 @@ export async function dsFetch(path: string, init: RequestInit = {}): Promise<unk
   });
   if (!res.ok) throw new Error(`點點簽 API ${path} 失敗（${res.status}）：${await res.text()}`);
   return res.json();
-}
-
-// 帶 token 的 GET，供其他模組組好 path 後呼叫（例：contract-files.ts 的下載連結查詢）
-export async function dsGetJson(path: string): Promise<unknown> {
-  return dsFetch(path);
 }

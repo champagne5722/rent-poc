@@ -1,9 +1,12 @@
 import nodeCrypto from 'crypto';
 import Database from 'better-sqlite3';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createContractSubscriber } from '../contract-signing';
 import { ensureSchema, getContract, listContractEvents, setDb } from '../db';
-import type { Contract, ContractStatus } from '../types';
+import type { ContractStatus } from '../types';
 import { createDottedSignProvider } from './dottedsign-adapter';
 import { createMockProvider } from './mock-adapter';
 import { createSigningModule, signingErrorResponse, SigningRefusal } from './module';
@@ -11,18 +14,21 @@ import type { SignableDocument, Signer, SigningProvider } from './provider';
 import type { SigningSubscriber } from './subscriber';
 
 let db: Database.Database;
-let onCompleted: ReturnType<typeof vi.fn<(contract: Contract) => Promise<void>>>;
+// 文件本體寫在暫存目錄，不碰 data/
+let dataDir: string;
 
 beforeEach(() => {
   db = new Database(':memory:');
   ensureSchema(db);
   setDb(db);
-  onCompleted = vi.fn(async () => {});
+  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'signing-module-'));
 });
 
 afterEach(() => {
   setDb(null);
   db.close();
+  fs.rmSync(dataDir, { recursive: true, force: true });
+  vi.restoreAllMocks();
 });
 
 const FIELDS = JSON.stringify({
@@ -42,7 +48,14 @@ function seed(status: ContractStatus, taskRef: string | null = null) {
 }
 
 const moduleWith = (provider: SigningProvider = createMockProvider()) =>
-  createSigningModule({ provider, subscribers: { contract: createContractSubscriber({ onCompleted }) } });
+  createSigningModule({ provider, subscribers: { contract: createContractSubscriber() }, dataDir });
+
+// 保存文件經 adapter 下載。監看下載次數，就能知道完成後保存了幾次。
+const watchedMock = () => {
+  const provider = createMockProvider();
+  const download = vi.spyOn(provider, 'downloadFile');
+  return { provider, download };
+};
 
 const statusOf = (id: number) => getContract(id)?.status;
 const eventTypes = (id: number) => listContractEvents(id, db).map((e) => e.type);
@@ -66,6 +79,7 @@ const liveProvider = (overrides: Partial<SigningProvider> = {}): SigningProvider
   getSignLink: async () => 'https://sign.example/abc',
   resend: async () => {},
   voidTask: async () => {},
+  downloadFile: async (taskRef, kind) => new TextEncoder().encode(`${kind}-of-${taskRef}`),
   parseWebhook: () => ({ kind: 'ignored' }),
   ...overrides,
 });
@@ -383,7 +397,8 @@ describe('接收 webhook', () => {
 
   it('走完乙方簽署到全員完成：狀態、歷程都推進，完成後保存文件一次', async () => {
     const subject = seed('awaiting_tenant', 'mock-task-1');
-    const signing = moduleWith();
+    const { provider, download } = watchedMock();
+    const signing = moduleWith(provider);
 
     await expect(
       signing.ingestWebhook(webhook('mock-task-1', 'signed', { event_email: 'tenant@example.com' }), new Headers())
@@ -392,25 +407,26 @@ describe('接收 webhook', () => {
       body: { ok: true },
     });
     expect(statusOf(subject.id)).toBe('awaiting_landlord');
-    expect(onCompleted).not.toHaveBeenCalled();
+    expect(download).not.toHaveBeenCalled();
 
     await signing.ingestWebhook(webhook('mock-task-1', 'completed'), new Headers());
     expect(statusOf(subject.id)).toBe('completed');
     expect(eventTypes(subject.id)).toEqual(['signer_signed', 'completed']);
-    expect(onCompleted).toHaveBeenCalledTimes(1);
-    expect(onCompleted.mock.calls[0][0].id).toBe(subject.id);
+    // mock 沒有 Audit Trail File，只保存已簽 PDF
+    expect(download.mock.calls).toEqual([['mock-task-1', 'signed_pdf']]);
   });
 
   it('重複的 completed 回 200，不再推進，也不再保存文件', async () => {
     const subject = seed('awaiting_landlord', 'mock-task-1');
-    const signing = moduleWith();
+    const { provider, download } = watchedMock();
+    const signing = moduleWith(provider);
     await signing.ingestWebhook(webhook('mock-task-1', 'completed'), new Headers());
     await expect(signing.ingestWebhook(webhook('mock-task-1', 'completed'), new Headers())).resolves.toEqual({
       status: 200,
       body: { ok: true, ignored: true },
     });
     expect(eventTypes(subject.id)).toEqual(['completed']);
-    expect(onCompleted).toHaveBeenCalledTimes(1);
+    expect(download).toHaveBeenCalledTimes(1);
   });
 
   it('拒簽原因寫進合約與歷程附註', async () => {
@@ -424,11 +440,12 @@ describe('接收 webhook', () => {
 describe('模擬簽署事件（mock advance）', () => {
   it('mock 模式能推進到完成，回傳下一狀態，完成後保存文件', async () => {
     const subject = seed('awaiting_tenant', 'mock-1-abc');
-    const signing = moduleWith();
+    const { provider, download } = watchedMock();
+    const signing = moduleWith(provider);
     await expect(signing.simulateEvent(subject, 'signed')).resolves.toEqual({ status: 'awaiting_landlord' });
     await expect(signing.simulateEvent(subject, 'completed')).resolves.toEqual({ status: 'completed' });
     expect(eventTypes(subject.id)).toEqual(['signer_signed', 'completed']);
-    expect(onCompleted).toHaveBeenCalledTimes(1);
+    expect(download).toHaveBeenCalledTimes(1);
   });
 
   it('拒簽原因會傳進歷程', async () => {
@@ -677,7 +694,6 @@ describe('email 守門', () => {
     const progress = await signing.getProgress(subject);
     expect(progress?.signers.map((s) => s.status)).toEqual(['signed', 'signed']);
     expect(eventTypes(subject.id)).toEqual(['completed']);
-    expect(onCompleted).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -729,7 +745,6 @@ describe('N 位簽署人經 seam 走完', () => {
     const progress = await signing.getProgress(subject);
     expect(progress?.status).toBe('completed');
     expect(progress?.signers.map((s) => s.status)).toEqual(['signed', 'signed', 'signed']);
-    expect(onCompleted).toHaveBeenCalledTimes(1);
   });
 
   it('一位簽署人：簽完等全員完成', async () => {
@@ -894,6 +909,7 @@ describe('簽署模組不依賴合約', () => {
       label: '撥款指示',
       exists: (subject) => subject.id === FAKE.id,
       currentStatus: () => 'fake-status',
+      isCompleted: () => log.includes('completed'),
       onSent: (_subject, sent) => log.push(['sent', sent.signers.length]),
       onOutcome: (_subject, outcome) => log.push(outcome.type),
       afterCompleted: async () => {
@@ -909,6 +925,7 @@ describe('簽署模組不依賴合約', () => {
     createSigningModule({
       provider: { ...createMockProvider(), ...provider },
       subscribers: { [FAKE.type]: subscriber },
+      dataDir,
     });
 
   it('假的簽署標的沒有對應的合約，也能走完送簽、簽署、全員完成', async () => {
@@ -1004,6 +1021,240 @@ describe('簽署模組不依賴合約', () => {
       status: 200,
       body: { ok: true, ignored: true },
     });
+  });
+});
+
+// 文件保存（MIL-58）：以簽署任務為鍵，完成的交易提交後保存，經簽署模組介面讀回。
+describe('文件保存', () => {
+  const completedWebhook = (taskRef = '470'): SigningProvider['parseWebhook'] => () => ({
+    kind: 'event',
+    taskRef,
+    event: { type: 'completed' },
+  });
+  const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
+
+  // 送簽後由 webhook 走到全員完成
+  async function completeLive(provider: SigningProvider) {
+    const subject = seed('draft');
+    const signing = moduleWith(provider);
+    await signing.send(subject, document, signers);
+    const ack = await signing.ingestWebhook('{}', new Headers());
+    return { subject, signing, ack };
+  }
+
+  it('mock 送簽到全員完成，已簽 PDF 是送簽時的 PDF，沒有 Audit Trail File', async () => {
+    const subject = seed('draft');
+    const signing = moduleWith();
+    await signing.send(subject, document, signers);
+    await signing.simulateEvent(subject, 'signed');
+    await signing.simulateEvent(subject, 'completed');
+
+    const files = await signing.listFiles(subject);
+    expect(files.map((f) => [f.kind, f.status, f.file_name])).toEqual([
+      ['signed_pdf', 'saved', `contract-${subject.id}-signed.pdf`],
+    ]);
+    const file = await signing.downloadFile(subject, 'signed_pdf');
+    expect(file).toMatchObject({ fileName: `contract-${subject.id}-signed.pdf`, contentType: 'application/pdf' });
+    expect(file.bytes).toEqual(document.pdf);
+  });
+
+  it('live 全員完成後保存兩份文件，記檔名、大小與狀態', async () => {
+    const { subject, signing } = await completeLive(liveProvider({ parseWebhook: completedWebhook() }));
+    expect(statusOf(subject.id)).toBe('completed');
+
+    const files = await signing.listFiles(subject);
+    expect(files.map((f) => [f.kind, f.status, f.byte_size, f.error])).toEqual([
+      ['audit_trail', 'saved', 'audit_trail-of-470'.length, null],
+      ['signed_pdf', 'saved', 'signed_pdf-of-470'.length, null],
+    ]);
+    expect(text((await signing.downloadFile(subject, 'audit_trail')).bytes)).toBe('audit_trail-of-470');
+  });
+
+  it('保存在交易提交後才執行：下載時合約已是完成', async () => {
+    let statusDuringDownload: ContractStatus | undefined;
+    const provider = liveProvider({
+      parseWebhook: completedWebhook(),
+      downloadFile: async (_ref, kind) => {
+        statusDuringDownload = statusOf(1);
+        return new TextEncoder().encode(kind);
+      },
+    });
+    await completeLive(provider);
+    expect(statusDuringDownload).toBe('completed');
+  });
+
+  it('保存失敗不回滾狀態，webhook 仍回 200，失敗原因記進文件紀錄', async () => {
+    const provider = liveProvider({
+      parseWebhook: completedWebhook(),
+      downloadFile: async () => {
+        throw new Error('點點簽 API 失敗（500）');
+      },
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { subject, signing, ack } = await completeLive(provider);
+
+    expect(ack).toEqual({ status: 200, body: { ok: true } });
+    expect(statusOf(subject.id)).toBe('completed');
+    expect((await signing.listFiles(subject)).map((f) => [f.kind, f.status, f.error])).toEqual([
+      ['audit_trail', 'failed', '點點簽 API 失敗（500）'],
+      ['signed_pdf', 'failed', '點點簽 API 失敗（500）'],
+    ]);
+  });
+
+  it('保存的寫入本身失敗也不讓 webhook 回非 2xx', async () => {
+    const provider = liveProvider({ parseWebhook: completedWebhook() });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const subject = seed('draft');
+    const signing = moduleWith(provider);
+    await signing.send(subject, document, signers);
+    db.exec(`CREATE TRIGGER fail_files BEFORE INSERT ON sign_task_files BEGIN SELECT RAISE(ABORT, '寫入失敗'); END`);
+
+    await expect(signing.ingestWebhook('{}', new Headers())).resolves.toEqual({ status: 200, body: { ok: true } });
+    expect(statusOf(subject.id)).toBe('completed');
+  });
+
+  describe('補抓', () => {
+    it('已保存的不重抓，強制時重抓', async () => {
+      const downloadFile = vi.fn(async (_ref: string, kind: string) => new TextEncoder().encode(kind));
+      const { subject, signing } = await completeLive(liveProvider({ parseWebhook: completedWebhook(), downloadFile }));
+      expect(downloadFile).toHaveBeenCalledTimes(2);
+
+      await expect(signing.saveFiles(subject)).resolves.toEqual([]);
+      expect(downloadFile).toHaveBeenCalledTimes(2);
+
+      await expect(signing.saveFiles(subject, { force: true })).resolves.toEqual([
+        { kind: 'signed_pdf', ok: true },
+        { kind: 'audit_trail', ok: true },
+      ]);
+      expect(downloadFile).toHaveBeenCalledTimes(4);
+    });
+
+    it('部分失敗時回每種文件的結果，成功的覆蓋先前的失敗紀錄', async () => {
+      let failAll = true;
+      const provider = liveProvider({
+        parseWebhook: completedWebhook(),
+        downloadFile: async (_ref, kind) => {
+          if (failAll || kind === 'audit_trail') throw new Error('下載連結回應 403');
+          return new TextEncoder().encode(kind);
+        },
+      });
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { subject, signing } = await completeLive(provider);
+
+      failAll = false;
+      await expect(signing.saveFiles(subject, { force: true })).resolves.toEqual([
+        { kind: 'signed_pdf', ok: true },
+        { kind: 'audit_trail', ok: false, error: '下載連結回應 403' },
+      ]);
+      expect((await signing.listFiles(subject)).map((f) => [f.kind, f.status])).toEqual([
+        ['audit_trail', 'failed'],
+        ['signed_pdf', 'saved'],
+      ]);
+    });
+
+    it('只補抓指定的種類', async () => {
+      const downloadFile = vi.fn(async (_ref: string, kind: string) => new TextEncoder().encode(kind));
+      const { subject, signing } = await completeLive(liveProvider({ parseWebhook: completedWebhook(), downloadFile }));
+      await expect(signing.saveFiles(subject, { kinds: ['audit_trail'], force: true })).resolves.toEqual([
+        { kind: 'audit_trail', ok: true },
+      ]);
+    });
+
+    it('mock 模式不補抓 Audit Trail File', async () => {
+      const subject = seed('draft');
+      const signing = moduleWith();
+      await signing.send(subject, document, signers);
+      await signing.simulateEvent(subject, 'completed');
+      await expect(signing.saveFiles(subject, { force: true })).resolves.toEqual([{ kind: 'signed_pdf', ok: true }]);
+    });
+
+    it('未完成的合約回 409，訊息不變', async () => {
+      const subject = seed('awaiting_tenant', '470');
+      await expect(moduleWith(liveProvider()).saveFiles(subject, { force: true })).rejects.toEqual(
+        refusal(409, '合約尚未完成簽署，沒有可保存的文件')
+      );
+    });
+
+    it('合約不存在回 404', async () => {
+      await expect(moduleWith().saveFiles({ type: 'contract', id: 999 })).rejects.toEqual(refusal(404, '合約不存在'));
+    });
+
+    it('已完成但沒有簽署任務時，每種文件都回失敗', async () => {
+      const subject = seed('completed');
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      await expect(moduleWith(liveProvider()).saveFiles(subject, { force: true })).resolves.toEqual([
+        { kind: 'signed_pdf', ok: false, error: '合約沒有對應的簽署任務' },
+        { kind: 'audit_trail', ok: false, error: '合約沒有對應的簽署任務' },
+      ]);
+    });
+  });
+
+  describe('下載', () => {
+    it.each(['signed_pdf', 'audit_trail'] as const)('未完成的合約下載 %s 回 409，訊息不變', async (kind) => {
+      const label = kind === 'signed_pdf' ? '已簽 PDF' : 'Audit Trail File';
+      for (const status of ['draft', 'awaiting_tenant', 'awaiting_landlord', 'declined', 'voided'] as const) {
+        const subject = seed(status, status === 'draft' ? null : `t-${status}`);
+        await expect(moduleWith(liveProvider()).downloadFile(subject, kind)).rejects.toEqual(
+          refusal(409, `合約尚未完成簽署，${label}尚未產生`)
+        );
+      }
+    });
+
+    it('mock 模式下載 Audit Trail File 回 409，訊息不變', async () => {
+      const subject = seed('completed', 'mock-1-abc');
+      await expect(moduleWith().downloadFile(subject, 'audit_trail')).rejects.toEqual(
+        refusal(409, 'mock 模式沒有真實簽署任務，無法提供Audit Trail File')
+      );
+    });
+
+    it('已完成但沒有簽署任務時回 409', async () => {
+      const subject = seed('completed');
+      await expect(moduleWith(liveProvider()).downloadFile(subject, 'signed_pdf')).rejects.toEqual(
+        refusal(409, '合約沒有對應的簽署任務，無法取得已簽 PDF')
+      );
+    });
+
+    it('沒保存過時當場補抓一次', async () => {
+      const subject = seed('completed', '470');
+      const downloadFile = vi.fn(async (ref: string, kind: string) => new TextEncoder().encode(`${kind}-of-${ref}`));
+      const signing = moduleWith(liveProvider({ downloadFile }));
+
+      expect(text((await signing.downloadFile(subject, 'signed_pdf')).bytes)).toBe('signed_pdf-of-470');
+      expect(downloadFile.mock.calls).toEqual([['470', 'signed_pdf']]);
+      expect((await signing.listFiles(subject)).map((f) => f.kind)).toEqual(['signed_pdf']);
+    });
+
+    it('檔案被刪掉時當場補抓一次', async () => {
+      const downloadFile = vi.fn(async (_ref: string, kind: string) => new TextEncoder().encode(kind));
+      const { subject, signing } = await completeLive(liveProvider({ parseWebhook: completedWebhook(), downloadFile }));
+      fs.rmSync(path.join(dataDir, 'sign-task-files'), { recursive: true, force: true });
+
+      expect(text((await signing.downloadFile(subject, 'signed_pdf')).bytes)).toBe('signed_pdf');
+      expect(downloadFile).toHaveBeenCalledTimes(3);
+    });
+
+    it('當場補抓失敗時回 502，帶失敗原因', async () => {
+      const subject = seed('completed', '470');
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const provider = liveProvider({
+        downloadFile: async () => {
+          throw new Error('點點簽未回傳已簽 PDF的下載連結');
+        },
+      });
+      await expect(moduleWith(provider).downloadFile(subject, 'signed_pdf')).rejects.toEqual(
+        refusal(502, '取得已簽 PDF失敗：點點簽未回傳已簽 PDF的下載連結')
+      );
+    });
+
+    it('合約不存在回 404', async () => {
+      await expect(moduleWith().downloadFile({ type: 'contract', id: 999 }, 'signed_pdf')).rejects.toEqual(
+        refusal(404, '合約不存在')
+      );
+    });
+  });
+
+  it('沒有簽署任務時文件清單是空的', async () => {
+    await expect(moduleWith().listFiles(seed('completed'))).resolves.toEqual([]);
   });
 });
 
