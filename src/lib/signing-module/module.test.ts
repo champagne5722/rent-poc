@@ -46,8 +46,8 @@ const document: SignableDocument = {
   pageSize: { width: 595.28, height: 841.89 },
 };
 const signers: Signer[] = [
-  { role: 'tenant', name: '王租客', email: 'tenant@example.com', signatureFields: [] },
-  { role: 'landlord', name: '林房東', email: 'landlord@example.com', signatureFields: [] },
+  { role: 'party_b', name: '王租客', email: 'tenant@example.com', signatureFields: [] },
+  { role: 'party_a', name: '林房東', email: 'landlord@example.com', signatureFields: [] },
 ];
 
 // live 模式下的 adapter 替身：實作都成功，各測試再覆寫要失敗的操作
@@ -231,7 +231,7 @@ describe('取簽署連結', () => {
     const subject = seed('awaiting_landlord', '470');
     const getSignLink = vi.fn(async () => 'https://sign.example/abc');
     await expect(moduleWith(liveProvider({ getSignLink })).getSignLink(subject, redirect)).resolves.toEqual({
-      signer: { role: 'landlord', name: '林房東', email: 'landlord@example.com' },
+      signer: { role: 'party_a', name: '林房東', email: 'landlord@example.com' },
       url: 'https://sign.example/abc',
     });
     expect(getSignLink).toHaveBeenCalledWith('470', 'landlord@example.com', redirect);
@@ -264,7 +264,7 @@ describe('重寄', () => {
     const subject = seed('awaiting_tenant', '470');
     const resend = vi.fn(async () => {});
     await expect(moduleWith(liveProvider({ resend })).resend(subject)).resolves.toEqual({
-      signer: { role: 'tenant', name: '王租客', email: 'tenant@example.com' },
+      signer: { role: 'party_b', name: '王租客', email: 'tenant@example.com' },
     });
     expect(resend).toHaveBeenCalledWith('470');
   });

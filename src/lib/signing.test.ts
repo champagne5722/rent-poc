@@ -36,7 +36,7 @@ function makeContract(status: ContractStatus): Contract {
 describe('currentSigner（當前待簽方）', () => {
   it('待乙方簽時，當前待簽方是租客', () => {
     expect(currentSigner(makeContract('awaiting_tenant'))).toEqual({
-      role: 'tenant',
+      role: 'party_b',
       name: '王租客',
       email: 'tenant@example.com',
     });
@@ -44,7 +44,7 @@ describe('currentSigner（當前待簽方）', () => {
 
   it('待甲方簽時，當前待簽方是房東', () => {
     expect(currentSigner(makeContract('awaiting_landlord'))).toEqual({
-      role: 'landlord',
+      role: 'party_a',
       name: '林房東',
       email: 'landlord@example.com',
     });
@@ -57,13 +57,13 @@ describe('currentSigner（當前待簽方）', () => {
 
 describe('contractSignerSequence（租賃合約的簽署序列）', () => {
   it('乙方在前、甲方在後，各自帶自己的簽署區域', () => {
-    const tenantField = { id: 'f1', signer: 'tenant', page: 0, x: 0.1, y: 0.8, w: 0.2, h: 0.1 } as const;
-    const landlordField = { id: 'f2', signer: 'landlord', page: 1, x: 0.6, y: 0.8, w: 0.2, h: 0.1 } as const;
-    const contract = { ...makeContract('draft'), signature_fields: [landlordField, tenantField] };
+    const partyBField = { id: 'f1', signer: 'party_b', page: 0, x: 0.1, y: 0.8, w: 0.2, h: 0.1 } as const;
+    const partyAField = { id: 'f2', signer: 'party_a', page: 1, x: 0.6, y: 0.8, w: 0.2, h: 0.1 } as const;
+    const contract = { ...makeContract('draft'), signature_fields: [partyAField, partyBField] };
 
     expect(contractSignerSequence(contract)).toEqual([
-      { role: 'tenant', name: '王租客', email: 'tenant@example.com', signatureFields: [tenantField] },
-      { role: 'landlord', name: '林房東', email: 'landlord@example.com', signatureFields: [landlordField] },
+      { role: 'party_b', name: '王租客', email: 'tenant@example.com', signatureFields: [partyBField] },
+      { role: 'party_a', name: '林房東', email: 'landlord@example.com', signatureFields: [partyAField] },
     ]);
   });
 });

@@ -26,10 +26,10 @@ export async function POST(_request: NextRequest, { params }: Ctx) {
   if (missing.length) {
     return Response.json({ error: `請先完成欄位：${missing.join('、')}` }, { status: 400 });
   }
-  if (!contract.signature_fields.some((s) => s.signer === 'tenant')) {
+  if (!contract.signature_fields.some((s) => s.signer === 'party_b')) {
     return Response.json({ error: '請至少為乙方設定一個簽署區域' }, { status: 400 });
   }
-  if (!contract.signature_fields.some((s) => s.signer === 'landlord')) {
+  if (!contract.signature_fields.some((s) => s.signer === 'party_a')) {
     return Response.json({ error: '請至少為甲方設定一個簽署區域' }, { status: 400 });
   }
 

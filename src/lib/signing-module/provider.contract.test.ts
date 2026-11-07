@@ -19,16 +19,16 @@ const document: SignableDocument = {
 
 const signers: Signer[] = [
   {
-    role: 'tenant',
+    role: 'party_b',
     name: '王租客',
     email: 'tenant@example.com',
-    signatureFields: [{ id: 'f1', signer: 'tenant', page: 0, x: 0.1, y: 0.8, w: 0.2, h: 0.1 }],
+    signatureFields: [{ id: 'f1', signer: 'party_b', page: 0, x: 0.1, y: 0.8, w: 0.2, h: 0.1 }],
   },
   {
-    role: 'landlord',
+    role: 'party_a',
     name: '林房東',
     email: 'landlord@example.com',
-    signatureFields: [{ id: 'f2', signer: 'landlord', page: 0, x: 0.6, y: 0.8, w: 0.2, h: 0.1 }],
+    signatureFields: [{ id: 'f2', signer: 'party_a', page: 0, x: 0.6, y: 0.8, w: 0.2, h: 0.1 }],
   },
 ];
 

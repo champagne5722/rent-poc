@@ -4,7 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Rnd } from 'react-rnd';
 import { Alert, Button, Space, Spin, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
-import type { SignatureField, SignerRole } from '@/lib/types';
+import {
+  CONTRACT_PARTY_ROLES,
+  SIGNER_ROLE_LABELS,
+  type ContractPartyRole,
+  type SignatureField,
+  type SignerRole,
+} from '@/lib/types';
 import {
   type AlignGuide,
   clampRect,
@@ -33,9 +39,11 @@ interface RenderedPage {
   cssHeight: number;
 }
 
-const SIGNER_STYLES: Record<SignerRole, { label: string; color: string; bg: string }> = {
-  landlord: { label: '甲方簽名', color: '#1677ff', bg: 'rgba(22,119,255,0.12)' },
-  tenant: { label: '乙方簽名', color: '#fa8c16', bg: 'rgba(250,140,22,0.14)' },
+const SIGNER_STYLES: Record<SignerRole, { color: string; bg: string }> = {
+  party_a: { color: '#1677ff', bg: 'rgba(22,119,255,0.12)' },
+  party_b: { color: '#fa8c16', bg: 'rgba(250,140,22,0.14)' },
+  // 編輯器不提供新增執業人員的簽名框（P0-12）。這裡只讓既有資料能顯示，顏色取 DESIGN.md 的 ink-muted。
+  practitioner: { color: '#5d606b', bg: 'rgba(93,96,107,0.12)' },
 };
 
 const RENDER_WIDTH = 680;
@@ -101,7 +109,7 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
   // 範本的簽名欄在最後一頁；新增框優先落在那一頁的甲／乙簽名欄旁。
   const signaturePage = pages ? pages.length - 1 : 0;
 
-  const addField = (signer: SignerRole, page: number) => {
+  const addField = (signer: ContractPartyRole, page: number) => {
     const rect = defaultFieldRect({ signer, page, signaturePage, existing: valueRef.current });
     const field: SignatureField = {
       id: `sf-${Date.now()}-${idSeq.current++}`,
@@ -153,12 +161,11 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
               </Typography.Text>
               {!readOnly && (
                 <Space>
-                  <Button size="small" onClick={() => addField('landlord', page.index)}>
-                    ＋ 甲方簽名框
-                  </Button>
-                  <Button size="small" onClick={() => addField('tenant', page.index)}>
-                    ＋ 乙方簽名框
-                  </Button>
+                  {CONTRACT_PARTY_ROLES.map((role) => (
+                    <Button key={role} size="small" onClick={() => addField(role, page.index)}>
+                      ＋ {SIGNER_ROLE_LABELS[role]}簽名框
+                    </Button>
+                  ))}
                 </Space>
               )}
             </Space>
@@ -251,7 +258,7 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
                         pointerEvents: readOnly ? 'none' : undefined,
                       }}
                     >
-                      {style.label}
+                      {SIGNER_ROLE_LABELS[f.signer]}簽名
                       {!readOnly && (
                         <DeleteOutlined
                           onClick={(e) => {

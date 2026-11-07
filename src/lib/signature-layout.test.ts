@@ -13,13 +13,13 @@ import { MARGIN, PAGE_H, PAGE_W, SIGN_STAMP_BLANK, signatureStampBaselines } fro
 import type { SignatureField } from './types';
 
 function field(over: Partial<SignatureField> & { id: string }): SignatureField {
-  return { signer: 'landlord', page: 0, x: 0.2, y: 0.2, w: 0.3, h: 0.06, ...over };
+  return { signer: 'party_a', page: 0, x: 0.2, y: 0.2, w: 0.3, h: 0.06, ...over };
 }
 
 describe('defaultFieldRect', () => {
   it('簽名頁的甲方框落在甲方「簽章：」右側同一水平帶', () => {
-    const rect = defaultFieldRect({ signer: 'landlord', page: 1, signaturePage: 1, existing: [] });
-    const baseline = signatureStampBaselines().landlord;
+    const rect = defaultFieldRect({ signer: 'party_a', page: 1, signaturePage: 1, existing: [] });
+    const baseline = signatureStampBaselines().party_a;
     // 換回 PDF 座標比對：框頂略高於 baseline，框底不低於 baseline 往下預留的空白
     const top = PAGE_H - rect.y * PAGE_H;
     const bottom = top - rect.h * PAGE_H;
@@ -32,42 +32,42 @@ describe('defaultFieldRect', () => {
   });
 
   it('乙方框在甲方框下方，兩者不重疊', () => {
-    const landlord = defaultFieldRect({ signer: 'landlord', page: 1, signaturePage: 1, existing: [] });
-    const tenant = defaultFieldRect({ signer: 'tenant', page: 1, signaturePage: 1, existing: [] });
-    expect(tenant.y).toBeGreaterThan(landlord.y);
-    expect(rectsOverlap(landlord, tenant)).toBe(false);
+    const partyA = defaultFieldRect({ signer: 'party_a', page: 1, signaturePage: 1, existing: [] });
+    const partyB = defaultFieldRect({ signer: 'party_b', page: 1, signaturePage: 1, existing: [] });
+    expect(partyB.y).toBeGreaterThan(partyA.y);
+    expect(rectsOverlap(partyA, partyB)).toBe(false);
   });
 
   it('非簽名頁用備援落點，一樣在頁面範圍內且甲上乙下', () => {
-    const landlord = defaultFieldRect({ signer: 'landlord', page: 0, signaturePage: 2, existing: [] });
-    const tenant = defaultFieldRect({ signer: 'tenant', page: 0, signaturePage: 2, existing: [] });
-    for (const rect of [landlord, tenant]) {
+    const partyA = defaultFieldRect({ signer: 'party_a', page: 0, signaturePage: 2, existing: [] });
+    const partyB = defaultFieldRect({ signer: 'party_b', page: 0, signaturePage: 2, existing: [] });
+    for (const rect of [partyA, partyB]) {
       expect(rect.x).toBeGreaterThanOrEqual(0);
       expect(rect.y).toBeGreaterThanOrEqual(0);
       expect(rect.x + rect.w).toBeLessThanOrEqual(1);
       expect(rect.y + rect.h).toBeLessThanOrEqual(1);
     }
-    expect(tenant.y).toBeGreaterThan(landlord.y);
-    expect(rectsOverlap(landlord, tenant)).toBe(false);
+    expect(partyB.y).toBeGreaterThan(partyA.y);
+    expect(rectsOverlap(partyA, partyB)).toBe(false);
   });
 
   it('同一落點已有框時往右下錯開，不疊在原框上', () => {
-    const first = defaultFieldRect({ signer: 'landlord', page: 1, signaturePage: 1, existing: [] });
+    const first = defaultFieldRect({ signer: 'party_a', page: 1, signaturePage: 1, existing: [] });
     const existing = [field({ id: 'a', page: 1, ...first })];
-    const second = defaultFieldRect({ signer: 'landlord', page: 1, signaturePage: 1, existing });
+    const second = defaultFieldRect({ signer: 'party_a', page: 1, signaturePage: 1, existing });
     expect(second.x).toBeCloseTo(first.x + DEFAULT_FIELD_STACK_STEP.x, 10);
     expect(second.y).toBeCloseTo(first.y + DEFAULT_FIELD_STACK_STEP.y, 10);
   });
 
   it('只避開同一頁的框，別頁的框不影響落點', () => {
-    const first = defaultFieldRect({ signer: 'landlord', page: 1, signaturePage: 1, existing: [] });
+    const first = defaultFieldRect({ signer: 'party_a', page: 1, signaturePage: 1, existing: [] });
     const existing = [field({ id: 'a', page: 0, ...first })];
-    const again = defaultFieldRect({ signer: 'landlord', page: 1, signaturePage: 1, existing });
+    const again = defaultFieldRect({ signer: 'party_a', page: 1, signaturePage: 1, existing });
     expect(again).toEqual(first);
   });
 
   it('連續錯開到頁緣時夾回頁內', () => {
-    const base = defaultFieldRect({ signer: 'tenant', page: 1, signaturePage: 1, existing: [] });
+    const base = defaultFieldRect({ signer: 'party_b', page: 1, signaturePage: 1, existing: [] });
     const existing = Array.from({ length: 30 }, (_, i) =>
       field({
         id: `f${i}`,
@@ -78,7 +78,7 @@ describe('defaultFieldRect', () => {
         h: base.h,
       })
     );
-    const rect = defaultFieldRect({ signer: 'tenant', page: 1, signaturePage: 1, existing });
+    const rect = defaultFieldRect({ signer: 'party_b', page: 1, signaturePage: 1, existing });
     expect(rect.x).toBeGreaterThanOrEqual(0);
     expect(rect.y).toBeGreaterThanOrEqual(0);
     expect(rect.x + rect.w).toBeLessThanOrEqual(1);
@@ -215,17 +215,17 @@ describe('重疊偵測', () => {
 
   it('只回報同頁且甲乙互相重疊的組合', () => {
     const fields = [
-      field({ id: 'l1', signer: 'landlord', page: 0, x: 0.1, y: 0.1, w: 0.2, h: 0.1 }),
-      field({ id: 't1', signer: 'tenant', page: 0, x: 0.2, y: 0.15, w: 0.2, h: 0.1 }),
-      field({ id: 'l2', signer: 'landlord', page: 1, x: 0.2, y: 0.15, w: 0.2, h: 0.1 }),
+      field({ id: 'l1', signer: 'party_a', page: 0, x: 0.1, y: 0.1, w: 0.2, h: 0.1 }),
+      field({ id: 't1', signer: 'party_b', page: 0, x: 0.2, y: 0.15, w: 0.2, h: 0.1 }),
+      field({ id: 'l2', signer: 'party_a', page: 1, x: 0.2, y: 0.15, w: 0.2, h: 0.1 }),
     ];
     expect(crossSignerOverlaps(fields)).toEqual([{ page: 0, ids: ['l1', 't1'] }]);
   });
 
   it('同一方的兩個框重疊不算警示', () => {
     const fields = [
-      field({ id: 'l1', signer: 'landlord', page: 0, x: 0.1, y: 0.1, w: 0.2, h: 0.1 }),
-      field({ id: 'l2', signer: 'landlord', page: 0, x: 0.15, y: 0.12, w: 0.2, h: 0.1 }),
+      field({ id: 'l1', signer: 'party_a', page: 0, x: 0.1, y: 0.1, w: 0.2, h: 0.1 }),
+      field({ id: 'l2', signer: 'party_a', page: 0, x: 0.15, y: 0.12, w: 0.2, h: 0.1 }),
     ];
     expect(crossSignerOverlaps(fields)).toEqual([]);
     expect(overlapWarning(fields)).toBeNull();
@@ -233,11 +233,11 @@ describe('重疊偵測', () => {
 
   it('警示訊息列出重疊的頁碼（1-based、去重）', () => {
     const fields = [
-      field({ id: 'l1', signer: 'landlord', page: 0, x: 0.1, y: 0.1, w: 0.2, h: 0.1 }),
-      field({ id: 't1', signer: 'tenant', page: 0, x: 0.2, y: 0.15, w: 0.2, h: 0.1 }),
-      field({ id: 't2', signer: 'tenant', page: 0, x: 0.12, y: 0.12, w: 0.2, h: 0.1 }),
-      field({ id: 'l3', signer: 'landlord', page: 2, x: 0.5, y: 0.5, w: 0.2, h: 0.1 }),
-      field({ id: 't3', signer: 'tenant', page: 2, x: 0.55, y: 0.52, w: 0.2, h: 0.1 }),
+      field({ id: 'l1', signer: 'party_a', page: 0, x: 0.1, y: 0.1, w: 0.2, h: 0.1 }),
+      field({ id: 't1', signer: 'party_b', page: 0, x: 0.2, y: 0.15, w: 0.2, h: 0.1 }),
+      field({ id: 't2', signer: 'party_b', page: 0, x: 0.12, y: 0.12, w: 0.2, h: 0.1 }),
+      field({ id: 'l3', signer: 'party_a', page: 2, x: 0.5, y: 0.5, w: 0.2, h: 0.1 }),
+      field({ id: 't3', signer: 'party_b', page: 2, x: 0.55, y: 0.52, w: 0.2, h: 0.1 }),
     ];
     expect(overlapWarning(fields)).toBe('第 1、3 頁有甲乙簽名框重疊，請分開擺放避免簽名蓋到彼此');
   });

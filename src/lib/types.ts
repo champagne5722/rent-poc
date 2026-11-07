@@ -150,7 +150,19 @@ export interface ContractFields extends TemplateBinding, EquipmentAnnexSnapshot 
   extra: string; // 其他約定事項
 }
 
-export type SignerRole = 'landlord' | 'tenant';
+// 簽署角色（ADR-0010）：簽署人在文件上的地位。畫面文字一律從 SIGNER_ROLE_LABELS 取。
+export const SIGNER_ROLES = ['party_a', 'party_b', 'practitioner'] as const;
+export type SignerRole = (typeof SIGNER_ROLES)[number];
+
+export const SIGNER_ROLE_LABELS: Record<SignerRole, string> = {
+  party_a: '甲方',
+  party_b: '乙方',
+  practitioner: '執業人員',
+};
+
+// 合約當事人的簽署角色。簽署區編輯器與範本簽署欄只有這兩種，執業人員的簽署欄屬 P0-12。
+export const CONTRACT_PARTY_ROLES = ['party_a', 'party_b'] as const satisfies readonly SignerRole[];
+export type ContractPartyRole = (typeof CONTRACT_PARTY_ROLES)[number];
 
 // 簽署區域：座標為「相對該頁的比例值」（0~1，原點左上、y 向下，同瀏覽器慣例）。
 // 送簽時由點點簽 adapter 轉成 PDF points（原點左下）。

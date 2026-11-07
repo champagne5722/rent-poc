@@ -13,6 +13,7 @@ import type {
   ContractStatus,
   EquipmentVocabularyItem,
   Property,
+  SignerRole,
 } from './types';
 import { EQUIPMENT_OPTIONS } from './types';
 import { parseStoredEquipment } from './equipment';
@@ -93,6 +94,7 @@ export function ensureSchema(db: Database.Database): void {
 
   seedEquipmentVocabulary(db);
   normalizePropertyEquipment(db);
+  convertLegacySignerRoles(db);
 }
 
 // 平台預設項目：INSERT OR IGNORE 讓重跑不會重複，也不會把已存在的項目改回預設
@@ -121,6 +123,49 @@ function normalizePropertyEquipment(db: Database.Database): void {
       for (const item of items) insertName.run(item.name);
     }
   })();
+}
+
+const LEGACY_SIGNER_ROLES = new Map<unknown, SignerRole>([
+  ['landlord', 'party_a'],
+  ['tenant', 'party_b'],
+]);
+
+/**
+ * 一次性資料轉換（MIL-55、ADR-0010）：既有合約的 `signature_fields[].signer` 由舊值改新值。
+ * 頁碼與座標原樣保留，也不動 updated_at，因為這不是使用者的編輯。
+ * 沒有舊值的列不寫回，重跑等同 no-op。
+ */
+function convertLegacySignerRoles(db: Database.Database): void {
+  const rows = db.prepare('SELECT id, signature_fields FROM contracts').all() as {
+    id: number;
+    signature_fields: string;
+  }[];
+  const update = db.prepare('UPDATE contracts SET signature_fields = ? WHERE id = ?');
+  db.transaction(() => {
+    for (const row of rows) {
+      const converted = convertSignatureFieldsJson(row.signature_fields);
+      if (converted !== null) update.run(converted, row.id);
+    }
+  })();
+}
+
+// 回傳改寫後的 JSON；不需要改寫時回 null。開檔時執行，壞資料只略過，不得擋住整個系統啟動。
+function convertSignatureFieldsJson(stored: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stored);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+  let changed = false;
+  const converted = parsed.map((f) => {
+    const signer = LEGACY_SIGNER_ROLES.get(f?.signer);
+    if (!signer) return f;
+    changed = true;
+    return { ...f, signer };
+  });
+  return changed ? JSON.stringify(converted) : null;
 }
 
 function addColumnIfMissing(db: Database.Database, table: string, column: string, definition: string): void {

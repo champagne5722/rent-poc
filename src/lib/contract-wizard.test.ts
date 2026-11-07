@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Contract, ContractFields, SignatureField } from './types';
+import { CONTRACT_PARTY_ROLES, SIGNER_ROLE_LABELS } from './types';
 import {
   WIZARD_STEPS,
   STEP_CONFIRM,
@@ -48,7 +49,7 @@ function contract(patch: Partial<Contract> = {}): Contract {
     property_id: 3,
     status: 'draft',
     fields: fields(),
-    signature_fields: [sig('landlord'), sig('tenant')],
+    signature_fields: [sig('party_a'), sig('party_b')],
     dottedsign_task_id: null,
     declined_reason: null,
     derived_from: null,
@@ -107,28 +108,43 @@ describe('missingFieldLabels（第②步欄位驗證）', () => {
   });
 });
 
+describe('簽署角色的畫面標籤', () => {
+  it('畫面顯示甲方、乙方、執業人員', () => {
+    expect(SIGNER_ROLE_LABELS).toEqual({ party_a: '甲方', party_b: '乙方', practitioner: '執業人員' });
+  });
+
+  it('簽署區編輯器只提供甲方與乙方', () => {
+    expect(CONTRACT_PARTY_ROLES).toEqual(['party_a', 'party_b']);
+  });
+});
+
 describe('checkSignatureFields（簽署區檢核）', () => {
   it('甲乙各至少一框才算通過', () => {
-    expect(checkSignatureFields([sig('landlord'), sig('tenant')])).toEqual({
-      landlord: 1,
-      tenant: 1,
+    expect(checkSignatureFields([sig('party_a'), sig('party_b')])).toEqual({
+      party_a: 1,
+      party_b: 1,
       ok: true,
     });
   });
 
   it('只有一方時不通過', () => {
-    expect(checkSignatureFields([sig('landlord')])).toEqual({ landlord: 1, tenant: 0, ok: false });
-    expect(checkSignatureFields([])).toEqual({ landlord: 0, tenant: 0, ok: false });
+    expect(checkSignatureFields([sig('party_a')])).toEqual({ party_a: 1, party_b: 0, ok: false });
+    expect(checkSignatureFields([])).toEqual({ party_a: 0, party_b: 0, ok: false });
   });
 
   it('同一方多框照數計算', () => {
-    const list = [sig('landlord', 'a'), sig('landlord', 'b'), sig('tenant', 'c')];
-    expect(checkSignatureFields(list)).toEqual({ landlord: 2, tenant: 1, ok: true });
+    const list = [sig('party_a', 'a'), sig('party_a', 'b'), sig('party_b', 'c')];
+    expect(checkSignatureFields(list)).toEqual({ party_a: 2, party_b: 1, ok: true });
+  });
+
+  it('執業人員的簽署區域不能頂替甲方或乙方', () => {
+    const list = [sig('party_a'), sig('practitioner')];
+    expect(checkSignatureFields(list)).toEqual({ party_a: 1, party_b: 0, ok: false });
   });
 });
 
 describe('nextStepBlockReason（擋下一步）', () => {
-  const ok = { fields: fields(), signatureFields: [sig('landlord'), sig('tenant')] };
+  const ok = { fields: fields(), signatureFields: [sig('party_a'), sig('party_b')] };
 
   it('第①步物件與範本不擋', () => {
     expect(nextStepBlockReason(STEP_PROPERTY, { fields: fields({ rent: null }), signatureFields: [] })).toBeNull();
@@ -142,7 +158,7 @@ describe('nextStepBlockReason（擋下一步）', () => {
   });
 
   it('第③步簽署區未達甲乙各一框就擋', () => {
-    expect(nextStepBlockReason(STEP_SIGNATURE, { ...ok, signatureFields: [sig('landlord')] })).toBe(
+    expect(nextStepBlockReason(STEP_SIGNATURE, { ...ok, signatureFields: [sig('party_a')] })).toBe(
       '請為甲乙雙方各設定至少一個簽名框（目前甲方 1 個、乙方 0 個）'
     );
     expect(nextStepBlockReason(STEP_SIGNATURE, ok)).toBeNull();
@@ -151,7 +167,7 @@ describe('nextStepBlockReason（擋下一步）', () => {
 
 describe('sendBlockReason（第④步送簽前檢核）', () => {
   it('欄位與簽署區都通過才放行', () => {
-    expect(sendBlockReason({ fields: fields(), signatureFields: [sig('landlord'), sig('tenant')] })).toBeNull();
+    expect(sendBlockReason({ fields: fields(), signatureFields: [sig('party_a'), sig('party_b')] })).toBeNull();
   });
 
   it('欄位缺漏優先回報', () => {
@@ -161,7 +177,7 @@ describe('sendBlockReason（第④步送簽前檢核）', () => {
   });
 
   it('欄位齊全但簽署區不足時回報簽署區', () => {
-    expect(sendBlockReason({ fields: fields(), signatureFields: [sig('tenant')] })).toBe(
+    expect(sendBlockReason({ fields: fields(), signatureFields: [sig('party_b')] })).toBe(
       '請為甲乙雙方各設定至少一個簽名框（目前甲方 0 個、乙方 1 個）'
     );
   });
@@ -181,7 +197,7 @@ describe('resumeStepIndex（中斷後回到合理的步驟）', () => {
   });
 
   it('欄位齊全但簽署區未完成回到第③步', () => {
-    expect(resumeStepIndex(contract({ signature_fields: [sig('tenant')] }))).toBe(STEP_SIGNATURE);
+    expect(resumeStepIndex(contract({ signature_fields: [sig('party_b')] }))).toBe(STEP_SIGNATURE);
   });
 
   it('欄位與簽署區都齊全回到第④步確認送簽', () => {
@@ -190,7 +206,7 @@ describe('resumeStepIndex（中斷後回到合理的步驟）', () => {
 });
 
 describe('stepStatuses（Steps 每一步的狀態）', () => {
-  const ok = { fields: fields(), signatureFields: [sig('landlord'), sig('tenant')] };
+  const ok = { fields: fields(), signatureFields: [sig('party_a'), sig('party_b')] };
 
   it('目前步驟為 process，之前為 finish，之後為 wait', () => {
     expect(stepStatuses(STEP_SIGNATURE, ok)).toEqual(['finish', 'finish', 'process', 'wait']);

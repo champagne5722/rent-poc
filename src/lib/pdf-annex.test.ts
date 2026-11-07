@@ -110,8 +110,8 @@ describe('設備附件頁', () => {
     const withoutAnnex = await dump(fields({ equipmentAnnex: [] }));
     for (const { stamps } of [withAnnex, withoutAnnex]) {
       expect(stamps).toHaveLength(2);
-      expect(stamps[0].y).toBeCloseTo(expected.landlord, 2);
-      expect(stamps[1].y).toBeCloseTo(expected.tenant, 2);
+      expect(stamps[0].y).toBeCloseTo(expected.party_a, 2);
+      expect(stamps[1].y).toBeCloseTo(expected.party_b, 2);
       expect(stamps[0].page).toBe(stamps[1].page);
     }
     // 附件列再多也一樣：表格滿到換頁都不會回頭推擠簽署欄
@@ -122,8 +122,8 @@ describe('設備附件頁', () => {
       note: '備註文字'.repeat(6),
     }));
     const bulky = await dump(fields({ equipmentAnnex: many }));
-    expect(bulky.stamps[0].y).toBeCloseTo(expected.landlord, 2);
-    expect(bulky.stamps[1].y).toBeCloseTo(expected.tenant, 2);
+    expect(bulky.stamps[0].y).toBeCloseTo(expected.party_a, 2);
+    expect(bulky.stamps[1].y).toBeCloseTo(expected.party_b, 2);
     expect(bulky.stamps[0].page).toBe(bulky.stamps[1].page);
   }, 30000);
 });

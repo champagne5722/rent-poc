@@ -3,7 +3,14 @@
 
 import { upgradedTemplateBinding } from './clause-library';
 import { contractEquipmentAnnex } from './equipment';
-import type { Contract, ContractFields, ContractTemplate, OptionalClause, SignatureField } from './types';
+import type {
+  Contract,
+  ContractFields,
+  ContractPartyRole,
+  ContractTemplate,
+  OptionalClause,
+  SignatureField,
+} from './types';
 
 export const WIZARD_STEPS = [
   { key: 'property', title: '物件與範本' },
@@ -109,23 +116,19 @@ export function upgradeDraftFields(
   };
 }
 
-export interface SignatureCheck {
-  landlord: number;
-  tenant: number;
-  ok: boolean;
-}
+export type SignatureCheck = Record<ContractPartyRole, number> & { ok: boolean };
 
 /** 簽署區檢核：甲乙雙方各至少一框（規格 §7 五點基線第 3 點）。 */
 export function checkSignatureFields(signatureFields: SignatureField[]): SignatureCheck {
-  const landlord = signatureFields.filter((f) => f.signer === 'landlord').length;
-  const tenant = signatureFields.filter((f) => f.signer === 'tenant').length;
-  return { landlord, tenant, ok: landlord > 0 && tenant > 0 };
+  const partyA = signatureFields.filter((f) => f.signer === 'party_a').length;
+  const partyB = signatureFields.filter((f) => f.signer === 'party_b').length;
+  return { party_a: partyA, party_b: partyB, ok: partyA > 0 && partyB > 0 };
 }
 
 function signatureBlockReason(signatureFields: SignatureField[]): string | null {
   const check = checkSignatureFields(signatureFields);
   if (check.ok) return null;
-  return `請為甲乙雙方各設定至少一個簽名框（目前甲方 ${check.landlord} 個、乙方 ${check.tenant} 個）`;
+  return `請為甲乙雙方各設定至少一個簽名框（目前甲方 ${check.party_a} 個、乙方 ${check.party_b} 個）`;
 }
 
 function fieldsBlockReason(fields: ContractFields): string | null {

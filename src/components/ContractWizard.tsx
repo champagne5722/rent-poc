@@ -44,7 +44,7 @@ import type {
   EquipmentVocabularyItem,
   SignatureField,
 } from '@/lib/types';
-import { REPAIR_RESPONSIBILITIES, REPAIR_RESPONSIBILITY_LABELS } from '@/lib/types';
+import { REPAIR_RESPONSIBILITIES, REPAIR_RESPONSIBILITY_LABELS, SIGNER_ROLE_LABELS } from '@/lib/types';
 import { contractEquipmentAnnex, formatEquipmentItem, newAnnexRow } from '@/lib/equipment';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
 import {
@@ -317,13 +317,13 @@ function SignatureChecklist({
   const check = checkSignatureFields(signatureFields);
   return (
     <Space orientation="vertical" size={4}>
-      <CheckLine ok={check.landlord > 0} text={`甲方（房東）簽名框 ${check.landlord} 個`} />
-      <CheckLine ok={check.tenant > 0} text={`乙方（租客）簽名框 ${check.tenant} 個`} />
+      <CheckLine ok={check.party_a > 0} text={`甲方（房東）簽名框 ${check.party_a} 個`} />
+      <CheckLine ok={check.party_b > 0} text={`乙方（租客）簽名框 ${check.party_b} 個`} />
       {withDetail && signatureFields.length > 0 && (
         <Space size={4} wrap style={{ marginTop: 4 }}>
           {signatureFields.map((f) => (
-            <Tag key={f.id} color={f.signer === 'landlord' ? 'blue' : 'orange'}>
-              {f.signer === 'landlord' ? '甲方' : '乙方'}・第 {f.page + 1} 頁
+            <Tag key={f.id} color={f.signer === 'party_a' ? 'blue' : 'orange'}>
+              {SIGNER_ROLE_LABELS[f.signer]}・第 {f.page + 1} 頁
             </Tag>
           ))}
         </Space>
