@@ -18,7 +18,9 @@ export async function GET(request: NextRequest, { params }: Ctx) {
     return Response.json({ error: '合約不在簽署中，沒有待簽方' }, { status: 409 });
   }
 
-  const redirectUrl = `${new URL(request.url).origin}/contracts/${contract.id}`;
+  // standalone 在反向代理後方時，request.url 的 origin 是 0.0.0.0:<port>，所以部署環境必須設定 APP_ORIGIN
+  const origin = process.env.APP_ORIGIN ?? new URL(request.url).origin;
+  const redirectUrl = `${origin}/contracts/${contract.id}`;
   try {
     const link = await getSignerShareLink(contract.dottedsign_task_id, signer.email, redirectUrl);
     return Response.json({

@@ -1,0 +1,13 @@
+.git
+.github
+.claude
+.next*
+node_modules
+data
+docs
+.env*
+.mcp.json
+*.md
+!DESIGN.md
+Dockerfile
+.dockerignore

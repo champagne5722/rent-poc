@@ -7,6 +7,7 @@
 - 架構決策：[docs/adr/](./docs/adr/)
 - 點點簽整合筆記（含踩坑與真接檢查清單）：[docs/dottedsign-integration.md](./docs/dottedsign-integration.md)
 - 已知簡化清單：[docs/known-simplifications.md](./docs/known-simplifications.md)
+- demo 環境部署：[docs/deployment.md](./docs/deployment.md)
 
 ## 技術棧
 

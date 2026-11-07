@@ -1,6 +1,6 @@
 # 部署平台評估：Cloudflare 與 GCP
 
-查詢與實測日期：2026-11-07。狀態：建議待定案。費用的稽核結果見 [hosting/audit.md](hosting/audit.md)。
+查詢與實測日期：2026-11-07。狀態：已定案，見 [ADR-0011](../adr/0011-cloud-run-with-litestream-for-demo.md)。費用的稽核結果見 [hosting/audit.md](hosting/audit.md)。
 
 ## 1. 結論與建議
 
@@ -163,25 +163,47 @@ ADR-0010 必須決定 Cloud SQL 或 Neon。兩者的決策依據：
 | 實例閒置最多 15 分鐘後關閉，崩潰時最多遺失約 1 秒資料 | SIGTERM 有 10 秒能同步。崩潰時遺失最後一次同步之後的寫入 | demo 接受 | demo 接受 |
 | 冷啟動與 webhook。點點簽的等待秒數未查到 | 冷啟動逾時算投遞失敗，會重試 3 次。單日 10 次失敗會暫停 webhook | 第一次部署後實測冷啟動秒數。demo 當天設 `min-instances=1`。demo 用獨立的 Application，隔離影響 | 須實測 |
 | Basic Auth 強度低 | 密碼外洩就能看到全部資料 | 不得輸入真實個資。密碼放 Secret Manager。sandbox 的已簽 PDF 有浮水印 | 接受 |
-| 簽署完成導回網址會跳出 Basic Auth 對話框 | 租客簽完後看到登入視窗 | 用 sandbox 測試帳號 demo。pilot 前換正式登入 | 接受 |
+| 簽署完成導回網址會跳出 Basic Auth 對話框 | 承租人簽完後看到登入視窗 | 用 sandbox 測試帳號 demo。pilot 前換正式登入 | 接受 |
 | Litestream 在 Cloud Run 容器內只有社群範例 | 還原失敗時 demo 資料清空 | 還原失敗時用空資料庫啟動並記錄錯誤 | 須實測 |
 | 預算失控 | 一般預算只發警示。spend cap 生效不是即時，超額照收 | 設 US$5 預算警示，`max-instances=1` 限制費用上限 | 使用者設定 |
 | Compute Engine 價格只有第三方來源 | 只影響對照組 | 不選此方案就不用核對 | 不影響建議 |
 | Cloud Run 免費額度能否跨 service 與 worker pool 疊加未確認 | C 最多增加 US$5.07 | C 前再核對 | 低 |
 
-## 7. 待定案事項
+## 7. 定案與取捨
 
-1. **平台：** 建議 Cloud Run 加 Litestream。
-2. **點點簽 Application：** 建議另建一個 sandbox Application 給 demo。原 Application 的 webhook 維持 ngrok，本機開發不受影響。兩邊的金鑰與失敗計數也互相獨立。
-3. **存取保護：** 建議用 `src/proxy.ts` 做 Basic Auth，放行 `/api/webhooks/dottedsign` 與 `/api/health`。
+使用者已定案（2026-11-07），4 項都照建議：
+
+1. **平台：** Cloud Run 加 Litestream。
+2. **點點簽 Application：** 另建一個 sandbox Application 給 demo。原 Application 的 webhook 維持 ngrok，本機開發不受影響。兩邊的金鑰與失敗計數互相獨立。
+3. **存取保護：** `src/proxy.ts` 做 Basic Auth，放行 `/api/webhooks/dottedsign` 與 `/api/health`。
 4. **資料遺失：** 接受換版時遺失最多數十秒的寫入。demo 資料一律用測試資料。
 
-如果定案，第二段會做這些程式碼改動（都是部署必需的最小改動）：
+### SQLite 持久化的取捨
 
-- `next.config.ts` 加 `output: 'standalone'`。
-- 新增 `src/app/api/health/route.ts`。
-- 新增 `src/proxy.ts`（Basic Auth，未設定環境變數時不生效）。
-- `sign-link/route.ts:21` 改用 `APP_ORIGIN`，未設定時退回原寫法。
+| 資料 | 做法 | 代價 |
+|---|---|---|
+| SQLite | 放在容器內，Litestream 每秒複寫到 Cloud Storage。每次啟動都寫到新路徑，新路徑確定能還原後才移動 `CURRENT` | 換版時並存期間的寫入遺失。崩潰時遺失最後一次同步之後的寫入 |
+| 已簽 PDF 與 Audit Trail File | 留在容器內，重啟後消失。下載時由 `serveContractFile` 向點點簽補抓 | 重啟後第一次下載較慢 |
+
+本方案不使用 ephemeral disk。demo 資料庫小於 1 MB，容器內檔案系統就夠用，也少一項費用。如果第一次部署發現 WAL 在這個檔案系統上有問題，再加 ephemeral disk。
+
+### 實作時改了什麼
+
+相對於第 2 節的硬限制，實作時的決定如下：
+
+- 映像用 `node:26-slim`，與本機開發同版。稽核查到 better-sqlite3 13.0.1 的 arm64 prebuild 需要 `GLIBC_2.38`，bookworm 不夠。Node 26 預設 trixie，兩個架構都能載入（glibc 版本是依文件推論，未實測）。
+- 不需要 `outputFileTracingIncludes`。實測 standalone 已帶入字型、`DESIGN.md` 與 `.node`。
+- `src/` 以外的改動：`eslint.config.mjs` 忽略 `.claude/**` 與 `public/pdf.worker.min.mjs`，並把 3 個 UI 檔案的 5 個既有錯誤降為 warning。否則 CI 的 ESLint 永遠失敗。
+
+### 驗證狀態
+
+| 項目 | 狀態 |
+|---|---|
+| vitest、tsc、ESLint | 本機通過 |
+| Basic Auth、webhook 放行、PDF 產出（standalone） | 本機實測通過 |
+| entrypoint 流程：`CURRENT` 移動、SIGTERM 順序、重啟還原 | 本機用 stub Litestream 實測通過 |
+| Dockerfile、真正的 Litestream、Linux 上的原生模組 | 未實測。本機 Docker daemon 沒有啟動。`image` job 第一次執行時會驗證 |
+| GCP 設定、Cloud Run 上的冷啟動與 WAL | 未實測。需要使用者完成 `deploy/first-deploy-wizard.sh` |
 
 ## 8. 調研附件與來源
 
@@ -209,32 +231,6 @@ ADR-0010 必須決定 Cloud SQL 或 Neon。兩者的決策依據：
 
 上線前必須用 Pricing Calculator 核對一次 GCP 費用。Google 定價頁預設顯示 Iowa 價格，Taiwan 價格取自頁面內嵌資料。
 
-## 9. 候選 ADR 草稿：部署平台選擇
+## 9. ADR
 
-編號在定案時決定。`docs/adr/` 下一個編號是 0010，但 `docs/research/asset-mgmt-platform/architecture.md` 第 8 節已把 0010 至 0016 留給候選 ADR，所以草稿預定用 0017。
-
-```md
----
-status: proposed
----
-
-# 部署到 Cloud Run asia-east1，SQLite 階段用 Litestream
-
-demo 環境需要公開網址，點點簽 webhook 不再靠 ngrok。決定部署到 GCP Cloud Run（asia-east1），用 GitHub Actions 加 Workload Identity Federation 免金鑰部署。原因是 Cloud Run 能直接跑現有 Docker 映像，資料能留在台灣，之後能用 Cloud NAT 取得固定出口 IP。PostgreSQL 遷移前，SQLite 放在容器內，用 Litestream 複寫到 Cloud Storage，並設定 instance-based 計費與 `max-instances=1`。這個階段只服務 demo，只放測試資料。
-
-編號說明：0010 至 0016 已由架構 v2 第 8 節的候選 ADR 使用，本 ADR 跳過這些編號。
-
-## Considered Options
-
-- Cloudflare Workers 加 OpenNext：`better-sqlite3` 不能用，必須先完成資料層遷移，也要升級 Next.js。
-- Cloudflare Containers：能跑映像，但磁碟同樣暫存，不能指定地區，沒有固定出口 IP 方案。每月至少 US$5。
-- Compute Engine 小型 VM：有持久磁碟且沒有換版遺失，但每月約 US$20，還要自管 TLS、更新與部署。PostgreSQL 遷移後這套部署方式要重做。
-- Cloud Run 掛 GCS FUSE 或 NFS：不支援檔案鎖定，不得跑 SQLite。
-- Cloud Run 直連 IAP：無法放行 webhook 路徑，所以改用應用層 Basic Auth。
-
-## Consequences
-
-- 換版時新舊實例短暫並存，並存期間寫入舊實例的資料會遺失。pilot 不得使用這個配置，必須先完成 PostgreSQL 遷移。
-- PR 不做 preview 部署，因為每個 revision 都是獨立的 SQLite 寫入端。
-- 已簽 PDF 不持久保存。下載時由 `serveContractFile` 向點點簽補抓。
-```
+定稿見 [ADR-0011](../adr/0011-cloud-run-with-litestream-for-demo.md)。編號與架構文件第 8 節的候選 ADR-0011 不同，ADR 內有註明。
