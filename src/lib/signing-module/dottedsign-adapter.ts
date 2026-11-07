@@ -130,8 +130,7 @@ function isSigningEventType(action: unknown): action is SigningEventType {
   return SIGNING_EVENT_TYPES.includes(action as SigningEventType);
 }
 
-// payload 欄位見整合筆記。viewed 等未處理的事件一律忽略。
-// 拒簽原因：audit trail 實測在 other_info.reason。webhook 的 payload 還沒實測，所以仍接受最上層的 reason。
+// payload 欄位與實測範例見整合筆記。viewed、created、sent 等未處理的事件一律忽略。
 export function parseDottedSignPayload(rawBody: string): ParsedWebhook {
   let payload: {
     resource_id?: unknown;
@@ -139,7 +138,6 @@ export function parseDottedSignPayload(rawBody: string): ParsedWebhook {
     action_name?: unknown;
     event_email?: unknown;
     event_datetime?: unknown;
-    reason?: unknown;
     other_info?: { reason?: unknown } | null;
   } | null;
   try {
@@ -154,15 +152,11 @@ export function parseDottedSignPayload(rawBody: string): ParsedWebhook {
 
   const event: SigningEvent = { type: payload.action_name };
   if (typeof payload.event_email === 'string') event.email = payload.event_email;
-  const reason = payload.other_info?.reason ?? payload.reason;
+  const reason = payload.other_info?.reason;
   if (typeof reason === 'string') event.reason = reason;
-  const occurredAt = toIsoTime(payload.event_datetime);
-  if (occurredAt) event.occurredAt = occurredAt;
+  // event_datetime 實測是 Unix 秒數
+  if (typeof payload.event_datetime === 'number') {
+    event.occurredAt = new Date(payload.event_datetime * 1000).toISOString();
+  }
   return { kind: 'event', taskRef: String(payload.resource_id), event };
-}
-
-// 官方文件只寫 timestamp，audit trail 實測是秒數。webhook 的格式還沒實測，所以也接受日期字串。
-function toIsoTime(value: unknown): string | null {
-  const time = typeof value === 'number' ? value * 1000 : typeof value === 'string' ? Date.parse(value) : NaN;
-  return Number.isFinite(time) ? new Date(time).toISOString() : null;
 }

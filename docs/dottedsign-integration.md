@@ -76,7 +76,7 @@
   建立 demo Application 前，服務必須已上線，後台的驗證 ping 才拿得到 200。步驟見 `deploy/first-deploy-wizard.sh`，設定見 `docs/deployment.md`。
 - demo 環境有 Basic Auth，`/api/webhooks/dottedsign` 不經過 Basic Auth，由下方的簽章驗證保護。demo 環境在 mock 模式下沒有 client secret 能驗簽，所以只回應空 body 的 ping，非空事件一律回 401。本機的 mock 模式不驗簽。
 - 冷啟動風險：`min-instances=0` 時 webhook 可能打到冷啟動中的實例。點點簽的等待秒數未查到。demo 當天讓實例保持開機，指令見 `docs/deployment.md`。
-- Payload 欄位：`resource_id`（= task_id）、`resource_type`（`task`）、`action_name`、`event_datetime`、`event_email` 等。
+- Payload 欄位：`resource_id`（= task_id）、`resource_type`（`task`）、`action_name`、`event_datetime`、`event_email`、`other_info`、`task` 等。實測值見下方 MIL-54 一節。
 - 事件由簽署模組的進度推進判斷（`src/lib/signing-module/progress.ts`），合約狀態由 `src/lib/transitions.ts` 依簽署角色投影（MIL-57）：
   - `signed`（個別簽署人完成）→ `event_email` 必須等於當前簽署人，比對不分大小寫，否則忽略並回 2xx。還有下一位時，合約依下一位的角色進入待簽狀態。最後一位簽完不改合約狀態，也不寫合約歷程。
   - `completed`（全員完成）→ 未簽者全部標為已簽，合約進入已完成。
@@ -89,27 +89,40 @@
 
 ## sandbox 實測：三位簽署人（MIL-54）
 
-2026-11-08 實測，任務 343、344、345。非會員簽署人走官方的 Quick Sign API（下方「用 API 代簽」），因為內建瀏覽器開簽署連結時，`signature-center.sandbox.dottedsign.com` 的請求被 CORS 擋下。
-
-**已確認（API 回應與 audit trail）：**
+2026-11-08 實測，任務 346（三位簽署人）、347（email 含大寫）、348（拒簽）、349（經系統送簽的端對端）。非會員簽署人走官方的 Quick Sign API（下方「用 API 代簽」），因為內建瀏覽器開簽署連結時，`signature-center.sandbox.dottedsign.com` 的請求被 CORS 擋下。會員簽署人的路徑沒有測到。
 
 | 項目 | 結果 |
 |---|---|
 | 三個 stage 的順序 | 等於陣列順序。下一位還沒輪到時，`share_link` 回 `400937 stage_not_acting` |
-| 一個 stage 兩個 `field_settings`（不同頁） | 一次 `sign` 請求簽完，stage 變 `done` |
-| email 大小寫 | 建任務給 `Mil54-Upper.Case@Example.com`，點點簽存成 `mil54-upper.case@example.com`。系統存原值，比對必須不分大小寫 |
-| 拒簽原因 | audit trail 的 `other_info.reason` |
-| 建任務後的狀態 | 回應後任務先是 `draft`，約 10 秒內轉成 `waiting`。全部簽完後，任務狀態也會延遲才轉成 `completed` |
+| `event_email`（非會員） | 等於簽署人 email 的全小寫。建任務給 `Mil54-Upper.Case@Example.com`，事件是 `mil54-upper.case@example.com`。系統存原值，所以比對必須不分大小寫 |
+| `completed` 的 `event_email` | 字串 `Server`，不是 email |
+| `event_datetime` | Unix 秒數（整數），例如 `1794073308` |
+| 拒簽原因 | `other_info.reason`。`event_email` 是拒簽的簽署人 |
+| 最後一位的 `signed` 與 `completed` | `signed` 先到。`completed` 的事件時間晚 9 到 10 秒 |
+| 一個 stage 兩個 `field_settings`（不同頁） | 一次 `sign` 請求簽完 |
+| `Signature` header | 全部通過 HMAC-SHA256 驗證，改壞時系統回 401 |
+| 建任務後的狀態 | 回應後任務先是 `draft`，約 10 秒內轉成 `waiting` |
 | 簽署人帶 `verify_methods: [{ "verify_type": "email" }]` | 建任務回 `400428 invalid_verify_params`。官方文件說可用的驗證方式依方案或群組設定而定 |
+| 任務 349 的端對端 | 合約走到已完成，已簽 PDF 與 Audit Trail File 都自動保存，兩個下載端點都回 200 |
 
-**尚未確認（webhook 沒有送達）：**
+**投遞順序不保證等於事件順序。** 實測投遞延遲約 5 到 30 秒，而且會亂序：`signed` 比同一人較早的 `viewed` 先到，也比任務的 `sent` 先到。兩位簽署人的 `signed` 沒有觀察到亂序，但這不是保證。如果下一位的 `signed` 先到，email 守門會忽略它並回 2xx，點點簽不會重送。這時當前簽署人會停在前一位，直到 `completed` 才一起修正。
 
-通道開著時，任務 343 走完三位簽署人，ngrok 的 4040 介面沒有收到任何點點簽的 webhook。原因未知，要看開發者後台。因此下列項目沒有實測值：
+**webhook 範例**（`signed`，已省略 `task` 欄位。實際 payload 帶完整的任務資料，含 `details` 與 `current_stage_infos`）：
 
-- webhook 的 `event_email` 是否等於小寫後的 email。
-- webhook 的 `event_datetime` 格式。官方文件只寫 timestamp，audit trail 的 `created_at` 是秒數。adapter 目前接受秒數與日期字串。
-- 拒簽原因是否也在 webhook 的 `other_info.reason`。adapter 目前先讀 `other_info.reason`，再讀最上層的 `reason`。
-- 最後一位的 `signed` 與 `completed` 的先後。兩種順序的行為都有測試。
+```json
+{
+  "resource_id": 346,
+  "resource_type": "task",
+  "event_datetime": 1794073308,
+  "action_name": "signed",
+  "event_email": "mil54-c@example.com",
+  "ip_address": "203.121.236.45, 15.158.247.73",
+  "user_agent": "DottedSign on Other Other",
+  "other_info": {}
+}
+```
+
+拒簽的 `other_info`：`{ "reason": "測試拒簽原因：租金認知有落差" }`。全部事件種類還包含 `created`、`sent`、`viewed`，adapter 都解析成「忽略」。
 
 **用 API 代簽（非會員，僅限 sandbox 測試）：**
 
@@ -144,9 +157,10 @@
    - [x] webhook 簽章 header 名稱與驗證方式（`Signature` ＝ HMAC-SHA256）
    - [x] 下載連結回應形狀（`data.task`，302 轉址）
    - [x] 執行中任務的 void（task 471 實測成功；⚠️ start 後立即 void 曾回 403，稍候重試即成功，疑為非同步建立的 race）
-   - [ ] 拒簽流程：API 與 audit trail 已實測（見上方 MIL-54 一節），webhook 的 `declined` payload 尚未實測
+   - [x] 拒簽流程（`declined` 事件）：2026-11-08 實測，見上方 MIL-54 一節
    - [ ] resend（重寄通知）sandbox 一律 403036，需正式環境驗證（步驟見下節）
-   - [ ] 完成時自動保存兩份文件尚未端對端實測：雙方簽完後查 `data/contract-files/<id>/` 有兩個 PDF、`GET /api/contracts/[id]/files` 兩筆皆 `saved`、`audit_trail` 下載得到的確實是稽核文件（格式文件未載明，推測為 PDF）、把檔案刪掉後 `POST /api/contracts/[id]/files` 能補抓回來
+   - [x] 完成時自動保存兩份文件：2026-11-08 以任務 349 實測，`GET /api/contracts/[id]/files` 兩筆皆 `saved`，下載端點回 200
+   - [ ] `audit_trail` 下載得到的確實是稽核文件（格式文件未載明，推測為 PDF）、把檔案刪掉後 `POST /api/contracts/[id]/files` 能補抓回來，尚未實測
 
 ## 接正式環境時的 resend 驗證清單
 

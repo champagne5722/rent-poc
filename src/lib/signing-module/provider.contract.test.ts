@@ -114,17 +114,13 @@ function describeProviderContract(name: string, setup: () => ContractSetup) {
       });
     });
 
-    it('帶 event_email 與 reason 時放進簽署事件', () => {
-      expect(parse(taskPayload('declined', { event_email: 'tenant@example.com', reason: '租金認知有落差' }))).toEqual({
+    it('帶 event_email 與 other_info.reason 時放進簽署事件', () => {
+      expect(
+        parse(taskPayload('declined', { event_email: 'tenant@example.com', other_info: { reason: '租金認知有落差' } }))
+      ).toEqual({
         kind: 'event',
         taskRef: '470',
         event: { type: 'declined', email: 'tenant@example.com', reason: '租金認知有落差' },
-      });
-    });
-
-    it('拒簽原因在 other_info.reason', () => {
-      expect(parse(taskPayload('declined', { other_info: { reason: '想再考慮' } }))).toMatchObject({
-        event: { type: 'declined', reason: '想再考慮' },
       });
     });
 
@@ -134,13 +130,7 @@ function describeProviderContract(name: string, setup: () => ContractSetup) {
       });
     });
 
-    it('event_datetime 是 ISO 8601 字串時，轉成 UTC 的事件時間', () => {
-      expect(parse(taskPayload('signed', { event_datetime: '2026-11-08T01:27:11+08:00' }))).toMatchObject({
-        event: { type: 'signed', occurredAt: '2026-11-07T17:27:11.000Z' },
-      });
-    });
-
-    it.each([['無法解析的字串', 'not-a-date'], ['null', null], ['物件', {}]])(
+    it.each([['字串', '2026-11-08T01:27:11+08:00'], ['null', null], ['物件', {}]])(
       'event_datetime 是%s時不帶事件時間',
       (_label, event_datetime) => {
         const parsed = parse(taskPayload('signed', { event_datetime }));

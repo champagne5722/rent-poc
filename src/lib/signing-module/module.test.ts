@@ -1,8 +1,10 @@
+import nodeCrypto from 'crypto';
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createContractSubscriber } from '../contract-signing';
 import { ensureSchema, getContract, listContractEvents, setDb } from '../db';
 import type { Contract, ContractStatus } from '../types';
+import { createDottedSignProvider } from './dottedsign-adapter';
 import { createMockProvider } from './mock-adapter';
 import { createSigningModule, signingErrorResponse, SigningRefusal } from './module';
 import type { SignableDocument, Signer, SigningProvider } from './provider';
@@ -413,7 +415,7 @@ describe('接收 webhook', () => {
 
   it('拒簽原因寫進合約與歷程附註', async () => {
     const subject = seed('awaiting_tenant', 'mock-task-1');
-    await moduleWith().ingestWebhook(webhook('mock-task-1', 'declined', { reason: '租金認知有落差' }), new Headers());
+    await moduleWith().ingestWebhook(webhook('mock-task-1', 'declined', { other_info: { reason: '租金認知有落差' } }), new Headers());
     expect(getContract(subject.id)).toMatchObject({ status: 'declined', declined_reason: '租金認知有落差' });
     expect(listContractEvents(subject.id, db)[0]).toMatchObject({ type: 'declined', note: '租金認知有落差' });
   });
@@ -749,7 +751,12 @@ describe('N 位簽署人經 seam 走完', () => {
     await signing.send(subject, document, [PARTY_B, PRACTITIONER, PARTY_A]);
     await signing.ingestWebhook(webhook('signed', PARTY_B.email), new Headers());
     await signing.ingestWebhook(
-      JSON.stringify({ resource_id: '470', resource_type: 'task', action_name: 'declined', reason: '證照待確認' }),
+      JSON.stringify({
+        resource_id: '470',
+        resource_type: 'task',
+        action_name: 'declined',
+        other_info: { reason: '證照待確認' },
+      }),
       new Headers()
     );
 
@@ -794,6 +801,84 @@ describe('N 位簽署人經 seam 走完', () => {
     const progress = await signing.getProgress(subject);
     expect(new Date(progress!.signers[0].signedAt!).toISOString()).toBe('2026-11-08T02:03:04.000Z');
     expect(progress?.signers[0].signedAt).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+  });
+});
+
+describe('點點簽 sandbox 實測的 webhook 回放（MIL-54，任務 346、348）', () => {
+  const SECRET = 'test-secret';
+  // 只留 adapter 讀的欄位與 other_info，其他值與實測相同。task 欄位很大，這裡省略。
+  const payload = (action: string, email: string, datetime: number, other_info: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      resource_id: 346,
+      resource_type: 'task',
+      event_datetime: datetime,
+      action_name: action,
+      event_email: email,
+      ip_address: '203.121.236.45, 15.158.247.73',
+      user_agent: 'DottedSign on Other Other',
+      other_info,
+    });
+  const signedHeaders = (body: string) =>
+    new Headers({ signature: nodeCrypto.createHmac('sha256', SECRET).update(body).digest('hex') });
+  const sequence: Signer[] = [
+    { role: 'party_b', name: 'C', email: 'Mil54-C@Example.com', signatureFields: [] },
+    { role: 'practitioner', name: 'B', email: 'mil54-b@example.com', signatureFields: [] },
+    { role: 'party_a', name: 'A', email: 'mil54-a@example.com', signatureFields: [] },
+  ];
+
+  async function sentOverDottedSign() {
+    const subject = seed('draft');
+    const signing = moduleWith(
+      createDottedSignProvider({ request: async () => ({ data: { task_id: 346 } }), clientSecret: SECRET })
+    );
+    await signing.send(subject, document, sequence);
+    const deliver = (body: string) => signing.ingestWebhook(body, signedHeaders(body));
+    return { subject, signing, deliver };
+  }
+
+  it('實測的事件序列走到完成：viewed、sent 被忽略，email 全小寫也對得到', async () => {
+    const { subject, signing, deliver } = await sentOverDottedSign();
+
+    await deliver(payload('viewed', 'mil54-c@example.com', 1794073307));
+    await deliver(payload('sent', 'owner@example.com', 1794073299));
+    await deliver(payload('signed', 'mil54-c@example.com', 1794073308));
+    expect(statusOf(subject.id)).toBe('awaiting_practitioner');
+    await deliver(payload('signed', 'mil54-b@example.com', 1794073348));
+    expect(statusOf(subject.id)).toBe('awaiting_landlord');
+    await deliver(payload('signed', 'mil54-a@example.com', 1794073352));
+    expect(statusOf(subject.id)).toBe('awaiting_landlord');
+    // 實測的 completed 事件，event_email 是字串 Server
+    await deliver(payload('completed', 'Server', 1794073361));
+
+    expect(statusOf(subject.id)).toBe('completed');
+    const progress = await signing.getProgress(subject);
+    expect(progress?.signers.map((s) => s.status)).toEqual(['signed', 'signed', 'signed']);
+    expect(new Date(progress!.signers[0].signedAt!).getTime() / 1000).toBe(1794073308);
+  });
+
+  it('重複投遞的 signed 不推進', async () => {
+    const { subject, signing, deliver } = await sentOverDottedSign();
+    const first = payload('signed', 'mil54-c@example.com', 1794073308);
+    await deliver(first);
+
+    await expect(deliver(first)).resolves.toEqual({ status: 200, body: { ok: true, ignored: true } });
+
+    const progress = await signing.getProgress(subject);
+    expect(progress?.signers.map((s) => s.status)).toEqual(['signed', 'pending', 'pending']);
+  });
+
+  it('實測的拒簽：原因在 other_info.reason，拒簽者是當前簽署人', async () => {
+    const { subject, signing, deliver } = await sentOverDottedSign();
+    await deliver(payload('signed', 'mil54-c@example.com', 1794073360));
+
+    await deliver(payload('declined', 'mil54-b@example.com', 1794073362, { reason: '測試拒簽原因：租金認知有落差' }));
+
+    expect(getContract(subject.id)).toMatchObject({
+      status: 'declined',
+      declined_reason: '測試拒簽原因：租金認知有落差',
+    });
+    const progress = await signing.getProgress(subject);
+    expect(progress?.signers.map((s) => s.status)).toEqual(['signed', 'declined', 'pending']);
   });
 });
 
