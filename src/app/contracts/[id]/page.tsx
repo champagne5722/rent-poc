@@ -60,6 +60,7 @@ const STATUS_COLORS: Record<ContractStatus, string> = {
   draft: 'default',
   awaiting_tenant: 'processing',
   awaiting_landlord: 'processing',
+  awaiting_practitioner: 'processing',
   completed: 'success',
   declined: 'error',
   voided: 'warning',

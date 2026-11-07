@@ -21,8 +21,9 @@
 - `base64_file`：合約 PDF 的 base64 字串（我們自產 PDF，不用點點簽範本）。
 - `file_name`：**不得含 `. " * : < > ? / \ | ~ # % & { }` 開頭或特殊字元**（regex 限制見 API spec），程式已做清洗。
 - ⚠️ **必帶 `start: true`**：預設 `false` 只建立點點簽端的「草稿」，不會寄信給任何簽署人，且草稿不能 void（只能 delete）。實測踩過。
-- `has_order: true`：依序簽署。**stages 陣列順序＝簽署順序**，本專案固定 `[乙方（租客）, 甲方（房東）]`。
+- `has_order: true`：依序簽署。**stages 陣列順序＝簽署順序**，順序由呼叫端決定。租賃合約目前是 `[乙方, 甲方]`。
 - 每個 stage：`{ name, email, stage_type: "sign", field_settings }`。
+- 建立後任務是非同步轉成 `waiting`。回應後立刻取簽署連結會回 `400035 task_not_waiting`。
 - ⚠️ `stage_setting.decline_enable` 不要硬帶 `true`：signer 若同時是 task owner（帳號本人信箱）會回 `400417 invalid stage_setting`，官方規定 owner 必須為 `false`。省略讓 API 用預設值（owner 預設 false、其他人預設 true）。已實測踩過。
 - `field_settings` 每項：`{ field_type: "signature", page, coord, options: { force: true } }`。
 - 回應：`{ data: { task_id: <integer> } }`。
@@ -76,19 +77,54 @@
 - demo 環境有 Basic Auth，`/api/webhooks/dottedsign` 不經過 Basic Auth，由下方的簽章驗證保護。demo 環境在 mock 模式下沒有 client secret 能驗簽，所以只回應空 body 的 ping，非空事件一律回 401。本機的 mock 模式不驗簽。
 - 冷啟動風險：`min-instances=0` 時 webhook 可能打到冷啟動中的實例。點點簽的等待秒數未查到。demo 當天讓實例保持開機，指令見 `docs/deployment.md`。
 - Payload 欄位：`resource_id`（= task_id）、`resource_type`（`task`）、`action_name`、`event_datetime`、`event_email` 等。
-- 事件對應（`src/lib/transitions.ts`）：
-  - `signed`（個別簽署人完成）→ 待乙方簽 → 待甲方簽
-  - `completed`（全員完成）→ 已完成
-  - `declined` → 已拒簽
-  - `voided` → 已撤回
+- 事件由簽署模組的進度推進判斷（`src/lib/signing-module/progress.ts`），合約狀態由 `src/lib/transitions.ts` 依簽署角色投影（MIL-57）：
+  - `signed`（個別簽署人完成）→ `event_email` 必須等於當前簽署人，比對不分大小寫，否則忽略並回 2xx。還有下一位時，合約依下一位的角色進入待簽狀態。最後一位簽完不改合約狀態，也不寫合約歷程。
+  - `completed`（全員完成）→ 未簽者全部標為已簽，合約進入已完成。
+  - `declined` → 已拒簽。
+  - `voided` → 已撤回。
+  - 任務結束後的所有事件都被忽略，並回 2xx。
   - ✅ 實測另有 `viewed` 事件（簽署人開啟文件時觸發），adapter 解析成「忽略」，回 200。
+- 官方文件現在有 webhook 章節：`/v1.0-sandbox/docs/03-about-dottedsign-api-02-webhooks.md`。非 2xx 會在 1、2、3 分鐘後重試。
 - ✅ 簽章驗證已實測確認：header 名稱就叫 **`Signature`**，值 = **HMAC-SHA256(client secret, raw JSON body) 的 hex 字串**（64 字元小寫）。adapter 的 `parseWebhook` 已按此實作。
+
+## sandbox 實測：三位簽署人（MIL-54）
+
+2026-11-08 實測，任務 343、344、345。非會員簽署人走官方的 Quick Sign API（下方「用 API 代簽」），因為內建瀏覽器開簽署連結時，`signature-center.sandbox.dottedsign.com` 的請求被 CORS 擋下。
+
+**已確認（API 回應與 audit trail）：**
+
+| 項目 | 結果 |
+|---|---|
+| 三個 stage 的順序 | 等於陣列順序。下一位還沒輪到時，`share_link` 回 `400937 stage_not_acting` |
+| 一個 stage 兩個 `field_settings`（不同頁） | 一次 `sign` 請求簽完，stage 變 `done` |
+| email 大小寫 | 建任務給 `Mil54-Upper.Case@Example.com`，點點簽存成 `mil54-upper.case@example.com`。系統存原值，比對必須不分大小寫 |
+| 拒簽原因 | audit trail 的 `other_info.reason` |
+| 建任務後的狀態 | 回應後任務先是 `draft`，約 10 秒內轉成 `waiting`。全部簽完後，任務狀態也會延遲才轉成 `completed` |
+| 簽署人帶 `verify_methods: [{ "verify_type": "email" }]` | 建任務回 `400428 invalid_verify_params`。官方文件說可用的驗證方式依方案或群組設定而定 |
+
+**尚未確認（webhook 沒有送達）：**
+
+通道開著時，任務 343 走完三位簽署人，ngrok 的 4040 介面沒有收到任何點點簽的 webhook。原因未知，要看開發者後台。因此下列項目沒有實測值：
+
+- webhook 的 `event_email` 是否等於小寫後的 email。
+- webhook 的 `event_datetime` 格式。官方文件只寫 timestamp，audit trail 的 `created_at` 是秒數。adapter 目前接受秒數與日期字串。
+- 拒簽原因是否也在 webhook 的 `other_info.reason`。adapter 目前先讀 `other_info.reason`，再讀最上層的 `reason`。
+- 最後一位的 `signed` 與 `completed` 的先後。兩種順序的行為都有測試。
+
+**用 API 代簽（非會員，僅限 sandbox 測試）：**
+
+1. 用 `GET /v1/sign_tasks/share_link` 取連結，取出 `code` 參數。
+2. 之後的請求都帶 header `Code: <code>`。呼叫 `POST /v1/sign_tasks/consent` 取得 `verify_token`。
+3. 呼叫 `GET /v1/sign_tasks/read?task_id=...&verify_token=...`，從 `details` 找到該位簽署人的 `field_settings`。
+4. 呼叫 `POST /v1/members/signatures` 上傳簽名圖，取得 `signature_id`。
+5. 呼叫 `POST /v1/sign_tasks/sign`，每個欄位帶 `field_value: <signature_id>`、`field_value_type: "signature"`。用 `/v1/sign_tasks/images` 的 `image_id` 會回 `400062 field_content_invalid`。
+6. 拒簽呼叫 `POST /v1/sign_tasks/decline`，必填 `decline_option_id` 與 `reason`。
 
 ## Mock 模式
 
 - 未設定 `DOTTEDSIGN_CLIENT_ID` / `DOTTEDSIGN_CLIENT_SECRET` 時自動啟用（`isMockMode()`）。
 - 送簽回假 task id（`mock-<合約id>-<亂數>`），不打點點簽。
-- UI 會出現「模擬乙方簽署／拒簽／甲方完成」按鈕，走 `/api/mock/advance` → **與真 webhook 共用同一套 `applyDsEvent()` 轉移邏輯**，確保模擬與真接行為一致。
+- UI 會出現「模擬乙方簽署／拒簽／甲方完成」按鈕，走 `/api/mock/advance` → **與真 webhook 共用簽署模組的同一條路徑**，確保模擬與真接行為一致。模擬的 `signed` 一律視為當前簽署人。
 - 已完成合約的「下載已簽 PDF」在 mock 模式回未簽版 PDF 充當示意。
 
 ## 踩坑記錄
@@ -101,14 +137,14 @@
 
 1. 開發者後台建立 Application，取得 client id/secret，設定 webhook URL（含通道）。
 2. `.env.local` 填入金鑰（參考 `.env.example`），重啟 dev server，確認 `/api/meta` 回 `mock: false`。
-3. 送一張雙方都是自己信箱的測試合約，驗證（2026-08-01 已全數完成，結論見上方各節）：
+3. 送一張測試合約，驗證（2026-08-01 已全數完成，結論見上方各節）。送簽現在會拒絕重複的 email，所以雙方要用不同信箱，例如 `+alias`：
    - [x] 簽名框位置正確（座標單位＝PDF points 確認）
    - [x] 乙方先收到信、甲方後收到（簽署順序）
    - [x] webhook 事件名稱與 payload 形狀（另發現 `viewed` 事件）
    - [x] webhook 簽章 header 名稱與驗證方式（`Signature` ＝ HMAC-SHA256）
    - [x] 下載連結回應形狀（`data.task`，302 轉址）
    - [x] 執行中任務的 void（task 471 實測成功；⚠️ start 後立即 void 曾回 403，稍候重試即成功，疑為非同步建立的 race）
-   - [ ] 拒簽流程（`declined` 事件）尚未實測
+   - [ ] 拒簽流程：API 與 audit trail 已實測（見上方 MIL-54 一節），webhook 的 `declined` payload 尚未實測
    - [ ] resend（重寄通知）sandbox 一律 403036，需正式環境驗證（步驟見下節）
    - [ ] 完成時自動保存兩份文件尚未端對端實測：雙方簽完後查 `data/contract-files/<id>/` 有兩個 PDF、`GET /api/contracts/[id]/files` 兩筆皆 `saved`、`audit_trail` 下載得到的確實是稽核文件（格式文件未載明，推測為 PDF）、把檔案刪掉後 `POST /api/contracts/[id]/files` 能補抓回來
 

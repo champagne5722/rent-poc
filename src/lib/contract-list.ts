@@ -59,6 +59,7 @@ export function matchesFilter(contract: Contract, filter: ContractListFilter): b
 const WORK_PRIORITY: Record<ContractStatus, number> = {
   awaiting_tenant: 0,
   awaiting_landlord: 0,
+  awaiting_practitioner: 0,
   draft: 1,
   declined: 2,
   voided: 2,

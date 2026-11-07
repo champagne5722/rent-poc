@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ensureSchema, getContract, listContractEvents, setDb } from '../db';
 import type { ContractStatus } from '../types';
 import { createDottedSignProvider } from './dottedsign-adapter';
+import { createContractSubscriber } from '../contract-signing';
 import { createMockProvider } from './mock-adapter';
 import { createSigningModule } from './module';
 import type { SigningProvider } from './provider';
@@ -55,7 +56,9 @@ function legacyEvent(contractId: number, type: string, actor: string, createdAt:
 
 const upgrade = () => ensureSchema(db);
 
-const mockSigning = () => createSigningModule({ provider: createMockProvider(), onCompleted: async () => {} });
+const moduleOf = (provider: SigningProvider, onCompleted: () => Promise<void> = async () => {}) =>
+  createSigningModule({ provider, subscribers: { contract: createContractSubscriber({ onCompleted }) } });
+const mockSigning = () => moduleOf(createMockProvider());
 
 const liveProvider = (overrides: Partial<SigningProvider> = {}): SigningProvider => ({
   id: 'dottedsign',
@@ -69,8 +72,8 @@ const liveProvider = (overrides: Partial<SigningProvider> = {}): SigningProvider
   ...overrides,
 });
 
-const webhook = (taskRef: string, action: string) =>
-  JSON.stringify({ resource_id: taskRef, resource_type: 'task', action_name: action });
+const webhook = (taskRef: string, action: string, email?: string) =>
+  JSON.stringify({ resource_id: taskRef, resource_type: 'task', action_name: action, event_email: email });
 
 describe('回填的簽署進度', () => {
   it('待乙方簽：兩位都待簽，當前簽署人是乙方', async () => {
@@ -204,7 +207,7 @@ describe('回填的服務商', () => {
     const subject = legacyContract('awaiting_tenant', 'mock-1-a');
     upgrade();
 
-    await mockSigning().ingestWebhook(webhook('mock-1-a', 'signed'), new Headers());
+    await mockSigning().ingestWebhook(webhook('mock-1-a', 'signed', TENANT.email), new Headers());
 
     expect(getContract(subject.id)?.status).toBe('awaiting_landlord');
   });
@@ -217,7 +220,7 @@ describe('回填的服務商', () => {
       taskRef: 'mock-1-a',
       event: { type: 'signed' },
     });
-    const live = createSigningModule({ provider: liveProvider({ parseWebhook }), onCompleted: async () => {} });
+    const live = moduleOf(liveProvider({ parseWebhook }));
 
     await expect(live.ingestWebhook('{}', new Headers())).resolves.toEqual({
       status: 200,
@@ -237,11 +240,8 @@ describe('回填的服務商', () => {
     expect(getContract(subject.id)?.status).toBe('awaiting_tenant');
 
     const clientSecret = 'test-secret';
-    const live = createSigningModule({
-      provider: createDottedSignProvider({ request: async () => ({}), clientSecret }),
-      onCompleted: async () => {},
-    });
-    const body = webhook('470', 'signed');
+    const live = moduleOf(createDottedSignProvider({ request: async () => ({}), clientSecret }));
+    const body = webhook('470', 'signed', TENANT.email);
     const signature = crypto.createHmac('sha256', clientSecret).update(body).digest('hex');
     await live.ingestWebhook(body, new Headers({ signature }));
     expect(getContract(subject.id)?.status).toBe('awaiting_landlord');
@@ -255,14 +255,14 @@ describe('升級後繼續走完', () => {
     upgrade();
 
     const onCompleted = vi.fn(async () => {});
-    const signing = createSigningModule({ provider: createMockProvider(), onCompleted });
+    const signing = moduleOf(createMockProvider(), onCompleted);
     await expect(signing.simulateEvent(subject, 'signed')).resolves.toEqual({ status: 'awaiting_landlord' });
     await expect(signing.simulateEvent(subject, 'completed')).resolves.toEqual({ status: 'completed' });
 
     const progress = await signing.getProgress(subject);
     expect(progress?.status).toBe('completed');
     expect(progress?.signers.map((s) => s.status)).toEqual(['signed', 'signed']);
-    expect(listContractEvents(subject.id, db).map((e) => e.type)).toEqual(['sent', 'tenant_signed', 'completed']);
+    expect(listContractEvents(subject.id, db).map((e) => e.type)).toEqual(['sent', 'signer_signed', 'completed']);
     expect(onCompleted).toHaveBeenCalledTimes(1);
   });
 
@@ -286,7 +286,7 @@ describe('升級後繼續走完', () => {
 
     const getSignLink = vi.fn(async () => 'https://sign.example/abc');
     const resend = vi.fn(async () => {});
-    const live = createSigningModule({ provider: liveProvider({ getSignLink, resend }), onCompleted: async () => {} });
+    const live = moduleOf(liveProvider({ getSignLink, resend }));
 
     await expect(live.getSignLink(subject)).resolves.toEqual({ signer: LANDLORD, url: 'https://sign.example/abc' });
     await expect(live.resend(subject)).resolves.toEqual({ signer: LANDLORD });

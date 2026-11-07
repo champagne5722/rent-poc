@@ -106,7 +106,7 @@ function planProgress(row: LegacyContractRow, events: LegacyEventRow[]): Progres
       };
     }
     case 'declined':
-      return eventOf('declined')?.actor === 'landlord'
+      return ['landlord', 'party_a'].includes(eventOf('declined')?.actor ?? '')
         ? { status: 'declined', partyB: partyBSigned, partyA: { status: 'declined', signedAt: null } }
         : { status: 'declined', partyB: { status: 'declined', signedAt: null }, partyA: pending };
     case 'voided':

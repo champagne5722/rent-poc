@@ -1,4 +1,5 @@
 import { saveContractFilesOnCompleted } from '../contract-files';
+import { createContractSubscriber } from '../contract-signing';
 import { dsClientSecret, dsFetch, isMockMode } from '../dottedsign';
 import { createDottedSignProvider } from './dottedsign-adapter';
 import { createMockProvider } from './mock-adapter';
@@ -12,7 +13,7 @@ export const signing = createSigningModule({
     ? // Cloud Run 一定會注入 K_SERVICE
       createMockProvider({ rejectWebhookEvents: Boolean(process.env.K_SERVICE) })
     : createDottedSignProvider({ request: dsFetch, clientSecret: dsClientSecret() }),
-  onCompleted: saveContractFilesOnCompleted,
+  subscribers: { contract: createContractSubscriber({ onCompleted: saveContractFilesOnCompleted }) },
 });
 
 export function contractSubject(id: number): SigningSubject {

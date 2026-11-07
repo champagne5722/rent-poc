@@ -2,9 +2,9 @@ import type { SignatureField, SignerRole } from '../types';
 
 // 簽署模組與簽署服務商之間的 seam（ADR-0010）。adapter 只翻譯服務商 API，不含領域邏輯。
 
-// 簽署標的：送簽文件所屬的業務實體。目前只有合約。
+// 簽署標的：送簽文件所屬的業務實體。type 對到一個訂閱者，目前只有合約。
 export interface SigningSubject {
-  type: 'contract';
+  type: string;
   id: number;
 }
 
@@ -15,6 +15,8 @@ export interface SigningEvent {
   type: SigningEventType;
   email?: string;
   reason?: string;
+  // 事件時間，ISO 8601。服務商沒有提供時不帶。
+  occurredAt?: string;
 }
 
 // 文件只傳資料。座標轉換與檔名清洗在 adapter。

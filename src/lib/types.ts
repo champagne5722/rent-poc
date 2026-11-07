@@ -73,12 +73,15 @@ export const CONTRACT_STATUSES = [
   'declined',
   'voided',
 ] as const;
-export type ContractStatus = (typeof CONTRACT_STATUSES)[number];
+// 第七態 awaiting_practitioner 先進型別：三位簽署人的簽署進度要能投影。
+// 畫面還無法建立這種合約，所以分頁與統計仍用上面六態，由 MIL-59 併入 CONTRACT_STATUSES。
+export type ContractStatus = (typeof CONTRACT_STATUSES)[number] | 'awaiting_practitioner';
 
 export const CONTRACT_STATUS_LABELS: Record<ContractStatus, string> = {
   draft: '草稿',
   awaiting_tenant: '待乙方簽',
   awaiting_landlord: '待甲方簽',
+  awaiting_practitioner: '待執業人員簽',
   completed: '已完成',
   declined: '已拒簽',
   voided: '已撤回',
@@ -228,13 +231,14 @@ export interface ContractRelations {
 }
 
 // 合約歷程（見 GLOSSARY.md、ADR-0007）：附屬合約的 append-only 里程碑事件。
-// 只記這七種；草稿編輯流水與下載／查看等讀式操作不記。
+// 只記這八種；草稿編輯流水與下載／查看等讀式操作不記。
 export const CONTRACT_EVENT_TYPES = [
   'created', // 建立（衍生自撤回合約時附註來源）
   'sent', // 送簽
-  'tenant_signed', // 乙方簽署
+  'tenant_signed', // 乙方簽署。舊資料專用，只保留顯示，新事件用 signer_signed
+  'signer_signed', // 簽署人簽署，行為者為該位角色
   'declined', // 拒簽（附註原因）
-  'completed', // 甲方簽署完成
+  'completed', // 簽署完成
   'voided', // 撤回
   'copied', // 被複製為新草稿
 ] as const;
@@ -244,19 +248,22 @@ export const CONTRACT_EVENT_TYPE_LABELS: Record<ContractEventType, string> = {
   created: '建立合約',
   sent: '送簽',
   tenant_signed: '乙方簽署',
+  signer_signed: '簽署人簽署',
   declined: '拒簽',
-  completed: '甲方簽署完成',
+  completed: '簽署完成',
   voided: '撤回',
   copied: '被複製為新草稿',
 };
 
-export const CONTRACT_EVENT_ACTORS = ['landlord', 'tenant', 'system'] as const;
+// 簽署人的行為者一律用簽署角色。landlord 是送簽與撤回的發動者，tenant 只有舊資料。
+export const CONTRACT_EVENT_ACTORS = ['landlord', 'tenant', 'system', ...SIGNER_ROLES] as const;
 export type ContractEventActor = (typeof CONTRACT_EVENT_ACTORS)[number];
 
 export const CONTRACT_EVENT_ACTOR_LABELS: Record<ContractEventActor, string> = {
   landlord: '房東',
   tenant: '租客',
   system: '系統',
+  ...SIGNER_ROLE_LABELS,
 };
 
 export interface ContractEvent {

@@ -8,7 +8,7 @@ import {
   insertContractWithEvent,
   listContractEvents,
 } from './db';
-import { applyDsEvent, decideTransition } from './transitions';
+import { applySigningResult, decideTransition } from './transitions';
 import type { Contract, ContractStatus } from './types';
 
 let db: Database.Database;
@@ -34,85 +34,158 @@ function statusOf(id: number): ContractStatus {
   return (db.prepare('SELECT status FROM contracts WHERE id = ?').get(id) as { status: ContractStatus }).status;
 }
 
-describe('decideTransition（純轉移邏輯）', () => {
-  it('待乙方簽收到 signed：進入待甲方簽，記乙方簽署事件', () => {
-    expect(decideTransition('awaiting_tenant', 'signed')).toEqual({
+const PARTY_A = { role: 'party_a', name: '林房東', email: 'landlord@example.com' } as const;
+const PARTY_B = { role: 'party_b', name: '王租客', email: 'tenant@example.com' } as const;
+const PRACTITIONER = { role: 'practitioner', name: '陳管理', email: 'manager@example.com' } as const;
+
+describe('decideTransition：自管租賃合約的轉移意義不變（PRD P0-10 AC7）', () => {
+  it('送簽：草稿依第一位簽署人的角色進入簽署中，記送簽事件', () => {
+    expect(decideTransition('draft', { type: 'sent', first: PARTY_B })).toEqual({
+      status: 'awaiting_tenant',
+      event: { type: 'sent', actor: 'landlord', note: '寄送給乙方 tenant@example.com' },
+    });
+  });
+
+  it('乙方簽完：進入待甲方簽，記簽署人簽署事件，行為者是乙方', () => {
+    expect(decideTransition('awaiting_tenant', { type: 'signer_signed', signer: PARTY_B, next: PARTY_A })).toEqual({
       status: 'awaiting_landlord',
-      event: { type: 'tenant_signed', actor: 'tenant', note: null },
+      event: { type: 'signer_signed', actor: 'party_b', note: null },
     });
   });
 
-  it('待甲方簽收到 signed：不轉移（甲方簽完會跟著 completed 事件）', () => {
-    expect(decideTransition('awaiting_landlord', 'signed')).toBeNull();
+  it('甲方是最後一位：不改合約狀態，也不寫合約歷程', () => {
+    expect(
+      decideTransition('awaiting_landlord', { type: 'signer_signed', signer: PARTY_A, next: null })
+    ).toBeNull();
   });
 
-  it('待甲方簽收到 completed：進入已完成，記甲方簽署完成事件', () => {
-    expect(decideTransition('awaiting_landlord', 'completed')).toEqual({
-      status: 'completed',
-      event: { type: 'completed', actor: 'landlord', note: null },
-    });
-  });
+  it.each(['awaiting_tenant', 'awaiting_landlord', 'awaiting_practitioner'] as const)(
+    '%s 全員完成：進入已完成，記簽署完成事件',
+    (status) => {
+      expect(decideTransition(status, { type: 'completed' })).toEqual({
+        status: 'completed',
+        event: { type: 'completed', actor: 'system', note: null },
+      });
+    }
+  );
 
-  it('拒簽帶原因：事件附註記下原因，行為者依當前待簽方判定', () => {
-    expect(decideTransition('awaiting_tenant', 'declined', '租金認知有落差')).toEqual({
+  it('拒簽帶原因：事件附註記下原因，行為者是拒簽的簽署人', () => {
+    expect(
+      decideTransition('awaiting_tenant', { type: 'declined', signer: PARTY_B, reason: '租金認知有落差' })
+    ).toEqual({
       status: 'declined',
-      event: { type: 'declined', actor: 'tenant', note: '租金認知有落差' },
+      event: { type: 'declined', actor: 'party_b', note: '租金認知有落差' },
     });
-    expect(decideTransition('awaiting_landlord', 'declined', '房東改變主意')).toEqual({
+    expect(decideTransition('awaiting_landlord', { type: 'declined', signer: PARTY_A })).toEqual({
       status: 'declined',
-      event: { type: 'declined', actor: 'landlord', note: '房東改變主意' },
+      event: { type: 'declined', actor: 'party_a', note: null },
+    });
+  });
+
+  it('拒簽時沒有當前簽署人：行為者是系統', () => {
+    expect(decideTransition('awaiting_landlord', { type: 'declined', signer: null })).toMatchObject({
+      event: { type: 'declined', actor: 'system' },
     });
   });
 
   it('撤回：由房東發動', () => {
-    expect(decideTransition('awaiting_tenant', 'voided')).toEqual({
+    expect(decideTransition('awaiting_tenant', { type: 'voided' })).toEqual({
       status: 'voided',
       event: { type: 'voided', actor: 'landlord', note: null },
     });
   });
 
-  it.each(['draft', 'completed', 'declined', 'voided'] as const)('%s 不接受任何點點簽事件', (status) => {
-    for (const event of ['signed', 'completed', 'declined', 'voided'] as const) {
-      expect(decideTransition(status, event)).toBeNull();
+  it.each(['draft', 'completed', 'declined', 'voided'] as const)('%s 不接受任何簽署結果', (status) => {
+    expect(decideTransition(status, { type: 'signer_signed', signer: PARTY_B, next: PARTY_A })).toBeNull();
+    expect(decideTransition(status, { type: 'completed' })).toBeNull();
+    expect(decideTransition(status, { type: 'declined', signer: PARTY_B })).toBeNull();
+    expect(decideTransition(status, { type: 'voided' })).toBeNull();
+  });
+
+  it.each(['awaiting_tenant', 'awaiting_landlord', 'completed', 'declined', 'voided'] as const)(
+    '%s 不能再送簽',
+    (status) => {
+      expect(decideTransition(status, { type: 'sent', first: PARTY_B })).toBeNull();
     }
+  );
+});
+
+describe('decideTransition：合約狀態由簽署角色投影', () => {
+  it.each([
+    [PARTY_B, 'awaiting_tenant', '寄送給乙方 tenant@example.com'],
+    [PARTY_A, 'awaiting_landlord', '寄送給甲方 landlord@example.com'],
+    [PRACTITIONER, 'awaiting_practitioner', '寄送給執業人員 manager@example.com'],
+  ] as const)('第一位是 $role 時，送簽後進入 %s', (first, status, note) => {
+    expect(decideTransition('draft', { type: 'sent', first })).toEqual({
+      status,
+      event: { type: 'sent', actor: 'landlord', note },
+    });
+  });
+
+  it.each([
+    ['awaiting_tenant', PARTY_B, PRACTITIONER, 'awaiting_practitioner'],
+    ['awaiting_practitioner', PRACTITIONER, PARTY_A, 'awaiting_landlord'],
+    ['awaiting_landlord', PARTY_A, PARTY_B, 'awaiting_tenant'],
+  ] as const)('%s 由目前簽署人簽完後，依下一位的角色進入 %s', (status, signer, next, expected) => {
+    expect(decideTransition(status, { type: 'signer_signed', signer, next })).toEqual({
+      status: expected,
+      event: { type: 'signer_signed', actor: signer.role, note: null },
+    });
+  });
+
+  it('執業人員拒簽：行為者是執業人員', () => {
+    expect(decideTransition('awaiting_practitioner', { type: 'declined', signer: PRACTITIONER })).toMatchObject({
+      status: 'declined',
+      event: { actor: 'practitioner' },
+    });
   });
 });
 
-describe('applyDsEvent（狀態轉移與歷程事件同交易）', () => {
+describe('applySigningResult（狀態轉移與歷程事件同交易）', () => {
   it('走完一輪簽署流程後，事件序列與狀態一致', () => {
     const contract = seedContract('draft');
     appendContractEvent(contract.id, { type: 'created', actor: 'landlord' }, db);
-    appendContractEvent(contract.id, { type: 'sent', actor: 'landlord' }, db);
-    db.prepare("UPDATE contracts SET status='awaiting_tenant' WHERE id=?").run(contract.id);
 
-    expect(applyDsEvent({ ...contract, status: 'awaiting_tenant' }, 'signed', undefined, db)).toBe('awaiting_landlord');
-    expect(applyDsEvent({ ...contract, status: 'awaiting_landlord' }, 'completed', undefined, db)).toBe('completed');
+    applySigningResult(contract, { type: 'sent', first: PARTY_B }, {}, db);
+    applySigningResult(
+      { ...contract, status: 'awaiting_tenant' },
+      { type: 'signer_signed', signer: PARTY_B, next: PARTY_A },
+      {},
+      db
+    );
+    applySigningResult(
+      { ...contract, status: 'awaiting_landlord' },
+      { type: 'signer_signed', signer: PARTY_A, next: null },
+      {},
+      db
+    );
+    applySigningResult({ ...contract, status: 'awaiting_landlord' }, { type: 'completed' }, {}, db);
 
     expect(statusOf(contract.id)).toBe('completed');
     expect(listContractEvents(contract.id, db).map((e) => [e.type, e.actor])).toEqual([
       ['created', 'landlord'],
       ['sent', 'landlord'],
-      ['tenant_signed', 'tenant'],
-      ['completed', 'landlord'],
+      ['signer_signed', 'party_b'],
+      ['completed', 'system'],
     ]);
   });
 
   it('拒簽事件寫入原因附註，合約也留下拒簽原因', () => {
     const contract = seedContract('awaiting_tenant');
-    expect(applyDsEvent(contract, 'declined', '租金認知有落差', db)).toBe('declined');
+    applySigningResult(contract, { type: 'declined', signer: PARTY_B, reason: '租金認知有落差' }, {}, db);
 
     const events = listContractEvents(contract.id, db);
     expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ type: 'declined', actor: 'tenant', note: '租金認知有落差' });
+    expect(events[0]).toMatchObject({ type: 'declined', actor: 'party_b', note: '租金認知有落差' });
     expect(
       (db.prepare('SELECT declined_reason FROM contracts WHERE id=?').get(contract.id) as { declined_reason: string })
         .declined_reason
     ).toBe('租金認知有落差');
   });
 
-  it('狀態不接受該事件時不轉移也不寫事件', () => {
+  it('沒有轉移時不改狀態也不寫事件，回傳 null', () => {
     const contract = seedContract('draft');
-    expect(applyDsEvent(contract, 'signed', undefined, db)).toBeNull();
+    expect(applySigningResult(contract, { type: 'completed' }, {}, db)).toBeNull();
     expect(statusOf(contract.id)).toBe('draft');
     expect(listContractEvents(contract.id, db)).toHaveLength(0);
   });
@@ -122,7 +195,7 @@ describe('applyDsEvent（狀態轉移與歷程事件同交易）', () => {
     // 模擬歷程寫入失敗（磁碟錯誤、約束違反等）
     db.exec("CREATE TRIGGER fail_event BEFORE INSERT ON contract_events BEGIN SELECT RAISE(ABORT, '寫入失敗'); END;");
 
-    expect(() => applyDsEvent(contract, 'signed', undefined, db)).toThrow();
+    expect(() => applySigningResult(contract, { type: 'completed' }, {}, db)).toThrow();
 
     db.exec('DROP TRIGGER fail_event');
     expect(statusOf(contract.id)).toBe('awaiting_tenant');
@@ -133,7 +206,7 @@ describe('applyDsEvent（狀態轉移與歷程事件同交易）', () => {
     const contract = seedContract('awaiting_tenant');
     db.exec("CREATE TRIGGER fail_status BEFORE UPDATE ON contracts BEGIN SELECT RAISE(ABORT, '更新失敗'); END;");
 
-    expect(() => applyDsEvent(contract, 'signed', undefined, db)).toThrow();
+    expect(() => applySigningResult(contract, { type: 'completed' }, {}, db)).toThrow();
 
     db.exec('DROP TRIGGER fail_status');
     expect(statusOf(contract.id)).toBe('awaiting_tenant');
