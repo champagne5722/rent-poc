@@ -1,11 +1,8 @@
-import crypto from 'crypto';
-import type { Contract, SignatureField } from './types';
-import { PDF_PAGE_SIZE } from './pdf';
-
-// 點點簽 sandbox 整合層。細節與待驗證事項見 docs/dottedsign-integration.md。
+// 點點簽 HTTP client：認證、token 快取與帶 token 的請求。細節見 docs/dottedsign-integration.md。
+// 請求內容的翻譯在 signing-module/dottedsign-adapter.ts。
 //
-// 模式切換：設好 DOTTEDSIGN_CLIENT_ID / DOTTEDSIGN_CLIENT_SECRET 即為 live，
-// 否則為 mock——送簽回假 task_id，狀態推進靠 /api/mock/advance 模擬 webhook。
+// 模式切換：設好 DOTTEDSIGN_CLIENT_ID 與 DOTTEDSIGN_CLIENT_SECRET 即為 live，否則為 mock。
+// 只有 signing-module/index.ts 用它選 adapter。contract-files.ts 的 mock 特例留給文件保存那張票。
 
 const API_BASE = process.env.DOTTEDSIGN_API_BASE ?? 'https://api.sandbox.dottedsign.com';
 const CLIENT_ID = process.env.DOTTEDSIGN_CLIENT_ID;
@@ -14,6 +11,10 @@ const SCOPES = 'sign_tasks.general.write sign_tasks.general.read sign_tasks.mana
 
 export function isMockMode(): boolean {
   return !CLIENT_ID || !CLIENT_SECRET;
+}
+
+export function dsClientSecret(): string {
+  return CLIENT_SECRET ?? '';
 }
 
 interface TokenCache {
@@ -45,7 +46,7 @@ async function getAccessToken(): Promise<string> {
   return json.access_token;
 }
 
-async function dsFetch(path: string, init: RequestInit = {}): Promise<unknown> {
+export async function dsFetch(path: string, init: RequestInit = {}): Promise<unknown> {
   const token = await getAccessToken();
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -62,110 +63,4 @@ async function dsFetch(path: string, init: RequestInit = {}): Promise<unknown> {
 // 帶 token 的 GET，供其他模組組好 path 後呼叫（例：contract-files.ts 的下載連結查詢）
 export async function dsGetJson(path: string): Promise<unknown> {
   return dsFetch(path);
-}
-
-// 內部存的簽署區域是相對比例（原點左上、y 向下）；
-// 點點簽 coord 為 [left-x, bottom-y, right-x, top-y]，原點左下。
-// ⚠️ 文件未明說單位，此處假設為 PDF points——真接 sandbox 時需實測驗證（見整合筆記）。
-export function toDsCoord(f: SignatureField): [number, number, number, number] {
-  const { width: W, height: H } = PDF_PAGE_SIZE;
-  const left = f.x * W;
-  const right = (f.x + f.w) * W;
-  const top = (1 - f.y) * H;
-  const bottom = (1 - (f.y + f.h)) * H;
-  return [round2(left), round2(bottom), round2(right), round2(top)];
-}
-
-const round2 = (n: number) => Math.round(n * 100) / 100;
-
-function buildStage(name: string, email: string, fields: SignatureField[]) {
-  return {
-    name,
-    email,
-    stage_type: 'sign',
-    field_settings: fields.map((f) => ({
-      field_type: 'signature',
-      page: f.page,
-      coord: toDsCoord(f),
-      options: { force: true },
-    })),
-    // decline_enable 不硬帶 true：signer 同時是 task owner（同帳號信箱）時 API 會回 400417，
-    // 交由 API 預設（owner 預設 false、其他簽署人預設 true）
-  };
-}
-
-export interface CreateTaskResult {
-  taskId: string;
-  mock: boolean;
-}
-
-// 送簽：乙方（租客）先簽、甲方（房東）後簽（has_order: true，stages 順序即簽署順序）
-export async function createSignTask(contract: Contract, pdfBytes: Uint8Array): Promise<CreateTaskResult> {
-  const { fields, signature_fields } = contract;
-  const tenantFields = signature_fields.filter((f) => f.signer === 'tenant');
-  const landlordFields = signature_fields.filter((f) => f.signer === 'landlord');
-
-  if (isMockMode()) {
-    return { taskId: `mock-${contract.id}-${crypto.randomUUID().slice(0, 8)}`, mock: true };
-  }
-
-  const body = {
-    file_name: `租賃合約-${fields.propertyName || contract.id}`.replace(/[."*:<>?/\\|~#%&{}]/g, ''),
-    base64_file: Buffer.from(pdfBytes).toString('base64'),
-    has_order: true,
-    start: true, // 預設 false 只會建立草稿、不寄信給簽署人（實測踩過）
-    stages: [
-      buildStage(fields.tenantName, fields.tenantEmail, tenantFields),
-      buildStage(fields.landlordName, fields.landlordEmail, landlordFields),
-    ],
-  };
-  const json = (await dsFetch('/v1/sign_tasks', { method: 'POST', body: JSON.stringify(body) })) as {
-    data: { task_id: number };
-  };
-  return { taskId: String(json.data.task_id), mock: false };
-}
-
-// 簽署連結現查（見 GLOSSARY.md「簽署連結」）：只對「當前輪到的簽署人」有效，
-// 還沒輪到會回 400_937 stage_not_acting。連結有時效，不落地儲存。
-export async function getSignerShareLink(taskId: string, email: string, redirectUrl?: string): Promise<string> {
-  if (isMockMode()) throw new Error('mock 模式沒有真實簽署任務，無法取得簽署連結');
-  // ⚠️ 文件寫 task_ids[]，sandbox 實測帶方括號（含未編碼）一律回 400998，
-  // 只吃 task_ids=<id>（見整合筆記）
-  let query = `task_ids=${encodeURIComponent(taskId)}&email=${encodeURIComponent(email)}`;
-  if (redirectUrl) query += `&redirect_url=${encodeURIComponent(redirectUrl)}`;
-  const json = (await dsFetch(`/v1/sign_tasks/share_link?${query}`)) as {
-    data?: { share_link?: string };
-  };
-  const link = json.data?.share_link;
-  if (!link) throw new Error('點點簽未回傳簽署連結');
-  return link;
-}
-
-// 重寄簽署通知信給當前待簽方（sandbox 不寄信，只能驗證 API 回應成功）
-export async function resendSignTask(taskId: string): Promise<void> {
-  if (isMockMode()) throw new Error('mock 模式沒有真實簽署任務，無法重寄通知');
-  await dsFetch('/v1/sign_tasks/resend', {
-    method: 'POST',
-    body: JSON.stringify({ task_id: Number(taskId) }),
-  });
-}
-
-export async function voidSignTask(taskId: string): Promise<void> {
-  if (isMockMode()) return;
-  await dsFetch('/v1/sign_tasks/void', {
-    method: 'POST',
-    body: JSON.stringify({ task_id: Number(taskId) }),
-  });
-}
-
-// webhook 簽章（已實測確認）：header `Signature` = HMAC-SHA256(client_secret, raw body) 的 hex
-export function verifyWebhookSignature(rawBody: string, signatureHeader: string | null): boolean {
-  if (isMockMode()) return true;
-  if (!signatureHeader) return false;
-  const expected = crypto.createHmac('sha256', CLIENT_SECRET!).update(rawBody).digest('hex');
-  try {
-    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHeader));
-  } catch {
-    return false;
-  }
 }
