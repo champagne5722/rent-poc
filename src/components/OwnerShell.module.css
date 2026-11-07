@@ -1,0 +1,65 @@
+/* 屋主端殼層的版面。只放結構與間距（DESIGN.md spacing），顏色由 antd token 在元件內帶入。 */
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 24px; /* lg */
+  padding: 0 24px; /* lg，與後台 Header 相同 */
+}
+
+.brand {
+  order: 1;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.nav {
+  order: 2;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.identity {
+  order: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px; /* xs */
+  margin-left: auto;
+  min-width: 0;
+  max-width: 40%;
+}
+
+/* 顯示名稱過長時讓 Typography 的 ellipsis 生效 */
+.identity > :last-child {
+  min-width: 0;
+}
+
+.content {
+  padding: 24px; /* lg，與後台 Content 相同 */
+  min-width: 0;
+}
+
+/* antd md 斷點以下：品牌與屋主名稱一列，選單換到第二列 */
+@media (max-width: 767.98px) {
+  .bar {
+    column-gap: 12px; /* sm */
+    padding: 0 16px; /* md */
+  }
+
+  .identity {
+    order: 2;
+    max-width: 50%;
+  }
+
+  .nav {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .content {
+    padding: 16px; /* md */
+  }
+}
