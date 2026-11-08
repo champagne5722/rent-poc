@@ -4,6 +4,8 @@ import fs from 'fs';
 import path from 'path';
 import type { ContractFields, EquipmentAnnexRow } from './types';
 import { REPAIR_RESPONSIBILITY_LABELS, SIGNER_ROLE_LABELS } from './types';
+import { TERMS, partyLabels } from './labels';
+
 // 條款全文與條號集中在 contract-clauses.ts：wizard 也要顯示同一組條號與勾選條款。
 import { blank, buildContractClauses, usesEquipmentAnnex } from './contract-clauses';
 import { contractEquipmentAnnex } from './equipment';
@@ -29,6 +31,9 @@ import {
   SIGN_ROW_GAP_AFTER,
   SIGN_STAMP_BLANK,
 } from './pdf-layout';
+
+// 兩方租賃合約的稱謂從標籤對照表取（MIL-122）。
+const LEASE = partyLabels('lease');
 
 let fontBytesCache: Buffer | null = null;
 function loadFontBytes(): Buffer {
@@ -217,9 +222,9 @@ export async function generateContractPdf(
 
   w.center('房屋租賃契約書', 20, 10);
   w.text(
-    `出租人：${blank(fields.landlordName)}（以下簡稱甲方）\n承租人：${blank(
+    `${LEASE.partyA}：${blank(fields.landlordName)}（以下簡稱${TERMS.partyA}）\n${LEASE.partyB}：${blank(
       fields.tenantName
-    )}（以下簡稱乙方）`,
+    )}（以下簡稱${TERMS.partyB}）`,
     BODY_SIZE,
     { gapAfter: 6 }
   );

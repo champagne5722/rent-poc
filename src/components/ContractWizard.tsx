@@ -75,6 +75,7 @@ import {
 } from '@/lib/clause-library';
 import { extraClauseLabel, usesEquipmentAnnex } from '@/lib/contract-clauses';
 import { equipmentAnnexSummary } from '@/lib/contract-detail';
+import { TERMS, partyLabels } from '@/lib/labels';
 import {
   STEP_CONFIRM,
   STEP_FIELDS,
@@ -94,6 +95,9 @@ import {
   stepStatuses,
   upgradeDraftFields,
 } from '@/lib/contract-wizard';
+
+// 建約 wizard 目前只建租賃合約，甲乙方稱謂從標籤對照表取（MIL-122）。
+const LEASE_LABELS = partyLabels('lease');
 
 /** 四步進度條；`/contracts/new` 的第①步也共用這一條。 */
 export function WizardStepsBar({
@@ -347,8 +351,8 @@ function SignatureChecklist({
   const check = checkSignatureFields(signatureFields);
   return (
     <Space orientation="vertical" size={4}>
-      <CheckLine ok={check.party_a > 0} text={`甲方（房東）簽名框 ${check.party_a} 個`} />
-      <CheckLine ok={check.party_b > 0} text={`乙方（租客）簽名框 ${check.party_b} 個`} />
+      <CheckLine ok={check.party_a > 0} text={`${LEASE_LABELS.partyAFull}簽名框 ${check.party_a} 個`} />
+      <CheckLine ok={check.party_b > 0} text={`${LEASE_LABELS.partyBFull}簽名框 ${check.party_b} 個`} />
       {withDetail && signatureFields.length > 0 && (
         <Space size={4} wrap style={{ marginTop: 4 }}>
           {signatureFields.map((f) => (
@@ -669,12 +673,12 @@ export default function ContractWizard({ id }: { id: string }) {
     { key: 'address', label: '地址', span: 2, children: fields.propertyAddress || '—' },
     {
       key: 'landlord',
-      label: '甲方（房東）',
+      label: LEASE_LABELS.partyAFull,
       children: `${fields.landlordName}（${fields.landlordEmail}）`,
     },
     {
       key: 'tenant',
-      label: '乙方（租客）',
+      label: LEASE_LABELS.partyBFull,
       children: `${fields.tenantName}（${fields.tenantEmail}）`,
     },
     { key: 'rent', label: '月租金', children: money(fields.rent) },
@@ -807,7 +811,7 @@ export default function ContractWizard({ id }: { id: string }) {
               <Col span={12}>
                 <Form.Item
                   name="landlordName"
-                  label="甲方（房東）姓名"
+                  label={`${LEASE_LABELS.partyAFull}姓名`}
                   rules={partyALocked ? [] : [{ required: true, message: '請輸入甲方姓名' }]}
                 >
                   <Input disabled={partyALocked} />
@@ -829,7 +833,7 @@ export default function ContractWizard({ id }: { id: string }) {
               <Col span={12}>
                 <Form.Item
                   name="tenantName"
-                  label="乙方（租客）姓名"
+                  label={`${LEASE_LABELS.partyBFull}姓名`}
                   rules={partyBLocked ? [] : [{ required: true, message: '請輸入乙方姓名' }]}
                 >
                   <Input disabled={partyBLocked} />
@@ -922,7 +926,7 @@ export default function ContractWizard({ id }: { id: string }) {
             <>
               <Typography.Paragraph type="secondary" style={{ margin: '4px 0 0', fontSize: 12 }}>
                 由物件的設備清單帶入，可逐約增刪列、調整數量與修繕責任；產出的合約以「詳如附件」引用這張清單，
-                清單本身另成一頁排在簽署欄之後。修繕責任預設出租方。
+                清單本身另成一頁排在簽署欄之後。修繕責任預設{TERMS.lessor}。
               </Typography.Paragraph>
               <EquipmentAnnexEditor rows={annexRows} onChange={changeAnnex} />
             </>
