@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { getContract } from '@/lib/db';
 import { generateContractPdf, PDF_PAGE_SIZE } from '@/lib/pdf';
-import { contractDocumentFileName, contractSignerSequence } from '@/lib/signing';
+import { loadContractRoutingFacts } from '@/lib/signature-routing/repository';
+import { contractDocumentFileName, prepareContractSigners } from '@/lib/signing';
 import { contractSubject, signing, signingErrorResponse } from '@/lib/signing-module';
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -26,19 +27,21 @@ export async function POST(_request: NextRequest, { params }: Ctx) {
   if (missing.length) {
     return Response.json({ error: `請先完成欄位：${missing.join('、')}` }, { status: 400 });
   }
-  if (!contract.signature_fields.some((s) => s.signer === 'party_b')) {
-    return Response.json({ error: '請至少為乙方設定一個簽署區域' }, { status: 400 });
+  // 簽署序列由簽章分流規則表產生（ADR-0018）。PDF 與欄位檢查目前只支援租賃合約，委託管理合約屬 MIL-74、MIL-77。
+  if (contract.contract_type !== 'lease') {
+    return Response.json({ error: '這個合約類型尚未支援送簽' }, { status: 400 });
   }
-  if (!contract.signature_fields.some((s) => s.signer === 'party_a')) {
-    return Response.json({ error: '請至少為甲方設定一個簽署區域' }, { status: 400 });
-  }
+  const routing = await loadContractRoutingFacts(contract.id);
+  if (!routing.ok) return Response.json({ error: routing.reason }, { status: 400 });
+  const prepared = prepareContractSigners(contract, routing.facts);
+  if (!prepared.ok) return Response.json({ error: prepared.error }, { status: prepared.status });
 
   const pdf = await generateContractPdf(f);
   try {
     const task = await signing.send(
       contractSubject(contract.id),
       { fileName: contractDocumentFileName(contract), pdf, pageSize: PDF_PAGE_SIZE },
-      contractSignerSequence(contract)
+      prepared.signers
     );
     // 簽署模組不對外提供服務商任務編號（ADR-0010），回應不帶 task_id
     return Response.json({ data: { id: contract.id, mock: task.mode === 'mock' } });
