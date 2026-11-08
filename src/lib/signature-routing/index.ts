@@ -5,6 +5,7 @@ export { DEFAULT_ROUTING, routingFactsOf, type RoutingFactsResult } from './fact
 export { buildSignerSequence, type BuildSignerSequenceResult, type SeatAssignee } from './sequence';
 export {
   evaluateRouting,
+  PARTY_ONLY_SEATS,
   hasPractitionerSeat,
   printOrder,
   routingInputError,

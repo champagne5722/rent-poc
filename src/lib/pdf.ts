@@ -3,12 +3,11 @@ import fontkit from '@pdf-lib/fontkit';
 import fs from 'fs';
 import path from 'path';
 import type { ContractFields, EquipmentAnnexRow } from './types';
-import { REPAIR_RESPONSIBILITY_LABELS } from './types';
+import { REPAIR_RESPONSIBILITY_LABELS, SIGNER_ROLE_LABELS } from './types';
 // 條款全文與條號集中在 contract-clauses.ts：wizard 也要顯示同一組條號與勾選條款。
 import { blank, buildContractClauses, usesEquipmentAnnex } from './contract-clauses';
 import { contractEquipmentAnnex } from './equipment';
-import { partyLabels } from './labels';
-import { evaluateRouting, printOrder, type SeatView } from './signature-routing';
+import { PARTY_ONLY_SEATS, evaluateRouting, printOrder, type SeatView } from './signature-routing';
 // 版面常數集中在 pdf-layout.ts：簽署區編輯器要用同一組數字推簽名欄的預設落點。
 import {
   ANNEX_CELL_PAD_X,
@@ -173,14 +172,6 @@ function drawEquipmentAnnex(w: Writer, rows: EquipmentAnnexRow[]): void {
   }
 }
 
-const LEASE_LABELS = partyLabels('lease');
-
-/** 沒有可用簽署序列時（規則未定義、形狀不對）退回的兩方版面，與 N 列版面之前相同。 */
-const PARTY_ONLY_SEATS: readonly SeatView[] = [
-  { ruleId: 'party_a', role: 'party_a', label: '甲方', fullLabel: LEASE_LABELS.partyAFull },
-  { ruleId: 'party_b', role: 'party_b', label: '乙方', fullLabel: LEASE_LABELS.partyBFull },
-];
-
 /** 依簽署序列取要印的席位，順序是印列順序（甲方、乙方、執業人員），與簽署順序無關。 */
 function printedSeats(fields: ContractFields): SeatView[] {
   const evaluation = evaluateRouting(fields.routing);
@@ -200,7 +191,7 @@ function signatureBlockLines(seat: SeatView, fields: ContractFields): [string, s
     return [`${seat.fullLabel}：${blank(fields.tenantName)}`, `Email：${blank(fields.tenantEmail)}`];
   }
   const title = seat.practitionerTitle ? `（${seat.practitionerTitle}）` : '';
-  return [`執業人員：${blank(null)}${title}`, `執業主體：${blank(null)}`];
+  return [`${SIGNER_ROLE_LABELS.practitioner}：${blank(null)}${title}`, `執業主體：${blank(null)}`];
 }
 
 export async function generateContractPdf(fields: ContractFields): Promise<Uint8Array> {

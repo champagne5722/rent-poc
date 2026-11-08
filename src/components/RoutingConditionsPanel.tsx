@@ -27,12 +27,12 @@ export default function RoutingConditionsPanel({ value, onChange, disabled }: Pr
   const patch = (next: Partial<ContractRoutingConditions>) => onChange({ ...value, ...next });
 
   return (
-    <div>
+    <Flex vertical gap={12}>
       <Typography.Text strong>分流條件（決定誰要簽署與簽署順序）</Typography.Text>
-      <Form layout="vertical" size="small" style={{ marginTop: 8 }}>
+      <Form layout="vertical" size="small">
         <Row gutter={12}>
           <Col span={8}>
-            <Form.Item label="業務類型" style={{ marginBottom: 12 }}>
+            <Form.Item label="業務類型" style={{ marginBottom: 0 }}>
               <Radio.Group
                 disabled={disabled}
                 value={value.businessType}
@@ -42,7 +42,7 @@ export default function RoutingConditionsPanel({ value, onChange, disabled }: Pr
             </Form.Item>
           </Col>
           <Col span={8}>
-            <Form.Item label="承租人是否為包租業者" style={{ marginBottom: 12 }}>
+            <Form.Item label="承租人是否為包租業者" style={{ marginBottom: 0 }}>
               <Radio.Group
                 disabled={disabled}
                 value={value.lesseeIsMasterLessor}
@@ -52,7 +52,7 @@ export default function RoutingConditionsPanel({ value, onChange, disabled }: Pr
             </Form.Item>
           </Col>
           <Col span={8}>
-            <Form.Item label="是否有經紀業者居間" style={{ marginBottom: 12 }}>
+            <Form.Item label="是否有經紀業者居間" style={{ marginBottom: 0 }}>
               <Radio.Group
                 disabled={disabled}
                 value={value.brokerMediated}
@@ -66,24 +66,27 @@ export default function RoutingConditionsPanel({ value, onChange, disabled }: Pr
 
       {evaluation.ok ? (
         <>
-          <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
-            簽署序列
-          </Typography.Text>
-          <Flex wrap align="center" gap={8} aria-label="簽署序列">
-            {evaluation.seats.map((seat, index) => (
-              <Flex key={seat.ruleId} align="center" gap={8}>
-                {index > 0 && <RightOutlined aria-hidden style={{ fontSize: 10, color: 'var(--ant-color-text-quaternary)' }} />}
-                <Tag style={{ margin: 0 }}>
-                  {index + 1}　{seat.fullLabel}
-                </Tag>
-              </Flex>
-            ))}
+          <Flex vertical gap={8}>
+            <Typography.Text type="secondary">簽署序列</Typography.Text>
+            <Flex wrap align="center" gap={8} aria-label="簽署序列">
+              {evaluation.seats.map((seat, index) => (
+                <Flex key={seat.ruleId} align="center" gap={8}>
+                  {index > 0 && (
+                    <Typography.Text type="secondary" aria-hidden>
+                      <RightOutlined />
+                    </Typography.Text>
+                  )}
+                  <Tag style={{ margin: 0 }}>
+                    {index + 1}　{seat.fullLabel}
+                  </Tag>
+                </Flex>
+              ))}
+            </Flex>
           </Flex>
           {hasPractitionerSeat(evaluation.seats) && (
             <Alert
               type="warning"
               showIcon
-              style={{ marginTop: 12 }}
               title="這個組合需要執業人員簽章"
               description="合約上會多一個執業人員的簽署欄，簽署區域也要為他設定。指派執業人員的功能還沒開放，目前可以先設定簽署區域，但無法送簽。"
             />
@@ -92,6 +95,6 @@ export default function RoutingConditionsPanel({ value, onChange, disabled }: Pr
       ) : (
         <Alert type="error" showIcon title="這個分流條件無法繼續" description={evaluation.reason} />
       )}
-    </div>
+    </Flex>
   );
 }

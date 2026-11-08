@@ -27,6 +27,15 @@ export type RoutingEvaluation =
 
 const LEASE_LABELS = partyLabels('lease');
 
+/**
+ * 沒有可用簽署序列時（規則未定義、形狀不對）退回的兩方席位，與 N 列版面之前相同。
+ * PDF 預覽用它，不讓分流條件有問題的草稿連預覽都開不了。
+ */
+export const PARTY_ONLY_SEATS: readonly SeatView[] = [
+  { ruleId: 'party_a', role: 'party_a', label: SIGNER_ROLE_LABELS.party_a, fullLabel: LEASE_LABELS.partyAFull },
+  { ruleId: 'party_b', role: 'party_b', label: SIGNER_ROLE_LABELS.party_b, fullLabel: LEASE_LABELS.partyBFull },
+];
+
 function seatView(seat: SignaturePlan['seats'][number]): SeatView {
   if (seat.role === 'practitioner') {
     const title = seat.practitioner ? practitionerTitle(seat.practitioner.certificateKinds[0]) : undefined;

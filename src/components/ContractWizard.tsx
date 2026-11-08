@@ -13,6 +13,7 @@ import {
   Col,
   DatePicker,
   Descriptions,
+  Flex,
   Form,
   Input,
   InputNumber,
@@ -319,7 +320,7 @@ function CheckLine({ ok, text }: { ok: boolean; text: string }) {
 
 /**
  * 簽署區檢核：每個簽署席位至少一框，並列出每一框的簽署方與頁碼。
- * 兩方簽署序列（沒有執業人員）沿用原本的甲方（房東）、乙方（租客）文字，自管租賃合約的畫面不變。
+ * 兩方簽署序列（沒有執業人員）沿用原本的檢核文字，自管租賃合約的畫面不變。
  */
 function SignatureChecklist({
   fields,
@@ -692,9 +693,9 @@ export default function ContractWizard({ id }: { id: string }) {
               },
             ]}
           />
-          <div style={{ marginBottom: 12 }}>
+          <Flex vertical gap={12} style={{ marginBottom: 12 }}>
             <RoutingConditionsPanel value={fields.routing ?? DEFAULT_ROUTING} onChange={changeRouting} disabled={saving} />
-          </div>
+          </Flex>
           <TemplateNotice />
           <OptionalClauseChecklist fields={fields} onChange={changeClauses} />
           <TemplateUpgradeNotice fields={fields} onUpgrade={upgradeTemplate} disabled={saving} />
@@ -852,11 +853,11 @@ export default function ContractWizard({ id }: { id: string }) {
               style={{ marginBottom: 12 }}
               title="目前無法送簽，請先處理下列事項"
               description={
-                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                <Space orientation="vertical" size={4}>
                   {sendReasons.map((reason) => (
-                    <li key={reason}>{reason}</li>
+                    <Typography.Text key={reason}>・{reason}</Typography.Text>
                   ))}
-                </ul>
+                </Space>
               }
             />
           )}
