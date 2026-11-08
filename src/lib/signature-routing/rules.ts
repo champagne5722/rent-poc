@@ -5,7 +5,7 @@
 // 所有列的法律狀態都是「待法務確認」（MIL-62）。這裡的假設：
 // - 順序原則：非業者的當事人先簽，執業人員其次，執業主體的當事人最後，經紀人排在最後（決議 4）。
 // - §32 席位的證書種類是 rental_housing_manager，專任要求為 true。
-// - 經紀人席位的證書種類是 real_estate_broker，專任要求為 false。經紀營業員不得簽章（P0-12 規則 7）。
+// - 經紀人席位的證書種類是 real_estate_broker，專任要求為 false。經紀營業員禁止簽章（P0-12 規則 7），所以證書種類不含 real_estate_sales_agent。
 // - 點交證明與退還證明的 §32 第 4、6 款，依條文文義推得。
 
 import type { BusinessType } from '../cases';

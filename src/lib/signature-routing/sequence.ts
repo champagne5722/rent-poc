@@ -1,4 +1,4 @@
-// buildSignerSequence（ADR-0018 決議 15）：由簽署計畫與各席位的簽署人，組出交給簽署模組的簽署序列。
+// buildSignerSequence（ADR-0018 決議 15）：由 `routeSignatures` 排出的席位與各席位的簽署人，組出交給簽署模組的簽署序列。
 // 純函式，沒有 I/O。同一人兼任的合併屬 MIL-76，目前每個席位各是一位簽署人。
 
 import type { Signer } from '../signing-module/provider';
