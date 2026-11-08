@@ -9,7 +9,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:migrate": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/migrate.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
@@ -22,14 +23,17 @@
     "next": "16.2.11",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.1.200",
+    "pg": "^8.23.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-rnd": "^10.5.3",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.15",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
