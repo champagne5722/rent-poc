@@ -47,6 +47,7 @@ function contract(patch: Partial<Contract> = {}): Contract {
   return {
     id: 1,
     property_id: 3,
+    contract_type: 'lease',
     status: 'draft',
     fields: fields(),
     signature_fields: [sig('party_a'), sig('party_b')],

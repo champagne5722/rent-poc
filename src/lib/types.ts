@@ -1,5 +1,8 @@
 // 領域型別與詞彙，術語定義見 repo 根目錄 GLOSSARY.md
 
+import type { BusinessType } from './cases';
+import type { ContractType } from './labels';
+
 export const PROPERTY_TYPES = ['整層住家', '套房', '雅房'] as const;
 export type PropertyType = (typeof PROPERTY_TYPES)[number];
 
@@ -143,8 +146,20 @@ export interface EquipmentAnnexSnapshot {
   equipment?: string[];
 }
 
+/**
+ * 分流條件（ADR-0021 決議 1）：收在 `fields.routing`，由建約 wizard 第一步填寫並隨草稿保存。
+ * 選填：沒有這個鍵的合約視為自管租賃合約。C 線建案件後改由案件提供，既有合約維持這份快照。
+ * 形狀與讀取規則見 src/lib/signature-routing/README.md。
+ */
+export interface ContractRoutingConditions {
+  businessType: BusinessType;
+  lesseeIsMasterLessor: boolean;
+  brokerMediated: boolean;
+}
+
 // 合約欄位值：建立時由物件帶入快照，之後與物件脫鉤（見 docs/domain-model.md）
 export interface ContractFields extends TemplateBinding, EquipmentAnnexSnapshot {
+  routing?: ContractRoutingConditions;
   landlordName: string;
   landlordEmail: string;
   tenantName: string;
@@ -180,6 +195,9 @@ export type ContractPartyRole = (typeof CONTRACT_PARTY_ROLES)[number];
 export interface SignatureField {
   id: string;
   signer: SignerRole;
+  // 簽署席位（ADR-0021 決議 5）：值是規則列的 rule_id。居間加包租時有兩位執業人員，靠它區分。
+  // 選填。舊資料沒有，以簽署角色對應（歸該角色的第一個席位）。
+  slot?: string;
   page: number; // 0-based
   x: number;
   y: number;
@@ -215,6 +233,8 @@ export interface ContractFile {
 export interface Contract {
   id: number;
   property_id: number | null;
+  // 合約類型（ADR-0021 決議 2）：決定簽章分流的文件類型。既有合約一律是 lease。
+  contract_type: ContractType;
   status: ContractStatus;
   fields: ContractFields;
   signature_fields: SignatureField[];
