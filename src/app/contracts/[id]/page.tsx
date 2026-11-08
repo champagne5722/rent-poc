@@ -563,28 +563,29 @@ function ContractDetail({ id }: { id: string }) {
                   children: (
                     <Space orientation="vertical" size={24} style={{ width: '100%' }}>
                       <Typography.Text type="secondary">
-                        執業人員在這份合約簽章的資料留存。寫入後不會修改，這裡只供查看。
+                        送簽與簽署當下的執業人員資料留存，只供查看。法律舉證以點點簽的 Audit Trail File 為準。
                       </Typography.Text>
                       {recordCards.map((card) => (
                         <Card key={card.key} title={card.title} size="small">
-                          <Descriptions
-                            column={{ xs: 1, md: 2, xl: 3 }}
-                            size="small"
-                            items={card.summary.map((item) => ({ key: item.label, label: item.label, children: item.value }))}
-                          />
-                          <Table
-                            style={{ marginTop: 16 }}
-                            size="middle"
-                            rowKey="key"
-                            pagination={false}
-                            scroll={{ x: 'max-content' }}
-                            dataSource={card.snapshotRows}
-                            columns={[
-                              { title: '證書快照', dataIndex: 'label' },
-                              { title: '送簽時', dataIndex: 'atSend', width: '38%' },
-                              { title: '簽署時', dataIndex: 'atSign', width: '38%' },
-                            ]}
-                          />
+                          <Space orientation="vertical" size={16} style={{ width: '100%' }}>
+                            <Descriptions
+                              column={{ xs: 1, md: 2, xl: 3 }}
+                              size="small"
+                              items={card.summary.map((item) => ({ key: item.label, label: item.label, children: item.value }))}
+                            />
+                            <Table
+                              size="middle"
+                              rowKey="key"
+                              pagination={false}
+                              scroll={{ x: 'max-content' }}
+                              dataSource={card.snapshotRows}
+                              columns={[
+                                { title: '證書快照', dataIndex: 'label' },
+                                { title: '送簽時', dataIndex: 'atSend', width: '38%' },
+                                { title: '簽署時', dataIndex: 'atSign', width: '38%' },
+                              ]}
+                            />
+                          </Space>
                         </Card>
                       ))}
                     </Space>

@@ -30,6 +30,8 @@
 - `SigningSubscriber.prepareOutcome?(subject, event, eventAt)`：簽署事件進交易之前呼叫，可呼叫非同步來源（登錄資料）。回傳值放進 `onOutcome` 的 `context.prepared`。丟例外時模組記 log 並當作沒有準備。
 - `SigningSubscriber.onOutcome(subject, outcome, { eventAt, prepared })`：`eventAt` 是事件時間，服務商沒提供時用模組的現在時間。判定一律用 `eventAt`。
 
+快照的三層狀態與核對紀錄 ID 是收到事件當下的登錄資料（登錄沒有歷史查詢），判定時點與判定結果用事件時間。事件與 webhook 到達之間登錄資料有變時，兩者可能不同時點，這是登錄 seam 沒有「某時點的事實」查詢造成的，C 線 MIL-113 若提供歷史查詢再改。
+
 哪些紀錄補快照：某位簽署人簽署時，補對應 email 的那一列。全員完成事件先到時，補所有還沒補的列，時間用完成事件的。拒簽與撤回不補。已補過的不會被覆蓋（webhook 重試）。
 
 ## 給 A 線 MIL-85（搬 PostgreSQL）

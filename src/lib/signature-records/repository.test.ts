@@ -142,6 +142,7 @@ describe('寫入後不得修改（資料庫層擋下，不只是 repository 沒�
   }
 
   it.each([
+    ['id', '999'],
     ['statute_ref', "'x'"],
     ['rule_id', "'x'"],
     ['rule_version', '9'],

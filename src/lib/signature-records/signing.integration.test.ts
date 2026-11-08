@@ -13,6 +13,7 @@ import { createSigningModule } from '../signing-module/module';
 import type { SigningProvider } from '../signing-module/provider';
 import type { SigningSubscriber } from '../signing-module/subscriber';
 import type { ContractRoutingConditions, SignatureField } from '../types';
+import { GET as getSignatureRecordsRoute } from '../../app/api/contracts/[id]/signature-records/route';
 import { listSignatureRecords } from './repository';
 
 // 整合測試：走簽署模組介面，配 Mock adapter（MIL-70）。
@@ -314,7 +315,36 @@ describe('簽署任務完成後的紀錄（P0-12 AC7）', () => {
     expect(record.statuteRef).toContain('§32');
     expect(signer.name).toBe('陳怡君');
     expect(record.entityId).toBe('org-pe-beichen');
-    expect(signer.signedAt).toBeTruthy();
+    expect(signer.signedAt).toMatch(/^2026-11-10 /);
     expect(record.snapshotAtSign).not.toBeNull();
+  });
+});
+
+describe('GET /api/contracts/[id]/signature-records（詳情頁的資料來源）', () => {
+  const call = async (id: number) => {
+    const res = await getSignatureRecordsRoute(new Request('http://localhost/x'), { params: Promise.resolve({ id: String(id) }) });
+    return { status: res.status, json: await res.json() };
+  };
+
+  it('包租合約送簽後回一筆，帶簽署人狀態與執業主體名稱', async () => {
+    const { id, send } = await setup();
+    await send();
+    const { status, json } = await call(id);
+    expect(status).toBe(200);
+    expect(json.data).toHaveLength(1);
+    expect(json.data[0]).toMatchObject({
+      ruleId: SLOT,
+      entityName: '北辰租賃住宅管理股份有限公司',
+      signer: { name: '陳怡君', role: 'practitioner', status: 'pending', signedAt: null },
+    });
+  });
+
+  it('草稿與兩方合約回空陣列，頁面就不顯示分頁', async () => {
+    const { id } = await setup();
+    expect((await call(id)).json).toEqual({ data: [] });
+  });
+
+  it('合約不存在回 404', async () => {
+    expect((await call(9999)).status).toBe(404);
   });
 });
