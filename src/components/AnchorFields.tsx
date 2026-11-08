@@ -34,6 +34,12 @@ function loadAreas(): Promise<AreaData> {
 /** 「台」視同「臺」，搜尋時不分。 */
 const toFormalTai = (text: string) => text.replace(/台/g, '臺').toLowerCase();
 
+/** 選單搜尋：「台」視同「臺」，空白不影響。 */
+const matchesLabel = (input: string, option?: { label?: unknown }) => {
+  const squash = (text: string) => toFormalTai(text).replace(/\s+/g, "");
+  return squash(String(option?.label ?? "")).includes(squash(input));
+};
+
 interface KeyFieldsProps {
   form: FormInstance;
   /** 欄位路徑的前綴，例如 ['anchor', 'key']。 */
@@ -84,7 +90,7 @@ export function AnchorKeyFields({ form, prefix }: KeyFieldsProps) {
               placeholder="選縣市"
               loading={areas === null}
               options={areas?.cities.map((c) => ({ value: c.code, label: c.name }))}
-              filterOption={(input, option) => toFormalTai(String(option?.label ?? '')).includes(toFormalTai(input))}
+              filterOption={matchesLabel}
               onChange={() => form.setFieldValue([...prefix, 'town'], undefined)}
             />
           </Form.Item>
@@ -96,7 +102,7 @@ export function AnchorKeyFields({ form, prefix }: KeyFieldsProps) {
               placeholder={city ? '選鄉鎮市區' : '先選縣市'}
               disabled={!city}
               options={towns.map((t) => ({ value: t.code, label: t.name }))}
-              filterOption={(input, option) => toFormalTai(String(option?.label ?? '')).includes(toFormalTai(input))}
+              filterOption={matchesLabel}
               onChange={() => form.setFieldValue([...prefix, 'section'], undefined)}
             />
           </Form.Item>
@@ -115,7 +121,7 @@ export function AnchorKeyFields({ form, prefix }: KeyFieldsProps) {
               loading={loadingSections}
               notFoundContent={loadingSections ? '載入中' : '找不到符合的段小段，已註銷的段不會列出'}
               options={sections.map((s) => ({ value: s.code, label: `${s.label}（${s.code}）` }))}
-              filterOption={(input, option) => toFormalTai(String(option?.label ?? '').replace(/\s+/g, '')).includes(toFormalTai(input).replace(/\s+/g, ''))}
+              filterOption={matchesLabel}
             />
           </Form.Item>
         </Col>
@@ -127,7 +133,7 @@ export function AnchorKeyFields({ form, prefix }: KeyFieldsProps) {
             label="建號"
             rules={[
               { required: true, message: '請填建號' },
-              { pattern: /^\d{1,5}$/, message: '建號為 1 到 5 位數字' },
+              { pattern: /^(?!0+$)\d{1,5}$/, message: '建號為 1 到 5 位數字，不能全是 0' },
             ]}
             extra="不足 5 碼時系統補零"
           >
@@ -169,7 +175,7 @@ export function AnchorSection({ form }: { form: FormInstance }) {
       </Form.Item>
       {noKey ? (
         <Form.Item>
-          <Alert type="info" showIcon title="之後可以在物件詳情頁補建號。補上之前，這個物件的產權狀態是「待補建號」。" />
+          <Alert type="info" showIcon title="之後可以在物件詳情頁補建號。補上之前，這個物件的產權狀態是「待驗證」。" />
         </Form.Item>
       ) : (
         <AnchorKeyFields form={form} prefix={['anchor', 'key']} />

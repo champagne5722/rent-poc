@@ -4,10 +4,18 @@ import type { AnchorStatus, PropertyAnchor } from '@/lib/types';
 // 名稱來自 registry 的參照表，已經是「臺」，這裡不再轉換。
 
 export const ANCHOR_STATUS_LABELS: Record<AnchorStatus, string> = {
-  pending_verification: '待補建號',
+  pending_verification: '待驗證',
   keyed: '已建號',
   merged: '已合併',
   retired: '已停用',
+};
+
+/** 狀態標籤的 antd Tag 顏色，只用 DESIGN.md 的語意色：已建號成功、待驗證警告，其餘預設。 */
+export const ANCHOR_STATUS_COLORS: Record<AnchorStatus, 'success' | 'warning' | 'default'> = {
+  pending_verification: 'warning',
+  keyed: 'success',
+  merged: 'default',
+  retired: 'default',
 };
 
 /** 縣市、鄉鎮市區、段小段，以空白分隔。沒有行政區（待驗證）回 null。 */

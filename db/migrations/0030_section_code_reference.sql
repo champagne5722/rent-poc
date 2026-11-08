@@ -170,6 +170,8 @@ GRANT EXECUTE ON FUNCTION registry.assign_anchor_key(text, text, text, text, tex
 -- 4. 讀取錨點 ---------------------------------------------------------------------
 -- 物件頁顯示產權用。只回呼叫者組織有物件指向的單位：別的組織的單位 ID 與不存在的 ID 同樣得到空結果。
 -- 名稱取自參照表（臺），畫面不必另載段碼表。
+-- 注意（B4 合併、B2 分租之後）：兩個組織的單位掛在同一個錨點時，這個函式會讓雙方都讀到錨點上的座標。
+-- 目前每個物件都建新錨點，碰不到。MIL-146 合併錨點時必須決定座標歸誰，再改這裡。
 CREATE FUNCTION registry.get_anchors_for_units(p_unit_ids text[])
 RETURNS TABLE (
   unit_id          text,

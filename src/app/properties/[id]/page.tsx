@@ -8,7 +8,7 @@ import { Alert, App as AntApp, Button, Descriptions, Empty, Flex, Form, Modal, S
 import { ArrowLeftOutlined, EditOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { AnchorKeyFields } from '@/components/AnchorFields';
-import { ANCHOR_STATUS_LABELS, anchorKeyText, anchorLocationText } from '@/lib/properties/anchor-display';
+import { ANCHOR_STATUS_COLORS, ANCHOR_STATUS_LABELS, anchorKeyText, anchorLocationText } from '@/lib/properties/anchor-display';
 import { buildAnchorPayload } from '@/lib/properties/anchor-form';
 import { formatEquipmentItem } from '@/lib/equipment';
 import type { Property, PropertyAnchor } from '@/lib/types';
@@ -73,13 +73,11 @@ function AnchorPanel({ property, onKeyed }: { property: Property; onKeyed: (anch
             key: 'status',
             label: '產權狀態',
             children: (
-              <Tag color={keyed ? 'success' : anchor.status === 'pending_verification' ? 'warning' : 'default'}>
-                {ANCHOR_STATUS_LABELS[anchor.status]}
-              </Tag>
+              <Tag color={ANCHOR_STATUS_COLORS[anchor.status]}>{ANCHOR_STATUS_LABELS[anchor.status]}</Tag>
             ),
           },
           { key: 'address', label: '門牌', children: property.address },
-          { key: 'location', label: '地段', children: anchorLocationText(anchor) ?? '—' },
+          { key: 'location', label: '段小段', children: anchorLocationText(anchor) ?? '—' },
           { key: 'building', label: '建號', children: anchorKeyText(anchor) ?? '—' },
           { key: 'coordinates', label: '座標', children: coordinates },
         ]}

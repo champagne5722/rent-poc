@@ -103,6 +103,11 @@ async function fetchAnchors(tx: OrgTx, unitIds: string[]): Promise<Map<string, U
   );
 }
 
+/** 讀一個租賃單位的錨點。讀不到（單位不是呼叫者組織的）回 undefined。 */
+async function fetchUnitAnchor(tx: OrgTx, unitId: string): Promise<UnitAnchor | undefined> {
+  return (await fetchAnchors(tx, [unitId])).get(unitId);
+}
+
 function toProperty(row: Row, anchor: PropertyAnchor | null): Property {
   return {
     id: row.id,
@@ -130,8 +135,7 @@ export async function listProperties(tx: OrgTx): Promise<Property[]> {
 export async function getProperty(tx: OrgTx, id: string): Promise<Property | null> {
   const { rows } = await tx.query<Row>(`SELECT ${COLUMNS} FROM org.properties WHERE id = $1`, [id]);
   if (!rows[0]) return null;
-  const anchors = await fetchAnchors(tx, [rows[0].rental_unit_id]);
-  return toProperty(rows[0], anchors.get(rows[0].rental_unit_id)?.anchor ?? null);
+  return toProperty(rows[0], (await fetchUnitAnchor(tx, rows[0].rental_unit_id))?.anchor ?? null);
 }
 
 /**
@@ -202,15 +206,15 @@ export async function setPropertyAnchorKey(tx: OrgTx, propertyId: string, key: A
   );
   if (!rows[0]) return null;
   const unitId = rows[0].rental_unit_id;
-  const before = (await fetchAnchors(tx, [unitId])).get(unitId);
-  if (!before) return null;
-  await assignAnchorKey(tx, before.anchorId, key);
+  const current = await fetchUnitAnchor(tx, unitId);
+  if (!current) return null;
+  await assignAnchorKey(tx, current.anchorId, key);
   await appendAudit(tx, {
     action: 'property.anchor_key',
     object: { type: 'property', id: propertyId },
     payload: { rental_unit_id: unitId },
   });
-  return (await fetchAnchors(tx, [unitId])).get(unitId)?.anchor ?? null;
+  return (await fetchUnitAnchor(tx, unitId))?.anchor ?? null;
 }
 
 /** 修改物件。找不到（含別的組織的物件）回 null。不改租賃單位。 */
@@ -229,7 +233,7 @@ export async function updateProperty(tx: OrgTx, id: string, input: PropertyInput
     [id, input.name, input.address, input.type ?? null, input.size, input.default_rent, input.note, JSON.stringify(input.equipment)],
   );
   if (!rows[0]) return null;
-  const after = toProperty(rows[0], (await fetchAnchors(tx, [rows[0].rental_unit_id])).get(rows[0].rental_unit_id)?.anchor ?? null);
+  const after = toProperty(rows[0], (await fetchUnitAnchor(tx, rows[0].rental_unit_id))?.anchor ?? null);
   // 沒有任何欄位改變時不寫事件：只會增加鏈頭的鎖競爭與雜訊
   const changed = changedFields(before, after);
   if (changed.length > 0) {

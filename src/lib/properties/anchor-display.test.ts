@@ -31,7 +31,7 @@ const keyed: PropertyAnchor = {
 describe('產權的顯示文字', () => {
   it('狀態標籤用繁體中文', () => {
     expect(ANCHOR_STATUS_LABELS).toEqual({
-      pending_verification: '待補建號',
+      pending_verification: '待驗證',
       keyed: '已建號',
       merged: '已合併',
       retired: '已停用',
@@ -47,7 +47,7 @@ describe('產權的顯示文字', () => {
   it('待驗證或讀不到：沒有行政區與建號可顯示', () => {
     expect(anchorLocationText(pending)).toBeNull();
     expect(anchorKeyText(pending)).toBeNull();
-    expect(anchorSummary(pending)).toBe('待補建號');
-    expect(anchorSummary(null)).toBe('待補建號');
+    expect(anchorSummary(pending)).toBe('待驗證');
+    expect(anchorSummary(null)).toBe('待驗證');
   });
 });

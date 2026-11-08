@@ -25,7 +25,7 @@ import { PROPERTY_TYPES } from '@/lib/types';
 import { formatEquipmentItem } from '@/lib/equipment';
 import { shortUlid } from '@/lib/pg/ulid';
 import { AnchorSection } from '@/components/AnchorFields';
-import { anchorSummary, ANCHOR_STATUS_LABELS } from '@/lib/properties/anchor-display';
+import { anchorSummary, ANCHOR_STATUS_COLORS, ANCHOR_STATUS_LABELS } from '@/lib/properties/anchor-display';
 import { buildAnchorPayload } from '@/lib/properties/anchor-form';
 
 interface EquipmentPickerProps {
@@ -257,7 +257,9 @@ function PropertiesPage() {
               record.anchor?.status === 'keyed' ? (
                 anchorSummary(record.anchor)
               ) : (
-                <Tag color="warning">{ANCHOR_STATUS_LABELS.pending_verification}</Tag>
+                <Tag color={ANCHOR_STATUS_COLORS[record.anchor?.status ?? 'pending_verification']}>
+                  {ANCHOR_STATUS_LABELS[record.anchor?.status ?? 'pending_verification']}
+                </Tag>
               ),
           },
           { title: '型態', dataIndex: 'type', width: 100 },
