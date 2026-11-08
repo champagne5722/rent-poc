@@ -10,12 +10,16 @@ function isAmount(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 0;
 }
 
+function isPositiveAmount(value: number): boolean {
+  return isAmount(value) && value > 0;
+}
+
 /**
- * 扣抵或返還後餘額不得為負。deduction 必須是大於 0 的安全整數，balance 必須是不小於 0 的安全整數。
+ * 扣抵或返還後餘額必須不小於 0。deduction 必須是大於 0 的安全整數，balance 必須是不小於 0 的安全整數。
  * 資料庫端由 `SELECT ... FOR UPDATE` 鎖押金台帳後呼叫，避免並行扣抵。
  */
 export function checkDepositBalance(balance: number, deduction: number): CheckDepositBalanceResult {
-  if (!isAmount(balance) || !isAmount(deduction) || deduction === 0) {
+  if (!isAmount(balance) || !isPositiveAmount(deduction)) {
     return { ok: false, error: 'invalid_amount' };
   }
   if (deduction > balance) return { ok: false, error: 'insufficient_balance' };
@@ -50,7 +54,7 @@ export function settlementAmounts(
 
   let deductionTotal = 0;
   for (const deduction of deductions) {
-    if (!isAmount(deduction) || deduction === 0) return { ok: false, error: 'invalid_amount' };
+    if (!isPositiveAmount(deduction)) return { ok: false, error: 'invalid_amount' };
     deductionTotal += deduction;
     if (!Number.isSafeInteger(deductionTotal)) return { ok: false, error: 'invalid_amount' };
   }

@@ -29,33 +29,33 @@ ADR-0014 決議 13 的 5 列。`control.deposit_holder_rules` 的 migration 直�
 | `DHR-04` | 1 | `master_lease` | 否 | `lessor` | 不限 | `allow` | 否 |
 | `DHR-05` | 1 | 不限 | 不限 | 不限 | 不限 | `allow` | 否 |
 
-業務類型的值沿用 `self_managed`、`managed`、`master_lease`。
+業務類型沿用 `src/lib/cases/transitions.ts` 的 `BUSINESS_TYPES`（`self_managed`、`managed`、`master_lease`），本模組重新匯出。`notifyMandator` 對應 ADR 的「通知委託人」，委託人依 GLOSSARY 是委託管理合約的甲方。
 
 ## `evaluateHolderRule(rules, ctx)`
 
-依陣列順序比對，第一個命中的列生效。「其他組合」的 `DHR-05` 必須排最後。回傳：
+取最具體的命中列，也就是條件欄位不是「不限」的數量最多者，同樣具體時取陣列中靠前的。結果與陣列順序無關，`DHR-05` 排在哪裡都不會蓋過具體的列。回傳：
 
 ```ts
 {
   action: 'allow' | 'warn' | 'warn_fix_mandate' | 'block';
   ruleId: string | null;       // 命中的規則 ID
   ruleVersion: number | null;
-  notifyPrincipal: boolean;
+  notifyMandator: boolean;
   messageKey: DepositHolderMessageKey | null; // allow 時為 null
 }
 ```
 
-規則陣列為空、缺列或沒有命中時回傳 `warn`，`ruleId` 與 `ruleVersion` 為 `null`，`notifyPrincipal` 為 `true`，訊息鍵是 `deposit_holder.warn.rule_unmatched`。持有人確認紀錄的 `rule_id` 存 `null`。
+規則陣列為空、缺列、沒有命中，或輸入在執行期不合法（欄位是 `null`、`undefined` 或未知字串）時，一律回傳 `warn`，`ruleId` 與 `ruleVersion` 為 `null`，`notifyMandator` 為 `true`，訊息鍵是 `deposit_holder.warn.rule_unmatched`。持有人確認紀錄的 `rule_id` 存 `null`。
 
 `ctx.mandateIncludesDeposit` 在非代管案件沒有意義，傳 `false`。
 
 ## 訊息鍵
 
-`DEPOSIT_HOLDER_MESSAGE_KEYS` 只放鍵，文字內容待法務確認（MIL-62），由介面層的字串表提供。文字不得寫「合法」或「違法」，只列公告義務。
+`DEPOSIT_HOLDER_MESSAGE_KEYS` 只放鍵，文字內容待法務確認（MIL-62），由介面層的字串表提供。文字不寫「合法」或「違法」，只列公告義務。
 
 ## `checkDepositBalance(balance, deduction)`
 
-扣抵或返還後餘額不得為負。回傳 `{ ok: true, remaining }` 或 `{ ok: false, error }`。`deduction` 必須大於 0，`balance` 必須不小於 0，兩者都是安全整數，否則回 `invalid_amount`。扣抵大於餘額回 `insufficient_balance`。呼叫端必須先 `SELECT ... FOR UPDATE` 鎖押金台帳。
+扣抵或返還後餘額必須不小於 0。回傳 `{ ok: true, remaining }` 或 `{ ok: false, error }`。`deduction` 必須大於 0，`balance` 必須不小於 0，兩者都是安全整數，否則回 `invalid_amount`。扣抵大於餘額回 `insufficient_balance`。呼叫端必須先 `SELECT ... FOR UPDATE` 鎖押金台帳。
 
 ## `settlementAmounts(expected, received, deductions)`
 

@@ -1,10 +1,12 @@
 // 押金帳戶規則（ADR-0014 決議 13）。
 // 純函式與常數，沒有 I/O。`control.deposit_holder_rules` 的 migration 直接讀 DEPOSIT_HOLDER_RULES。
 
+import { BUSINESS_TYPES, type BusinessType } from '../cases/transitions';
 import { DEPOSIT_HOLDER_MESSAGE_KEYS, type DepositHolderMessageKey } from './messages';
 
-export const BUSINESS_TYPES = ['self_managed', 'managed', 'master_lease'] as const;
-export type BusinessType = (typeof BUSINESS_TYPES)[number];
+// 業務類型沿用案件模組的定義，值是 self_managed、managed、master_lease。
+export { BUSINESS_TYPES };
+export type { BusinessType };
 
 /** 收款帳戶持有人的種類（ADR-0014 決議 9）。 */
 export const HOLDER_KINDS = ['lessor', 'owner', 'manager', 'other'] as const;
@@ -25,10 +27,10 @@ export interface DepositHolderRule {
   holderKind: HolderKind | null;
   mandateIncludesDeposit: boolean | null;
   action: HolderRuleAction;
-  notifyPrincipal: boolean;
+  notifyMandator: boolean;
 }
 
-/** ADR-0014 決議 13 的 5 列。依序比對，第一個命中的列生效，所以「其他組合」必須排最後。 */
+/** ADR-0014 決議 13 的 5 列。比對時取最具體的命中列，與陣列順序無關。 */
 export const DEPOSIT_HOLDER_RULES: readonly DepositHolderRule[] = [
   {
     ruleId: 'DHR-01',
@@ -38,7 +40,7 @@ export const DEPOSIT_HOLDER_RULES: readonly DepositHolderRule[] = [
     holderKind: 'manager',
     mandateIncludesDeposit: null,
     action: 'block',
-    notifyPrincipal: false,
+    notifyMandator: false,
   },
   {
     ruleId: 'DHR-02',
@@ -48,7 +50,7 @@ export const DEPOSIT_HOLDER_RULES: readonly DepositHolderRule[] = [
     holderKind: 'manager',
     mandateIncludesDeposit: true,
     action: 'warn',
-    notifyPrincipal: true,
+    notifyMandator: true,
   },
   {
     ruleId: 'DHR-03',
@@ -58,7 +60,7 @@ export const DEPOSIT_HOLDER_RULES: readonly DepositHolderRule[] = [
     holderKind: 'manager',
     mandateIncludesDeposit: false,
     action: 'warn_fix_mandate',
-    notifyPrincipal: true,
+    notifyMandator: true,
   },
   {
     ruleId: 'DHR-04',
@@ -68,7 +70,7 @@ export const DEPOSIT_HOLDER_RULES: readonly DepositHolderRule[] = [
     holderKind: 'lessor',
     mandateIncludesDeposit: null,
     action: 'allow',
-    notifyPrincipal: false,
+    notifyMandator: false,
   },
   {
     ruleId: 'DHR-05',
@@ -78,7 +80,7 @@ export const DEPOSIT_HOLDER_RULES: readonly DepositHolderRule[] = [
     holderKind: null,
     mandateIncludesDeposit: null,
     action: 'allow',
-    notifyPrincipal: false,
+    notifyMandator: false,
   },
 ];
 
@@ -96,7 +98,7 @@ export interface HolderRuleEvaluation {
   /** 命中的規則 ID。規則缺列或沒有命中時為 null。 */
   ruleId: string | null;
   ruleVersion: number | null;
-  notifyPrincipal: boolean;
+  notifyMandator: boolean;
   /** 警告或阻擋時的訊息鍵。allow 時為 null。 */
   messageKey: DepositHolderMessageKey | null;
 }
@@ -113,7 +115,7 @@ const UNMATCHED: HolderRuleEvaluation = {
   action: 'warn',
   ruleId: null,
   ruleVersion: null,
-  notifyPrincipal: true,
+  notifyMandator: true,
   messageKey: DEPOSIT_HOLDER_MESSAGE_KEYS.warnRuleUnmatched,
 };
 
@@ -126,18 +128,43 @@ function matches(rule: DepositHolderRule, ctx: HolderRuleContext): boolean {
   );
 }
 
-/** 依序找第一個命中的規則列。沒有命中時回傳 warn。 */
+/** 規則列有幾個條件欄位不是「不限」。數字越大越具體。 */
+function specificity(rule: DepositHolderRule): number {
+  return [rule.businessType, rule.socialHousing, rule.holderKind, rule.mandateIncludesDeposit].filter(
+    (condition) => condition !== null,
+  ).length;
+}
+
+/** 輸入在執行期不合法（例如從資料庫讀出 null 或未知字串）時，不放行。 */
+function isValidContext(ctx: HolderRuleContext): boolean {
+  return (
+    (BUSINESS_TYPES as readonly string[]).includes(ctx.businessType) &&
+    (HOLDER_KINDS as readonly string[]).includes(ctx.holderKind) &&
+    typeof ctx.socialHousing === 'boolean' &&
+    typeof ctx.mandateIncludesDeposit === 'boolean'
+  );
+}
+
+/**
+ * 找最具體的命中列，同樣具體時取陣列中靠前的。結果與陣列順序無關，
+ * 所以「其他組合」的萬用列排在哪裡都不會蓋過具體的列。
+ * 輸入不合法、陣列為空或沒有命中時回傳 warn。
+ */
 export function evaluateHolderRule(
   rules: readonly DepositHolderRule[],
   ctx: HolderRuleContext,
 ): HolderRuleEvaluation {
-  const rule = rules.find((candidate) => matches(candidate, ctx));
+  if (!isValidContext(ctx)) return { ...UNMATCHED };
+  let rule: DepositHolderRule | undefined;
+  for (const candidate of rules) {
+    if (matches(candidate, ctx) && (!rule || specificity(candidate) > specificity(rule))) rule = candidate;
+  }
   if (!rule) return { ...UNMATCHED };
   return {
     action: rule.action,
     ruleId: rule.ruleId,
     ruleVersion: rule.version,
-    notifyPrincipal: rule.notifyPrincipal,
+    notifyMandator: rule.notifyMandator,
     messageKey: MESSAGE_KEY_BY_ACTION[rule.action],
   };
 }

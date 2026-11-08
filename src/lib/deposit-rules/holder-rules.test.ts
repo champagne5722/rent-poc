@@ -20,14 +20,14 @@ describe('evaluateHolderRule：ADR-0014 決議 13 的 5 列', () => {
     ['自管、一般、lessor（其他組合）', 'self_managed', false, 'lessor', false, 'allow', 'DHR-05', false],
   ] as const)(
     '%s → %s',
-    (_name, businessType, socialHousing, holderKind, mandateIncludesDeposit, action, ruleId, notifyPrincipal) => {
+    (_name, businessType, socialHousing, holderKind, mandateIncludesDeposit, action, ruleId, notifyMandator) => {
       const result = evaluateHolderRule(DEPOSIT_HOLDER_RULES, {
         businessType,
         socialHousing,
         holderKind,
         mandateIncludesDeposit,
       });
-      expect(result).toMatchObject({ action, ruleId, ruleVersion: 1, notifyPrincipal });
+      expect(result).toMatchObject({ action, ruleId, ruleVersion: 1, notifyMandator });
     },
   );
 });
@@ -73,6 +73,18 @@ describe('evaluateHolderRule：全部組合', () => {
       mandateIncludesDeposit: mandate,
     });
     expect(result.action).toBe(expected);
+    // 命中的規則：代管 manager 的 4 個組合各有自己的列，包租 lessor 非社宅是 DHR-04，其餘是 DHR-05。
+    const expectedRuleId =
+      businessType === 'managed' && holderKind === 'manager'
+        ? socialHousing
+          ? 'DHR-01'
+          : mandate
+            ? 'DHR-02'
+            : 'DHR-03'
+        : businessType === 'master_lease' && holderKind === 'lessor' && !socialHousing
+          ? 'DHR-04'
+          : 'DHR-05';
+    expect(result.ruleId).toBe(expectedRuleId);
   });
 });
 
@@ -89,7 +101,7 @@ describe('evaluateHolderRule：缺列與沒有命中', () => {
       action: 'warn',
       ruleId: null,
       ruleVersion: null,
-      notifyPrincipal: true,
+      notifyMandator: true,
       messageKey: 'deposit_holder.warn.rule_unmatched',
     });
   });
@@ -100,7 +112,7 @@ describe('evaluateHolderRule：缺列與沒有命中', () => {
     expect(evaluateHolderRule(withoutFallback, ctx).action).toBe('warn');
   });
 
-  it('缺少第 2 與第 3 列時，一般代管案件由 manager 持有回傳 warn', () => {
+  it('缺少具體列時由萬用列接手。表的完整性由下方的常數測試與 migration 保證', () => {
     const rules = DEPOSIT_HOLDER_RULES.filter((rule) => rule.ruleId !== 'DHR-02' && rule.ruleId !== 'DHR-03');
     const result = evaluateHolderRule(rules, {
       businessType: 'managed',
@@ -108,8 +120,37 @@ describe('evaluateHolderRule：缺列與沒有命中', () => {
       holderKind: 'manager',
       mandateIncludesDeposit: true,
     });
-    // 萬用列 DHR-05 會命中，這個測試記錄現況：缺列時由萬用列接手。
     expect(result.ruleId).toBe('DHR-05');
+  });
+
+  it('結果與陣列順序無關：萬用列排在最前面也不會蓋過具體的列', () => {
+    const reversed = [...DEPOSIT_HOLDER_RULES].reverse();
+    expect(reversed[0].ruleId).toBe('DHR-05');
+    for (const [businessType, socialHousing, holderKind, mandate] of ALL_COMBINATIONS) {
+      const ctx = { businessType, socialHousing, holderKind, mandateIncludesDeposit: mandate };
+      expect(evaluateHolderRule(reversed, ctx)).toEqual(evaluateHolderRule(DEPOSIT_HOLDER_RULES, ctx));
+    }
+  });
+
+  it.each([
+    ['社宅旗標是 null', { socialHousing: null }],
+    ['社宅旗標是 undefined', { socialHousing: undefined }],
+    ['委託範圍含押金是 undefined', { mandateIncludesDeposit: undefined }],
+    ['業務類型是未知字串', { businessType: 'sublease' }],
+    ['holder_kind 是未知字串', { holderKind: 'trustee' }],
+  ])('輸入在執行期不合法時回傳 warn，不放行：%s', (_name, patch) => {
+    const bad = {
+      businessType: 'managed',
+      socialHousing: true,
+      holderKind: 'manager',
+      mandateIncludesDeposit: true,
+      ...patch,
+    } as unknown as Parameters<typeof evaluateHolderRule>[1];
+    expect(evaluateHolderRule(DEPOSIT_HOLDER_RULES, bad)).toMatchObject({
+      action: 'warn',
+      ruleId: null,
+      messageKey: 'deposit_holder.warn.rule_unmatched',
+    });
   });
 });
 
@@ -128,12 +169,12 @@ describe('DEPOSIT_HOLDER_RULES 常數', () => {
       holderKind: null,
       mandateIncludesDeposit: null,
       action: 'allow',
-      notifyPrincipal: false,
+      notifyMandator: false,
     });
   });
 
   it('只有 warn 與 warn_fix_mandate 通知委託人', () => {
-    const notifying = DEPOSIT_HOLDER_RULES.filter((rule) => rule.notifyPrincipal).map((rule) => rule.action);
+    const notifying = DEPOSIT_HOLDER_RULES.filter((rule) => rule.notifyMandator).map((rule) => rule.action);
     expect(notifying.sort()).toEqual(['warn', 'warn_fix_mandate']);
   });
 });
