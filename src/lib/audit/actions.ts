@@ -37,6 +37,7 @@ export const AUDIT_ACTIONS = [
   'property.create', // MIL-81：物件建立、修改、刪除，payload 只放租賃單位 ID 與被改的欄位名稱
   'property.update',
   'property.delete',
+  'property.anchor_key', // MIL-143：補建號，payload 只放租賃單位 ID，不放鍵與地址
   'anchor.merge',
   'handover.seal',
   'handover.accept',

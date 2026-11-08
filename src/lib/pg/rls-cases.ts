@@ -54,3 +54,58 @@ export const ORG_TABLE_CASES: Record<string, OrgTableCase> = {
 export function tablesWithoutCase(tables: readonly string[]): string[] {
   return tables.filter((t) => !(t in ORG_TABLE_CASES));
 }
+
+// ---------------------------------------------------------------------------
+// registry 的表與函式（MIL-143 加）
+//
+// registry 不掛組織 RLS（ADR-0012 決議 8），隔離靠兩件事：
+//   1. app_rw 對 registry 的表沒有任何直接權限，只能呼叫 SECURITY DEFINER 函式。
+//   2. 函式只回呼叫者組織有物件指向的錨點與單位，別的組織的 ID 與不存在的 ID 得到完全相同的結果。
+// rls-penetration.test.ts 從系統目錄列出 registry 所有表與 app_rw 能執行的函式，缺登記就失敗。
+
+/** registry 的每張表都必須登記。測試對每張表驗證 app_rw 的 SELECT、INSERT、UPDATE、DELETE 都被拒。 */
+export const REGISTRY_TABLE_CASES: Record<string, { purpose: string }> = {
+  'registry.anchors': { purpose: '產權錨點' },
+  'registry.rental_units': { purpose: '租賃單位' },
+  'registry.areas': { purpose: '縣市與鄉鎮市區編碼表（參照）' },
+  'registry.sections': { purpose: '段碼表（參照）' },
+};
+
+/** 一個 registry 函式的跨組織探測。被探測的 ID 由測試提供：A 組織建好的物件，與隨機產生的不存在 ID。 */
+export interface RegistryFunctionCase {
+  /**
+   * 以 B 組織的脈絡呼叫函式，目標是 `target`（A 組織的物件，或不存在的隨機 ID）。
+   * 回傳值或丟出的錯誤必須與目標的歸屬無關：兩種目標得到的結果必須逐位元相同。
+   * 函式沒有接收別人能猜的 ID 時填 null，並在 reason 說明。
+   */
+  probe: ((tx: OrgTx, target: { anchorId: string; unitId: string }) => Promise<unknown>) | null;
+  reason: string;
+}
+
+/** app_rw 能執行的每個 registry 函式都必須登記。 */
+export const REGISTRY_FUNCTION_CASES: Record<string, RegistryFunctionCase> = {
+  'registry.create_pending_anchor': {
+    probe: null,
+    reason: '呼叫端自己給新 ID，只建不讀，沒有可探測的目標',
+  },
+  'registry.assign_anchor_key': {
+    probe: (tx, { anchorId }) =>
+      tx.query('SELECT registry.assign_anchor_key($1, $2, $3, $4, $5, NULL)', [anchorId, 'A', '01', '0001', '1']),
+    reason: '以錨點 ID 補建號',
+  },
+  'registry.get_anchors_for_units': {
+    probe: async (tx, { unitId }) =>
+      (await tx.query('SELECT * FROM registry.get_anchors_for_units($1::text[])', [[unitId]])).rows,
+    reason: '以單位 ID 讀錨點',
+  },
+};
+
+/** 傳入系統目錄列出的 registry 表名（schema.table），回傳沒有登記案例的表。 */
+export function registryTablesWithoutCase(tables: readonly string[]): string[] {
+  return tables.filter((t) => !(t in REGISTRY_TABLE_CASES));
+}
+
+/** 傳入系統目錄列出的 registry 函式名（schema.name），回傳沒有登記案例的函式。 */
+export function registryFunctionsWithoutCase(functions: readonly string[]): string[] {
+  return functions.filter((f) => !(f in REGISTRY_FUNCTION_CASES));
+}

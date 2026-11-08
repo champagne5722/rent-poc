@@ -66,6 +66,8 @@ describe('GET /api/properties（清單）', () => {
     expect(data[1]).toEqual({
       id: first,
       rental_unit_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/),
+      // 沒有給產權時是待驗證錨點，鍵與座標都是空值（MIL-143；產權的完整案例見 anchor.route.test.ts）
+      anchor: expect.objectContaining({ status: 'pending_verification', building_no: null }),
       name: '第一間',
       address: '台北市大安區和平東路二段 100 號 3 樓',
       type: '整層住家',
