@@ -13,6 +13,12 @@ export function isMockMode(): boolean {
   return !CLIENT_ID || !CLIENT_SECRET;
 }
 
+// DOTTEDSIGN_VERIFY_SIGNERS=1 時，送簽替每位簽署人帶 email 驗證（ADR-0018 決議 13）。
+// Mock 與 sandbox 停用驗證，帶了會被拒絕，所以預設不送。判定不從金鑰字串推斷，由部署明確設定。
+export function verifySignersEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env.DOTTEDSIGN_VERIFY_SIGNERS === '1';
+}
+
 export function dsClientSecret(): string {
   return CLIENT_SECRET ?? '';
 }
