@@ -69,6 +69,7 @@ import {
 } from '@/lib/clause-library';
 import { extraClauseLabel, usesEquipmentAnnex } from '@/lib/contract-clauses';
 import { equipmentAnnexSummary } from '@/lib/contract-detail';
+import { shortUlid } from '@/lib/pg/ulid';
 import {
   STEP_CONFIRM,
   STEP_FIELDS,
@@ -672,7 +673,7 @@ export default function ContractWizard({ id }: { id: string }) {
     <>
       <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 12 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>
-          建立合約 — 草稿 #{contract.id}
+          建立合約 — 草稿 #{shortUlid(contract.id)}
         </Typography.Title>
         <Link href="/contracts">
           <Button size="small">先離開（草稿已保留）</Button>
