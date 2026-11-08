@@ -77,14 +77,20 @@ function presentValue(snapshot: HandoverSnapshot, itemKey: string): unknown {
   return item?.status === 'present' ? item.value : null;
 }
 
+/** 快照裡要附已簽 PDF 的文件，依快照順序。匯出前用它決定要讀哪些 PDF。 */
+export function signedDocRefs(snapshot: HandoverSnapshot): { itemKey: string; filePrefix: string; ref: SignedDocRef }[] {
+  return SIGNED_ITEMS.flatMap(({ itemKey, filePrefix }) => {
+    const ref = presentValue(snapshot, itemKey) as SignedDocRef | null;
+    return ref ? [{ itemKey, filePrefix, ref }] : [];
+  });
+}
+
 export function buildHandoverPackage(input: HandoverPackageInput): HandoverPackage {
   const { handover, snapshot, snapshotHash, signedPdfs } = input;
 
   const pdfFiles: HandoverPackageFile[] = [];
   const signedDocuments: SignedDocumentEntry[] = [];
-  for (const { itemKey, filePrefix } of SIGNED_ITEMS) {
-    const ref = presentValue(snapshot, itemKey) as SignedDocRef | null;
-    if (!ref) continue;
+  for (const { itemKey, filePrefix, ref } of signedDocRefs(snapshot)) {
     const bytes = signedPdfs[ref.id];
     if (!bytes) {
       signedDocuments.push({
