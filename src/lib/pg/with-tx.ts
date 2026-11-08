@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { SqlExecutor, TxDriver } from './executor';
 import { isUlid } from './ulid';
+import { recordOperatorAccess } from '../audit/operator-access';
 
 // withTx：取得資料庫的唯一入口（ADR-0012 決議 10，MIL-80）。
 //
@@ -41,7 +42,8 @@ export interface ControlContext {
 /**
  * 平台營運者存取某個組織的資料。必須帶工單號。
  * 設定 app.org_id（目標組織）、app.operator_id、app.ticket_id。
- * 同交易寫存取紀錄的部分由稽核紀錄的票（MIL-82）接上，讀的就是這兩個設定。
+ * 開完交易後、執行 callback 之前，withTx 在同一個交易寫存取紀錄（audit.record_operator_access()，
+ * 讀的就是這三個設定，MIL-82）。紀錄寫不進去時交易失敗，callback 不會執行。
  */
 export interface OperatorContext {
   kind: 'operator';
@@ -78,6 +80,12 @@ export interface TxOptions {
   statementTimeoutMs?: number;
   /** 交易開著卻沒有語句的上限，毫秒。 */
   idleInTransactionTimeoutMs?: number;
+  /**
+   * 開完交易（BEGIN 與脈絡設定都已送出）後、執行 callback 之前的 hook，與 callback 同一個交易。
+   * 拋出例外時整個交易回滾，callback 不會執行。預設行為：operator 脈絡寫營運者存取紀錄（MIL-82），
+   * 其餘脈絡什麼都不做。傳入自訂 hook 會取代預設行為，只給測試使用。
+   */
+  afterBegin?: (ctx: DbContext, conn: SqlExecutor) => Promise<void>;
 }
 
 export const DEFAULT_STATEMENT_TIMEOUT_MS = 15_000;
@@ -147,6 +155,11 @@ export function buildBeginSql(ctx: DbContext, options: TxOptions = {}): string {
 // ---------------------------------------------------------------------------
 // 執行
 
+/** 預設的 afterBegin：平台營運者存取組織資料時，同交易留下紀錄（P0-23 AC5）。 */
+async function defaultAfterBegin(ctx: DbContext, conn: SqlExecutor): Promise<void> {
+  if (ctx.kind === 'operator') await recordOperatorAccess(conn);
+}
+
 const insideTx = new AsyncLocalStorage<true>();
 
 export type WithTx = <C extends DbContext, R>(ctx: C, fn: (tx: Tx<C['kind']>) => Promise<R>) => Promise<R>;
@@ -157,11 +170,12 @@ export function createWithTx(driver: TxDriver, options: TxOptions = {}): WithTx 
     if (insideTx.getStore()) throw new Error('withTx 不得巢狀呼叫：交易內要用外層給的 tx');
     // 先驗證再借連線：格式錯誤的請求不佔連線池
     const beginSql = buildBeginSql(ctx, options);
+    const afterBegin = options.afterBegin ?? defaultAfterBegin;
 
     const lease = await driver.acquire();
     let broken = false;
     try {
-      return await insideTx.run(true, () => runInTransaction(lease.conn, ctx, beginSql, fn));
+      return await insideTx.run(true, () => runInTransaction(lease.conn, ctx, beginSql, afterBegin, fn));
     } catch (error) {
       try {
         await lease.conn.exec('ROLLBACK');
@@ -179,9 +193,11 @@ async function runInTransaction<C extends DbContext, R>(
   conn: SqlExecutor,
   ctx: C,
   beginSql: string,
+  afterBegin: NonNullable<TxOptions['afterBegin']>,
   fn: (tx: Tx<C['kind']>) => Promise<R>,
 ): Promise<R> {
   await conn.exec(beginSql);
+  await afterBegin(ctx, conn);
   let open = true;
   const tx: Tx<C['kind']> = {
     kind: ctx.kind,

@@ -138,6 +138,88 @@ curl -s -o /dev/null -w '%{time_total}s\n' "https://rent-poc-demo-<專案編號>
    gh workflow run ci-deploy.yml --ref main
    ```
 
+### break-glass：維運事故時直接進資料庫
+
+**警告：** break-glass 繞過組織隔離。每次使用都必須寫稽核紀錄，沒有例外。
+
+平台營運者看組織資料，走審核台的 `operator` 脈絡。系統會自動留下存取紀錄。break-glass 只用於應用程式本身修不了的事故。
+
+資料庫無法強迫維運人員先寫紀錄，因為授權與切換角色都由管理者操作。所以第 8 步的對帳不能省。
+
+**前提：**
+
+- 事故有工單，工單號是字母數字開頭、64 字內。
+- 理由寫在工單上，不放個資。紀錄一旦寫入就刪不掉。
+- 平常沒有任何人是 `break_glass` 的成員。
+
+**步驟：**
+
+1. 確認這個資料庫的 `break_glass` 能做什麼：
+
+   ```sql
+   SELECT rolbypassrls FROM pg_roles WHERE rolname = 'break_glass';
+   ```
+
+   - `true`：本機、CI 與自架 PostgreSQL。角色能讀寫所有組織的列。
+   - `false`：Cloud SQL。`postgres` 不是 superuser，建不出有 `BYPASSRLS` 的角色（MIL-79 留言）。此時 `break_glass` 看不到任何組織的列，只能呼叫第 4 步的紀錄函式。
+   - Cloud SQL 的替代做法由 MIL-89 與 MIL-92 決定。決定前，單一組織的事故改用 `app_rw` 登入，逐一設定 `SELECT set_config('app.org_id', '<組織 ID>', false)`。RLS 照常生效，一次只看得到一個組織。
+   - 無論哪一種，第 4 步與第 6 步的紀錄都要寫。
+
+2. 管理者把角色授權給維運人員的資料庫帳號：
+
+   ```sql
+   GRANT break_glass TO "<維運帳號>" WITH INHERIT FALSE, SET TRUE;
+   ```
+
+3. 維運人員用自己的帳號連線，不共用帳號。紀錄會記下登入身分（`session_user`）。
+
+4. 動手之前，先寫開始紀錄：
+
+   ```sql
+   SET ROLE break_glass;
+   SELECT * FROM audit.record_break_glass('start', '<工單號>', '<理由>', '<組織 ID>');
+   ```
+
+   - 事故只涉及一個組織時，第四個參數填組織 ID。紀錄寫在該組織的鏈，組織匯出稽核紀錄時看得到。
+   - 涉及多個組織或與組織無關時，省略第四個參數。紀錄寫在平台鏈。
+   - 函式回傳 `chain_id`、`seq`、`hash`。把 `seq` 貼回工單。
+   - 函式丟錯時不得繼續。修正工單號或理由後重做這一步。
+
+5. 在工單範圍內作業。範圍外的列不得讀，也不得改。
+
+6. 結束時寫結束紀錄，然後退回原本的角色：
+
+   ```sql
+   SELECT * FROM audit.record_break_glass('end', '<工單號>', '<結果摘要>', '<組織 ID>');
+   RESET ROLE;
+   ```
+
+7. 管理者收回授權：
+
+   ```sql
+   REVOKE break_glass FROM "<維運帳號>";
+   ```
+
+8. 事後對帳，當天完成。
+
+   - 確認沒有人還持有角色，結果必須是 0 列：
+
+     ```sql
+     SELECT member::regrole FROM pg_auth_members WHERE roleid = 'break_glass'::regrole;
+     ```
+
+   - 用 `app_rw` 登入，查平台鏈與涉及的組織鏈。每個工單號的 `start` 與 `end` 必須成對：
+
+     ```sql
+     BEGIN;
+     SELECT set_config('app.org_id', '<組織 ID 或 00000000000000000000000001>', true);
+     SELECT seq, occurred_at, actor_id, action, payload FROM audit.events WHERE action LIKE 'break_glass.%' ORDER BY seq;
+     COMMIT;
+     ```
+
+   - 用 `verifyChain()` 驗證同一條鏈，結果必須通過。
+   - 對不上時，當成資安事件處理。在工單記下缺漏，並補寫一筆說明原因的 `start` 或 `end` 紀錄。
+
 ## 資料保存規則
 
 - 資料庫由 Litestream 每秒複寫到 Cloud Storage。
