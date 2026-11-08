@@ -3,23 +3,9 @@
 import OwnerOverview from '@/components/OwnerOverview';
 import { currentOwnerSession } from '@/lib/current-owner-session';
 import { deriveAttention, deriveOverview } from '@/lib/owner-overview';
-import { createFakeOverviewSource, todayInTaipei } from '@/lib/owner-overview-source';
+import { createFakeOverviewSource, formatAsOf, todayInTaipei } from '@/lib/owner-overview-source';
 
 const source = createFakeOverviewSource();
-
-function formatAsOf(iso: string): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Taipei',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(new Date(iso));
-  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? '';
-  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
-}
 
 export default async function OwnerHomePage() {
   // 沒有屋主身分時，OwnerShell 顯示空狀態，不渲染這頁
@@ -35,7 +21,7 @@ export default async function OwnerHomePage() {
       summary={summary}
       rows={rows}
       attention={deriveAttention(rows, today)}
-      asOfLabel={formatAsOf(facts.asOf)}
+      asOfLabel={formatAsOf(summary.asOf)}
     />
   );
 }

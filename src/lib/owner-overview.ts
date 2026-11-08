@@ -181,8 +181,8 @@ function resolveUnitId(unitId: string, units: ReadonlyMap<string, UnitFact>): st
   return current;
 }
 
-function sum(cases: readonly LeaseCaseFact[], pick: (c: LeaseCaseFact) => number): number {
-  return cases.reduce((total, c) => total + pick(c), 0);
+function sum<T>(items: readonly T[], pick: (item: T) => number): number {
+  return items.reduce((total, item) => total + pick(item), 0);
 }
 
 function latest(dates: readonly (string | null)[]): string | null {
@@ -229,7 +229,8 @@ export function deriveOverview(facts: OverviewFacts, today: string): Overview {
       receivable: sum(cases, (c) => c.receivableThisMonth),
       received: sum(cases, (c) => c.receivedThisMonth),
       overdue: sum(cases, (c) => c.overdue),
-      depositExpected: rep?.depositExpected ?? 0,
+      // 約定與餘額同樣加總各案件，舊案件結算中、新案件出租中時兩者才對得起來
+      depositExpected: sum(cases, (c) => c.depositExpected),
       depositBalance: sum(cases, (c) => c.depositBalance),
       depositHolder: rep?.depositHolder ?? null,
       openRepairs: unit.openRepairs,
@@ -265,11 +266,11 @@ function summarize(rows: readonly OverviewRow[], asOf: string): OverviewSummary 
     unitCount: rows.length,
     leased,
     vacant: rows.length - leased,
-    receivable: rows.reduce((t, r) => t + r.receivable, 0),
-    received: rows.reduce((t, r) => t + r.received, 0),
-    overdue: rows.reduce((t, r) => t + r.overdue, 0),
-    depositBalance: rows.reduce((t, r) => t + r.depositBalance, 0),
-    openRepairs: rows.reduce((t, r) => t + r.openRepairs, 0),
+    receivable: sum(rows, (r) => r.receivable),
+    received: sum(rows, (r) => r.received),
+    overdue: sum(rows, (r) => r.overdue),
+    depositBalance: sum(rows, (r) => r.depositBalance),
+    openRepairs: sum(rows, (r) => r.openRepairs),
     asOf,
     revokedManagers: [...revoked.values()],
   };

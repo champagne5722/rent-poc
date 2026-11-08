@@ -10,14 +10,31 @@ export interface OwnerOverviewSource {
   load(session: OwnerSession): Promise<OverviewFacts>;
 }
 
+const TAIPEI_PARTS = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Taipei',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+function taipeiParts(at: Date) {
+  const parts = TAIPEI_PARTS.formatToParts(at);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? '';
+  return { date: `${get('year')}-${get('month')}-${get('day')}`, time: `${get('hour')}:${get('minute')}` };
+}
+
 /** 台灣時區的今天，YYYY-MM-DD。 */
 export function todayInTaipei(now: Date): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Taipei',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(now);
+  return taipeiParts(now).date;
+}
+
+/** 頁首「資料截至」的顯示格式：台灣時區的 YYYY-MM-DD HH:mm。 */
+export function formatAsOf(iso: string): string {
+  const { date, time } = taipeiParts(new Date(iso));
+  return `${date} ${time}`;
 }
 
 function addDays(date: string, days: number): string {

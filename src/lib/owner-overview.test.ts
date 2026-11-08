@@ -229,13 +229,14 @@ describe('deriveOverview：頁首彙總', () => {
     const g = facts({
       units: [unit('u1')],
       leaseCases: [
-        lease('old', 'u1', { state: 'settling', overdue: 8000, depositBalance: 10000 }),
-        lease('new', 'u1', { state: 'active', receivableThisMonth: 12000, depositBalance: 24000 }),
+        lease('old', 'u1', { state: 'settling', overdue: 8000, depositExpected: 30000, depositBalance: 10000 }),
+        lease('new', 'u1', { state: 'active', receivableThisMonth: 12000, depositExpected: 24000, depositBalance: 24000 }),
       ],
     });
     const { rows, summary: s } = deriveOverview(g, TODAY);
     expect(rows[0].overdue).toBe(8000);
     expect(rows[0].depositBalance).toBe(34000);
+    expect(rows[0].depositExpected).toBe(54000);
     expect(s.overdue).toBe(8000);
   });
 

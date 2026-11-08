@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deriveAttention, deriveOverview } from './owner-overview';
-import { createFakeOverviewSource, todayInTaipei } from './owner-overview-source';
+import { createFakeOverviewSource, formatAsOf, todayInTaipei } from './owner-overview-source';
 import { SEED_OWNERS } from './owner-session';
 
 // 台北 2026-11-08 09:00
@@ -13,6 +13,10 @@ describe('todayInTaipei', () => {
     ['2026-11-07T16:00:00Z', '2026-11-08'],
   ])('%s 是台北的 %s', (iso, expected) => {
     expect(todayInTaipei(new Date(iso))).toBe(expected);
+  });
+
+  it('資料截至用台北時間顯示到分鐘', () => {
+    expect(formatAsOf('2026-11-07T16:05:00Z')).toBe('2026-11-08 00:05');
   });
 });
 

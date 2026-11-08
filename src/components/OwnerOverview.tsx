@@ -84,7 +84,7 @@ const ATTENTION_LABEL: Record<AttentionKind, string> = {
   collected_funds_overdue: '代收交付逾期',
   deposit_settlement: '押金結算',
   authority_pending: '出租權源',
-  lease_expiring: '租約到期',
+  lease_expiring: '合約到期',
 };
 
 const ERROR_KINDS: ReadonlySet<AttentionKind> = new Set(['overdue', 'authority_problem', 'collected_funds_overdue']);
@@ -106,8 +106,8 @@ function attentionFact(item: AttentionItem): string {
       return item.days === null ? '押金結算中。' : `押金結算中，自退租點交起算第 ${item.days} 天。`;
     case 'lease_expiring':
       return (item.days ?? 0) >= 0
-        ? `租約剩 ${item.days} 天到期。`
-        : `租約已過到期日 ${-(item.days ?? 0)} 天，仍在出租中。`;
+        ? `合約剩 ${item.days} 天到期。`
+        : `合約已過到期日 ${-(item.days ?? 0)} 天，仍在出租中。`;
   }
 }
 
@@ -196,7 +196,7 @@ function AttentionList({ items }: { items: AttentionItem[] }) {
               <Tag color={ERROR_KINDS.has(item.kind) ? 'error' : 'warning'} className={styles.attentionTag}>
                 {ATTENTION_LABEL[item.kind]}
               </Tag>
-              <Flex vertical gap={2} className={styles.attentionBody}>
+              <Flex vertical gap={4} className={styles.attentionBody}>
                 <Text>
                   {item.address}
                   <Text type="secondary">，{item.unitLabel}</Text>
@@ -221,7 +221,7 @@ function AttentionList({ items }: { items: AttentionItem[] }) {
 
 function UnitCell({ row }: { row: OverviewRow }) {
   return (
-    <Flex vertical gap={2}>
+    <Flex vertical gap={4}>
       {row.href ? <Link href={row.href}>{row.address}</Link> : <Text>{row.address}</Text>}
       <Text type="secondary" className={styles.num}>
         {row.unitLabel}・{row.unitId}
@@ -230,10 +230,10 @@ function UnitCell({ row }: { row: OverviewRow }) {
   );
 }
 
-function ManagerCell({ row }: { row: OverviewRow }) {
+/** 業者的名稱、法定稱謂與驗證狀態（GLOSSARY「經理人」：介面顯示法定稱謂）。表格與卡片共用。 */
+function PractitionerInfo({ row }: { row: OverviewRow }) {
   return (
     <Flex vertical gap={4} align="flex-start">
-      <Tag>{BUSINESS_TYPE_LABEL[row.businessType]}</Tag>
       {row.manager ? (
         <>
           <Text>{row.manager.name}</Text>
@@ -244,24 +244,22 @@ function ManagerCell({ row }: { row: OverviewRow }) {
       ) : (
         <Text type="secondary">屋主自管</Text>
       )}
-      {row.businessType === 'master_lease' && <Text type="secondary">屋主與包租業者的租約</Text>}
+      {row.businessType === 'master_lease' && <Text type="secondary">屋主與包租業者的合約</Text>}
     </Flex>
   );
 }
 
-function leaseNote(row: OverviewRow): string {
-  if (row.leaseState === 'signing' && row.awaitingSigner) return `等待${row.awaitingSigner}簽署`;
-  if (row.leaseEnd) return `${row.leaseEnd} 到期`;
-  return '無到期日';
+function LeaseStateTag({ state }: { state: LeaseState }) {
+  return <Tag color={LEASE_STATE[state].color}>{LEASE_STATE[state].label}</Tag>;
 }
 
-function LeaseCell({ row }: { row: OverviewRow }) {
-  const state = LEASE_STATE[row.leaseState];
+/** 合約狀態下方的說明：簽約中先寫等待誰簽署，再寫到期日。 */
+function LeaseNotes({ row }: { row: OverviewRow }) {
   return (
     <Flex vertical gap={4} align="flex-start">
-      <Tag color={state.color}>{state.label}</Tag>
+      {row.leaseState === 'signing' && row.awaitingSigner && <Text>等待{row.awaitingSigner}簽署</Text>}
       <Text type="secondary" className={styles.num}>
-        {leaseNote(row)}
+        {row.leaseEnd ? `${row.leaseEnd} 到期` : '無到期日'}
       </Text>
     </Flex>
   );
@@ -270,7 +268,7 @@ function LeaseCell({ row }: { row: OverviewRow }) {
 function RentCell({ row, align }: { row: OverviewRow; align: 'flex-start' | 'flex-end' }) {
   if (row.receivable === 0 && row.overdue === 0) return <Text type="secondary">無應收</Text>;
   return (
-    <Flex vertical gap={2} align={align}>
+    <Flex vertical gap={4} align={align}>
       <span>
         {money(row.received)} / {money(row.receivable)}
       </span>
@@ -307,8 +305,28 @@ function AuthorityTag({ status }: { status: AuthorityStatus }) {
 
 const COLUMNS: ColumnsType<OverviewRow> = [
   { title: '租賃單位', key: 'unit', render: (_, r) => <UnitCell row={r} /> },
-  { title: '業務類型與經理人', key: 'manager', width: 220, render: (_, r) => <ManagerCell row={r} /> },
-  { title: '租約', key: 'lease', width: 150, render: (_, r) => <LeaseCell row={r} /> },
+  {
+    title: '業務類型與業者',
+    key: 'manager',
+    width: 220,
+    render: (_, r) => (
+      <Flex vertical gap={4} align="flex-start">
+        <Tag>{BUSINESS_TYPE_LABEL[r.businessType]}</Tag>
+        <PractitionerInfo row={r} />
+      </Flex>
+    ),
+  },
+  {
+    title: '合約',
+    key: 'lease',
+    width: 150,
+    render: (_, r) => (
+      <Flex vertical gap={4} align="flex-start">
+        <LeaseStateTag state={r.leaseState} />
+        <LeaseNotes row={r} />
+      </Flex>
+    ),
+  },
   {
     title: '本月入帳／應收',
     key: 'rent',
@@ -328,6 +346,7 @@ const COLUMNS: ColumnsType<OverviewRow> = [
   {
     title: '帳務更新日',
     key: 'ledger',
+    align: 'right',
     width: 112,
     render: (_, r) => <span className={styles.num}>{r.ledgerUpdatedOn ?? '無'}</span>,
   },
@@ -340,28 +359,14 @@ function UnitCard({ row }: { row: OverviewRow }) {
         <UnitCell row={row} />
         <Flex wrap gap={4}>
           <Tag>{BUSINESS_TYPE_LABEL[row.businessType]}</Tag>
-          <Tag color={LEASE_STATE[row.leaseState].color}>{LEASE_STATE[row.leaseState].label}</Tag>
+          <LeaseStateTag state={row.leaseState} />
         </Flex>
         <Descriptions
           size="small"
           column={1}
           items={[
-            {
-              key: 'manager',
-              label: '經理人',
-              children: row.manager ? (
-                <Flex vertical>
-                  <Text>{row.manager.name}</Text>
-                  <Text type={row.manager.status === 'revoked' ? 'danger' : 'secondary'}>
-                    {row.manager.legalTitle}・{MANAGER_STATUS_LABEL[row.manager.status]}
-                  </Text>
-                  {row.businessType === 'master_lease' && <Text type="secondary">屋主與包租業者的租約</Text>}
-                </Flex>
-              ) : (
-                '屋主自管'
-              ),
-            },
-            { key: 'lease', label: '租約', children: leaseNote(row) },
+            { key: 'manager', label: '業者', children: <PractitionerInfo row={row} /> },
+            { key: 'lease', label: '合約', children: <LeaseNotes row={row} /> },
             { key: 'rent', label: '本月入帳／應收', children: <RentCell row={row} align="flex-start" /> },
             { key: 'deposit', label: '押金餘額／約定', children: <DepositCell row={row} align="flex-start" /> },
             { key: 'repairs', label: '未完成修繕', children: money(row.openRepairs) },
@@ -374,12 +379,10 @@ function UnitCard({ row }: { row: OverviewRow }) {
   );
 }
 
-const BUSINESS_TYPE_OPTIONS = [
+const BUSINESS_TYPE_OPTIONS: { value: OverviewFilter['businessType']; label: string }[] = [
   { value: 'all', label: '全部' },
-  { value: 'self_managed', label: '自管' },
-  { value: 'managed', label: '代管' },
-  { value: 'master_lease', label: '包租' },
-] satisfies { value: OverviewFilter['businessType']; label: string }[];
+  ...(Object.entries(BUSINESS_TYPE_LABEL) as [BusinessType, string][]).map(([value, label]) => ({ value, label })),
+];
 
 function UnitFilters({ filter, onChange }: { filter: OverviewFilter; onChange: (next: OverviewFilter) => void }) {
   const toggle = (key: 'overdue' | 'expiringSoon' | 'authorityUnverified', label: string) => (
