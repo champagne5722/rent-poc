@@ -50,7 +50,6 @@ function contract(patch: Partial<Contract> = {}): Contract {
     status: 'draft',
     fields: fields(),
     signature_fields: [sig('party_a'), sig('party_b')],
-    dottedsign_task_id: null,
     declined_reason: null,
     derived_from: null,
     created_at: '2026-08-01 10:00:00',

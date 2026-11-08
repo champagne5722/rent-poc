@@ -25,7 +25,6 @@ import {
 } from './types';
 import { contractEquipmentAnnex, formatEquipmentItem } from './equipment';
 import { signingProgressStep, signingStepRoles } from './contract-list';
-import { currentSigner } from './signing';
 import type { CurrentSigner } from './signing-module/provider';
 import type { SigningProgress } from './signing-module/sign-task-store';
 
@@ -74,14 +73,14 @@ export function detailActions(status: ContractStatus, opts: { mock: boolean }): 
 // ── 簽署狀態列 ───────────────────────────────────────────────
 
 /**
- * 目前待簽：姓名與 email 讀簽署進度的當前簽署人（ADR-0010）。
- * 簽署進度是 null 代表舊合約沒有回填簽署任務，退回由合約狀態與欄位推導。
+ * 目前待簽：只讀簽署進度的當前簽署人（ADR-0010），不由合約狀態推導。
+ * 沒有簽署進度的合約（送簽時沒有留下任務編號的舊資料）不顯示目前待簽，
+ * 因為簽署連結與重寄都要靠簽署任務才能執行。
  */
 export function detailCurrentSigner(
-  contract: Contract,
   progress: Pick<SigningProgress, 'currentSigner'> | null
 ): CurrentSigner | null {
-  return progress ? progress.currentSigner : currentSigner(contract);
+  return progress?.currentSigner ?? null;
 }
 
 export interface DetailSigningSteps {

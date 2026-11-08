@@ -16,6 +16,7 @@ import type {
   MandateCase,
   PaymentAccount,
   ReceiverCandidate,
+  UnitHandoverSource,
 } from './store';
 import {
   decideHandoverTransition,
@@ -135,7 +136,7 @@ export interface HandoverDetail {
   paymentAccounts: PaymentAccount[];
 }
 
-function mandateFor(candidate: ReceiverCandidate, rentalUnitId: string): ReceiverMandate {
+export function mandateFor(candidate: ReceiverCandidate, rentalUnitId: string): ReceiverMandate {
   if (candidate.mandatedUnitIds.includes(rentalUnitId)) return 'valid';
   if (candidate.paperContractUnitIds.includes(rentalUnitId)) return 'paper';
   return 'none';
@@ -159,26 +160,9 @@ export async function getHandoverDetail(
     store.listOwnerPaymentAccounts(ownerPartyId),
   ]);
 
-  // 凍結後只讀快照。凍結前從事實即時產生，來源沒有資料時六類全部列為缺項
-  const snapshot =
-    record.frozenSnapshot ??
-    buildHandoverSnapshot({
-      handoverId: record.id,
-      rentalUnitId: record.rentalUnitId,
-      manual: record.manual,
-      ...(source?.snapshot ?? {
-        hasLeaseCase: record.leaseCaseId !== null,
-        title: { leaseAuthorityStatus: null, transcriptFetchedAt: null },
-        people: { managementContract: null, leaseContract: null },
-        condition: { moveInRecord: null, conditionAttachments: [], equipmentAttachments: [] },
-        money: { depositBalance: null, prepaidRentBalance: null, unpaidPeriods: null, uncollectedRemittance: null },
-        repairs: null,
-      }),
-    });
-
   return {
     record,
-    snapshot,
+    snapshot: currentSnapshot(record, source),
     sides: handoverSides(record.state),
     cancellable: isCancellable(record.state),
     hasActiveSigningTask: source?.hasActiveSigningTask ?? false,
@@ -194,7 +178,27 @@ export async function getHandoverDetail(
   };
 }
 
-function applyInput(record: HandoverRecord, input: HandoverInput, at: string): HandoverRecord | null {
+/** 凍結後只讀快照。凍結前從事實即時產生，來源沒有資料時六類全部列為缺項。 */
+export function currentSnapshot(record: HandoverRecord, source: UnitHandoverSource | null): HandoverSnapshot {
+  return (
+    record.frozenSnapshot ??
+    buildHandoverSnapshot({
+      handoverId: record.id,
+      rentalUnitId: record.rentalUnitId,
+      manual: record.manual,
+      ...(source?.snapshot ?? {
+        hasLeaseCase: record.leaseCaseId !== null,
+        title: { leaseAuthorityStatus: null, transcriptFetchedAt: null },
+        people: { managementContract: null, leaseContract: null },
+        condition: { moveInRecord: null, conditionAttachments: [], equipmentAttachments: [] },
+        money: { depositBalance: null, prepaidRentBalance: null, unpaidPeriods: null, uncollectedRemittance: null },
+        repairs: null,
+      }),
+    })
+  );
+}
+
+export function applyHandoverInput(record: HandoverRecord, input: HandoverInput, at: string): HandoverRecord | null {
   const decision = decideHandoverTransition(record.state, input);
   if (!decision) return null;
   const event: HandoverEventRecord = { type: decision.event, at };
@@ -290,12 +294,12 @@ export async function confirmHandover(
   if (errors.length > 0) return fail(...errors);
 
   const at = now.toISOString();
-  let next = applyInput(
+  let next = applyHandoverInput(
     { ...record, target, effectiveDate, acknowledgedMissing: snapshot.missing.map((m) => m.key) },
     'owner_confirm',
     at,
   );
-  if (next && target.kind === 'self_managed') next = applyInput(next, 'accept', at);
+  if (next && target.kind === 'self_managed') next = applyHandoverInput(next, 'accept', at);
   if (!next) return fail('這個移交目前不能確認。');
   await store.saveHandover(next);
   return { ok: true, value: undefined };
@@ -309,7 +313,7 @@ export async function cancelHandover(
 ): Promise<ServiceResult> {
   const record = await ownedHandover(store, ownerPartyId, id);
   if (!record) return fail('找不到這個移交。');
-  const next = applyInput(record, 'cancel', now.toISOString());
+  const next = applyHandoverInput(record, 'cancel', now.toISOString());
   if (!next) return fail(record.state === 'cancelled' ? '這個移交已經取消了。' : '交出側已經生效，不能取消。');
   await store.saveHandover(next);
   return { ok: true, value: undefined };
