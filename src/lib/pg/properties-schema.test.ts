@@ -101,6 +101,14 @@ describe('物件與設備詞彙庫的表', () => {
       expect(rows).toEqual([]);
     });
 
+    it('函式的擁有者是 app_owner，沒有 BYPASSRLS 也不是 superuser（ADR-0012 決議 8）', async () => {
+      const { rows } = await testDb.base.query<{ owner: string; bypass: boolean; super: boolean }>(
+        `SELECT r.rolname AS owner, r.rolbypassrls AS bypass, r.rolsuper AS super
+           FROM pg_proc p JOIN pg_roles r ON r.oid = p.proowner WHERE p.proname = 'create_pending_anchor'`,
+      );
+      expect(rows).toEqual([{ owner: 'app_owner', bypass: false, super: false }]);
+    });
+
     it('函式固定 search_path，且不開放給 PUBLIC', async () => {
       const { rows } = await testDb.base.query<{ config: string[]; secdef: boolean; acl: string | null }>(
         `SELECT proconfig AS config, prosecdef AS secdef, proacl::text AS acl

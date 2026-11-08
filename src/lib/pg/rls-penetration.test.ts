@@ -1,7 +1,7 @@
 import type { PGliteInterface } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pgliteDriver } from './drivers';
-import { ORG_TABLE_CASES } from './rls-cases';
+import { ORG_TABLE_CASES, tablesWithoutCase } from './rls-cases';
 import { asRole, createTestDb, type TestDb } from './test-harness';
 import { newUlid } from './ulid';
 import { createWithTx, type Tx, type WithTx } from './with-tx';
@@ -14,18 +14,18 @@ beforeAll(async () => {
 });
 afterAll(() => testDb.close());
 
-async function orgTables(): Promise<string[]> {
-  const { rows } = await testDb.base.query<{ name: string }>(
-    `SELECT n.nspname || '.' || c.relname AS name
+const ORG_TABLES_SQL = `SELECT n.nspname || '.' || c.relname AS name
        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = 'org' AND c.relkind IN ('r', 'p') ORDER BY 1`,
-  );
+      WHERE n.nspname = 'org' AND c.relkind IN ('r', 'p') ORDER BY 1`;
+
+async function orgTables(): Promise<string[]> {
+  const { rows } = await testDb.base.query<{ name: string }>(ORG_TABLES_SQL);
   return rows.map((r) => r.name);
 }
 
 describe('案例清單機制', () => {
   it('org schema 的每張表都登記了案例（沒有案例就失敗）', async () => {
-    const missing = (await orgTables()).filter((t) => !(t in ORG_TABLE_CASES));
+    const missing = tablesWithoutCase(await orgTables());
     expect(missing, `這些 org 表沒有滲透測試案例，請到 src/lib/pg/rls-cases.ts 登記：${missing.join('、')}`).toEqual([]);
   });
 
@@ -35,16 +35,13 @@ describe('案例清單機制', () => {
     expect(stale, `案例清單有不存在的表：${stale.join('、')}`).toEqual([]);
   });
 
-  it('機制本身有效：加一張沒登記的 org 表，缺案例的檢查會抓到', async () => {
+  it('機制本身有效：加一張沒登記的 org 表，同一個檢查會抓到', async () => {
     const db = await testDb.base.clone();
     try {
       await db.exec('SET ROLE app_owner');
       await db.exec('CREATE TABLE org.unregistered_probe (id text PRIMARY KEY, org_id text NOT NULL)');
-      const { rows } = await db.query<{ name: string }>(
-        `SELECT n.nspname || '.' || c.relname AS name FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-          WHERE n.nspname = 'org' AND c.relkind IN ('r', 'p')`,
-      );
-      expect(rows.map((r) => r.name).filter((t) => !(t in ORG_TABLE_CASES))).toEqual(['org.unregistered_probe']);
+      const { rows } = await db.query<{ name: string }>(ORG_TABLES_SQL);
+      expect(tablesWithoutCase(rows.map((r) => r.name))).toEqual(['org.unregistered_probe']);
     } finally {
       await db.close();
     }

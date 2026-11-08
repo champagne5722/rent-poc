@@ -147,6 +147,7 @@ describe('POST /api/properties（建立）', () => {
     ['設備重複', body({ equipment: [{ name: '冷氣', quantity: 1 }, { name: '冷氣', quantity: 1 }] }), '設備清單格式有誤：每項需有名稱且數量為正整數，且不可重複'],
     ['型態不在清單內', body({ type: '別墅' }), '型態需為整層住家、套房、雅房其中之一'],
     ['預設租金不是整數', body({ default_rent: 1000.5 }), '預設租金需為不小於 0 的整數'],
+    ['預設租金超過資料庫上限', body({ default_rent: 2_147_483_648 }), '預設租金需為不小於 0 的整數'],
     ['坪數是負數', body({ size: -1 }), '坪數需為不小於 0 的數字'],
   ])('%s回 400，不建任何資料', async (_label, payload, message) => {
     const res = await post(payload);

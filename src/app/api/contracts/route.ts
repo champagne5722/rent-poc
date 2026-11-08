@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { insertContractWithEvent, listContracts } from '@/lib/db';
-import { inOrgTx, readJson } from '@/lib/org-route';
+import { readInOrgTx, readJson } from '@/lib/org-route';
 import { isUlid } from '@/lib/pg/ulid';
 import { getProperty } from '@/lib/properties';
 import { bindTemplate } from '@/lib/clause-library';
@@ -19,37 +19,37 @@ export async function POST(request: NextRequest) {
   const propertyId = typeof body === 'object' && body !== null ? (body as { property_id?: unknown }).property_id : undefined;
   if (!isUlid(propertyId)) return jsonError(400, '請指定有效的物件');
 
-  // 物件在 PostgreSQL，合約還在 SQLite（MIL-83 搬）。過渡期在物件的交易內寫合約，
-  // 別的組織的物件與不存在的物件同樣回 400。
-  return inOrgTx(async (tx) => {
-    const property = await getProperty(tx, propertyId);
-    if (!property) return jsonError(400, '請指定有效的物件');
+  // 物件在 PostgreSQL，合約還在 SQLite（MIL-83 搬）。先在交易內讀物件，交易結束後再寫 SQLite，
+  // 不把 SQLite 的同步寫入放進 PostgreSQL 交易（ADR-0012 決議 10）。別的組織的物件與不存在的物件同樣回 400
+  const read = await readInOrgTx((tx) => getProperty(tx, propertyId));
+  if (!read.ok) return read.response;
+  const property = read.value;
+  if (!property) return jsonError(400, '請指定有效的物件');
 
-    const fields: ContractFields = {
-      landlordName: '',
-      landlordEmail: '',
-      tenantName: '',
-      tenantEmail: '',
-      propertyName: property.name,
-      propertyAddress: property.address,
-      propertyType: property.type,
-      propertySize: property.size,
-      // 設備附件（ADR-0008）：物件的設備清單帶入成附件列，修繕責任預設出租方，之後逐約調整
-      equipmentAnnex: toEquipmentAnnex(property.equipment),
-      rent: property.default_rent,
-      deposit: property.default_rent != null ? property.default_rent * 2 : null,
-      startDate: '',
-      endDate: '',
-      payDay: 5,
-      extra: '',
-      ...bindTemplate(),
-    };
+  const fields: ContractFields = {
+    landlordName: '',
+    landlordEmail: '',
+    tenantName: '',
+    tenantEmail: '',
+    propertyName: property.name,
+    propertyAddress: property.address,
+    propertyType: property.type,
+    propertySize: property.size,
+    // 設備附件（ADR-0008）：物件的設備清單帶入成附件列，修繕責任預設出租方，之後逐約調整
+    equipmentAnnex: toEquipmentAnnex(property.equipment),
+    rent: property.default_rent,
+    deposit: property.default_rent != null ? property.default_rent * 2 : null,
+    startDate: '',
+    endDate: '',
+    payDay: 5,
+    extra: '',
+    ...bindTemplate(),
+  };
 
-    // 合約與「建立」歷程事件同交易寫入（ADR-0007）
-    const id = insertContractWithEvent(
-      { property_id: property.id, fields: JSON.stringify(fields) },
-      { type: 'created', actor: 'landlord' }
-    );
-    return jsonOk({ data: { id } }, { status: 201 });
-  });
+  // 合約與「建立」歷程事件同交易寫入（ADR-0007）
+  const id = insertContractWithEvent(
+    { property_id: property.id, fields: JSON.stringify(fields) },
+    { type: 'created', actor: 'landlord' }
+  );
+  return jsonOk({ data: { id } }, { status: 201 });
 }

@@ -218,8 +218,9 @@ function PropertiesPage() {
         scroll={{ x: 'max-content' }}
         columns={[
           {
-            // ULID 末 6 碼：口頭溝通與客服對照用，不保證唯一；系統內與網址一律用完整 ULID
-            title: '編號',
+            // 物件 ID（ULID）的末 6 碼，口頭溝通與客服對照用，不保證唯一；系統內與網址一律用完整 ULID。
+            // 不叫「編號」：顯示編碼是租賃單位的詞（GLOSSARY），格式由 B 線定
+            title: 'ID 末碼',
             dataIndex: 'id',
             width: 110,
             render: (id: string) => (

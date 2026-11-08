@@ -49,3 +49,8 @@ export const ORG_TABLE_CASES: Record<string, OrgTableCase> = {
     },
   },
 };
+
+/** 傳入系統目錄列出的 org 表名（schema.table），回傳沒有登記案例的表。 */
+export function tablesWithoutCase(tables: readonly string[]): string[] {
+  return tables.filter((t) => !(t in ORG_TABLE_CASES));
+}

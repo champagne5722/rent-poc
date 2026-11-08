@@ -1,5 +1,5 @@
 import { requestContext } from './current-request-context';
-import { jsonError } from './http';
+import { jsonError, jsonOk } from './http';
 import { withTx } from './pg/database';
 import type { OrgTx } from './pg/with-tx';
 import { Unauthenticated, toDbContext } from './request-context';
@@ -25,6 +25,22 @@ export async function inOrgTx(handler: (tx: OrgTx) => Promise<Response>): Promis
   }
   if (rc.kind !== 'org') return jsonError(403, '此操作需要組織身分');
   return withTx(toDbContext(rc), handler);
+}
+
+/**
+ * 在組織交易內只做讀取，把結果帶出交易再處理。要做交易外的事（例如過渡期寫 SQLite）時用這個，
+ * 不要把它們塞進 inOrgTx 的 callback：交易內不得有 fs 與外部 I/O（ADR-0012 決議 10）。
+ */
+export async function readInOrgTx<R>(
+  read: (tx: OrgTx) => Promise<R>,
+): Promise<{ ok: true; value: R } | { ok: false; response: Response }> {
+  let result: { value: R } | undefined;
+  const response = await inOrgTx(async (tx) => {
+    result = { value: await read(tx) };
+    return jsonOk(null);
+  });
+  // 沒登入或不是組織身分時不會走到 callback，response 就是 401 或 403
+  return result ? { ok: true, value: result.value } : { ok: false, response };
 }
 
 /** 讀 JSON 本文。不是合法的 JSON 時回 undefined，呼叫端回 400。 */

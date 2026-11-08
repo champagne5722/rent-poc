@@ -27,15 +27,21 @@ function toItem(row: Row): EquipmentVocabularyItem {
 async function ensureDefaults(tx: OrgTx): Promise<void> {
   const { rows } = await tx.query<{ n: string }>('SELECT count(*) AS n FROM org.equipment_vocabulary WHERE NOT is_custom');
   if (Number(rows[0].n) >= EQUIPMENT_OPTIONS.length) return;
+  await insertMissing(tx, [...EQUIPMENT_OPTIONS], false);
+}
+
+/** 一次補上缺的名稱，已存在的略過。ID 依傳入順序遞增，所以清單順序就是新增順序。 */
+async function insertMissing(tx: OrgTx, names: string[], isCustom: boolean): Promise<void> {
   await tx.query(
     `INSERT INTO org.equipment_vocabulary (id, org_id, name, is_custom)
-     SELECT u.id, current_setting('app.org_id', true), u.name, false
+     SELECT u.id, current_setting('app.org_id', true), u.name, $3::boolean
        FROM unnest($1::text[], $2::text[]) AS u(id, name)
      ON CONFLICT (org_id, name) DO NOTHING`,
-    [EQUIPMENT_OPTIONS.map(() => newUlid()), [...EQUIPMENT_OPTIONS]],
+    [names.map(() => newUlid()), names, isCustom],
   );
 }
 
+// 注意：這是「讀」，但組織第一次使用時會寫入預設項目，所以呼叫端的交易必須允許寫入。
 export async function listVocabulary(tx: OrgTx): Promise<EquipmentVocabularyItem[]> {
   await ensureDefaults(tx);
   const { rows } = await tx.query<Row>(
@@ -64,11 +70,5 @@ export async function ensureNames(tx: OrgTx, names: string[]): Promise<void> {
   const unique = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
   if (unique.length === 0) return;
   await ensureDefaults(tx);
-  await tx.query(
-    `INSERT INTO org.equipment_vocabulary (id, org_id, name, is_custom)
-     SELECT u.id, current_setting('app.org_id', true), u.name, true
-       FROM unnest($1::text[], $2::text[]) AS u(id, name)
-     ON CONFLICT (org_id, name) DO NOTHING`,
-    [unique.map(() => newUlid()), unique],
-  );
+  await insertMissing(tx, unique, true);
 }

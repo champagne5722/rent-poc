@@ -15,6 +15,9 @@ export interface PropertyInput {
   equipment: EquipmentItem[];
 }
 
+// default_rent 欄位是 PostgreSQL integer，超過上限會變成 500，所以在這裡擋
+export const MAX_DEFAULT_RENT = 2_147_483_647;
+
 export type PropertyInputResult = { ok: true; value: PropertyInput } | { ok: false; error: string };
 
 const fail = (error: string): PropertyInputResult => ({ ok: false, error });
@@ -35,7 +38,10 @@ export function parsePropertyInput(body: unknown): PropertyInputResult {
   if (size != null && !(typeof size === 'number' && Number.isFinite(size) && size >= 0)) {
     return fail('坪數需為不小於 0 的數字');
   }
-  if (default_rent != null && !(typeof default_rent === 'number' && Number.isInteger(default_rent) && default_rent >= 0)) {
+  if (
+    default_rent != null &&
+    !(typeof default_rent === 'number' && Number.isInteger(default_rent) && default_rent >= 0 && default_rent <= MAX_DEFAULT_RENT)
+  ) {
     return fail('預設租金需為不小於 0 的整數');
   }
   if (note != null && typeof note !== 'string') return fail('備註需為文字');

@@ -38,8 +38,9 @@ CREATE TABLE registry.rental_units (
   suffix         text NOT NULL,
   label          text,
   floor          text,
-  unit_type      text NOT NULL CHECK (unit_type IN ('whole', 'room')),
-  status         text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'merged', 'retired')),
+  -- 值的集合由 B 線定案並補 CHECK。這張票只用 whole（整戶）與 active
+  unit_type      text NOT NULL,
+  status         text NOT NULL DEFAULT 'active',
   merged_into_id text REFERENCES registry.rental_units (id),
   created_at     timestamptz NOT NULL DEFAULT now(),
   updated_at     timestamptz,
