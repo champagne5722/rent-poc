@@ -171,11 +171,11 @@ describe('hook 的位置', () => {
     expect(calls.at(-1)).toBe('ROLLBACK');
   });
 
-  it('withTx 的介面形狀不變：仍是 (ctx, fn)，選項的 afterBegin 可以換掉預設 hook', async () => {
+  it('withTx 的介面形狀不變：仍是 (ctx, fn)。選項的 afterBegin 在存取紀錄之後執行，不能取代或跳過它', async () => {
     const { driver, calls } = recordingDriver();
     const seen: string[] = [];
     await createWithTx(driver, { afterBegin: async (ctx) => void seen.push(ctx.kind) })(operator('T-1'), async () => undefined);
     expect(seen).toEqual(['operator']);
-    expect(calls.some((c) => c.includes('record_operator_access'))).toBe(false);
+    expect(calls[1]).toBe('SELECT * FROM audit.record_operator_access()');
   });
 });

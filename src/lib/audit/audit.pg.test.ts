@@ -153,6 +153,7 @@ describe.skipIf(!adminUrl)('稽核鏈：真實 PostgreSQL', () => {
 
   it('break_glass 的使用紀錄：只有 break_glass 能呼叫，行為者是登入身分', async () => {
     await expect(withTx({ kind: 'control' }, (tx) => tx.query(`SELECT audit.record_break_glass('start', 'INC-1', 'x')`))).rejects.toThrow(/permission denied/);
+    await admin.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, '甲組織', 'owner') ON CONFLICT DO NOTHING`, [ORG_A]);
     await admin.query('SET ROLE break_glass');
     try {
       await admin.query(`SELECT audit.record_break_glass('start', 'INC-7', '修復資料', $1)`, [ORG_A]);
@@ -160,7 +161,7 @@ describe.skipIf(!adminUrl)('稽核鏈：真實 PostgreSQL', () => {
       await admin.query('RESET ROLE');
     }
     const rows = await withTx(orgCtx(ORG_A), async (tx) =>
-      (await tx.query<{ action: string; actor_type: string; actor_id: string }>(`SELECT action, actor_type, actor_id FROM audit.events WHERE action LIKE 'break_glass.%'`)).rows,
+      (await tx.query<{ action: string; actor_type: string; actor_id: string }>(`SELECT action, actor_type, actor_id FROM audit.events WHERE split_part(action, '.', 1) = 'break_glass'`)).rows,
     );
     expect(rows).toEqual([{ action: 'break_glass.start', actor_type: 'break_glass', actor_id: (await admin.query('SELECT session_user AS u')).rows[0].u }]);
   });

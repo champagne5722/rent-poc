@@ -82,8 +82,8 @@ export interface TxOptions {
   idleInTransactionTimeoutMs?: number;
   /**
    * 開完交易（BEGIN 與脈絡設定都已送出）後、執行 callback 之前的 hook，與 callback 同一個交易。
-   * 拋出例外時整個交易回滾，callback 不會執行。預設行為：operator 脈絡寫營運者存取紀錄（MIL-82），
-   * 其餘脈絡什麼都不做。傳入自訂 hook 會取代預設行為，只給測試使用。
+   * 拋出例外時整個交易回滾，callback 不會執行。
+   * operator 脈絡的存取紀錄（MIL-82）一定先寫，這個 hook 在它之後執行，不能取代或跳過它。
    */
   afterBegin?: (ctx: DbContext, conn: SqlExecutor) => Promise<void>;
 }
@@ -155,12 +155,15 @@ export function buildBeginSql(ctx: DbContext, options: TxOptions = {}): string {
 // ---------------------------------------------------------------------------
 // 執行
 
-/** 預設的 afterBegin：平台營運者存取組織資料時，同交易留下紀錄（P0-23 AC5）。 */
-async function defaultAfterBegin(ctx: DbContext, conn: SqlExecutor): Promise<void> {
+/** 平台營運者存取組織資料時，同交易留下紀錄（P0-23 AC5）。不可關閉，之後才執行呼叫端的 afterBegin。 */
+async function beginHook(ctx: DbContext, conn: SqlExecutor, extra: TxOptions['afterBegin']): Promise<void> {
   if (ctx.kind === 'operator') await recordOperatorAccess(conn);
+  await extra?.(ctx, conn);
 }
 
 const insideTx = new AsyncLocalStorage<true>();
+
+type AfterBegin = (ctx: DbContext, conn: SqlExecutor) => Promise<void>;
 
 export type WithTx = <C extends DbContext, R>(ctx: C, fn: (tx: Tx<C['kind']>) => Promise<R>) => Promise<R>;
 
@@ -170,7 +173,7 @@ export function createWithTx(driver: TxDriver, options: TxOptions = {}): WithTx 
     if (insideTx.getStore()) throw new Error('withTx 不得巢狀呼叫：交易內要用外層給的 tx');
     // 先驗證再借連線：格式錯誤的請求不佔連線池
     const beginSql = buildBeginSql(ctx, options);
-    const afterBegin = options.afterBegin ?? defaultAfterBegin;
+    const afterBegin: AfterBegin = (c, conn) => beginHook(c, conn, options.afterBegin);
 
     const lease = await driver.acquire();
     let broken = false;
@@ -193,7 +196,7 @@ async function runInTransaction<C extends DbContext, R>(
   conn: SqlExecutor,
   ctx: C,
   beginSql: string,
-  afterBegin: NonNullable<TxOptions['afterBegin']>,
+  afterBegin: AfterBegin,
   fn: (tx: Tx<C['kind']>) => Promise<R>,
 ): Promise<R> {
   await conn.exec(beginSql);

@@ -12,7 +12,8 @@ import { isAuditAction, type AuditAction } from './actions';
 // - 行為者從脈絡取：operator 脈絡是營運者，帶 partyId 的 org 脈絡是該使用者，其餘是系統。
 //   登入前的動作（脈絡裡沒有行為者）才明確指定 actor。
 
-export type AuditActorType = 'operator' | 'party' | 'system';
+/** 明確指定行為者只允許這兩種。營運者來自交易脈絡，由資料庫決定。 */
+export type AuditActorType = 'party' | 'system';
 
 export interface AuditEntry {
   action: AuditAction;

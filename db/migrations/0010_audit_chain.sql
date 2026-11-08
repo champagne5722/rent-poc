@@ -95,6 +95,8 @@ END
 $$;
 
 -- 寫一筆事件。鎖住鏈頭到提交為止，同一條鏈的寫入在這裡排隊。交易回滾時鏈頭一併回滾，序號不推進。
+-- 依賴 READ COMMITTED（PostgreSQL 預設，withTx 沒有改）：排隊後要讀到前一個交易提交的鏈頭。
+-- 同一個交易寫兩條鏈時，鎖的順序由呼叫順序決定，目前沒有這種流程。
 CREATE FUNCTION audit.write_event(
   p_chain text, p_actor_type text, p_actor_id text, p_action text,
   p_object_type text, p_object_id text, p_payload jsonb
@@ -154,7 +156,8 @@ $$;
 
 -- 各模組寫稽核事件的唯一入口。鏈由 app.org_id 決定，沒有參數可以指定。
 -- 行為者預設從交易脈絡取：有 app.operator_id 是營運者，有 app.party_id 是使用者，否則是系統。
--- 登入前的動作（例如承租人登入）脈絡裡沒有行為者，呼叫端可以明確指定。
+-- 登入前的動作（例如承租人登入）脈絡裡沒有行為者，呼叫端可以明確指定，但只限 party 與 system。
+-- operator 與 break_glass 只能來自交易設定或 audit.record_break_glass()，app_rw 不能偽造。
 CREATE FUNCTION audit.append(
   p_action      text,
   p_object_type text  DEFAULT NULL,
@@ -172,6 +175,9 @@ DECLARE
   v_type     text := p_actor_type;
   v_id       text := p_actor_id;
 BEGIN
+  IF v_type IS NOT NULL AND v_type NOT IN ('party', 'system') THEN
+    RAISE EXCEPTION '明確指定的行為者只能是 party 或 system，營運者的身分由交易脈絡決定';
+  END IF;
   IF v_type IS NULL THEN
     IF v_operator IS NOT NULL THEN
       v_type := 'operator'; v_id := v_operator;
@@ -228,7 +234,13 @@ BEGIN
   IF p_reason IS NULL OR btrim(p_reason) = '' THEN
     RAISE EXCEPTION 'break-glass 必須寫明理由';
   END IF;
+  IF length(p_reason) > 500 THEN
+    RAISE EXCEPTION 'break-glass 的理由不得超過 500 字：紀錄寫入後刪不掉';
+  END IF;
   v_chain := coalesce(p_org, (SELECT o.id FROM control.orgs o WHERE o.kind = 'platform'));
+  IF v_chain IS NULL OR NOT EXISTS (SELECT 1 FROM control.orgs o WHERE o.id = v_chain) THEN
+    RAISE EXCEPTION 'break-glass 的組織 % 不存在', coalesce(p_org, '（平台組織）');
+  END IF;
   RETURN audit.write_event(v_chain, 'break_glass', session_user::text, 'break_glass.' || p_phase,
                            CASE WHEN p_org IS NULL THEN NULL ELSE 'org' END, p_org,
                            jsonb_build_object('ticket', p_ticket, 'reason', p_reason));

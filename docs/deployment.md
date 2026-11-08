@@ -162,7 +162,7 @@ curl -s -o /dev/null -w '%{time_total}s\n' "https://rent-poc-demo-<專案編號>
 
    - `true`：本機、CI 與自架 PostgreSQL。角色能讀寫所有組織的列。
    - `false`：Cloud SQL。`postgres` 不是 superuser，建不出有 `BYPASSRLS` 的角色（MIL-79 留言）。此時 `break_glass` 看不到任何組織的列，只能呼叫第 4 步的紀錄函式。
-   - Cloud SQL 的替代做法由 MIL-89 與 MIL-92 決定。決定前，單一組織的事故改用 `app_rw` 登入，逐一設定 `SELECT set_config('app.org_id', '<組織 ID>', false)`。RLS 照常生效，一次只看得到一個組織。
+   - Cloud SQL 的替代做法由 MIL-89 與 MIL-92 決定。決定前，單一組織的事故改用 `app_rw` 登入，在交易內設定 `SELECT set_config('app.org_id', '<組織 ID>', true)`。RLS 照常生效，一次只看得到一個組織。每個交易都要重設，不得用 session 層級的設定。
    - 無論哪一種，第 4 步與第 6 步的紀錄都要寫。
 
 2. 管理者把角色授權給維運人員的資料庫帳號：
@@ -213,7 +213,7 @@ curl -s -o /dev/null -w '%{time_total}s\n' "https://rent-poc-demo-<專案編號>
      ```sql
      BEGIN;
      SELECT set_config('app.org_id', '<組織 ID 或 00000000000000000000000001>', true);
-     SELECT seq, occurred_at, actor_id, action, payload FROM audit.events WHERE action LIKE 'break_glass.%' ORDER BY seq;
+     SELECT seq, occurred_at, actor_id, action, payload FROM audit.events WHERE split_part(action, '.', 1) = 'break_glass' ORDER BY seq;
      COMMIT;
      ```
 

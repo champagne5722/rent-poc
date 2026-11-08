@@ -5,9 +5,11 @@ import { appendAudit, AUDIT_ACTIONS, isAuditAction, type AuditAction } from './i
 import {
   ORG_A,
   ORG_B,
+  OPERATOR_X,
   PARTY_P,
   PLATFORM_ORG,
   createTestDb,
+  asSuperuser,
   openFixture,
   orgCtx,
   type AuditFixture,
@@ -76,6 +78,13 @@ describe('audit.append()', () => {
       );
       expect(rows).toHaveLength(1);
       expect(rows[0].args).not.toMatch(/chain|org/i);
+    });
+
+    it('ADR-0019 實測：FORCE 之下，audit_owner 沒有政策時 audit.append() 被 RLS 擋下', async () => {
+      await asSuperuser(f.db, () => f.db.exec('DROP POLICY owner_all ON audit.events'));
+      await expect(f.withTx(orgCtx(ORG_A), (tx) => appendAudit(tx, { action: 'member.grant' }))).rejects.toThrow(
+        /row-level security/,
+      );
     });
 
     it('app.org_id 不是合法 ULID 時拒絕寫入', async () => {
@@ -176,6 +185,11 @@ describe('audit.append()', () => {
       await f.db.exec(`SET TIME ZONE 'Asia/Taipei'`);
       const taipei = (await f.db.query<{ t: string }>(`SELECT now()::text AS t`)).rows[0].t;
       expect(utc.slice(-3)).not.toBe(taipei.slice(-3));
+      await f.db.exec(`SET TIME ZONE 'UTC'`);
+      const jsonUtc = (await f.db.query<{ t: string }>(`SELECT to_jsonb(timestamptz '2026-01-01 00:00:00+00')::text AS t`)).rows[0].t;
+      await f.db.exec(`SET TIME ZONE 'Asia/Taipei'`);
+      const jsonTaipei = (await f.db.query<{ t: string }>(`SELECT to_jsonb(timestamptz '2026-01-01 00:00:00+00')::text AS t`)).rows[0].t;
+      expect(jsonUtc).not.toBe(jsonTaipei);
     });
 
     it('同一條鏈上的時間不會倒退', async () => {
@@ -194,6 +208,13 @@ describe('audit.append()', () => {
       await f.withTx(ctx, (tx) => appendAudit(tx, { action: 'member.grant' }));
       const [row] = await readEvents(orgCtx(ORG_A));
       expect([row.actor_type, row.actor_id]).toEqual([type, id]);
+    });
+
+    it.each(['operator', 'break_glass'])('呼叫端不能偽造 %s 行為者：資料庫端拒絕', async (type) => {
+      await expect(
+        f.withTx(orgCtx(ORG_A), (tx) => tx.query(`SELECT audit.append('member.grant', NULL, NULL, '{}', $1, $2)`, [type, OPERATOR_X])),
+      ).rejects.toThrow(/party 或 system/);
+      expect(await readEvents(orgCtx(ORG_A))).toEqual([]);
     });
 
     it('登入前的動作可以明確指定行為者', async () => {
@@ -385,6 +406,7 @@ describe('break-glass 使用紀錄（AC11 的資料庫部分）', () => {
   });
 
   it('指定組織時寫在該組織的鏈，組織匯出看得到', async () => {
+    await asSuperuser(f.db, () => f.db.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, '甲組織', 'owner')`, [ORG_A]));
     await asBreakGlass(() => f.db.query(`SELECT audit.record_break_glass('end', 'INC-1', '完成', $1)`, [ORG_A]));
     const rows = await eventsOf(ORG_A);
     expect(rows.map((r) => r.action)).toEqual(['break_glass.end']);
@@ -396,6 +418,8 @@ describe('break-glass 使用紀錄（AC11 的資料庫部分）', () => {
     ['沒有工單號', `SELECT audit.record_break_glass('start', '', 'x')`, /工單號/],
     ['工單號含特殊字元', `SELECT audit.record_break_glass('start', 'a;b', 'x')`, /工單號/],
     ['理由是空白', `SELECT audit.record_break_glass('start', 'INC-1', '   ')`, /理由/],
+    ['理由超過 500 字', `SELECT audit.record_break_glass('start', 'INC-1', repeat('字', 501))`, /500 字/],
+    ['組織不存在', `SELECT audit.record_break_glass('start', 'INC-1', 'x', '01JBKQ00000000000000000ZZZ')`, /不存在/],
   ])('%s被拒絕', async (_name, sql, message) => {
     await expect(asBreakGlass(() => f.db.query(sql))).rejects.toThrow(message);
   });
