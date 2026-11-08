@@ -13,8 +13,9 @@ describe('toTaipeiDate（時間點換成台灣日期）', () => {
   ])('%s', (_name, instant, expected) => {
     expect(toTaipeiDate(instant)).toBe(expected);
   });
-  it('無法解析時丟 RangeError', () => {
+  it('無法解析或沒帶時區時丟 RangeError', () => {
     expect(() => toTaipeiDate('x')).toThrow(RangeError);
+    expect(() => toTaipeiDate('2026-03-10T00:00:00')).toThrow(RangeError);
   });
 });
 

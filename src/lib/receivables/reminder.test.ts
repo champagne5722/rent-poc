@@ -29,6 +29,11 @@ describe('shouldConfirmReminder（24 小時內再按要確認）', () => {
     expect(shouldConfirmReminder('2026-03-10T23:30:00+08:00', '2026-03-11T08:00:00+08:00')).toBe(true);
   });
 
+  it('沒帶時區的時間會依本機時區解析，一律拒絕', () => {
+    expect(() => shouldConfirmReminder(LAST, '2026-03-10T10:00:00')).toThrow(RangeError);
+    expect(() => shouldConfirmReminder(LAST, 'March 11 2026')).toThrow(RangeError);
+  });
+
   it('時間格式錯誤時丟 RangeError', () => {
     expect(() => shouldConfirmReminder('昨天', LAST)).toThrow(RangeError);
     expect(() => shouldConfirmReminder(LAST, 'now')).toThrow(RangeError);

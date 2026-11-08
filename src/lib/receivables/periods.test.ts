@@ -141,6 +141,7 @@ describe('splitPeriods（一個月一期，到期日是該月付款日）', () =
       ['付款日 32', { paymentDay: 32 }],
       ['付款日不是整數', { paymentDay: 5.5 }],
       ['月租有小數', { monthlyRent: 100.5 }],
+      ['月租大到按比例會超出安全整數', { monthlyRent: Number.MAX_SAFE_INTEGER }],
       ['月租為負', { monthlyRent: -1 }],
       ['不存在的日期', { startDate: '2026-02-30' }],
       ['日期格式錯', { endDate: '2026/12/31' }],

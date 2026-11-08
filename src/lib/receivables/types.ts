@@ -39,7 +39,7 @@ export interface PeriodContract {
   monthlyRent: number;
 }
 
-/** 配置草稿：尚未寫入的配置。kind 固定 rent，押金不能配置到期別。 */
+/** 配置草稿：尚未寫入的配置。kind 固定 rent，押金不得配置到期別。 */
 export interface AllocationDraft {
   /** 來源 ID。receipt：入帳確認 ID。prepaid：預收抵充事件 ID（`prepaid_applied` 的業務事件 ID）。 */
   sourceId: string;

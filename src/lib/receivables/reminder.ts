@@ -1,18 +1,10 @@
 // 繳租提醒的確認規則與代收交付逾期標示（MIL-42 Q1、ADR-0014 決議 14、ADR-0050 決議 13）。
 // 純函式，時間由參數傳入。
 
-import { diffDays, parseDate } from './dates';
-
-const DAY_MS = 86_400_000;
-
-function parseInstant(value: string): number {
-  const ms = Date.parse(value);
-  if (Number.isNaN(ms)) throw new RangeError(`無法解析的時間：${value}`);
-  return ms;
-}
+import { DAY_MS, diffDays, parseDate, parseInstant } from './dates';
 
 /**
- * 同一期別 24 小時內已手動提醒時，再按要先確認。
+ * 同一期別 24 小時內已手動提醒時，再按必須先確認。
  * 距上次不滿 24 小時回傳 true，剛好 24 小時回傳 false。從沒提醒過回傳 false。
  * 上次時間晚於現在（時鐘不同步）視為仍在 24 小時內。時間是含時區的 ISO 8601 字串。
  */

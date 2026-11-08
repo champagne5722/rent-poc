@@ -29,6 +29,10 @@ export type AllocateReceiptResult =
     }
   | { ok: false; reason: AllocationFailureReason };
 
+function isRent(kind: string): boolean {
+  return kind === 'rent';
+}
+
 function isPositiveMoney(value: number): boolean {
   return Number.isSafeInteger(value) && value > 0;
 }
@@ -51,7 +55,7 @@ export function allocateReceipt(
   options: AllocateReceiptOptions,
 ): AllocateReceiptResult {
   if (!isPositiveMoney(amount)) return { ok: false, reason: 'invalid_amount' };
-  if (periods.some((p) => (p.kind as string) !== 'rent')) return { ok: false, reason: 'wrong_kind' };
+  if (periods.some((p) => !isRent(p.kind))) return { ok: false, reason: 'wrong_kind' };
 
   const byId = new Map(periods.map((p) => [p.id, p] as const));
   const preferred: ReceivablePeriod[] = [];
@@ -78,6 +82,7 @@ export function allocateReceipt(
 
 export type ApplyPrepaidFailureReason =
   | 'invalid_amount'
+  | 'wrong_kind'
   | 'period_cancelled'
   | 'exceeds_prepaid_balance'
   | 'exceeds_outstanding';
@@ -106,6 +111,7 @@ export function applyPrepaid(
   if (!isPositiveMoney(amount) || !Number.isSafeInteger(prepaidBalance) || prepaidBalance < 0) {
     return { ok: false, reason: 'invalid_amount' };
   }
+  if (!isRent(period.kind)) return { ok: false, reason: 'wrong_kind' };
   if (period.state === 'cancelled') return { ok: false, reason: 'period_cancelled' };
   if (amount > prepaidBalance) return { ok: false, reason: 'exceeds_prepaid_balance' };
   if (amount > outstandingAmount(period, options.allocations)) return { ok: false, reason: 'exceeds_outstanding' };
@@ -176,7 +182,7 @@ export function reallocate(
       targets.add(t.periodId);
       const period = periodById.get(t.periodId);
       if (!period) return { ok: false, reason: 'unknown_period' };
-      if ((period.kind as string) !== 'rent' || (old.kind as string) !== 'rent') {
+      if (!isRent(period.kind) || !isRent(old.kind)) {
         return { ok: false, reason: 'wrong_kind' };
       }
       if (period.state === 'cancelled') return { ok: false, reason: 'period_cancelled' };

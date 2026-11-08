@@ -24,6 +24,7 @@ export function splitPeriods(contract: PeriodContract): PeriodDraft[] {
     throw new RangeError(`付款日必須是 1 到 31 的整數：${paymentDay}`);
   }
   assertMoney(monthlyRent, '月租');
+  if (!Number.isSafeInteger(2 * monthlyRent * 31)) throw new RangeError(`月租過大，按比例計算會超出安全整數：${monthlyRent}`);
 
   const drafts: PeriodDraft[] = [];
   let year = start.year;

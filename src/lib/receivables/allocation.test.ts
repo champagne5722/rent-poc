@@ -201,6 +201,11 @@ describe('applyPrepaid（預收抵充）', () => {
     expect(applyPrepaid(P1, 0, 1, opts())).toEqual({ ok: false, reason: 'exceeds_prepaid_balance' });
   });
 
+  it('押金期別不得抵充：執行時也擋 → wrong_kind', () => {
+    const bad = { ...P1, kind: 'deposit' } as unknown as ReceivablePeriod;
+    expect(applyPrepaid(bad, 50000, 1, opts())).toEqual({ ok: false, reason: 'wrong_kind' });
+  });
+
   it('已取消的期別不得抵充', () => {
     expect(applyPrepaid({ ...P1, state: 'cancelled' }, 50000, 1, opts())).toEqual({
       ok: false,

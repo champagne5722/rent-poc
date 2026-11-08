@@ -1,7 +1,9 @@
 // 日期工具。日期一律是 YYYY-MM-DD 字串，代表台灣當地日期，不經過 Date.now() 或本機時區。
 
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
-const DAY_MS = 86_400_000;
+export const DAY_MS = 86_400_000;
+// 含時區的 ISO 8601：必須帶 Z 或 ±hh:mm，避免依本機時區解析。
+const INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
 const TAIPEI_OFFSET_MS = 8 * 3_600_000;
 
 export function isLeapYear(year: number): boolean {
@@ -46,10 +48,16 @@ export function diffDays(later: string, earlier: string): number {
   return toDayNumber(later) - toDayNumber(earlier);
 }
 
+/** 解析含時區的 ISO 8601 時間點，回傳毫秒。沒帶時區或無法解析時丟 RangeError。 */
+export function parseInstant(value: string): number {
+  const ms = INSTANT_RE.test(value) ? Date.parse(value) : Number.NaN;
+  if (Number.isNaN(ms)) throw new RangeError(`時間必須是含時區的 ISO 8601：${value}`);
+  return ms;
+}
+
 /** 把 ISO 8601 時間點（含時區）換成台灣日期。呼叫端用它由時間戳取得 `today`。 */
 export function toTaipeiDate(instant: string): string {
-  const ms = Date.parse(instant);
-  if (Number.isNaN(ms)) throw new RangeError(`無法解析的時間：${instant}`);
+  const ms = parseInstant(instant);
   const d = new Date(ms + TAIPEI_OFFSET_MS);
   return formatDate(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
 }
