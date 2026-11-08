@@ -1,7 +1,7 @@
 // 領域型別與詞彙，術語定義見 repo 根目錄 GLOSSARY.md
 
 import type { BusinessType } from './cases';
-import type { ContractType } from './labels';
+import { TERMS, type ContractType } from './labels';
 
 export const PROPERTY_TYPES = ['整層住家', '套房', '雅房'] as const;
 export type PropertyType = (typeof PROPERTY_TYPES)[number];
@@ -36,14 +36,14 @@ export interface EquipmentItem {
   quantity: number;
 }
 
-// 修繕責任（GLOSSARY.md）：設備附件每列的修繕歸屬，預設出租方（呼應內政部範本第八條精神）。
+// 修繕責任（GLOSSARY.md）：設備附件每列的修繕歸屬，預設出租人（呼應內政部範本第八條精神）。
 // 只存在合約層，物件的設備清單不記責任。
 export const REPAIR_RESPONSIBILITIES = ['landlord', 'tenant'] as const;
 export type RepairResponsibility = (typeof REPAIR_RESPONSIBILITIES)[number];
 
 export const REPAIR_RESPONSIBILITY_LABELS: Record<RepairResponsibility, string> = {
-  landlord: '出租方',
-  tenant: '承租方',
+  landlord: TERMS.lessor,
+  tenant: TERMS.lessee,
 };
 
 // 設備附件的一列（ADR-0008）：項目＋數量＋修繕責任＋備註。
@@ -290,8 +290,8 @@ export const CONTRACT_EVENT_ACTORS = ['landlord', 'tenant', 'system', ...SIGNER_
 export type ContractEventActor = (typeof CONTRACT_EVENT_ACTORS)[number];
 
 export const CONTRACT_EVENT_ACTOR_LABELS: Record<ContractEventActor, string> = {
-  landlord: '房東',
-  tenant: '租客',
+  landlord: TERMS.lessor,
+  tenant: TERMS.lessee,
   system: '系統',
   ...SIGNER_ROLE_LABELS,
 };

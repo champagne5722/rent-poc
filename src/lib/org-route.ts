@@ -28,17 +28,6 @@ export async function inOrgTx(handler: (tx: OrgTx) => Promise<Response>): Promis
 }
 
 /**
- * 不經 route 的呼叫端（簽署模組的訂閱者）用的組織交易。沒有登入丟 Unauthenticated，
- * 不是組織身分丟 OrgContextRequired，由呼叫端的錯誤處理轉成 401、403。
- * 過渡期的 webhook 也走這裡，org 脈絡是預設組織；C 線與 MIL-85 會改成由簽署任務查出組織。
- */
-export async function runInOrgTx<R>(fn: (tx: OrgTx) => Promise<R>): Promise<R> {
-  const rc = await requestContext();
-  if (rc.kind !== 'org') throw new OrgContextRequired();
-  return withTx(toDbContext(rc), fn);
-}
-
-/**
  * 在組織交易內只做讀取，把結果帶出交易再處理。要做交易外的事（例如過渡期寫 SQLite）時用這個，
  * 不要把它們塞進 inOrgTx 的 callback：交易內不得有 fs 與外部 I/O（ADR-0012 決議 10）。
  */
