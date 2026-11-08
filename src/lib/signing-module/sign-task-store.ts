@@ -1,51 +1,13 @@
-import type Database from 'better-sqlite3';
-import dayjs from 'dayjs';
+import { newUlid } from '../pg/ulid';
+import type { ControlTx, OrgTx } from '../pg/with-tx';
 import type { SignerRole } from '../types';
 import type { CurrentSigner, SigningProviderId, SigningSubject } from './provider';
 
-// 簽署任務與簽署人的儲存（ADR-0010 決議 2）。
-// 這個檔案不 import db.ts，因為 ensureSchema() 要呼叫這裡，連線一律由呼叫端傳入。
-// 之後要遷移 PostgreSQL（ADR-0012）：DML 避開 SQLite 特有語法，只有取現在時間例外，集中在 NOW。
-// 建表語句沿用專案慣例的 AUTOINCREMENT，遷移時隨其他表一起改。
-
-const NOW = "datetime('now', 'localtime')";
-
-export function ensureSignTaskTables(db: Database.Database): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS sign_tasks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      provider TEXT NOT NULL,
-      provider_task_ref TEXT NOT NULL,
-      subject_type TEXT NOT NULL,
-      subject_id TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'in_progress',
-      created_at TEXT NOT NULL DEFAULT (${NOW}),
-      updated_at TEXT,
-      UNIQUE (subject_type, subject_id),
-      UNIQUE (provider, provider_task_ref)
-    );
-
-    -- 當前簽署人由資料推導：順序最前面的待簽者。電話與身分證字號不得寫入這張表。
-    -- concurrent_roles：兼任角色，角色字串的 JSON 陣列，沒有兼任時是 NULL（ADR-0018 決議 9）。
-    CREATE TABLE IF NOT EXISTS signers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      sign_task_id INTEGER NOT NULL REFERENCES sign_tasks(id),
-      position INTEGER NOT NULL,
-      role TEXT NOT NULL,
-      name TEXT NOT NULL,
-      email TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      signed_at TEXT,
-      concurrent_roles TEXT,
-      UNIQUE (sign_task_id, position)
-    );
-  `);
-  // 升級前建立的表沒有這個欄位。SQLite 沒有 ADD COLUMN IF NOT EXISTS，先檢查再補。
-  const columns = db.prepare('PRAGMA table_info(signers)').all() as { name: string }[];
-  if (!columns.some((c) => c.name === 'concurrent_roles')) {
-    db.exec('ALTER TABLE signers ADD COLUMN concurrent_roles TEXT');
-  }
-}
+// 簽署任務與簽署人的儲存（ADR-0010 決議 2，MIL-85 搬進 PostgreSQL）。表見 db/migrations/0006_sign_tasks.sql。
+//
+// 形狀照 src/lib/contracts/repository.ts：第一個參數是 withTx 給的 tx，不傳 org_id。
+// INSERT 取交易的 app.org_id，查詢靠 RLS 篩選，別的組織的簽署任務和不存在的沒有差別。
+// 簽署任務的 ID 是 ULID，subject_id 存簽署標的的 ULID。
 
 export type SignTaskStatus = 'in_progress' | 'completed' | 'declined' | 'voided';
 export type SignerStatus = 'pending' | 'signed' | 'declined';
@@ -61,8 +23,10 @@ export interface SignerRecord {
 }
 
 export interface SignTaskRecord {
-  id: number;
+  id: string;
+  provider: SigningProviderId;
   taskRef: string;
+  subject: SigningSubject;
   status: SignTaskStatus;
   signers: SignerRecord[];
 }
@@ -77,50 +41,98 @@ export interface SigningProgress {
   currentSigner: CurrentSigner | null;
 }
 
-export function findSignTask(db: Database.Database, subject: SigningSubject): SignTaskRecord | null {
-  const row = db
-    .prepare(
-      `SELECT id, provider_task_ref, status FROM sign_tasks
-        WHERE subject_type = ? AND subject_id = ?`
-    )
-    .get(subject.type, subject.id) as
-    | { id: number; provider_task_ref: string; status: SignTaskStatus }
-    | undefined;
-  if (!row) return null;
+interface TaskRow {
+  id: string;
+  provider: SigningProviderId;
+  provider_task_ref: string;
+  subject_type: string;
+  subject_id: string;
+  status: SignTaskStatus;
+}
 
-  // 別名要加引號，PostgreSQL 才會保留大小寫
-  const signerRows = db
-    .prepare(
-      `SELECT role, name, email, status, signed_at AS "signedAt", concurrent_roles AS "concurrentRoles" FROM signers
-        WHERE sign_task_id = ? ORDER BY position ASC`
-    )
-    .all(row.id) as (Omit<SignerRecord, 'concurrentRoles'> & { concurrentRoles: string | null })[];
-  const signers = signerRows.map(({ concurrentRoles, ...signer }): SignerRecord => {
-    const roles = concurrentRoles ? (JSON.parse(concurrentRoles) as SignerRole[]) : [];
-    return roles.length > 0 ? { ...signer, concurrentRoles: roles } : signer;
+interface SignerRow {
+  role: SignerRole;
+  name: string;
+  email: string;
+  status: SignerStatus;
+  signed_at: Date | null;
+  concurrent_roles: SignerRole[] | null;
+}
+
+const TASK_COLUMNS = 'id, provider, provider_task_ref, subject_type, subject_id, status';
+
+async function toRecord(tx: OrgTx, row: TaskRow): Promise<SignTaskRecord> {
+  const { rows } = await tx.query<SignerRow>(
+    `SELECT role, name, email, status, signed_at, concurrent_roles FROM org.signers
+      WHERE sign_task_id = $1 ORDER BY position ASC`,
+    [row.id],
+  );
+  const signers = rows.map(({ concurrent_roles, signed_at, ...signer }): SignerRecord => {
+    const base = { ...signer, signedAt: signed_at ? signed_at.toISOString() : null };
+    return concurrent_roles && concurrent_roles.length > 0 ? { ...base, concurrentRoles: concurrent_roles } : base;
   });
-  return { id: row.id, taskRef: row.provider_task_ref, status: row.status, signers };
+  return {
+    id: row.id,
+    provider: row.provider,
+    taskRef: row.provider_task_ref,
+    subject: { type: row.subject_type, id: row.subject_id },
+    status: row.status,
+    signers,
+  };
 }
 
-// 服務商任務編號只在同一服務商內唯一，所以 webhook 比對要帶服務商
-export function findSubjectByTaskRef(
-  db: Database.Database,
+/**
+ * 讀簽署標的的簽署任務。要在同一個交易改進度時傳 lock：鎖住任務列，
+ * 同一個任務的兩個事件（webhook 重送）依序處理，後到的看得到先到的結果。
+ */
+export async function findSignTask(
+  tx: OrgTx,
+  subject: SigningSubject,
+  options: { lock?: boolean } = {},
+): Promise<SignTaskRecord | null> {
+  const { rows } = await tx.query<TaskRow>(
+    `SELECT ${TASK_COLUMNS} FROM org.sign_tasks WHERE subject_type = $1 AND subject_id = $2${options.lock ? ' FOR UPDATE' : ''}`,
+    [subject.type, subject.id],
+  );
+  return rows[0] ? toRecord(tx, rows[0]) : null;
+}
+
+/** 服務商任務編號只在同一服務商內唯一，所以比對要帶服務商。webhook 查到組織之後用它找簽署任務。 */
+export async function findSignTaskByRef(
+  tx: OrgTx,
   provider: SigningProviderId,
-  taskRef: string
-): SigningSubject | null {
-  const row = db
-    .prepare('SELECT subject_type, subject_id FROM sign_tasks WHERE provider = ? AND provider_task_ref = ?')
-    .get(provider, taskRef) as { subject_type: SigningSubject['type']; subject_id: string } | undefined;
-  return row ? { type: row.subject_type, id: row.subject_id } : null;
+  taskRef: string,
+): Promise<SignTaskRecord | null> {
+  const { rows } = await tx.query<TaskRow>(
+    `SELECT ${TASK_COLUMNS} FROM org.sign_tasks WHERE provider = $1 AND provider_task_ref = $2`,
+    [provider, taskRef],
+  );
+  return rows[0] ? toRecord(tx, rows[0]) : null;
 }
 
-export function currentSignerOf(task: SignTaskRecord): CurrentSigner | null {
+/**
+ * webhook 沒有組織脈絡：用 control 脈絡查路由列，取得 org_id 再開組織交易（ADR-0012 決議 5）。
+ * 路由列由 insertSignTask 與簽署任務同交易寫入。
+ */
+export async function findSignTaskRoute(
+  tx: ControlTx,
+  provider: SigningProviderId,
+  taskRef: string,
+): Promise<{ orgId: string; signTaskId: string } | null> {
+  const { rows } = await tx.query<{ org_id: string; sign_task_id: string }>(
+    'SELECT org_id, sign_task_id FROM control.sign_task_routes WHERE provider = $1 AND provider_task_ref = $2',
+    [provider, taskRef],
+  );
+  return rows[0] ? { orgId: rows[0].org_id, signTaskId: rows[0].sign_task_id } : null;
+}
+
+export function currentSignerOf(task: Pick<SignTaskRecord, 'status' | 'signers'>): CurrentSigner | null {
   if (task.status !== 'in_progress') return null;
   const next = task.signers.find((s) => s.status === 'pending');
   return next ? { role: next.role, name: next.name, email: next.email } : null;
 }
 
-export function toSigningProgress(task: SignTaskRecord): SigningProgress {
+export function toSigningProgress(task: Pick<SignTaskRecord, 'status' | 'signers'>): SigningProgress {
   return { status: task.status, signers: task.signers, currentSigner: currentSignerOf(task) };
 }
 
@@ -136,61 +148,75 @@ export interface NewSignTask {
     Partial<Pick<SignerRecord, 'status' | 'signedAt' | 'concurrentRoles'>>)[];
 }
 
-// 回傳是否寫入。簽署標的或服務商任務編號已有簽署任務時不寫入，回 false。
-export function insertSignTask(db: Database.Database, task: NewSignTask): boolean {
-  const result = db
-    .prepare(
-      `INSERT INTO sign_tasks (provider, provider_task_ref, subject_type, subject_id, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, COALESCE(?, ${NOW}), ?)
-       ON CONFLICT DO NOTHING`
-    )
-    .run(
+/**
+ * 寫入簽署任務、簽署人與路由列。回傳是否寫入。
+ * 簽署標的或服務商任務編號已有簽署任務時回 false。
+ * 路由列撞號（別的組織已用這個服務商任務編號）時，簽署任務與簽署人已寫入但路由列沒有，也回 false。
+ * 回 false 時呼叫端必須丟例外讓交易回滾，不得提交。
+ */
+export async function insertSignTask(tx: OrgTx, task: NewSignTask): Promise<boolean> {
+  const id = newUlid();
+  const inserted = await tx.query(
+    `INSERT INTO org.sign_tasks (id, org_id, provider, provider_task_ref, subject_type, subject_id, status, created_at, updated_at)
+     VALUES ($1, current_setting('app.org_id', true), $2, $3, $4, $5, $6, COALESCE($7::timestamptz, now()), $8::timestamptz)
+     ON CONFLICT DO NOTHING
+     RETURNING id`,
+    [
+      id,
       task.provider,
       task.taskRef,
       task.subject.type,
       task.subject.id,
       task.status ?? 'in_progress',
       task.createdAt ?? null,
-      task.updatedAt ?? null
-    );
-  if (result.changes === 0) return false;
-
-  const insertSigner = db.prepare(
-    `INSERT INTO signers (sign_task_id, position, role, name, email, status, signed_at, concurrent_roles)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      task.updatedAt ?? null,
+    ],
   );
-  task.signers.forEach((signer, position) => {
-    insertSigner.run(
-      result.lastInsertRowid,
-      position,
-      signer.role,
-      signer.name,
-      signer.email,
-      signer.status ?? 'pending',
-      signer.signedAt ?? null,
-      signer.concurrentRoles?.length ? JSON.stringify(signer.concurrentRoles) : null
+  if (inserted.rows.length === 0) return false;
+
+  for (const [position, signer] of task.signers.entries()) {
+    await tx.query(
+      `INSERT INTO org.signers (id, org_id, sign_task_id, position, role, name, email, status, signed_at, concurrent_roles)
+       VALUES ($1, current_setting('app.org_id', true), $2, $3, $4, $5, $6, $7, $8::timestamptz, $9::jsonb)`,
+      [
+        newUlid(),
+        id,
+        position,
+        signer.role,
+        signer.name,
+        signer.email,
+        signer.status ?? 'pending',
+        signer.signedAt ?? null,
+        signer.concurrentRoles?.length ? JSON.stringify(signer.concurrentRoles) : null,
+      ],
     );
-  });
-  return true;
-}
-
-// 寫入推進後的簽署進度。next 的簽署人順序與 task 相同，陣列索引就是 position。
-// 簽署時間優先用事件時間，服務商沒有提供時用現在時間。
-export function saveProgress(db: Database.Database, task: SignTaskRecord, next: ProgressSnapshot): void {
-  next.signers.forEach((signer, position) => {
-    if (signer.status === task.signers[position].status) return;
-    db.prepare(
-      `UPDATE signers
-          SET status = ?, signed_at = CASE WHEN ? = 'signed' THEN COALESCE(?, ${NOW}) ELSE NULL END
-        WHERE sign_task_id = ? AND position = ?`
-    ).run(signer.status, signer.status, toDbTime(signer.signedAt), task.id, position);
-  });
-  if (next.status !== task.status) {
-    db.prepare(`UPDATE sign_tasks SET status = ?, updated_at = ${NOW} WHERE id = ?`).run(next.status, task.id);
   }
+
+  const route = await tx.query(
+    `INSERT INTO control.sign_task_routes (provider, provider_task_ref, org_id, sign_task_id)
+     VALUES ($1, $2, current_setting('app.org_id', true), $3)
+     ON CONFLICT DO NOTHING
+     RETURNING sign_task_id`,
+    [task.provider, task.taskRef, id],
+  );
+  return route.rows.length > 0;
 }
 
-// 轉成與 NOW 相同的格式，同一欄位才不會混用兩種時間格式
-function toDbTime(time: string | null): string | null {
-  return time ? dayjs(time).format('YYYY-MM-DD HH:mm:ss') : null;
+/**
+ * 寫入推進後的簽署進度。next 的簽署人順序與 task 相同，陣列索引就是 position。
+ * 簽署時間優先用事件時間，服務商沒有提供時用現在時間。
+ */
+export async function saveProgress(tx: OrgTx, task: SignTaskRecord, next: ProgressSnapshot): Promise<void> {
+  for (const [position, signer] of next.signers.entries()) {
+    if (signer.status === task.signers[position].status) continue;
+    await tx.query(
+      `UPDATE org.signers
+          SET status = $1, signed_at = CASE WHEN $1 = 'signed' THEN COALESCE($2::timestamptz, now()) ELSE NULL END
+        WHERE sign_task_id = $3 AND position = $4`,
+      [signer.status, signer.signedAt, task.id, position],
+    );
+  }
+  if (next.status !== task.status) {
+    await tx.query('UPDATE org.sign_tasks SET status = $1, updated_at = now() WHERE id = $2', [next.status, task.id]);
+  }
 }

@@ -3,6 +3,7 @@
 
 import { upgradedTemplateBinding } from './clause-library';
 import { contractEquipmentAnnex } from './equipment';
+import { entityPartyRoles, partyRoleOfEntitySource, type PractitionerAssignmentInput } from './practitioner-assignment/seats';
 import {
   countFieldsBySeat,
   evaluateRouting,
@@ -19,6 +20,8 @@ import type {
   OptionalClause,
   SignatureField,
 } from './types';
+import { TERMS, partyLabels } from './labels';
+import { SIGNER_ROLE_LABELS } from './types';
 
 export const WIZARD_STEPS = [
   { key: 'property', title: '物件與範本' },
@@ -37,14 +40,16 @@ export const STEP_CONFIRM = 3;
 // 平台提供的範本與選用條款庫定義在 src/lib/clause-library.ts（ADR-0005）。
 // 單範本時第①步的範本區顯示為說明不做選擇，選用條款則在該步逐約勾選。
 
-// 乙方先簽（ADR-0003）：確認頁對房東說明送簽後的預期。
-export const TENANT_FIRST_NOTICE =
-  '送簽後由乙方（租客）先簽，乙方完成後才輪到甲方（您）簽署，雙方都簽完合約才成立。';
+// 乙方先簽（ADR-0003）：確認頁對出租人說明送簽後的預期。
+const LEASE_PARTIES = partyLabels('lease');
+export const TENANT_FIRST_NOTICE = `送簽後由${LEASE_PARTIES.partyBFull}先簽，${TERMS.partyB}完成後才輪到${LEASE_PARTIES.partyAFull}簽署，雙方都簽完合約才成立。`;
 
 /** wizard 檢核看得到的狀態；欄位日期一律是 YYYY-MM-DD 字串。 */
 export interface WizardState {
   fields: ContractFields;
   signatureFields: SignatureField[];
+  /** 執業人員的指派（MIL-69）。沒有帶（舊用法）時不檢查指派。 */
+  assignments?: readonly PractitionerAssignmentInput[];
 }
 
 const EMAIL_PATTERN = /.+@.+\..+/;
@@ -158,22 +163,74 @@ function signatureBlockReason(fields: ContractFields, signatureFields: Signature
   return `請為下列簽署席位各設定至少一個簽名框：${missing.map((c) => c.seat.fullLabel).join('、')}`;
 }
 
-function fieldsBlockReason(fields: ContractFields): string | null {
-  const missing = missingFieldLabels(fields);
-  return missing.length ? `請先完成欄位：${missing.join('、')}` : null;
+const PARTY_FIELD_LABELS: Record<ContractPartyRole, readonly string[]> = {
+  party_a: ['甲方姓名', '甲方 Email'],
+  party_b: ['乙方姓名', '乙方 Email'],
+};
+
+/** 執業主體是甲方或乙方的角色中，還沒有選定當事人簽署人的。 */
+function unassignedPartySigners(
+  fields: ContractFields,
+  assignments: readonly PractitionerAssignmentInput[],
+): ContractPartyRole[] {
+  const evaluation = evaluateRouting(fields.routing);
+  if (!evaluation.ok) return [];
+  return entityPartyRoles(evaluation.plan).filter((role) => {
+    const seat = evaluation.plan.seats.find(
+      (s) => s.practitioner && partyRoleOfEntitySource(s.practitioner.entitySource) === role,
+    );
+    const assignment = assignments.find((a) => a.slot === seat?.ruleId);
+    return !assignment?.partySignerId;
+  });
+}
+
+/**
+ * 第②步的擋下理由。執業主體是甲方或乙方時，那一方的姓名與 email 由當事人簽署人帶入，
+ * 所以還沒選簽署人時，不把那一方的欄位列為缺漏，改提示先選簽署人。
+ */
+function fieldsBlockReason(fields: ContractFields, assignments?: readonly PractitionerAssignmentInput[]): string | null {
+  const unassigned = assignments ? unassignedPartySigners(fields, assignments) : [];
+  const skipped = new Set(unassigned.flatMap((role) => PARTY_FIELD_LABELS[role]));
+  const missing = missingFieldLabels(fields).filter((label) => !skipped.has(label));
+  if (missing.length) return `請先完成欄位：${missing.join('、')}`;
+  if (unassigned.length) return `請先指派${SIGNER_ROLE_LABELS[unassigned[0]]}的當事人簽署人`;
+  return null;
 }
 
 /** 按「下一步」時的擋下理由；通過回 null。第①步的物件在建立草稿時已綁定，只檢查分流條件。 */
 export function nextStepBlockReason(stepIndex: number, state: WizardState): string | null {
   if (stepIndex === STEP_PROPERTY) return routingBlockReason(state.fields);
-  if (stepIndex === STEP_FIELDS) return fieldsBlockReason(state.fields);
+  if (stepIndex === STEP_FIELDS) return fieldsBlockReason(state.fields, state.assignments);
   if (stepIndex === STEP_SIGNATURE) return signatureBlockReason(state.fields, state.signatureFields);
   return null;
 }
 
 /**
+ * 指派不完整的原因：每個執業人員席位要有指派，執業主體是甲方或乙方時還要有當事人簽署人。
+ * 資格（可簽章、專任、證書種類）由伺服器的送簽前檢查判定，不在 wizard 重算。
+ */
+function assignmentReasons(fields: ContractFields, assignments: readonly PractitionerAssignmentInput[]): string[] {
+  const evaluation = evaluateRouting(fields.routing);
+  if (!evaluation.ok) return [];
+  const reasons: string[] = [];
+  for (const seat of evaluation.plan.seats) {
+    if (!seat.practitioner) continue;
+    const assignment = assignments.find((a) => a.slot === seat.ruleId);
+    const label = evaluation.seats.find((v) => v.ruleId === seat.ruleId)!.label;
+    // 草稿中只選了執業主體、還沒選執業人員時，practitionerId 是空字串
+    if (!assignment || !assignment.practitionerId) {
+      reasons.push(`尚未指派${label}`);
+      continue;
+    }
+    const partyRole = partyRoleOfEntitySource(seat.practitioner.entitySource);
+    if (partyRole && !assignment.partySignerId) reasons.push(`尚未指派${SIGNER_ROLE_LABELS[partyRole]}的當事人簽署人`);
+  }
+  return reasons;
+}
+
+/**
  * 第④步送簽前的全部擋下原因，一次列完：欄位缺漏、分流條件、缺少的簽署區域、尚未指派的執業人員。
- * 規則要求執業人員但尚未指派時擋下送簽。指派執業人員的欄位屬 MIL-69，在那之前每個執業人員席位都算未指派。
+ * 規則要求執業人員但尚未指派時擋下送簽。
  */
 export function sendBlockReasons(state: WizardState): string[] {
   const reasons: string[] = [];
@@ -187,9 +244,7 @@ export function sendBlockReasons(state: WizardState): string[] {
   }
   const signatureReason = signatureBlockReason(state.fields, state.signatureFields);
   if (signatureReason) reasons.push(signatureReason);
-  for (const seat of evaluation.seats) {
-    if (seat.role === 'practitioner') reasons.push(`尚未指派${seat.label}`);
-  }
+  reasons.push(...assignmentReasons(state.fields, state.assignments ?? []));
   return reasons;
 }
 
@@ -238,6 +293,28 @@ export function applyRoutingChange(
   if (!evaluation.ok) return { fields: next, signatureFields, removed: 0 };
   const reconciled = reconcileSignatureFields(signatureFields, evaluation.seats);
   return { fields: next, signatureFields: reconciled.fields, removed: reconciled.removed };
+}
+
+/** 分流條件改變後，指派只留簽署序列還有的執業人員席位。分流條件無效時全部移除。 */
+export function pruneAssignments(
+  routing: ContractRoutingConditions | undefined,
+  assignments: readonly PractitionerAssignmentInput[],
+): PractitionerAssignmentInput[] {
+  const evaluation = evaluateRouting(routing);
+  if (!evaluation.ok) return [];
+  const slots = new Set(evaluation.plan.seats.filter((s) => s.practitioner).map((s) => s.ruleId));
+  return assignments.filter((a) => slots.has(a.slot));
+}
+
+/** 選定當事人簽署人後，把姓名與 email 帶入那一方的合約欄位。回傳新物件。 */
+export function applyPartySigner(
+  fields: ContractFields,
+  role: ContractPartyRole,
+  signer: { name: string; email: string },
+): ContractFields {
+  return role === 'party_a'
+    ? { ...fields, landlordName: signer.name, landlordEmail: signer.email }
+    : { ...fields, tenantName: signer.name, tenantEmail: signer.email };
 }
 
 export type WizardStepStatus = 'wait' | 'process' | 'finish' | 'error';
