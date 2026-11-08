@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withTx } from '@/lib/pg/database';
 import { actAs, actAsError, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { isUlid, newUlid } from '@/lib/pg/ulid';
 import { Unauthenticated } from '@/lib/request-context';
@@ -258,5 +259,39 @@ describe('跨組織與格式錯誤的 ID', () => {
     await DELETE(req('DELETE'), ctx(bId));
     actAs(kit.orgB);
     expect((await json(await getOne(req('GET'), ctx(bId)))).data.name).toBe('B 的物件');
+  });
+});
+
+// 稽核（ADR-0019，MIL-81 建議項）：建立、修改、刪除與業務資料同一個交易寫事件，鏈由組織決定。
+describe('稽核事件', () => {
+  const events = (orgId: string) =>
+    withTx({ kind: 'org', orgId }, async (tx) =>
+      (await tx.query<{ action: string; object_type: string; object_id: string; payload: Record<string, unknown> }>(
+        `SELECT action, object_type, object_id, payload FROM audit.events ORDER BY seq`,
+      )).rows,
+    );
+
+  it('建立、修改、刪除各寫一筆，payload 不含名稱與地址', async () => {
+    const id = await create();
+    const unitId = (await json(await getOne(req('GET'), ctx(id)))).data.rental_unit_id;
+    await PUT(req('PUT', body({ name: '改名', note: '新備註' })), ctx(id));
+    await DELETE(req('DELETE'), ctx(id));
+    expect(await events(kit.orgA)).toEqual([
+      { action: 'property.create', object_type: 'property', object_id: id, payload: { rental_unit_id: unitId } },
+      { action: 'property.update', object_type: 'property', object_id: id, payload: { changed: ['name', 'note'] } },
+      { action: 'property.delete', object_type: 'property', object_id: id, payload: { rental_unit_id: unitId } },
+    ]);
+  });
+
+  it('寫在該組織自己的鏈，別的組織看不到', async () => {
+    await create();
+    expect(await events(kit.orgB)).toEqual([]);
+  });
+
+  it('找不到物件的修改與刪除不寫事件，驗證失敗的建立也不寫', async () => {
+    await PUT(req('PUT', body()), ctx(newUlid()));
+    await DELETE(req('DELETE'), ctx(newUlid()));
+    await post(body({ name: '' }));
+    expect(await events(kit.orgA)).toEqual([]);
   });
 });

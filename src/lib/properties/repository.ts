@@ -1,3 +1,4 @@
+import { appendAudit } from '@/lib/audit';
 import { parseStoredEquipment } from '@/lib/equipment';
 import { newUlid } from '@/lib/pg/ulid';
 import type { OrgTx } from '@/lib/pg/with-tx';
@@ -84,11 +85,15 @@ export async function createProperty(tx: OrgTx, input: PropertyInput): Promise<s
       JSON.stringify(input.equipment),
     ],
   );
+  // 稽核與業務資料同一個交易。payload 不放名稱與地址：canonical 寫入後刪不掉（ADR-0019 決議 5）
+  await appendAudit(tx, { action: 'property.create', object: { type: 'property', id }, payload: { rental_unit_id: unitId } });
   return id;
 }
 
 /** 修改物件。找不到（含別的組織的物件）回 null。不改租賃單位。 */
 export async function updateProperty(tx: OrgTx, id: string, input: PropertyInput): Promise<Property | null> {
+  const before = await getProperty(tx, id);
+  if (!before) return null;
   await ensureNames(tx, input.equipment.map((i) => i.name));
   const { rows } = await tx.query<Row>(
     `UPDATE org.properties
@@ -98,7 +103,21 @@ export async function updateProperty(tx: OrgTx, id: string, input: PropertyInput
       RETURNING ${COLUMNS}`,
     [id, input.name, input.address, input.type ?? null, input.size, input.default_rent, input.note, JSON.stringify(input.equipment)],
   );
-  return rows[0] ? toProperty(rows[0]) : null;
+  if (!rows[0]) return null;
+  const after = toProperty(rows[0]);
+  await appendAudit(tx, {
+    action: 'property.update',
+    object: { type: 'property', id },
+    payload: { changed: changedFields(before, after) },
+  });
+  return after;
+}
+
+const AUDITED_FIELDS = ['name', 'address', 'type', 'size', 'default_rent', 'note', 'equipment'] as const;
+
+/** 被改動的欄位名稱，不含值。 */
+function changedFields(before: Property, after: Property): string[] {
+  return AUDITED_FIELDS.filter((f) => JSON.stringify(before[f]) !== JSON.stringify(after[f]));
 }
 
 /**
@@ -106,6 +125,11 @@ export async function updateProperty(tx: OrgTx, id: string, input: PropertyInput
  * 「有合約只能封存」的檢查等合約進 PostgreSQL 後（MIL-83）再加。
  */
 export async function deleteProperty(tx: OrgTx, id: string): Promise<boolean> {
-  const { rows } = await tx.query('DELETE FROM org.properties WHERE id = $1 RETURNING id', [id]);
-  return rows.length > 0;
+  const { rows } = await tx.query<{ rental_unit_id: string }>(
+    'DELETE FROM org.properties WHERE id = $1 RETURNING rental_unit_id',
+    [id],
+  );
+  if (rows.length === 0) return false;
+  await appendAudit(tx, { action: 'property.delete', object: { type: 'property', id }, payload: { rental_unit_id: rows[0].rental_unit_id } });
+  return true;
 }
