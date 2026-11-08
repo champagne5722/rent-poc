@@ -6,7 +6,7 @@ import type { ContractType } from './labels';
 export const PROPERTY_TYPES = ['整層住家', '套房', '雅房'] as const;
 export type PropertyType = (typeof PROPERTY_TYPES)[number];
 
-// 設備詞彙庫的平台預設項目（ADR-0008）：ensureSchema 開檔時 seed 進 equipment_vocabulary，
+// 設備詞彙庫的平台預設項目（ADR-0008）：每個組織第一次用到詞彙庫時，由 properties 的 repository 補進 org.equipment_vocabulary，
 // 房東自訂項目與這些項目同一份字典，之後一律從資料庫讀，不再直接引用這個常數當選項。
 export const EQUIPMENT_OPTIONS = [
   '冷氣',
@@ -23,9 +23,9 @@ export const EQUIPMENT_OPTIONS = [
 
 // 設備詞彙庫的一筆項目：房東層的設備字典，平台預設與自訂項目差在 is_custom
 export interface EquipmentVocabularyItem {
-  id: number;
+  id: string; // ULID（ADR-0012 決議 9）
   name: string;
-  is_custom: 0 | 1;
+  is_custom: boolean;
   created_at: string;
 }
 
@@ -56,7 +56,9 @@ export interface EquipmentAnnexRow {
 }
 
 export interface Property {
-  id: number;
+  id: string; // ULID（ADR-0012 決議 9）
+  // 物件持有的租賃單位，建物件時由 registry 同交易建立，不得為空（ADR-0013）
+  rental_unit_id: string;
   name: string;
   address: string;
   type: PropertyType;
@@ -232,7 +234,8 @@ export interface ContractFile {
 
 export interface Contract {
   id: number;
-  property_id: number | null;
+  // 物件的 ULID。合約還在 SQLite 時只存文字，沒有外鍵；MIL-83 搬到 PostgreSQL 時改複合外鍵
+  property_id: string | null;
   // 合約類型（ADR-0021 決議 2）：決定簽章分流的文件類型。既有合約一律是 lease。
   contract_type: ContractType;
   status: ContractStatus;

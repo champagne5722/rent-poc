@@ -9,13 +9,9 @@ import type {
   ContractRelationRef,
   ContractRelations,
   ContractStatus,
-  EquipmentVocabularyItem,
-  Property,
   SignerRole,
 } from './types';
-import { EQUIPMENT_OPTIONS } from './types';
 import type { ContractType } from './labels';
-import { parseStoredEquipment } from './equipment';
 import { migrateLegacyContractSigning } from './signing-module/contract-backfill';
 import { ensureSignTaskFileTable } from './signing-module/sign-task-files';
 import { ensureSignTaskTables } from './signing-module/sign-task-store';
@@ -29,22 +25,10 @@ const globalForDb = globalThis as unknown as { __rentPocDb?: Database.Database }
 // 對既有 data/rent-poc.db 相容（新表會在下次開檔時補建）。測試用 in-memory DB 也共用這份。
 export function ensureSchema(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS properties (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      address TEXT NOT NULL,
-      type TEXT NOT NULL DEFAULT '整層住家',
-      size REAL,
-      default_rent INTEGER,
-      note TEXT NOT NULL DEFAULT '',
-      equipment TEXT NOT NULL DEFAULT '[]',
-      created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-      updated_at TEXT
-    );
-
     CREATE TABLE IF NOT EXISTS contracts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      property_id INTEGER REFERENCES properties(id),
+      -- 物件已搬到 PostgreSQL（MIL-81），這裡存物件的 ULID，沒有外鍵。合約搬過去時（MIL-83）改複合外鍵
+      property_id TEXT,
       status TEXT NOT NULL DEFAULT 'draft',
       fields TEXT NOT NULL DEFAULT '{}',
       signature_fields TEXT NOT NULL DEFAULT '[]',
@@ -64,15 +48,6 @@ export function ensureSchema(db: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_contract_events_contract ON contract_events (contract_id, id);
-
-    -- 設備詞彙庫（ADR-0008）：房東層的設備項目字典，平台預設（is_custom=0）與自訂項目（is_custom=1）同一份。
-    -- PoC 沒有登入，實質全系統一份；語意上屬房東，之後補登入時加 landlord_id 即可。
-    CREATE TABLE IF NOT EXISTS equipment_vocabulary (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      is_custom INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
-    );
   `);
 
   // 既有資料表補欄位：SQLite 沒有 ADD COLUMN IF NOT EXISTS，先用 PRAGMA table_info 檢查再 ALTER
@@ -87,39 +62,9 @@ export function ensureSchema(db: Database.Database): void {
   ensureSignTaskTables(db);
   ensureSignTaskFileTable(db);
 
-  seedEquipmentVocabulary(db);
-  normalizePropertyEquipment(db);
   convertLegacySignerRoles(db);
   // 要在簽署角色改名之後：回填讀合約欄位的簽署人
   migrateLegacyContractSigning(db);
-}
-
-// 平台預設項目：INSERT OR IGNORE 讓重跑不會重複，也不會把已存在的項目改回預設
-function seedEquipmentVocabulary(db: Database.Database): void {
-  const insert = db.prepare('INSERT OR IGNORE INTO equipment_vocabulary (name, is_custom) VALUES (?, 0)');
-  db.transaction(() => {
-    for (const name of EQUIPMENT_OPTIONS) insert.run(name);
-  })();
-}
-
-/**
- * 一次性正規化既有物件的設備清單（MIL-28）：
- * 舊的字串陣列改寫成「項目＋數量」物件陣列，同時把清單裡詞彙庫沒有的名稱補成自訂項目。
- * 內容沒變的列不寫回，重跑等同 no-op。
- */
-function normalizePropertyEquipment(db: Database.Database): void {
-  const rows = db.prepare('SELECT id, equipment FROM properties').all() as { id: number; equipment: string }[];
-  if (rows.length === 0) return;
-  const update = db.prepare('UPDATE properties SET equipment = ? WHERE id = ?');
-  const insertName = db.prepare('INSERT OR IGNORE INTO equipment_vocabulary (name, is_custom) VALUES (?, 1)');
-  db.transaction(() => {
-    for (const row of rows) {
-      const items = parseStoredEquipment(row.equipment);
-      const json = JSON.stringify(items);
-      if (json !== row.equipment) update.run(json, row.id);
-      for (const item of items) insertName.run(item.name);
-    }
-  })();
 }
 
 const LEGACY_SIGNER_ROLES = new Map<unknown, SignerRole>([
@@ -190,16 +135,11 @@ export function setDb(db: Database.Database | null): void {
   else delete globalForDb.__rentPocDb;
 }
 
-type PropertyRow = Omit<Property, 'equipment'> & { equipment: string };
 type ContractRow = Omit<Contract, 'fields' | 'signature_fields' | 'status'> & {
   fields: string;
   signature_fields: string;
   status: ContractStatus;
 };
-
-export function rowToProperty(row: PropertyRow): Property {
-  return { ...row, equipment: parseStoredEquipment(row.equipment) };
-}
 
 export function rowToContract(row: ContractRow): Contract {
   return {
@@ -207,50 +147,6 @@ export function rowToContract(row: ContractRow): Contract {
     fields: JSON.parse(row.fields),
     signature_fields: JSON.parse(row.signature_fields),
   };
-}
-
-export function listProperties(): Property[] {
-  return (getDb().prepare('SELECT * FROM properties ORDER BY id DESC').all() as PropertyRow[]).map(rowToProperty);
-}
-
-export function getProperty(id: number): Property | null {
-  const row = getDb().prepare('SELECT * FROM properties WHERE id = ?').get(id) as PropertyRow | undefined;
-  return row ? rowToProperty(row) : null;
-}
-
-// ── 設備詞彙庫（ADR-0008）───────────────────────────────────────────
-
-// 平台預設在前、自訂項目依新增順序在後，讓房東自己加的項目集中在清單尾巴
-export function listEquipmentVocabulary(db: Database.Database = getDb()): EquipmentVocabularyItem[] {
-  return db
-    .prepare('SELECT * FROM equipment_vocabulary ORDER BY is_custom ASC, id ASC')
-    .all() as EquipmentVocabularyItem[];
-}
-
-/**
- * 新增一個自訂項目，回傳新項目；名稱空白或與既有項目（含平台預設）同名時回 null。
- * 擋重複靠 name 的 UNIQUE 約束，INSERT OR IGNORE 後看有沒有真的插進去。
- */
-export function addCustomEquipmentItem(name: string, db: Database.Database = getDb()): EquipmentVocabularyItem | null {
-  const trimmed = name.trim();
-  if (!trimmed) return null;
-  const result = db.prepare('INSERT OR IGNORE INTO equipment_vocabulary (name, is_custom) VALUES (?, 1)').run(trimmed);
-  if (result.changes === 0) return null;
-  return db
-    .prepare('SELECT * FROM equipment_vocabulary WHERE id = ?')
-    .get(Number(result.lastInsertRowid)) as EquipmentVocabularyItem;
-}
-
-/** 存物件時呼叫：清單裡詞彙庫還沒有的名稱補成自訂項目，讓其他物件也選得到。 */
-export function ensureEquipmentVocabulary(names: string[], db: Database.Database = getDb()): void {
-  if (names.length === 0) return;
-  const insert = db.prepare('INSERT OR IGNORE INTO equipment_vocabulary (name, is_custom) VALUES (?, 1)');
-  db.transaction(() => {
-    for (const name of names) {
-      const trimmed = name.trim();
-      if (trimmed) insert.run(trimmed);
-    }
-  })();
 }
 
 export function listContracts(): Contract[] {
@@ -318,7 +214,7 @@ export function commitTransition(
 // 建立合約：插入合約與「建立」事件同交易，回傳新合約 id
 export function insertContractWithEvent(
   values: {
-    property_id: number | null;
+    property_id: string | null;
     fields: string;
     signature_fields?: string;
     contract_type?: ContractType;
