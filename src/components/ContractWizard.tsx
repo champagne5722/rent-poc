@@ -3,7 +3,7 @@
 // 建約 wizard（規格 §7）：四步分頁流程，草稿的編輯體驗一律在這裡。
 // 檢核與步驟推導的純邏輯在 src/lib/contract-wizard.ts，本檔只負責蒐集輸入、呼叫 API 與畫畫面。
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   Alert,
   App as AntApp,
@@ -48,6 +48,7 @@ import type {
 } from '@/lib/types';
 import { REPAIR_RESPONSIBILITIES, REPAIR_RESPONSIBILITY_LABELS, SIGNER_ROLE_LABELS } from '@/lib/types';
 import { contractEquipmentAnnex, formatEquipmentItem, newAnnexRow } from '@/lib/equipment';
+import { depositWarning, type DepositWarning } from '@/lib/deposit-warning';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
 import RoutingConditionsPanel from '@/components/RoutingConditionsPanel';
 import {
@@ -385,6 +386,12 @@ function money(value: number | null | undefined): string {
   return value == null ? '—' : `$${Number(value).toLocaleString()}`;
 }
 
+/** 押金超過 2 個月租金的警告（P0-10 規則 7）：只提醒，不擋下一步也不擋送簽。 */
+function DepositWarningAlert({ warning, style }: { warning: DepositWarning | null; style?: CSSProperties }) {
+  if (!warning) return null;
+  return <Alert type="warning" showIcon style={style} title="押金高於 2 個月租金" description={warning.message} />;
+}
+
 interface FormValues {
   landlordName?: string;
   landlordEmail?: string;
@@ -411,6 +418,9 @@ export default function ContractWizard({ id }: { id: string }) {
   const [sending, setSending] = useState(false);
   const [form] = Form.useForm<FormValues>();
   const initialised = useRef(false);
+  // 欄位步驟邊填邊判斷：表單的值還沒併回 fields 快照前，警告要跟著輸入即時更新
+  const watchedRent = Form.useWatch('rent', form);
+  const watchedDeposit = Form.useWatch('deposit', form);
 
   useEffect(() => {
     let cancelled = false;
@@ -522,6 +532,9 @@ export default function ContractWizard({ id }: { id: string }) {
   const partiesOnly = !seats || isPartiesOnly(seats);
   // 有執業人員的簽署序列才在確認頁列出擋下原因並停用送簽；兩方序列沿用原本的行為（送簽時才提示）
   const sendReasons = partiesOnly ? [] : sendBlockReasons(state);
+
+  const fieldsStepDepositWarning = depositWarning(watchedRent, watchedDeposit);
+  const confirmDepositWarning = depositWarning(fields.rent, fields.deposit);
 
   const goNext = async () => {
     const nextFields = step === STEP_FIELDS ? readFields() : fields;
@@ -761,6 +774,13 @@ export default function ContractWizard({ id }: { id: string }) {
                   <InputNumber min={0} step={1000} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
+              {fieldsStepDepositWarning && (
+                <Col span={24}>
+                  <Form.Item>
+                    <DepositWarningAlert warning={fieldsStepDepositWarning} />
+                  </Form.Item>
+                </Col>
+              )}
               <Col span={8}>
                 <Form.Item name="startDate" label="租期起日" rules={[{ required: true, message: '請選擇租期起日' }]}>
                   <DatePicker style={{ width: '100%' }} />
@@ -846,6 +866,7 @@ export default function ContractWizard({ id }: { id: string }) {
             message={partiesOnly ? '乙方先簽' : '依序簽署'}
             description={signingSequenceNotice(fields)}
           />
+          <DepositWarningAlert warning={confirmDepositWarning} style={{ marginBottom: 12 }} />
           {sendReasons.length > 0 && (
             <Alert
               type="error"
