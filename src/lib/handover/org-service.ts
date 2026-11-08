@@ -4,7 +4,7 @@
 // 用 node:crypto，只給 server 端用。
 import { createHash } from 'node:crypto';
 import { buildHandoverPackage, signedDocRefs, zipHandoverPackage } from './package';
-import { checkHandoverPreconditions, type HandoverBlockReason, type HandoverTargetFacts } from './preconditions';
+import { checkHandoverPreconditions, type HandoverTargetFacts } from './preconditions';
 import {
   applyHandoverInput,
   currentSnapshot,
@@ -14,13 +14,8 @@ import {
   type ServiceResult,
 } from './service';
 import type { HandoverSnapshot } from './snapshot';
-import {
-  EVIDENCE_FILE_MAX_BYTES,
-  type HandoverRecord,
-  type HandoverStore,
-  type HolderChangeEvidence,
-  type PaymentAccount,
-} from './store';
+import { EVIDENCE_FILE_MAX_BYTES, EVIDENCE_FILE_TOO_LARGE, accountHolderChanges, isCalendarDate } from './holder-change';
+import type { HandoverRecord, HandoverStore, HolderChangeEvidence, PaymentAccount } from './store';
 import { handoverSides, type HandoverSides } from './transitions';
 
 const fail = (...errors: string[]): { ok: false; errors: string[] } => ({ ok: false, errors });
@@ -72,8 +67,6 @@ export interface OrgHandoverDetail {
    * 交出方：只有凍結的唯讀副本（P0-22 規則 5），交出側生效前是 null。
    */
   snapshot: HandoverSnapshot | null;
-  /** 只在接收方等待接手時計算。生效日由接收方在畫面上選，這裡先不帶。 */
-  blockReasons: HandoverBlockReason[];
   hasActiveSigningTask: boolean;
   currentAccountHolder: string | null;
   /** 接收方自己的收款帳戶。交出方是空的。 */
@@ -100,7 +93,6 @@ export async function getOrgHandoverDetail(
   store: HandoverStore,
   orgId: string,
   id: string,
-  now: Date,
 ): Promise<OrgHandoverDetail | null> {
   const found = await visibleHandover(store, orgId, id);
   if (!found) return null;
@@ -114,17 +106,11 @@ export async function getOrgHandoverDetail(
   ]);
   const hasActiveSigningTask = source?.hasActiveSigningTask ?? false;
 
-  const blockReasons =
-    isReceiver && record.state === 'owner_confirmed'
-      ? checkHandoverPreconditions({ hasActiveSigningTask, target: facts, effectiveDate: null, today: taipeiDate(now) })
-      : [];
-
   return {
     record,
     role,
     sides: handoverSides(record.state),
     snapshot: isReceiver ? currentSnapshot(record, source) : record.frozenSnapshot,
-    blockReasons,
     hasActiveSigningTask,
     currentAccountHolder: source?.currentAccountHolder ?? null,
     paymentAccounts,
@@ -149,7 +135,7 @@ export async function acceptHandover(
   input: AcceptHandoverInput,
   now: Date,
 ): Promise<ServiceResult> {
-  const detail = await getOrgHandoverDetail(store, orgId, id, now);
+  const detail = await getOrgHandoverDetail(store, orgId, id);
   if (!detail || detail.role !== 'receiver') return fail(HANDOVER_NOT_FOUND);
   const { record } = detail;
   if (record.state === 'cancelled') return fail('這個移交已經取消了。');
@@ -157,7 +143,7 @@ export async function acceptHandover(
 
   const errors: string[] = [];
   let effectiveDate: string | null = null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(input.effectiveDate)) effectiveDate = input.effectiveDate;
+  if (isCalendarDate(input.effectiveDate)) effectiveDate = input.effectiveDate;
   else errors.push('請指定生效日。');
 
   const account = detail.paymentAccounts.find((a) => a.id === input.paymentAccountId);
@@ -166,13 +152,12 @@ export async function acceptHandover(
   const note = input.evidenceNote.trim();
   const file = input.evidenceFile && input.evidenceFile.bytes.length > 0 ? input.evidenceFile : null;
   if (file && file.bytes.length > EVIDENCE_FILE_MAX_BYTES) {
-    errors.push('證明檔案超過 800 KB。請壓縮後再上傳，或改填說明。');
+    errors.push(EVIDENCE_FILE_TOO_LARGE);
   }
 
-  // TODO(MIL-105, MIL-107) evaluateHolderRule：E 線提供後換成押金收取規則的判斷，這裡先比對持有人名稱
-  const holderChanges =
-    account !== undefined && detail.currentAccountHolder !== null && detail.currentAccountHolder !== account.holderName;
-  if (holderChanges && note === '' && !file) {
+  // TODO(MIL-105, MIL-107) evaluateHolderRule：檢查點在 accountHolderChanges，E 線提供後換成押金收取規則的判斷
+  const holderChanges = accountHolderChanges(detail.currentAccountHolder, account?.holderName ?? null);
+  if (holderChanges && account && note === '' && !file) {
     errors.push(`收款帳戶持有人會從「${detail.currentAccountHolder}」改為「${account.holderName}」，請附上檔案或說明。`);
   }
 

@@ -17,6 +17,8 @@ export const SEED_PRACTICE_ORGS: readonly PracticeOrgSession[] = [
   { orgId: 'org-pe-beichen', name: '北辰租賃住宅管理股份有限公司' },
   { orgId: 'org-pe-suilin', name: '穗林物業管理顧問有限公司' },
   { orgId: 'org-pe-yaoshi', name: '曜石不動產管理有限公司' },
+  // 青禾：屋主改自管時的交出方，後台由它按「模擬生效」
+  { orgId: 'org-pe-qinghe', name: '青禾租賃住宅管理有限公司' },
 ];
 
 export function resolvePracticeOrgSession(

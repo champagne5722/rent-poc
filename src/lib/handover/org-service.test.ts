@@ -10,7 +10,7 @@ import {
   listOrgHandovers,
   type AcceptHandoverInput,
 } from './org-service';
-import { startHandovers } from './service';
+import { confirmHandover, getHandoverDetail, startHandovers } from './service';
 import { hashHandoverSnapshot } from './snapshot-hash';
 import type { HandoverStore } from './store';
 
@@ -55,22 +55,22 @@ describe('listOrgHandovers', () => {
 
 describe('getOrgHandoverDetail', () => {
   it('接收方在接手前看到即時產生的移交包內容、收款帳戶與目前的持有人', async () => {
-    const detail = (await getOrgHandoverDetail(store, BEICHEN, 'ho-0003', NOW))!;
+    const detail = (await getOrgHandoverDetail(store, BEICHEN, 'ho-0003'))!;
     expect(detail.role).toBe('receiver');
     expect(detail.snapshot!.categories).toHaveLength(6);
     expect(detail.paymentAccounts.map((a) => a.id)).toEqual(['pa-beichen-1', 'pa-beichen-2']);
     expect(detail.currentAccountHolder).toBe('穗林物業管理顧問有限公司');
-    expect(detail.blockReasons).toEqual([]);
     expect(detail.canExport).toBe(false);
   });
 
-  it('接手前就列出全部擋下原因', async () => {
-    const detail = (await getOrgHandoverDetail(store, BEICHEN, 'ho-0004', NOW))!;
-    expect(detail.blockReasons.map((r) => r.code)).toEqual(['active_signing_task', 'no_valid_mandate']);
+  it('接手前帶出擋下條件要的事實：簽署任務與接收方的委託', async () => {
+    const detail = (await getOrgHandoverDetail(store, BEICHEN, 'ho-0004'))!;
+    expect(detail.hasActiveSigningTask).toBe(true);
+    expect(detail.receiverFacts).toEqual({ kind: 'mandatary', mandate: 'none', practiceEntityStatus: 'verified' });
   });
 
   it('舊受託人只拿到凍結的快照，沒有收款帳戶可選，完成後能匯出', async () => {
-    const detail = (await getOrgHandoverDetail(store, BEICHEN, 'ho-0005', NOW))!;
+    const detail = (await getOrgHandoverDetail(store, BEICHEN, 'ho-0005'))!;
     expect(detail.role).toBe('releaser');
     expect(detail.snapshot).toEqual(detail.record.frozenSnapshot);
     expect(hashHandoverSnapshot(detail.snapshot)).toBe(detail.record.snapshotHash);
@@ -79,19 +79,19 @@ describe('getOrgHandoverDetail', () => {
   });
 
   it('舊受託人在交出側生效前看不到快照', async () => {
-    const detail = (await getOrgHandoverDetail(store, SUILIN, 'ho-0003', NOW))!;
+    const detail = (await getOrgHandoverDetail(store, SUILIN, 'ho-0003'))!;
     expect(detail.role).toBe('releaser');
     expect(detail.snapshot).toBeNull();
   });
 
   it('不是交出方也不是接收方時回傳 null', async () => {
-    expect(await getOrgHandoverDetail(store, YAOSHI, 'ho-0003', NOW)).toBeNull();
+    expect(await getOrgHandoverDetail(store, YAOSHI, 'ho-0003')).toBeNull();
   });
 
   it('屋主還沒確認的草稿，交出方也看不到', async () => {
     const started = await startHandovers(store, DEMO_OWNER_PARTY_ID, 'mc-0201', NOW);
     if (!started.ok) throw new Error(started.errors.join());
-    expect(await getOrgHandoverDetail(store, BEICHEN, started.value[0], NOW)).toBeNull();
+    expect(await getOrgHandoverDetail(store, BEICHEN, started.value[0])).toBeNull();
   });
 });
 
@@ -144,6 +144,11 @@ describe('acceptHandover', () => {
   it('生效日早於今天時擋下', async () => {
     const result = await acceptHandover(store, BEICHEN, 'ho-0003', { ...ACCEPT, effectiveDate: '2026-11-07' }, NOW);
     expect(result).toEqual({ ok: false, errors: ['生效日早於今天。請選今天或之後的日期。'] });
+  });
+
+  it('日曆上不存在的生效日視同沒有指定', async () => {
+    const result = await acceptHandover(store, BEICHEN, 'ho-0003', { ...ACCEPT, effectiveDate: '2026-02-31' }, NOW);
+    expect(result).toEqual({ ok: false, errors: ['請指定生效日。'] });
   });
 
   it('生效日與收款帳戶都必須指定', async () => {
@@ -205,6 +210,30 @@ describe('模擬生效（只在記憶體 adapter）', () => {
   it('還沒接手時不能模擬生效，交出側完成前不能模擬接收側', async () => {
     expect(await simulateRelease(store, BEICHEN, 'ho-0003', NOW)).toMatchObject({ ok: false });
     expect(await simulateReceive(store, BEICHEN, 'ho-0003', NOW)).toMatchObject({ ok: false });
+  });
+
+  it('改自管時由交出方模擬，代管時交出方不能模擬', async () => {
+    await startHandovers(store, DEMO_OWNER_PARTY_ID, 'mc-0101', NOW);
+    const draft = (await store.listHandoversByOrg('org-pe-qinghe')).find((h) => h.rentalUnitId === 'ru-0103')!;
+    const confirmed = await confirmHandover(
+      store,
+      DEMO_OWNER_PARTY_ID,
+      draft.id,
+      {
+        acknowledgedMissing: (await getHandoverDetail(store, DEMO_OWNER_PARTY_ID, draft.id))!.snapshot.missing.map(
+          (m) => m.key,
+        ),
+        target: { kind: 'self_managed', paymentAccountId: 'pa-owner-1', effectiveDate: '2026-11-10', evidenceNote: '' },
+      },
+      NOW,
+    );
+    expect(confirmed).toEqual({ ok: true, value: undefined });
+    expect(await simulateRelease(store, 'org-pe-qinghe', draft.id, NOW)).toEqual({ ok: true, value: undefined });
+    expect(await simulateReceive(store, 'org-pe-qinghe', draft.id, NOW)).toEqual({ ok: true, value: undefined });
+    expect((await store.getHandover(draft.id))!.state).toBe('completed');
+
+    await acceptHandover(store, BEICHEN, 'ho-0003', ACCEPT, NOW);
+    expect(await simulateRelease(store, SUILIN, 'ho-0003', NOW)).toEqual({ ok: false, errors: ['找不到這個移交。'] });
   });
 
   it('與移交無關的組織不能模擬', async () => {

@@ -23,7 +23,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { targetLabel } from '@/lib/handover/labels';
 import type { OrgHandoverDetail } from '@/lib/handover/org-service';
 import { checkHandoverPreconditions } from '@/lib/handover/preconditions';
-import { EVIDENCE_FILE_MAX_BYTES } from '@/lib/handover/store';
+import { EVIDENCE_FILE_MAX_BYTES, EVIDENCE_FILE_TOO_LARGE, accountHolderChanges } from '@/lib/handover/holder-change';
 import { acceptHandoverAction, simulateReceiveAction, simulateReleaseAction } from '../actions';
 import { ExportPackageButton, HandoverStateTag, SidesStatus, SnapshotContent } from '../../owner/handovers/HandoverParts';
 import styles from '../../owner/handovers/handovers.module.css';
@@ -58,9 +58,8 @@ function AcceptForm({ detail, today }: { detail: OrgHandoverDetail; today: strin
   const [pending, startTransition] = useTransition();
 
   const account = detail.paymentAccounts.find((a) => a.id === accountId) ?? null;
-  // TODO(MIL-105, MIL-107) evaluateHolderRule：E 線提供後換成押金收取規則的判斷，這裡先比對持有人名稱
-  const holderChanges =
-    account !== null && detail.currentAccountHolder !== null && detail.currentAccountHolder !== account.holderName;
+  // TODO(MIL-105, MIL-107) evaluateHolderRule：檢查點在 accountHolderChanges，與伺服器端同一個函式
+  const holderChanges = accountHolderChanges(detail.currentAccountHolder, account?.holderName ?? null);
   const file = fileList[0]?.originFileObj ?? null;
   const fileTooLarge = file !== null && file.size > EVIDENCE_FILE_MAX_BYTES;
   const hasEvidence = evidenceNote.trim() !== '' || file !== null;
@@ -163,7 +162,7 @@ function AcceptForm({ detail, today }: { detail: OrgHandoverDetail; today: strin
                   <Button icon={<UploadOutlined aria-hidden />}>選擇檔案</Button>
                 </Upload>
                 {fileTooLarge && (
-                  <Typography.Text type="danger">檔案超過 800 KB。請壓縮後再上傳，或改填說明。</Typography.Text>
+                  <Typography.Text type="danger">{EVIDENCE_FILE_TOO_LARGE}</Typography.Text>
                 )}
               </Form.Item>
               <Form.Item label="說明" htmlFor="evidence-note" style={{ marginBottom: 0 }}>
@@ -330,7 +329,7 @@ function OrgHandoverDetailInner({
         </Flex>
       )}
 
-      {canSimulate && isReceiver && <SimulateCard detail={detail} />}
+      {canSimulate && <SimulateCard detail={detail} />}
     </Flex>
   );
 }
