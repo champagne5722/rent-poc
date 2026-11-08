@@ -11,7 +11,7 @@ import { getDb } from '../db';
 import type { LicenseKind } from '../labels';
 import type { SignerRole } from '../types';
 import type { CredentialSnapshot, SignatureSnapshot } from './snapshot';
-import type { PendingSignRecord, SignatureRecord, SignatureRecordInput } from './types';
+import type { PendingSignRecord, SignatureRecord, SignatureRecordDetail, SignatureRecordInput } from './types';
 
 /**
  * 送簽時寫入，與簽署任務同一個交易（呼叫端在 `onSent` 內呼叫）。
@@ -120,4 +120,19 @@ export async function listSignatureRecords(
     snapshotAtSign: r.snapshot_at_sign ? (JSON.parse(r.snapshot_at_sign) as SignatureSnapshot) : null,
     createdAt: r.created_at,
   }));
+}
+
+/** 詳情頁用：簽章紀錄加上所參照簽署人列的姓名與簽署狀態。執業主體名稱由呼叫端補。 */
+export async function listSignatureRecordSigners(
+  contractId: number,
+  db: Database.Database = getDb(),
+): Promise<Map<number, SignatureRecordDetail['signer']>> {
+  const rows = db
+    .prepare(
+      `SELECT s.id AS id, s.name AS name, s.role AS role, s.status AS status, s.signed_at AS signedAt
+         FROM signers s JOIN signature_records r ON r.signer_id = s.id
+        WHERE r.contract_id = ?`,
+    )
+    .all(contractId) as Array<{ id: number } & SignatureRecordDetail['signer']>;
+  return new Map(rows.map(({ id, ...signer }) => [id, signer]));
 }

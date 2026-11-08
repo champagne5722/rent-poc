@@ -67,3 +67,15 @@ export interface PendingSignRecord {
   licenseKind: LicenseKind;
   signerEmail: string;
 }
+
+/** 詳情頁用：簽章紀錄加上所參照簽署人列的狀態，以及執業主體名稱（查不到時是 null）。 */
+export interface SignatureRecordDetail extends SignatureRecord {
+  signer: {
+    name: string;
+    role: SignerRole;
+    status: 'pending' | 'signed' | 'declined';
+    /** 簽署人表存的本地時間字串（YYYY-MM-DD HH:mm:ss）。 */
+    signedAt: string | null;
+  };
+  entityName: string | null;
+}
