@@ -50,7 +50,7 @@ describe('parseDisplayCode：解析顯示編碼', () => {
       ok: true,
       countyLetter: 'F',
       townCode: '18',
-      unitIdSuffix: '7K3QZP',
+      rentalUnitIdSuffix: '7K3QZP',
     });
   });
 
@@ -78,7 +78,7 @@ describe('parseDisplayCode：解析顯示編碼', () => {
       ok: true,
       countyLetter: 'A',
       townCode: '01',
-      unitIdSuffix: id.slice(-6),
+      rentalUnitIdSuffix: id.slice(-6),
     });
   });
 });

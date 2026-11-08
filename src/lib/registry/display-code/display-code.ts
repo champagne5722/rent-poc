@@ -7,21 +7,26 @@
  * 使用限制：
  * - 顯示編碼不保證唯一。兩個單位的 ULID 末 6 碼可能相同。
  * - 顯示編碼只供口頭溝通與畫面顯示。系統內查詢、外鍵、URL 一律用 ULID。
- * - 解析結果只能當搜尋線索，不得當成單位的識別。
+ * - 解析結果只能當搜尋線索。識別單位必須用完整 ULID。
  * - 被合併的單位顯示存續單位的編碼。本模組不解析合併關係，呼叫端必須傳入存續單位的 ULID。
  *
  * ULID 字元集是 Crockford base32 大寫：數字 0-9 與英文字母，排除 I、L、O、U。
  */
 
-const COUNTY_LETTER = /^[A-Z]$/;
-const TOWN_CODE = /^[0-9]{2}$/;
-const ULID = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
-const DISPLAY_CODE = /^([A-Z])([0-9]{2})-([0-9A-HJKMNP-TV-Z]{6})$/;
-
-/** 半形以外的連字號與減號，解析前一律換成 `-`。 */
-const DASH_VARIANTS = /[－‐‑‒–—−]/g;
-
 const SUFFIX_LENGTH = 6;
+
+const COUNTY = '[A-Z]';
+const TOWN = '[0-9]{2}';
+/** Crockford base32 大寫字元集。 */
+const CROCKFORD = '[0-9A-HJKMNP-TV-Z]';
+
+const COUNTY_LETTER = new RegExp(`^${COUNTY}$`);
+const TOWN_CODE = new RegExp(`^${TOWN}$`);
+const ULID = new RegExp(`^[0-7]${CROCKFORD}{25}$`);
+const DISPLAY_CODE = new RegExp(`^(${COUNTY})(${TOWN})-(${CROCKFORD}{${SUFFIX_LENGTH}})$`);
+
+/** 全形連字號與其他 Unicode 連字號、減號。解析前一律換成 `-`。 */
+const DASH_VARIANTS = /[\uFF0D\u2010\u2011\u2012\u2013\u2014\u2212]/g;
 
 export type DisplayCodeInput = {
   /** 縣市字母，1 碼英文字母，例如臺南市 `D`。大小寫皆可。 */
@@ -50,7 +55,7 @@ export type ParsedDisplayCode = {
   countyLetter: string;
   townCode: string;
   /** ULID 末 6 碼，大寫。不足以唯一指出一個單位。 */
-  unitIdSuffix: string;
+  rentalUnitIdSuffix: string;
 };
 
 export type ParseDisplayCodeResult = ParsedDisplayCode | { ok: false; reason: 'invalid-format' };
@@ -85,6 +90,6 @@ export function parseDisplayCode(text: string): ParseDisplayCodeResult {
   const match = DISPLAY_CODE.exec(normalized);
   if (!match) return { ok: false, reason: 'invalid-format' };
 
-  const [, countyLetter, townCode, unitIdSuffix] = match;
-  return { ok: true, countyLetter, townCode, unitIdSuffix };
+  const [, countyLetter, townCode, rentalUnitIdSuffix] = match;
+  return { ok: true, countyLetter, townCode, rentalUnitIdSuffix };
 }
