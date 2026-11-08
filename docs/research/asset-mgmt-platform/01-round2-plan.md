@@ -108,7 +108,7 @@ Skill 盤點：[skills-inventory.md](skills-inventory.md)、[skills-inventory-co
 - 框架 skill 的輸出有表情符號與韓文標籤。呼叫時指定全程繁體中文，進正式文件前清掉格式。
 - 框架 skill 沒有網路查詢。先由調研筆記提供事實，再套框架評分。
 - `management-consulting` 禁止編造數字與客戶經驗。缺資料標「待補」，與本案規則一致。
-- `writing-style` 只當審稿檢查表。與全域 `i-have-adhd-zh-tw` 衝突時，以全域規則為準。
+- `writing-style` 只當審稿檢查表。與全域 `ste100-zh-tw` 輸出風格衝突時，以輸出風格為準。
 - 「市場上沒有整合服務」的結論只能來自 R15 的調研，寫成「在調查範圍內未發現」。
 
 ## 五、產出物
