@@ -8,6 +8,7 @@ import {
   FileTextOutlined,
   PlusOutlined,
   BgColorsOutlined,
+  SwapOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -17,6 +18,7 @@ const NAV_ICONS: Record<NavKey, React.ReactNode> = {
   workbench: <DashboardOutlined />,
   properties: <HomeOutlined />,
   contracts: <FileTextOutlined />,
+  handovers: <SwapOutlined />,
   design: <BgColorsOutlined />,
 };
 

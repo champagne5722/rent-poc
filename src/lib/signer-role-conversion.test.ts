@@ -54,8 +54,8 @@ afterEach(() => {
 function insertContract(signatureFields: string, updatedAt: string | null = '2026-01-02 03:04:05'): number {
   const result = db
     .prepare(
-      `INSERT INTO contracts (status, fields, signature_fields, dottedsign_task_id, updated_at)
-       VALUES ('draft', ?, ?, 'task-1', ?)`
+      `INSERT INTO contracts (status, fields, signature_fields, updated_at)
+       VALUES ('draft', ?, ?, ?)`
     )
     .run(LEGACY_FIELDS, signatureFields, updatedAt);
   return Number(result.lastInsertRowid);

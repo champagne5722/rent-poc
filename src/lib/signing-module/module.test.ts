@@ -8,6 +8,7 @@ import { createContractSubscriber } from '../contract-signing';
 import { ensureSchema, getContract, listContractEvents, setDb } from '../db';
 import type { ContractStatus } from '../types';
 import { createDottedSignProvider } from './dottedsign-adapter';
+import { restoreLegacySigningSchema } from './legacy-schema.fixture';
 import { createMockProvider } from './mock-adapter';
 import { createSigningModule, signingErrorResponse, SigningRefusal } from './module';
 import type { SignableDocument, Signer, SigningProvider } from './provider';
@@ -39,10 +40,16 @@ const FIELDS = JSON.stringify({
 });
 
 function seed(status: ContractStatus, taskRef: string | null = null) {
+  if (taskRef === null) {
+    const result = db.prepare('INSERT INTO contracts (property_id, status, fields) VALUES (NULL, ?, ?)').run(status, FIELDS);
+    return { type: 'contract', id: Number(result.lastInsertRowid) } as const;
+  }
+  // 帶任務編號的合約：退回舊形式寫入，再跑一次 ensureSchema() 由回填建立簽署任務，
+  // 等同升級前就在這個狀態的合約
+  restoreLegacySigningSchema(db);
   const result = db
     .prepare('INSERT INTO contracts (property_id, status, fields, dottedsign_task_id) VALUES (NULL, ?, ?, ?)')
     .run(status, FIELDS, taskRef);
-  // 再跑一次 ensureSchema()，由回填建立簽署任務，等同升級前就在這個狀態的合約
   ensureSchema(db);
   return { type: 'contract', id: Number(result.lastInsertRowid) } as const;
 }
@@ -98,7 +105,6 @@ describe('送簽', () => {
 
     expect(task).toEqual({ subject, mode: 'mock' });
     expect(statusOf(subject.id)).toBe('awaiting_tenant');
-    expect(getContract(subject.id)?.dottedsign_task_id).toMatch(new RegExp(`^mock-${subject.id}-`));
     expect(listContractEvents(subject.id, db).map((e) => [e.type, e.actor, e.note])).toEqual([
       ['sent', 'landlord', '寄送給乙方 tenant@example.com'],
     ]);
@@ -140,7 +146,6 @@ describe('送簽', () => {
       refusal(409, '簽署標的或服務商任務編號已有簽署任務')
     );
     expect(statusOf(second.id)).toBe('draft');
-    expect(getContract(second.id)?.dottedsign_task_id).toBeNull();
     expect(eventTypes(second.id)).toEqual([]);
     await expect(signing.getProgress(second)).resolves.toBeNull();
   });
@@ -290,14 +295,13 @@ describe('查簽署進度', () => {
 });
 
 describe('任務比對與當前簽署人讀簽署任務', () => {
-  // 舊欄位只雙寫，不再被讀取：送簽後把它改掉，操作仍要對到建立時的任務與簽署人
+  // 合約欄位不是簽署人的來源：送簽後把它改掉，操作仍要對到建立時的任務與簽署人
   async function sentThenLegacyColumnsChanged(provider: SigningProvider) {
     const subject = seed('draft');
     const signing = moduleWith(provider);
     await signing.send(subject, document, signers);
-    db.prepare('UPDATE contracts SET fields = ?, dottedsign_task_id = ? WHERE id = ?').run(
+    db.prepare('UPDATE contracts SET fields = ? WHERE id = ?').run(
       JSON.stringify({ tenantName: '別人', tenantEmail: 'other@example.com' }),
-      'stale-ref',
       subject.id
     );
     return { subject, signing };

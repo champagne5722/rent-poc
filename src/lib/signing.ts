@@ -1,19 +1,7 @@
-import type { CurrentSigner, Signer } from './signing-module/provider';
+import type { Signer } from './signing-module/provider';
 import type { Contract } from './types';
 
-// 當前待簽方（見 GLOSSARY.md「簽署連結」）：簽署中才有值，其餘狀態回 null。
-// 純函式、無 server 相依，client 與 route 共用。
-export function currentSigner(contract: Contract): CurrentSigner | null {
-  const f = contract.fields;
-  if (contract.status === 'awaiting_tenant') {
-    return { role: 'party_b', name: f.tenantName, email: f.tenantEmail };
-  }
-  if (contract.status === 'awaiting_landlord') {
-    return { role: 'party_a', name: f.landlordName, email: f.landlordEmail };
-  }
-  return null;
-}
-
+// 當前簽署人由簽署進度推導（ADR-0010），這裡只組送簽的輸入。
 // 租賃合約的簽署序列：陣列順序就是簽署順序，乙方先簽、甲方後簽。
 export function contractSignerSequence(contract: Contract): Signer[] {
   const { fields, signature_fields } = contract;

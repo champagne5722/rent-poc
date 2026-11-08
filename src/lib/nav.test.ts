@@ -38,9 +38,26 @@ describe('resolveNavKey（側邊選單高亮）', () => {
 });
 
 describe('殼層導覽定義', () => {
-  it('選單是工作台、物件、合約、設計四項', () => {
-    expect(NAV_ITEMS.map((i) => i.key)).toEqual(['workbench', 'properties', 'contracts', 'design']);
-    expect(NAV_ITEMS.map((i) => i.href)).toEqual(['/', '/properties', '/contracts', '/design']);
+  it('選單是工作台、物件、合約、移交、設計五項', () => {
+    expect(NAV_ITEMS.map((i) => i.key)).toEqual([
+      'workbench',
+      'properties',
+      'contracts',
+      'handovers',
+      'design',
+    ]);
+    expect(NAV_ITEMS.map((i) => i.href)).toEqual([
+      '/',
+      '/properties',
+      '/contracts',
+      '/handovers',
+      '/design',
+    ]);
+  });
+
+  it('移交清單與詳情都高亮移交', () => {
+    expect(resolveNavKey('/handovers')).toBe('handovers');
+    expect(resolveNavKey('/handovers/ho-0003')).toBe('handovers');
   });
 
   it('每個選單項的 href 都會高亮自己', () => {
