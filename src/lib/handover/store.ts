@@ -64,6 +64,22 @@ export type HandoverTarget =
       evidenceNote: string | null;
     };
 
+/** 收款帳戶持有人變更時附的證據，檔案或說明擇一（P0-22 規則 4）。 */
+export interface HolderChangeEvidence {
+  note: string | null;
+  /** 記憶體 adapter 只記檔名、大小與雜湊。存檔的路徑由 MIL-107 接上。 */
+  file: { name: string; size: number; sha256: string } | null;
+}
+
+/** 接收方確認接手時選的收款帳戶（ADR-0024 決議 9）。 */
+export interface ReceiverAccountChoice {
+  paymentAccountId: string;
+  label: string;
+  holderName: string;
+  /** 持有人沒有變更時是 null。 */
+  evidence: HolderChangeEvidence | null;
+}
+
 export interface HandoverEventRecord {
   type: HandoverEventType | 'handover_draft_created' | 'handover_manual_updated';
   at: string;
@@ -88,6 +104,8 @@ export interface HandoverRecord {
   /** 交出側生效時凍結的快照與雜湊。凍結前是 null，畫面從事實即時產生草稿。 */
   frozenSnapshot: HandoverSnapshot | null;
   snapshotHash: string | null;
+  /** 代管接手時接收方選的收款帳戶（MIL-98）。改自管時帳戶在 target，接手前沒有值。 */
+  receiverAccount?: ReceiverAccountChoice;
   createdAt: string;
   events: HandoverEventRecord[];
 }
@@ -100,5 +118,11 @@ export interface HandoverStore {
   getUnitSource(rentalUnitId: string): Promise<UnitHandoverSource | null>;
   listReceiverCandidates(ownerPartyId: string): Promise<ReceiverCandidate[]>;
   listOwnerPaymentAccounts(ownerPartyId: string): Promise<PaymentAccount[]>;
+  /** 交出方或接收方是這個組織的移交（MIL-98，後台）。 */
+  listHandoversByOrg(orgId: string): Promise<HandoverRecord[]>;
+  /** 執業主體組織自己的收款帳戶。 */
+  listOrgPaymentAccounts(orgId: string): Promise<PaymentAccount[]>;
+  /** 已簽 PDF 的位元組，移交包匯出用。找不到時是 null。 */
+  getSignedPdf(docId: string): Promise<Uint8Array | null>;
   newHandoverId(): string;
 }

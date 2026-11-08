@@ -13,3 +13,9 @@ export function handoverStore(): HandoverStore {
   g[KEY] ??= createMemoryHandoverStore(demoHandoverSeed());
   return g[KEY];
 }
+
+/**
+ * 目前的 store 是記憶體 adapter，能用「模擬生效」（demo-effective.ts）。
+ * 換成 PostgreSQL adapter 時改成 false，後台就不顯示模擬按鈕，actions 也拒絕。
+ */
+export const HANDOVER_SIMULATION_AVAILABLE = true;
