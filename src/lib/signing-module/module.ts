@@ -52,6 +52,8 @@ export interface SigningModuleDeps {
   subscribers: Record<string, SigningSubscriber>;
   // 文件本體的根目錄。文件紀錄的 rel_path 相對這裡，正式執行時是 data/。
   dataDir: string;
+  // 模擬簽署事件（mock advance）的事件時間來源。真實 webhook 的事件時間由服務商提供。
+  now?: () => Date;
 }
 
 // 保存一種文件的結果
@@ -78,7 +80,7 @@ export interface DownloadedFile {
 const FILES_DIR = 'sign-task-files';
 const FILE_SUFFIX: Record<ContractFileKind, string> = { signed_pdf: 'signed', audit_trail: 'audit-trail' };
 
-export function createSigningModule({ provider, subscribers, dataDir }: SigningModuleDeps) {
+export function createSigningModule({ provider, subscribers, dataDir, now = () => new Date() }: SigningModuleDeps) {
   function requireSubscriber(subject: SigningSubject): SigningSubscriber {
     const subscriber = subscribers[subject.type];
     if (!subscriber) throw new SigningRefusal(404, '不支援的簽署標的');
@@ -262,7 +264,7 @@ export function createSigningModule({ provider, subscribers, dataDir }: SigningM
     },
 
     // 不經 webhook 模擬簽署事件。event 與 reason 來自未驗證的請求 body，這裡才檢查。
-    // 模擬的簽署人已簽一律是當前簽署人。
+    // 模擬的簽署人已簽一律是當前簽署人。模擬事件沒有服務商，事件時間取現在。
     async simulateEvent(subject: SigningSubject, event: unknown, reason?: unknown): Promise<{ status: string }> {
       refuseIfUnsupported(provider.unsupported.simulate, 403);
       const subscriber = requireSubscriber(subject);
@@ -274,6 +276,7 @@ export function createSigningModule({ provider, subscribers, dataDir }: SigningM
         type: event as SigningEventType,
         email: task ? currentSignerOf(task)?.email : undefined,
         reason: typeof reason === 'string' ? reason : undefined,
+        occurredAt: now().toISOString(),
       });
       if (!outcome) throw new SigningRefusal(409, `目前狀態（${subscriber.currentStatus(subject)}）不接受此事件`);
       return { status: subscriber.currentStatus(subject) };

@@ -1,7 +1,7 @@
 import path from 'path';
 import { createContractSubscriber } from '../contract-signing';
 import { DATA_DIR } from '../db';
-import { dsClientSecret, dsFetch, isMockMode } from '../dottedsign';
+import { dsClientSecret, dsFetch, isMockMode, verifySignersEnabled } from '../dottedsign';
 import type { ContractFileKind } from '../types';
 import { createDottedSignProvider } from './dottedsign-adapter';
 import { createMockProvider } from './mock-adapter';
@@ -17,7 +17,11 @@ export const signing = createSigningModule({
         // 送簽時的 PDF 要撐過開發伺服器重新啟動，下載已簽 PDF 時才取得回來
         storeDir: path.join(DATA_DIR, 'mock-signing'),
       })
-    : createDottedSignProvider({ request: dsFetch, clientSecret: dsClientSecret() }),
+    : createDottedSignProvider({
+        request: dsFetch,
+        clientSecret: dsClientSecret(),
+        verifySigners: verifySignersEnabled(),
+      }),
   subscribers: { contract: createContractSubscriber() },
   dataDir: DATA_DIR,
 });

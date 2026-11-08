@@ -141,6 +141,15 @@ route handler 與合約層只呼叫簽署模組（`src/lib/signing-module/index.
 5. 呼叫 `POST /v1/sign_tasks/sign`，每個欄位帶 `field_value: <signature_id>`、`field_value_type: "signature"`。用 `/v1/sign_tasks/images` 的 `image_id` 會回 `400062 field_content_invalid`。
 6. 拒簽呼叫 `POST /v1/sign_tasks/decline`，必填 `decline_option_id` 與 `reason`。
 
+## 簽署人驗證（MIL-65）
+
+- 環境變數 `DOTTEDSIGN_VERIFY_SIGNERS` 設為 `1` 時，建立任務替每位簽署人帶 `verify_methods: [{ "verify_type": "email" }]`。未設定時不送。設定方式見 `docs/deployment.md`。
+- 判定不從金鑰字串推斷，由部署明確設定。sandbox 與 Mock 不設定，正式環境上線前設定。
+- 不送 `verify_source`。官方文件只在 `sms` 與 `twca_mid` 要求它。
+- 建立任務收到 `400428`（`invalid_verify_params`）或 `403068`（`over_verify_method_usage`）時，送簽失敗並回報原因。系統不會自動改成不驗證。
+- `sms` 與 `twca_mid` 需要電話或身分證字號。這兩項不得寫入 `signers` 表，第一版不支援。
+- ⚠️ 正式環境的 `email` 驗證尚未實測。上線前要用正式金鑰送一張測試合約，確認建立成功且簽署人收到驗證。
+
 ## Mock 模式
 
 - 未設定 `DOTTEDSIGN_CLIENT_ID` / `DOTTEDSIGN_CLIENT_SECRET` 時自動啟用（`isMockMode()`）。
