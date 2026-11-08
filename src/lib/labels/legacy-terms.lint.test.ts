@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { scanSource } from './legacy-scan';
 
-// 舊用詞 lint（MIL-122 AC7、AC8）：src 的介面字串不得出現房東、租客、房客、出租方、承租方、業主。
+// 舊用詞 lint（MIL-122 AC7、AC8）：src 的介面字串必須不含房東、租客、房客、出租方、承租方、業主。
 // 合約 PDF、承租人端與標章的字串另禁「經理人」。範圍與例外見 legacy-scan.ts。
 // 例外：程式註解、測試檔、程式識別字（掃描器只看字串節點）、LEGACY_TERMS 本身，
 // 以及字串旁標 `legacy-term-ok: 理由` 的法條或法定文件名引用。
