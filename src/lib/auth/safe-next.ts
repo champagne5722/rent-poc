@@ -8,7 +8,6 @@ const PLACEHOLDER_ORIGIN = 'http://rent-poc.invalid';
 export function safeNextPath(raw: string | string[] | undefined, fallback = '/'): string {
   const value = Array.isArray(raw) ? raw[0] : raw;
   if (!value || !value.startsWith('/') || value.startsWith('//')) return fallback;
-  // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001f\u007f\\]/.test(value)) return fallback;
   let parsed: URL;
   try {

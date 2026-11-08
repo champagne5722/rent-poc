@@ -89,7 +89,7 @@ export default function LoginForm({ next, noIdentity }: { next: string; noIdenti
       align="middle"
       style={{ minHeight: '100vh', padding: token.paddingMD, background: token.colorBgLayout }}
     >
-      <Col xs={24} sm={14} md={10} lg={8} xl={6}>
+      <Col xs={24} sm={16} md={12} lg={9} xl={7}>
       <Card>
         <Flex vertical gap="large">
           <Flex vertical gap="small">
