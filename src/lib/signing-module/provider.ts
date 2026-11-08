@@ -26,11 +26,22 @@ export interface SignableDocument {
   pageSize: { width: number; height: number };
 }
 
+// 簽署人驗證方式。第一版只有 email（ADR-0018 決議 13）。
+// sms 與 twca_mid 需要電話或身分證字號，兩者都不得寫入 signers 表，評估時再設計傳遞方式。
+export type SignerVerifyMethod = 'email';
+
 // 簽署序列的一位簽署人。陣列順序就是簽署順序。
 export interface Signer {
+  // 主要角色
   role: SignerRole;
   name: string;
   email: string;
+  // 同一人兼任時的其他角色（ADR-0018 決議 9）。記在 signers 表，查簽署進度時回傳。
+  // 兼任角色的簽署區域放在 signatureFields，該區域的 signer 欄位是對應的角色。
+  concurrentRoles?: SignerRole[];
+  // 這位簽署人要用的驗證方式，合約層依規則表填入。不填時由 adapter 的部署設定決定。
+  // 只在 adapter 設定為送驗證時才會送出，不會存進 signers 表。
+  verifyMethods?: SignerVerifyMethod[];
   signatureFields: SignatureField[];
 }
 
