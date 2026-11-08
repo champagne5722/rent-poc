@@ -37,7 +37,6 @@ function makeContract(o: { id?: number; status?: ContractStatus; derived_from?: 
       extra: '',
     },
     signature_fields: [],
-    dottedsign_task_id: null,
     declined_reason: null,
     created_at: '2026-01-01 09:00:00',
     updated_at: null,
@@ -261,31 +260,16 @@ describe('detailCurrentSigner（目前待簽）', () => {
   const practitioner = { role: 'practitioner' as const, name: '陳經理', email: 'manager@example.com' };
 
   it('有簽署進度時，姓名與 email 來自簽署進度的當前簽署人', () => {
-    const contract = makeContract({ status: 'awaiting_practitioner' });
-    expect(detailCurrentSigner(contract, { currentSigner: practitioner })).toEqual(practitioner);
+    expect(detailCurrentSigner({ currentSigner: practitioner })).toEqual(practitioner);
   });
 
   it('簽署進度已結束時沒有當前簽署人', () => {
-    const contract = makeContract({ status: 'awaiting_landlord' });
-    expect(detailCurrentSigner(contract, { currentSigner: null })).toBeNull();
+    expect(detailCurrentSigner({ currentSigner: null })).toBeNull();
   });
 
-  it('沒有簽署進度的舊合約退回合約欄位：待甲方簽顯示甲方', () => {
-    const contract = makeContract({ status: 'awaiting_landlord' });
-    expect(detailCurrentSigner(contract, null)).toEqual({
-      role: 'party_a',
-      name: '林房東',
-      email: 'landlord@example.com',
-    });
-  });
-
-  it('沒有簽署進度的舊合約退回合約欄位：待乙方簽顯示乙方', () => {
-    const contract = makeContract({ status: 'awaiting_tenant' });
-    expect(detailCurrentSigner(contract, null)).toEqual({
-      role: 'party_b',
-      name: '王租客',
-      email: 'tenant@example.com',
-    });
+  // MIL-60：當前簽署人不再由合約狀態推導
+  it('沒有簽署進度時沒有當前簽署人，即使合約仍在簽署中', () => {
+    expect(detailCurrentSigner(null)).toBeNull();
   });
 });
 

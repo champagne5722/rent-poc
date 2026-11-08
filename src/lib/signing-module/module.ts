@@ -200,7 +200,7 @@ export function createSigningModule({ provider, subscribers, dataDir }: SigningM
         if (!insertSignTask(db, { provider: provider.id, taskRef, subject, signers })) {
           throw new SigningRefusal(409, '簽署標的或服務商任務編號已有簽署任務');
         }
-        subscriber.onSent(subject, { taskRef, signers });
+        subscriber.onSent(subject, { signers });
       })();
       return { subject, mode: provider.mode };
     },

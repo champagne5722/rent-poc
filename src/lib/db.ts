@@ -15,7 +15,7 @@ import type {
 } from './types';
 import { EQUIPMENT_OPTIONS } from './types';
 import { parseStoredEquipment } from './equipment';
-import { backfillContractFiles, backfillContractSignTasks } from './signing-module/contract-backfill';
+import { migrateLegacyContractSigning } from './signing-module/contract-backfill';
 import { ensureSignTaskFileTable } from './signing-module/sign-task-files';
 import { ensureSignTaskTables } from './signing-module/sign-task-store';
 
@@ -47,7 +47,6 @@ export function ensureSchema(db: Database.Database): void {
       status TEXT NOT NULL DEFAULT 'draft',
       fields TEXT NOT NULL DEFAULT '{}',
       signature_fields TEXT NOT NULL DEFAULT '[]',
-      dottedsign_task_id TEXT,
       declined_reason TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
       updated_at TEXT
@@ -64,22 +63,6 @@ export function ensureSchema(db: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_contract_events_contract ON contract_events (contract_id, id);
-
-    -- MIL-58 前的合約文件紀錄，以合約為鍵。現在只當回填來源：文件改由簽署模組以簽署任務為鍵保存（sign_task_files）。
-    -- 表與舊檔案 data/contract-files/ 都不刪，回填後的紀錄仍指向舊路徑。
-    CREATE TABLE IF NOT EXISTS contract_files (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      contract_id INTEGER NOT NULL REFERENCES contracts(id),
-      kind TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'saved',
-      file_name TEXT NOT NULL,
-      rel_path TEXT,
-      byte_size INTEGER,
-      content_type TEXT,
-      error TEXT,
-      saved_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-      UNIQUE (contract_id, kind)
-    );
 
     -- 設備詞彙庫（ADR-0008）：房東層的設備項目字典，平台預設（is_custom=0）與自訂項目（is_custom=1）同一份。
     -- PoC 沒有登入，實質全系統一份；語意上屬房東，之後補登入時加 landlord_id 即可。
@@ -99,9 +82,8 @@ export function ensureSchema(db: Database.Database): void {
   seedEquipmentVocabulary(db);
   normalizePropertyEquipment(db);
   convertLegacySignerRoles(db);
-  backfillContractSignTasks(db);
-  // 要在簽署任務回填之後：文件紀錄靠簽署任務找鍵
-  backfillContractFiles(db);
+  // 要在簽署角色改名之後：回填讀合約欄位的簽署人
+  migrateLegacyContractSigning(db);
 }
 
 // 平台預設項目：INSERT OR IGNORE 讓重跑不會重複，也不會把已存在的項目改回預設
@@ -304,7 +286,6 @@ export interface TransitionCommit {
   status: ContractStatus;
   event: ContractEventInput;
   declinedReason?: string | null;
-  dottedsignTaskId?: string | null;
 }
 
 // 狀態轉移與歷程事件同一次交易寫入（ADR-0007）：任一失敗即一起回滾。
@@ -319,10 +300,9 @@ export function commitTransition(
       `UPDATE contracts
          SET status = ?,
              declined_reason = COALESCE(?, declined_reason),
-             dottedsign_task_id = COALESCE(?, dottedsign_task_id),
              updated_at = datetime('now', 'localtime')
        WHERE id = ?`
-    ).run(commit.status, commit.declinedReason ?? null, commit.dottedsignTaskId ?? null, contractId);
+    ).run(commit.status, commit.declinedReason ?? null, contractId);
     appendContractEvent(contractId, commit.event, db);
   })();
 }

@@ -3,8 +3,31 @@ import type { ContractStatus } from '../types';
 import type { SigningProviderId } from './provider';
 import { insertSignTask, type NewSignTask, type SignerRecord, type SignTaskStatus } from './sign-task-store';
 
-// 一次性回填（MIL-56、ADR-0010）：既有合約由舊的任務編號欄位建立簽署任務與簽署人。
-// 只處理還沒有簽署任務的合約，所以重跑等同 no-op，也不會蓋掉之後推進的簽署進度。
+// 舊形式的轉移（MIL-56、MIL-58、MIL-60，ADR-0010）：合約的任務編號欄位與以合約為鍵的文件表。
+// ensureSchema() 每次開檔都呼叫。先回填，再移除舊形式，所以已部署的資料庫在下次啟動時不會遺失資料。
+// 舊形式移除後，這裡沒有來源，重跑等同 no-op。全新資料庫從來沒有舊形式，同樣 no-op。
+export function migrateLegacyContractSigning(db: Database.Database): void {
+  const hasTaskRefColumn = (db.prepare('PRAGMA table_info(contracts)').all() as { name: string }[]).some(
+    (c) => c.name === 'dottedsign_task_id'
+  );
+  const hasFileTable = Boolean(
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'contract_files'").get()
+  );
+  if (!hasTaskRefColumn && !hasFileTable) return;
+
+  // 回填與移除同一次交易：任一步失敗就一起回滾，舊形式留著，下次開檔重來
+  db.transaction(() => {
+    if (hasTaskRefColumn) backfillContractSignTasks(db);
+    // 要在簽署任務回填之後：文件紀錄靠簽署任務找鍵
+    if (hasFileTable) backfillContractFiles(db);
+    if (hasTaskRefColumn) db.exec('ALTER TABLE contracts DROP COLUMN dottedsign_task_id');
+    // 舊檔案 data/contract-files/ 不刪，回填後的紀錄仍指向舊路徑
+    if (hasFileTable) db.exec('DROP TABLE contract_files');
+  })();
+}
+
+// 回填簽署任務（MIL-56）：既有合約由舊的任務編號欄位建立簽署任務與簽署人。
+// 只處理還沒有簽署任務的合約，也不會蓋掉之後推進的簽署進度。
 // 簽署中卻沒有任務編號的合約沒有東西可回填，由簽署模組照舊處理。
 
 interface LegacyContractRow {
@@ -22,7 +45,7 @@ interface LegacyEventRow {
   created_at: string;
 }
 
-export function backfillContractSignTasks(db: Database.Database): void {
+function backfillContractSignTasks(db: Database.Database): void {
   const rows = db
     .prepare(
       `SELECT c.id, c.status, c.fields, c.dottedsign_task_id AS task_ref, c.created_at, c.updated_at
@@ -45,10 +68,10 @@ export function backfillContractSignTasks(db: Database.Database): void {
   })();
 }
 
-// 一次性回填（MIL-58）：既有合約文件紀錄改以簽署任務為鍵。rel_path 原樣保留，舊檔案不搬。
-// 已有紀錄的種類不動，所以重跑等同 no-op，也不會蓋掉之後補抓的結果。
+// 回填文件紀錄（MIL-58）：既有合約文件紀錄改以簽署任務為鍵。rel_path 原樣保留，舊檔案不搬。
+// 已有紀錄的種類不動，不會蓋掉之後補抓的結果。
 // 對不到簽署任務的合約沒有東西可回填：那些合約原本就無法向服務商取文件。
-export function backfillContractFiles(db: Database.Database): void {
+function backfillContractFiles(db: Database.Database): void {
   // INSERT ... SELECT 接 ON CONFLICT 時，SQLite 需要 WHERE 才能解析
   db.prepare(
     `INSERT INTO sign_task_files (sign_task_id, kind, status, file_name, rel_path, byte_size, content_type, error, saved_at)

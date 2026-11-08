@@ -40,10 +40,8 @@ export async function POST(_request: NextRequest, { params }: Ctx) {
       { fileName: contractDocumentFileName(contract), pdf, pageSize: PDF_PAGE_SIZE },
       contractSignerSequence(contract)
     );
-    // task_id 是既有回應欄位，由合約欄位讀取。簽署模組不對外提供服務商任務編號。
-    return Response.json({
-      data: { id: contract.id, task_id: getContract(contract.id)?.dottedsign_task_id, mock: task.mode === 'mock' },
-    });
+    // 簽署模組不對外提供服務商任務編號（ADR-0010），回應不帶 task_id
+    return Response.json({ data: { id: contract.id, mock: task.mode === 'mock' } });
   } catch (e) {
     return signingErrorResponse(e, '送簽失敗');
   }

@@ -149,7 +149,7 @@ function ContractDetail({ id }: { id: string }) {
   if (!contract) return null;
   const isDraft = contract.status === 'draft';
   const isSigning = isSigningStatus(contract.status);
-  const signer = detailCurrentSigner(contract, signingProgress);
+  const signer = detailCurrentSigner(signingProgress);
   const signingSteps = detailSigningSteps(contract.status);
   const signLink = signLinkState?.forStatus === contract.status ? signLinkState.link : null;
   const eventEntries = contractEventEntries(events);
@@ -397,11 +397,6 @@ function ContractDetail({ id }: { id: string }) {
               current={signingSteps.current}
               items={signingSteps.titles.map((title) => ({ title }))}
             />
-          )}
-          {contract.dottedsign_task_id && (
-            <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
-              點點簽任務 ID：{contract.dottedsign_task_id}
-            </Typography.Text>
           )}
           {!mockMode && isSigning && signer && (
             <div style={{ marginTop: 12 }}>

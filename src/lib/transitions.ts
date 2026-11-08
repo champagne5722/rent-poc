@@ -59,7 +59,6 @@ export function decideTransition(status: ContractStatus, result: ContractSigning
 export function applySigningResult(
   contract: Pick<Contract, 'id' | 'status'>,
   result: ContractSigningResult,
-  options: { dottedsignTaskId?: string } = {},
   db?: Database.Database
 ): ContractStatus | null {
   const decision = decideTransition(contract.status, result);
@@ -71,7 +70,6 @@ export function applySigningResult(
       status: decision.status,
       event: decision.event,
       declinedReason: result.type === 'declined' ? (result.reason ?? null) : null,
-      dottedsignTaskId: options.dottedsignTaskId,
     },
     db
   );

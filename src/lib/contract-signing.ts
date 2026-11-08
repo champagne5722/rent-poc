@@ -5,8 +5,7 @@ import { applySigningResult } from './transitions';
 import type { Contract } from './types';
 
 // 合約層訂閱簽署事件：合約狀態是簽署進度的投影（ADR-0010 決議 7）。
-// 轉移規則在 transitions.ts。文件保存在簽署模組內，合約層不再經手。
-// 服務商任務編號仍雙寫到合約的欄位，send route 的 task_id 回應還在讀，移除屬 MIL-60。
+// 轉移規則在 transitions.ts。文件保存與服務商任務編號都在簽署模組內，合約層不經手。
 export function createContractSubscriber(): SigningSubscriber {
   const contractOf = (subject: SigningSubject): Contract => {
     const contract = getContract(subject.id);
@@ -20,13 +19,9 @@ export function createContractSubscriber(): SigningSubscriber {
     currentStatus: (subject) => contractOf(subject).status,
     isCompleted: (subject) => contractOf(subject).status === 'completed',
 
-    onSent(subject, { taskRef, signers }) {
+    onSent(subject, { signers }) {
       const { role, name, email } = signers[0];
-      const next = applySigningResult(
-        contractOf(subject),
-        { type: 'sent', first: { role, name, email } },
-        { dottedsignTaskId: taskRef }
-      );
+      const next = applySigningResult(contractOf(subject), { type: 'sent', first: { role, name, email } });
       if (!next) throw new SigningRefusal(409, '僅草稿可送簽');
     },
 

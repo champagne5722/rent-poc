@@ -218,7 +218,6 @@ export interface Contract {
   status: ContractStatus;
   fields: ContractFields;
   signature_fields: SignatureField[];
-  dottedsign_task_id: string | null;
   declined_reason: string | null;
   // 衍生自哪份合約（ADR-0006）：只有「撤回後複製為新草稿」的修約路徑會記錄，拒簽後的複製為 null
   derived_from: number | null;
