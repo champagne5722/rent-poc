@@ -160,7 +160,7 @@ function ContractDetail({ id }: { id: string }) {
   const routing = evaluateRouting(contract.fields.routing);
   const isSigning = isSigningStatus(contract.status);
   const signer = detailCurrentSigner(signingProgress);
-  const signingSteps = detailSigningSteps(contract.status, signingProgress);
+  const signingSteps = detailSigningSteps(contract.status, signingProgress, contract.contract_type);
   const mockActions = mockAdvanceActions(contract.status, signingProgress);
   const signLink = signLinkState?.forStatus === contract.status ? signLinkState.link : null;
   const eventEntries = contractEventEntries(events);

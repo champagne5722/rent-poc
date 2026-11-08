@@ -13,7 +13,7 @@ export const DEFAULT_TEMPLATE: ContractTemplate = {
   // v2（ADR-0008）：附屬設備條文由列舉品項改為引用「附屬設備清單」附件頁。
   version: 2,
   provider: '平台提供',
-  note: '條款全文由平台維護並經法務審閱，房東只編輯欄位。',
+  note: '條款全文由平台維護並經法務審閱，出租人只編輯欄位。',
 };
 
 /** 選用條款庫：逐約勾選後併入合約產出的條款區。 */

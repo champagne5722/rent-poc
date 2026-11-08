@@ -30,7 +30,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return <AdminShell pathname={pathname}>{children}</AdminShell>;
 }
 
-// 不做登入：打開即房東視角（見 GLOSSARY.md）
+// 不做登入：打開即屋主視角（見 GLOSSARY.md）
 // 後台殼層＝深色 collapsible side menu（規格 §4）：antd Layout＋Sider＋Menu mode="inline"，不引入 ProLayout
 function AdminShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
   const router = useRouter();

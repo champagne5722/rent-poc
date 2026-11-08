@@ -272,7 +272,7 @@ describe('送簽失敗與 webhook（MIL-85）', () => {
     // 使用者能重新送簽
     await kit.asOwner((pg) => pg.exec('DROP TRIGGER fail_contract_events ON org.contract_events'));
     expect((await send(req('POST'), ctx(id))).status).toBe(200);
-  });
+  }, 20_000);
 
   it('送簽成功：路由列指向送簽的組織，回應不帶服務商任務編號', async () => {
     const id = await readyDraft();

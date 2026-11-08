@@ -23,13 +23,13 @@ const TWO_PARTY: SignerRole[] = ['party_b', 'party_a'];
 describe('detailSigningSteps 依簽署進度', () => {
   it('包租：乙方、執業人員、甲方，目前在執業人員', () => {
     expect(detailSigningSteps('awaiting_practitioner', progress(MASTER, 1))).toEqual({
-      titles: ['待乙方（租客）簽署', '待執業人員簽署', '待甲方（房東）簽署', '完成'],
+      titles: ['待乙方（承租人）簽署', '待執業人員簽署', '待甲方（出租人）簽署', '完成'],
       current: 1,
     });
   });
   it('自管且承租人是包租業者：甲方先簽', () => {
     expect(detailSigningSteps('awaiting_landlord', progress(REVERSED, 0))).toEqual({
-      titles: ['待甲方（房東）簽署', '待執業人員簽署', '待乙方（租客）簽署', '完成'],
+      titles: ['待甲方（出租人）簽署', '待執業人員簽署', '待乙方（承租人）簽署', '完成'],
       current: 0,
     });
     expect(detailSigningSteps('awaiting_tenant', progress(REVERSED, 2)).current).toBe(2);
@@ -40,7 +40,7 @@ describe('detailSigningSteps 依簽署進度', () => {
   it('兩方合約與沒有簽署進度時，和原本相同', () => {
     for (const status of ['awaiting_tenant', 'awaiting_landlord', 'completed'] as ContractStatus[]) {
       const withoutProgress = detailSigningSteps(status);
-      expect(withoutProgress.titles).toEqual(['待乙方（租客）簽署', '待甲方（房東）簽署', '完成']);
+      expect(withoutProgress.titles).toEqual(['待乙方（承租人）簽署', '待甲方（出租人）簽署', '完成']);
     }
     expect(detailSigningSteps('awaiting_landlord', progress(TWO_PARTY, 1))).toEqual(detailSigningSteps('awaiting_landlord'));
     expect(detailSigningSteps('awaiting_tenant', progress(TWO_PARTY, 0))).toEqual(detailSigningSteps('awaiting_tenant'));

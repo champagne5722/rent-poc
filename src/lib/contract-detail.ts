@@ -25,6 +25,7 @@ import {
 } from './types';
 import { contractEquipmentAnnex, formatEquipmentItem } from './equipment';
 import { signingProgressStep, signingStepRoles } from './contract-list';
+import { partyLabels, type ContractType } from './labels';
 import type { CurrentSigner } from './signing-module/provider';
 import type { SigningProgress } from './signing-module/sign-task-store';
 
@@ -88,11 +89,13 @@ export interface DetailSigningSteps {
   current: number;
 }
 
-const STEP_TITLES: Record<SignerRole, string> = {
-  party_b: '待乙方（租客）簽署',
-  practitioner: '待執業人員簽署',
-  party_a: '待甲方（房東）簽署',
-};
+/** 狀態列每一步的標題。甲乙方稱謂依合約類型從標籤對照表取（MIL-122）。 */
+function stepTitle(role: SignerRole, contractType: ContractType): string {
+  const labels = partyLabels(contractType);
+  if (role === 'party_a') return `待${labels.partyAFull}簽署`;
+  if (role === 'party_b') return `待${labels.partyBFull}簽署`;
+  return `待${SIGNER_ROLE_LABELS.practitioner}簽署`;
+}
 
 /**
  * 狀態列的簽署步驟。有簽署進度時依實際的簽署序列畫，順序與人數由序列決定（MIL-69）：
@@ -101,14 +104,15 @@ const STEP_TITLES: Record<SignerRole, string> = {
  */
 export function detailSigningSteps(
   status: ContractStatus,
-  progress?: Pick<SigningProgress, 'signers'> | null
+  progress?: Pick<SigningProgress, 'signers'> | null,
+  contractType: ContractType = 'lease'
 ): DetailSigningSteps {
   if (progress && progress.signers.length > 0) {
-    const titles = [...progress.signers.map((s) => STEP_TITLES[s.role]), '完成'];
+    const titles = [...progress.signers.map((s) => stepTitle(s.role, contractType)), '完成'];
     const pending = progress.signers.findIndex((s) => s.status === 'pending');
     return { titles, current: status === 'completed' || pending === -1 ? titles.length - 1 : pending };
   }
-  const titles = [...signingStepRoles(status).map((role) => STEP_TITLES[role]), '完成'];
+  const titles = [...signingStepRoles(status).map((role) => stepTitle(role, contractType)), '完成'];
   return { titles, current: Math.min(signingProgressStep(status) ?? 0, titles.length - 1) };
 }
 
