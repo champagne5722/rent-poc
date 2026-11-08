@@ -24,14 +24,15 @@ import {
 import Link from 'next/link';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { Contract, ContractStatus } from '@/lib/types';
-import { CONTRACT_STATUS_LABELS, CONTRACT_STATUSES } from '@/lib/types';
+import { CONTRACT_STATUS_LABELS, isSigningStatus } from '@/lib/types';
 import {
   countByStatus,
   lastActionAt,
   propertyNameOptions,
   selectContracts,
+  signingProgressLabels,
   signingProgressStep,
-  SIGNING_PROGRESS_LABELS,
+  statusTabs,
   type ContractListFilter,
 } from '@/lib/contract-list';
 
@@ -49,7 +50,7 @@ const DOT_DONE = '#52c41a';
 const DOT_CURRENT = '#1677ff';
 const DOT_PENDING = 'rgba(5, 5, 5, 0.15)';
 
-// 簽署進度三點：乙方簽 → 甲方簽 → 完成；簽署流程外的狀態顯示「—」。
+// 簽署進度三點：乙方簽 → 甲方簽 → 完成；待執業人員簽時多一點；簽署流程外的狀態顯示「—」。
 function SigningProgress({ status }: { status: ContractStatus }) {
   const step = signingProgressStep(status);
   if (step == null) {
@@ -61,7 +62,7 @@ function SigningProgress({ status }: { status: ContractStatus }) {
   }
   return (
     <Space size={4}>
-      {SIGNING_PROGRESS_LABELS.map((label, i) => (
+      {signingProgressLabels(status).map((label, i) => (
         <Tooltip key={label} title={label}>
           <span
             style={{
@@ -134,7 +135,7 @@ function ContractList() {
   };
 
   const rowActions = (c: Contract) => {
-    const isSigning = c.status === 'awaiting_tenant' || c.status === 'awaiting_landlord';
+    const isSigning = isSigningStatus(c.status);
     const busy = busyId === c.id;
     return (
       <Space size={4}>
@@ -210,7 +211,7 @@ function ContractList() {
         onChange={setStatus}
         options={[
           { value: 'all', label: `全部 ${items.length}` },
-          ...CONTRACT_STATUSES.map((s) => ({
+          ...statusTabs(counts, status).map((s) => ({
             value: s,
             label: `${CONTRACT_STATUS_LABELS[s]} ${counts[s]}`,
           })),

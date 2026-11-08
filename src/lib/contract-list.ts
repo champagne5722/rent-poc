@@ -1,8 +1,8 @@
 // 合約列表的篩選、排序與進度計算，全部是純函式（見 docs/rental-contract-signing-spec.md §6）。
 // UI 只負責蒐集條件與畫畫面，判斷邏輯集中在這裡以便測試。
 
-import type { Contract, ContractStatus } from './types';
-import { CONTRACT_STATUSES } from './types';
+import type { Contract, ContractStatus, SignerRole } from './types';
+import { CONTRACT_STATUSES, SIGNER_ROLE_LABELS } from './types';
 
 // 最後動作時間：更新時間為主，沒有則用建立時間。
 export function lastActionAt(contract: Contract): string {
@@ -13,6 +13,14 @@ export function countByStatus(items: Contract[]): Record<ContractStatus, number>
   const counts = Object.fromEntries(CONTRACT_STATUSES.map((s) => [s, 0])) as Record<ContractStatus, number>;
   for (const c of items) counts[c.status] += 1;
   return counts;
+}
+
+// 清單的狀態分頁。畫面還無法建立三位簽署人的合約，所以待執業人員簽的分頁
+// 只在有這種合約、或正在看這個分頁時出現，兩方合約的分頁維持原樣。
+export function statusTabs(counts: Record<ContractStatus, number>, selected: ContractStatus | 'all'): ContractStatus[] {
+  return CONTRACT_STATUSES.filter(
+    (s) => s !== 'awaiting_practitioner' || counts[s] > 0 || selected === s
+  );
 }
 
 // 物件下拉的選項來源：合約帶入的物件名稱快照，去重後排序。
@@ -84,12 +92,28 @@ export function selectContracts(items: Contract[], filter: ContractListFilter): 
 // 已完成回 3（三點全亮）；簽署流程外的狀態回 null，UI 顯示「—」。
 export const SIGNING_PROGRESS_LABELS = ['乙方簽', '甲方簽', '完成'] as const;
 
-const PROGRESS_STEP: Partial<Record<ContractStatus, number>> = {
-  awaiting_tenant: 0,
-  awaiting_landlord: 1,
-  completed: SIGNING_PROGRESS_LABELS.length,
+// 進度上的簽署人順序。待執業人員簽（第七態）時多一位。清單與詳情頁只有合約狀態，
+// 不知道簽署序列，所以假設執業人員排在乙方與甲方之間。依簽署進度畫步驟屬 MIL-72。
+const TWO_PARTY_SEQUENCE: readonly SignerRole[] = ['party_b', 'party_a'];
+const PRACTITIONER_SEQUENCE: readonly SignerRole[] = ['party_b', 'practitioner', 'party_a'];
+
+export function signingStepRoles(status: ContractStatus): readonly SignerRole[] {
+  return status === 'awaiting_practitioner' ? PRACTITIONER_SEQUENCE : TWO_PARTY_SEQUENCE;
+}
+
+const CURRENT_ROLE: Partial<Record<ContractStatus, SignerRole>> = {
+  awaiting_tenant: 'party_b',
+  awaiting_practitioner: 'practitioner',
+  awaiting_landlord: 'party_a',
 };
 
 export function signingProgressStep(status: ContractStatus): number | null {
-  return PROGRESS_STEP[status] ?? null;
+  const roles = signingStepRoles(status);
+  if (status === 'completed') return roles.length + 1;
+  const role = CURRENT_ROLE[status];
+  return role ? roles.indexOf(role) : null;
+}
+
+export function signingProgressLabels(status: ContractStatus): readonly string[] {
+  return [...signingStepRoles(status).map((role) => `${SIGNER_ROLE_LABELS[role]}簽`), '完成'];
 }

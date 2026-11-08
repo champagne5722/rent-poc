@@ -13,6 +13,7 @@ import type {
   ContractRelations,
   ContractStatus,
   EquipmentAnnexSnapshot,
+  SignerRole,
 } from './types';
 import {
   CONTRACT_EVENT_ACTOR_LABELS,
@@ -20,8 +21,13 @@ import {
   CONTRACT_FILE_KINDS,
   CONTRACT_FILE_LABELS,
   REPAIR_RESPONSIBILITY_LABELS,
+  SIGNER_ROLE_LABELS,
 } from './types';
 import { contractEquipmentAnnex, formatEquipmentItem } from './equipment';
+import { signingProgressStep, signingStepRoles } from './contract-list';
+import { currentSigner } from './signing';
+import type { CurrentSigner } from './signing-module/provider';
+import type { SigningProgress } from './signing-module/sign-task-store';
 
 // ── 頁首操作 ─────────────────────────────────────────────────
 
@@ -63,6 +69,48 @@ export function detailActions(status: ContractStatus, opts: { mock: boolean }): 
     case 'voided':
       return [COPY];
   }
+}
+
+// ── 簽署狀態列 ───────────────────────────────────────────────
+
+/**
+ * 目前待簽：姓名與 email 讀簽署進度的當前簽署人（ADR-0010）。
+ * 簽署進度是 null 代表舊合約沒有回填簽署任務，退回由合約狀態與欄位推導。
+ */
+export function detailCurrentSigner(
+  contract: Contract,
+  progress: Pick<SigningProgress, 'currentSigner'> | null
+): CurrentSigner | null {
+  return progress ? progress.currentSigner : currentSigner(contract);
+}
+
+export interface DetailSigningSteps {
+  titles: string[];
+  current: number;
+}
+
+const STEP_TITLES: Record<SignerRole, string> = {
+  party_b: '待乙方（租客）簽署',
+  practitioner: '待執業人員簽署',
+  party_a: '待甲方（房東）簽署',
+};
+
+/**
+ * 狀態列的簽署步驟，與清單的簽署進度共用同一個簽署人順序（signingStepRoles）。
+ * 兩方合約三步；待執業人員簽時在乙方與甲方之間多一步。依簽署進度畫步驟屬 MIL-72。
+ */
+export function detailSigningSteps(status: ContractStatus): DetailSigningSteps {
+  const titles = [...signingStepRoles(status).map((role) => STEP_TITLES[role]), '完成'];
+  return { titles, current: Math.min(signingProgressStep(status) ?? 0, titles.length - 1) };
+}
+
+/**
+ * 已拒簽合約的提示標題：寫出拒簽的簽署人角色。
+ * 舊合約沒有簽署進度，兩方合約只有乙方會拒簽（甲方後簽，乙方拒簽即結束），維持原文案。
+ */
+export function detailDeclinedTitle(progress: Pick<SigningProgress, 'signers'> | null): string {
+  const role = progress?.signers.find((s) => s.status === 'declined')?.role ?? 'party_b';
+  return `${SIGNER_ROLE_LABELS[role]}已拒簽`;
 }
 
 // ── 歷程事件 ─────────────────────────────────────────────────

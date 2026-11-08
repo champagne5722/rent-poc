@@ -7,6 +7,9 @@ import {
   contractEventTypeLabel,
   contractFileRows,
   detailActions,
+  detailCurrentSigner,
+  detailDeclinedTitle,
+  detailSigningSteps,
   equipmentAnnexSummary,
 } from './contract-detail';
 
@@ -99,7 +102,7 @@ describe('detailActions', () => {
     }
   });
 
-  it('六種狀態都有定義且只有撤回帶確認', () => {
+  it('七種狀態都有定義且只有撤回帶確認', () => {
     for (const status of CONTRACT_STATUSES) {
       const actions = detailActions(status, { mock: false });
       expect(actions.length).toBeGreaterThan(0);
@@ -251,5 +254,80 @@ describe('equipmentAnnexSummary（詳情頁的設備附件摘要）', () => {
       '冷氣 ×2｜修繕：出租方',
       '洗衣機｜修繕：出租方',
     ]);
+  });
+});
+
+describe('detailCurrentSigner（目前待簽）', () => {
+  const practitioner = { role: 'practitioner' as const, name: '陳經理', email: 'manager@example.com' };
+
+  it('有簽署進度時，姓名與 email 來自簽署進度的當前簽署人', () => {
+    const contract = makeContract({ status: 'awaiting_practitioner' });
+    expect(detailCurrentSigner(contract, { currentSigner: practitioner })).toEqual(practitioner);
+  });
+
+  it('簽署進度已結束時沒有當前簽署人', () => {
+    const contract = makeContract({ status: 'awaiting_landlord' });
+    expect(detailCurrentSigner(contract, { currentSigner: null })).toBeNull();
+  });
+
+  it('沒有簽署進度的舊合約退回合約欄位：待甲方簽顯示甲方', () => {
+    const contract = makeContract({ status: 'awaiting_landlord' });
+    expect(detailCurrentSigner(contract, null)).toEqual({
+      role: 'party_a',
+      name: '林房東',
+      email: 'landlord@example.com',
+    });
+  });
+
+  it('沒有簽署進度的舊合約退回合約欄位：待乙方簽顯示乙方', () => {
+    const contract = makeContract({ status: 'awaiting_tenant' });
+    expect(detailCurrentSigner(contract, null)).toEqual({
+      role: 'party_b',
+      name: '王租客',
+      email: 'tenant@example.com',
+    });
+  });
+});
+
+describe('detailSigningSteps（詳情頁簽署進度）', () => {
+  const TWO_PARTY = ['待乙方（租客）簽署', '待甲方（房東）簽署', '完成'];
+
+  it('兩方合約維持三步，依狀態停在對應的步驟', () => {
+    expect(detailSigningSteps('awaiting_tenant')).toEqual({ titles: TWO_PARTY, current: 0 });
+    expect(detailSigningSteps('awaiting_landlord')).toEqual({ titles: TWO_PARTY, current: 1 });
+    expect(detailSigningSteps('completed')).toEqual({ titles: TWO_PARTY, current: 2 });
+  });
+
+  it('待執業人員簽時多一步，停在執業人員', () => {
+    expect(detailSigningSteps('awaiting_practitioner')).toEqual({
+      titles: ['待乙方（租客）簽署', '待執業人員簽署', '待甲方（房東）簽署', '完成'],
+      current: 1,
+    });
+  });
+});
+
+describe('detailDeclinedTitle（拒簽提示）', () => {
+  const signer = (role: 'party_a' | 'party_b' | 'practitioner', status: 'pending' | 'signed' | 'declined') => ({
+    role,
+    name: '某人',
+    email: `${role}@example.com`,
+    status,
+    signedAt: null,
+  });
+
+  it('兩方合約乙方拒簽時維持原文案', () => {
+    const progress = { signers: [signer('party_b', 'declined'), signer('party_a', 'pending')] };
+    expect(detailDeclinedTitle(progress)).toBe('乙方已拒簽');
+  });
+
+  it('執業人員拒簽時寫執業人員', () => {
+    const progress = {
+      signers: [signer('party_b', 'signed'), signer('practitioner', 'declined'), signer('party_a', 'pending')],
+    };
+    expect(detailDeclinedTitle(progress)).toBe('執業人員已拒簽');
+  });
+
+  it('沒有簽署進度的舊合約維持原文案', () => {
+    expect(detailDeclinedTitle(null)).toBe('乙方已拒簽');
   });
 });

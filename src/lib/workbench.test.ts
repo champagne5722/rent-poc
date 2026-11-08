@@ -58,6 +58,10 @@ describe('待辦的窄規則', () => {
     expect(isWorkbenchTodo('awaiting_tenant')).toBe(false);
   });
 
+  it('待執業人員簽不算待辦：球在執業人員手上', () => {
+    expect(isWorkbenchTodo('awaiting_practitioner')).toBe(false);
+  });
+
   it('已拒簽與已撤回不入待辦：那是決定要不要重來，由合約列表承接', () => {
     expect(isWorkbenchTodo('declined')).toBe(false);
     expect(isWorkbenchTodo('voided')).toBe(false);
@@ -67,7 +71,7 @@ describe('待辦的窄規則', () => {
     expect(isWorkbenchTodo('completed')).toBe(false);
   });
 
-  it('六個狀態中只有兩個算待辦', () => {
+  it('七個狀態中只有兩個算待辦', () => {
     expect(CONTRACT_STATUSES.filter(isWorkbenchTodo)).toEqual(['draft', 'awaiting_landlord']);
   });
 });
@@ -183,6 +187,12 @@ describe('workbenchStats（核心數據 4 卡）', () => {
 
   it('簽署中＝待乙方簽＋待甲方簽', () => {
     expect(workbenchStats(items, 0)[1].value).toBe(2);
+  });
+
+  it('簽署中也算待執業人員簽的合約', () => {
+    const withPractitioner = [...items, makeContract({ id: 8, status: 'awaiting_practitioner' })];
+    expect(workbenchStats(withPractitioner, 0)[1].value).toBe(3);
+    expect(workbenchStats(withPractitioner, 0)[2].value).toBe(3);
   });
 
   it('待我處理＝待甲方簽＋草稿，與待辦筆數一致', () => {

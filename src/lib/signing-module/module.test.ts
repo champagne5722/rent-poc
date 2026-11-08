@@ -785,17 +785,40 @@ describe('N 位簽署人經 seam 走完', () => {
     });
   });
 
-  it('第三位還沒簽時能撤回', async () => {
+  it('待執業人員簽（第三位還沒簽）時能撤回', async () => {
     const subject = seed('draft');
     const signing = moduleWith(webhookProvider());
     await signing.send(subject, document, [PARTY_B, PRACTITIONER, PARTY_A]);
     await signing.ingestWebhook(webhook('signed', PARTY_B.email), new Headers());
+    expect(statusOf(subject.id)).toBe('awaiting_practitioner');
 
     await signing.voidTask(subject);
 
     expect(statusOf(subject.id)).toBe('voided');
     const progress = await signing.getProgress(subject);
     expect(progress?.signers.map((s) => s.status)).toEqual(['signed', 'pending', 'pending']);
+  });
+
+  it('待執業人員簽時，簽署連結與重寄都對執業人員', async () => {
+    const subject = seed('draft');
+    const getSignLink = vi.fn(async () => 'https://sign.example/abc');
+    const resend = vi.fn(async () => {});
+    const signing = moduleWith({
+      ...liveProvider({ getSignLink, resend }),
+      parseWebhook: () => ({ kind: 'event', taskRef: '470', event: { type: 'signed', email: PARTY_B.email } }),
+    });
+    await signing.send(subject, document, [PARTY_B, PRACTITIONER, PARTY_A]);
+    await signing.ingestWebhook('{}', new Headers());
+    expect(statusOf(subject.id)).toBe('awaiting_practitioner');
+
+    const practitioner = { role: 'practitioner', name: '陳管理', email: 'manager@example.com' };
+    await expect(signing.getSignLink(subject)).resolves.toEqual({
+      signer: practitioner,
+      url: 'https://sign.example/abc',
+    });
+    expect(getSignLink).toHaveBeenCalledWith('470', 'manager@example.com', undefined);
+    await expect(signing.resend(subject)).resolves.toEqual({ signer: practitioner });
+    expect(resend).toHaveBeenCalledWith('470');
   });
 
   it('webhook 帶事件時間時，記為簽署時間', async () => {

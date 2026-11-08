@@ -2,11 +2,12 @@
 // 頁面只負責取資料與畫畫面，什麼進待辦、怎麼排、卡片算什麼數字都集中在這裡以便測試。
 
 import type { Contract, ContractStatus } from './types';
+import { isSigningStatus } from './types';
 import { lastActionAt } from './contract-list';
 import { CREATE_CONTRACT_HREF } from './nav';
 
 // 待辦的窄規則：只收「等房東動作、流程才會前進」的合約。
-// 待乙方簽的球在租客手上；已拒簽／已撤回是「決定要不要重來」，由合約列表承接，工作台不重複。
+// 待乙方簽的球在乙方手上，待執業人員簽的球在執業人員手上；已拒簽／已撤回是「決定要不要重來」，由合約列表承接，工作台不重複。
 export const WORKBENCH_TODO_STATUSES = ['awaiting_landlord', 'draft'] as const;
 export type WorkbenchTodoStatus = (typeof WORKBENCH_TODO_STATUSES)[number];
 
@@ -59,7 +60,7 @@ export function workbenchStats(contracts: Contract[], propertyCount: number): Wo
     {
       key: 'signing',
       title: '簽署中',
-      value: count((s) => s === 'awaiting_tenant' || s === 'awaiting_landlord'),
+      value: count(isSigningStatus),
       href: '/contracts',
     },
     // 待我處理＝待辦筆數（待甲方簽＋草稿）

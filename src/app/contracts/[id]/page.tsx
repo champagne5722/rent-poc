@@ -42,14 +42,17 @@ import type {
   ContractRelations,
   ContractStatus,
 } from '@/lib/types';
-import { CONTRACT_STATUS_LABELS, SIGNER_ROLE_LABELS } from '@/lib/types';
-import { currentSigner } from '@/lib/signing';
+import { CONTRACT_STATUS_LABELS, isSigningStatus, SIGNER_ROLE_LABELS } from '@/lib/types';
+import type { SigningProgress } from '@/lib/signing-module/sign-task-store';
 import {
   contractChainNodes,
   contractEventEntries,
   contractFileDownloadHref,
   contractFileRows,
   detailActions,
+  detailCurrentSigner,
+  detailDeclinedTitle,
+  detailSigningSteps,
   equipmentAnnexSummary,
   type ContractFileRow,
   type DetailAction,
@@ -64,12 +67,6 @@ const STATUS_COLORS: Record<ContractStatus, string> = {
   completed: 'success',
   declined: 'error',
   voided: 'warning',
-};
-
-const STEP_INDEX: Partial<Record<ContractStatus, number>> = {
-  awaiting_tenant: 0,
-  awaiting_landlord: 1,
-  completed: 2,
 };
 
 const FILE_ICONS = {
@@ -87,6 +84,7 @@ function ContractDetail({ id }: { id: string }) {
   const router = useRouter();
   const [contract, setContract] = useState<Contract | null>(null);
   const [relations, setRelations] = useState<ContractRelations | null>(null);
+  const [signingProgress, setSigningProgress] = useState<SigningProgress | null>(null);
   const [events, setEvents] = useState<ContractEvent[]>([]);
   const [files, setFiles] = useState<ContractFile[]>([]);
   const [mockMode, setMockMode] = useState(false);
@@ -106,6 +104,7 @@ function ContractDetail({ id }: { id: string }) {
     const json = await res.json();
     setContract(json.data);
     setRelations(json.relations ?? null);
+    setSigningProgress(json.signing_progress ?? null);
 
     // 歷程與文件跟著合約一起更新，webhook 推進狀態後三者才會一致
     const [eventsJson, filesJson] = await Promise.all([
@@ -125,8 +124,7 @@ function ContractDetail({ id }: { id: string }) {
 
   // 簽署中每 5 秒輪詢一次，讓 webhook 更新反映到畫面
   useEffect(() => {
-    if (!contract || (contract.status !== 'awaiting_tenant' && contract.status !== 'awaiting_landlord'))
-      return;
+    if (!contract || !isSigningStatus(contract.status)) return;
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
   }, [contract, load]);
@@ -150,8 +148,9 @@ function ContractDetail({ id }: { id: string }) {
 
   if (!contract) return null;
   const isDraft = contract.status === 'draft';
-  const isSigning = contract.status === 'awaiting_tenant' || contract.status === 'awaiting_landlord';
-  const signer = currentSigner(contract);
+  const isSigning = isSigningStatus(contract.status);
+  const signer = detailCurrentSigner(contract, signingProgress);
+  const signingSteps = detailSigningSteps(contract.status);
   const signLink = signLinkState?.forStatus === contract.status ? signLinkState.link : null;
   const eventEntries = contractEventEntries(events);
   const fileRows = contractFileRows(contract, files, { mock: mockMode });
@@ -384,14 +383,19 @@ function ContractDetail({ id }: { id: string }) {
       {!isDraft && (
         <Card size="small" style={{ marginBottom: 16 }}>
           {contract.status === 'declined' ? (
-            <Alert type="error" message="乙方已拒簽" description={contract.declined_reason} showIcon />
+            <Alert
+              type="error"
+              message={detailDeclinedTitle(signingProgress)}
+              description={contract.declined_reason}
+              showIcon
+            />
           ) : contract.status === 'voided' ? (
             <Alert type="warning" message="此合約已撤回" showIcon />
           ) : (
             <Steps
               size="small"
-              current={STEP_INDEX[contract.status] ?? 0}
-              items={[{ title: '待乙方（租客）簽署' }, { title: '待甲方（房東）簽署' }, { title: '完成' }]}
+              current={signingSteps.current}
+              items={signingSteps.titles.map((title) => ({ title }))}
             />
           )}
           {contract.dottedsign_task_id && (
@@ -432,6 +436,16 @@ function ContractDetail({ id }: { id: string }) {
                   </Button>
                   <Button size="small" danger onClick={() => mockAdvance('declined', '已模擬乙方拒簽')}>
                     模擬乙方拒簽
+                  </Button>
+                </>
+              )}
+              {contract.status === 'awaiting_practitioner' && (
+                <>
+                  <Button size="small" onClick={() => mockAdvance('signed', '已模擬執業人員簽署')}>
+                    模擬執業人員簽署
+                  </Button>
+                  <Button size="small" danger onClick={() => mockAdvance('declined', '已模擬執業人員拒簽')}>
+                    模擬執業人員拒簽
                   </Button>
                 </>
               )}
