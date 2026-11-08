@@ -785,11 +785,12 @@ describe('N 位簽署人經 seam 走完', () => {
     });
   });
 
-  it('第三位還沒簽時能撤回', async () => {
+  it('待執業人員簽（第三位還沒簽）時能撤回', async () => {
     const subject = seed('draft');
     const signing = moduleWith(webhookProvider());
     await signing.send(subject, document, [PARTY_B, PRACTITIONER, PARTY_A]);
     await signing.ingestWebhook(webhook('signed', PARTY_B.email), new Headers());
+    expect(statusOf(subject.id)).toBe('awaiting_practitioner');
 
     await signing.voidTask(subject);
 

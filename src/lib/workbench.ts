@@ -7,7 +7,7 @@ import { lastActionAt } from './contract-list';
 import { CREATE_CONTRACT_HREF } from './nav';
 
 // 待辦的窄規則：只收「等房東動作、流程才會前進」的合約。
-// 待乙方簽的球在租客手上，待執業人員簽的球在執業人員手上；已拒簽／已撤回是「決定要不要重來」，由合約列表承接，工作台不重複。
+// 待乙方簽的球在乙方手上，待執業人員簽的球在執業人員手上；已拒簽／已撤回是「決定要不要重來」，由合約列表承接，工作台不重複。
 export const WORKBENCH_TODO_STATUSES = ['awaiting_landlord', 'draft'] as const;
 export type WorkbenchTodoStatus = (typeof WORKBENCH_TODO_STATUSES)[number];
 

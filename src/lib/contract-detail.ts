@@ -13,6 +13,7 @@ import type {
   ContractRelations,
   ContractStatus,
   EquipmentAnnexSnapshot,
+  SignerRole,
 } from './types';
 import {
   CONTRACT_EVENT_ACTOR_LABELS,
@@ -23,6 +24,7 @@ import {
   SIGNER_ROLE_LABELS,
 } from './types';
 import { contractEquipmentAnnex, formatEquipmentItem } from './equipment';
+import { signingProgressStep, signingStepRoles } from './contract-list';
 import { currentSigner } from './signing';
 import type { CurrentSigner } from './signing-module/provider';
 import type { SigningProgress } from './signing-module/sign-task-store';
@@ -87,28 +89,19 @@ export interface DetailSigningSteps {
   current: number;
 }
 
-const STEP_TENANT = '待乙方（租客）簽署';
-const STEP_PRACTITIONER = '待執業人員簽署';
-const STEP_LANDLORD = '待甲方（房東）簽署';
-const STEP_DONE = '完成';
-
-const STEP_INDEX: Partial<Record<ContractStatus, number>> = {
-  awaiting_tenant: 0,
-  awaiting_practitioner: 1,
-  awaiting_landlord: 1,
-  completed: 2,
+const STEP_TITLES: Record<SignerRole, string> = {
+  party_b: '待乙方（租客）簽署',
+  practitioner: '待執業人員簽署',
+  party_a: '待甲方（房東）簽署',
 };
 
 /**
- * 狀態列的簽署步驟。兩方合約三步；待執業人員簽時在乙方與甲方之間多一步。
- * 依簽署進度畫出三位簽署人的完整步驟屬 MIL-72。
+ * 狀態列的簽署步驟，與清單的簽署進度共用同一個簽署人順序（signingStepRoles）。
+ * 兩方合約三步；待執業人員簽時在乙方與甲方之間多一步。依簽署進度畫步驟屬 MIL-72。
  */
 export function detailSigningSteps(status: ContractStatus): DetailSigningSteps {
-  const titles =
-    status === 'awaiting_practitioner'
-      ? [STEP_TENANT, STEP_PRACTITIONER, STEP_LANDLORD, STEP_DONE]
-      : [STEP_TENANT, STEP_LANDLORD, STEP_DONE];
-  return { titles, current: STEP_INDEX[status] ?? 0 };
+  const titles = [...signingStepRoles(status).map((role) => STEP_TITLES[role]), '完成'];
+  return { titles, current: Math.min(signingProgressStep(status) ?? 0, titles.length - 1) };
 }
 
 /**
