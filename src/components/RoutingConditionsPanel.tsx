@@ -88,7 +88,7 @@ export default function RoutingConditionsPanel({ value, onChange, disabled }: Pr
               type="warning"
               showIcon
               title="這個組合需要執業人員簽章"
-              description="合約上會多一個執業人員的簽署欄，簽署區域也要為他設定。指派執業人員的功能還沒開放，目前可以先設定簽署區域，但無法送簽。"
+              description="合約上會多一個執業人員的簽署欄，簽署區域也要為他設定。下一步填寫欄位時，要從平台登錄選擇執業主體與執業人員。"
             />
           )}
         </>
