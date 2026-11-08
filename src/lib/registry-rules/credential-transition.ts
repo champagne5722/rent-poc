@@ -78,7 +78,7 @@ const LAYER_ONLY: Partial<Record<CredentialEventType, readonly CredentialLayer[]
 
 /**
  * 決定一次驗證狀態轉移。不接受時回傳 null。
- * 新任職建新列，所以失效的任職不得 resubmitted（ADR-0017 決議 4）。
+ * 新任職建新列，所以失效的任職不接受 resubmitted（ADR-0017 決議 4）。
  */
 export function decideCredentialTransition(
   state: CredentialState | null,

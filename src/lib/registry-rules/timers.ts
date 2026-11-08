@@ -7,7 +7,7 @@
 //   - 狀態驅動的計時器：條件首次成立的那一天（到期日），補跑多日也是同一把鍵。每月重查用年月。
 
 import type { ManagementCaseState } from '../cases';
-import { addDays, addMonths } from './dates';
+import { addDays, addMonths, isIsoDate } from './dates';
 import { decideCredentialTransition, type CredentialState, type CredentialTransition } from './credential-transition';
 
 /** 計時器的設定值。30 日與 6 個月都是假設（待法務確認，MIL-62）。 */
@@ -72,6 +72,14 @@ export function timerIdempotencyKey(subjectId: string, event: TimerEvent, date: 
   return `${subjectId}:${event}:${date}`;
 }
 
+/**
+ * 日期壞掉的資料略過，不拋例外。scanTimers 的一筆壞資料不會中斷整輪（ADR-0020 決議 7：一個任務失敗不影響其他任務）。
+ * 資料本身的修正屬寫入端的責任。
+ */
+function allValid(...dates: Array<string | null>): boolean {
+  return dates.every((d) => d !== null && isIsoDate(d));
+}
+
 function decision(
   base: Pick<TimerDecision, 'event' | 'subjectType' | 'subjectId' | 'action' | 'date'>,
   recipients: readonly NotificationRecipient[] = [],
@@ -97,6 +105,7 @@ export interface MandateFacts {
 
 export function decideMandateExpiry(mandate: MandateFacts, today: string): TimerDecision | null {
   if (mandate.state !== 'active' || mandate.validUntil === null) return null;
+  if (!allValid(today, mandate.validUntil)) return null;
   if (today <= mandate.validUntil) return null;
   return decision(
     {
@@ -125,7 +134,8 @@ export function decideRenewalReminders(
   today: string,
   config: TimerConfig = DEFAULT_TIMER_CONFIG,
 ): TimerDecision[] {
-  if (cert.state !== 'verified' || cert.validUntil === null || today > cert.validUntil) return [];
+  if (cert.state !== 'verified' || cert.validUntil === null) return [];
+  if (!allValid(today, cert.validUntil) || today > cert.validUntil) return [];
 
   const triggers: Array<['renewal_reminder_window' | 'renewal_reminder_30d', string]> = [
     ['renewal_reminder_window', addMonths(cert.validUntil, -config.renewalWindowMonths)],
@@ -150,6 +160,7 @@ export function decideRenewalReminders(
 // ---------------------------------------------------------------- 3. 證書期滿
 
 export function decideCertificateExpiry(cert: CertificateFacts, today: string): TimerDecision | null {
+  if (!allValid(today)) return null;
   const transition = decideCredentialTransition(cert.state, {
     layer: 'practitioner',
     event: { type: 'expired', queryDate: today, validUntil: cert.validUntil },
@@ -183,7 +194,7 @@ export function decideEmploymentRecheck(
   today: string,
   config: TimerConfig = DEFAULT_TIMER_CONFIG,
 ): TimerDecision | null {
-  if (employment.state !== 'verified') return null;
+  if (employment.state !== 'verified' || !allValid(today, employment.lastCheckedOn)) return null;
   const dueOn = addMonths(employment.lastCheckedOn, config.employmentRecheckMonths);
   if (today < dueOn) return null;
   return decision({
@@ -205,7 +216,7 @@ export interface EntityFacts {
 
 /** 每月一個審核台項目。同月重跑得到同一把鍵。 */
 export function decideEntityRecheck(entity: EntityFacts, today: string): TimerDecision | null {
-  if (!entity.hasVerifiedLicense) return null;
+  if (!entity.hasVerifiedLicense || !allValid(today)) return null;
   return decision({
     event: 'entity_recheck',
     subjectType: 'practice_entity',
@@ -245,7 +256,7 @@ export function decideEvidencePurge(
   } else {
     anchor = evidence.endedOn;
   }
-  if (anchor === null) return null;
+  if (anchor === null || !allValid(today, anchor)) return null;
 
   const dueOn = addDays(anchor, config.evidencePurgeDays);
   if (today < dueOn) return null;

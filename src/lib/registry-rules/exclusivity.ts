@@ -131,8 +131,13 @@ export interface EmploymentVerificationDecision {
   /** 經紀人員掛第二家且同意書已核對時為 true，任職標示「經所屬業者同意」。 */
   consentedByEntity: boolean;
   warnings: Array<'consent_missing'>;
+  /** 給審核台顯示的訊息。沒有阻擋與警示時是 null。不含別家的資訊。 */
+  message: string | null;
   audit: ExclusivityAudit | null;
 }
+
+const VERIFICATION_BLOCKED_MESSAGE = '此證號已有已驗證的專任任職，請依 resim 任職查詢判定哪一家相符';
+const CONSENT_MISSING_MESSAGE = '此證號已有其他在職紀錄，所屬業者的同意書尚未核對';
 
 /**
  * 判定點 2：核對相符轉 verified 時（ADR-0017 決議 7 第 2 點）。
@@ -147,20 +152,22 @@ export function decideEmploymentVerification(input: EmploymentVerificationInput)
       violatesExclusivity: true,
       consentedByEntity: false,
       warnings: [],
+      message: VERIFICATION_BLOCKED_MESSAGE,
       audit: { event: 'verification_blocked', reason: 'exclusive_employment_elsewhere', ...auditBase },
     };
   }
   if (elsewhere) {
     return input.consentVerified
-      ? { violatesExclusivity: false, consentedByEntity: true, warnings: [], audit: null }
+      ? { violatesExclusivity: false, consentedByEntity: true, warnings: [], message: null, audit: null }
       : {
           violatesExclusivity: false,
           consentedByEntity: false,
           warnings: ['consent_missing'],
+          message: CONSENT_MISSING_MESSAGE,
           audit: { event: 'verification_consent_missing', reason: 'consent_missing', ...auditBase },
         };
   }
-  return { violatesExclusivity: false, consentedByEntity: false, warnings: [], audit: null };
+  return { violatesExclusivity: false, consentedByEntity: false, warnings: [], message: null, audit: null };
 }
 
 // ---------------------------------------------------------------- 判定點 4
@@ -208,7 +215,7 @@ export function checkValidUntilConsistency(issuedOn: string, validUntil: string)
 
 export const CERTIFICATE_BADGE_TEXT = '證書資料已核對';
 
-/** 標章與介面不得出現的字樣（P0-04 規則 4）。 */
+/** 標章與介面禁用的字樣（P0-04 規則 4）。 */
 export const FORBIDDEN_BADGE_WORDS = ['保證合法', '認證', '擔保'] as const;
 
 export interface CertificateBadge {

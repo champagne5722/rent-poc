@@ -49,7 +49,7 @@
 | 判定點 | 函式 | 備註 |
 |---|---|---|
 | 1 建立任職 | `decideEmploymentCreation()` | 管理人員：別家已驗證在職（任職期間涵蓋今天）時 `blocked`，訊息固定為「此證號已有在職紀錄」。別家只有 `pending` 時並存。經紀人員：回 `consentRequired: true` 與提示，仍建 `pending` |
-| 2 核對相符 | `decideEmploymentVerification()` | 回 `violatesExclusivity`，餵給 `check_matched`。只涵蓋管理人員。經紀人員不擋，同意書未核對時回警示 `consent_missing`，已核對時 `consentedByEntity: true`（標示「經所屬業者同意」） |
+| 2 核對相符 | `decideEmploymentVerification()` | 回 `violatesExclusivity`（餵給 `check_matched`）、`message`（審核台訊息）與 `audit`。只涵蓋管理人員。經紀人員不擋，同意書未核對時回警示 `consent_missing`，已核對時 `consentedByEntity: true`（標示「經所屬業者同意」） |
 | 3 送簽與簽章當下 | 不在本模組 | 由 D 線的 `credentialStatusAt()` 判定，C 線沿用（ADR-0017 決議 6，細節屬 MIL-46） |
 | 4 定期重驗 | `decideRecheckResult()` | resim 與登錄不符、查無、廢止時，以 `revoked` 事件轉 `lapsed`。相符不改狀態 |
 
@@ -70,6 +70,10 @@
 | `decideEntityRecheck` | 執業主體重查 | 有已驗證業別，每月 | `enqueue_review`，不通知 | 年月（`YYYY-MM`） |
 | `decideEvidencePurge` | 證據檔刪除 | 不符後滿 30 日，或同意書失效後滿 30 日 | `purge_evidence` | 到期日 |
 
+- 共 6 條計時器。換證窗口這條會產生兩種提醒事件（進入窗口當日、期滿前 30 日），所以事件名有 7 個（`TIMER_EVENTS`）。
+- 日期壞掉的事實（含 `today`）會被略過，不拋例外，一筆壞資料不會中斷整輪（ADR-0020 決議 7）。
+- `decideEvidencePurge` 以最新一筆不符核對的日期起算。補件後的新檔是新的證據檔，傳入時它的 `latestCheck` 是 `null`，不會被舊的不符紀錄刪掉。
+- `decideRecheckResult` 把 `mismatch`、`not_found`、`revoked` 都視為重驗不符，以 `revoked` 事件轉 `lapsed`。ADR-0017 決議 7 第 4 點只寫「不符」，查無算不符是本模組的解讀。
 - 冪等鍵是 `主體ID:事件:日期`，通知再加 `:收件者`。`scanTimers(facts, today, config)` 一次掃完，依上表順序輸出。
 - 30 日、6 個月都是 `TimerConfig` 的設定值，`DEFAULT_TIMER_CONFIG` 是預設。
 - 兩條提醒只在觸發當日產生，不補發。`scan-timers` 漏跑那一天會漏掉該次提醒，另一條提醒與期滿轉 `lapsed` 不受影響。其他狀態驅動的計時器補跑時鍵不變，呼叫端依鍵去重即可。

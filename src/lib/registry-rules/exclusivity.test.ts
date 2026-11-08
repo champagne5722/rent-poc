@@ -116,8 +116,15 @@ describe('判定點 2：核對相符 decideEmploymentVerification', () => {
     expect(JSON.stringify(result)).not.toContain('entity-other');
   });
 
+  it('違反時附審核台訊息，不含別家', () => {
+    const result = verify('rental_housing_manager', [other('verified')]);
+    expect(result.message).toBe('此證號已有已驗證的專任任職，請依 resim 任職查詢判定哪一家相符');
+  });
+
   it('管理人員，別家只有待驗證時不違反（由營運者判定哪家相符）', () => {
-    expect(verify('rental_housing_manager', [other('pending')]).violatesExclusivity).toBe(false);
+    const result = verify('rental_housing_manager', [other('pending')]);
+    expect(result.violatesExclusivity).toBe(false);
+    expect(result.message).toBeNull();
   });
 
   it('管理人員，別家沒有在職時不違反', () => {
@@ -142,6 +149,7 @@ describe('判定點 2：核對相符 decideEmploymentVerification', () => {
       violatesExclusivity: false,
       consentedByEntity: false,
       warnings: ['consent_missing'],
+      message: '此證號已有其他在職紀錄，所屬業者的同意書尚未核對',
     });
   });
 

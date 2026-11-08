@@ -320,6 +320,25 @@ describe('scanTimers', () => {
     for (const key of day2) expect(day1.has(key)).toBe(true);
   });
 
+  it('一筆日期壞掉的資料不拋例外，也不影響其他筆（ADR-0020 決議 7）', () => {
+    const bad = {
+      mandates: [{ caseId: 'bad-m', state: 'active' as const, validUntil: '2026-02-30' }, ...facts.mandates],
+      certificates: [{ practitionerId: 'bad-c', state: 'verified' as const, validUntil: 'abc' }, ...facts.certificates],
+      employments: [{ employmentId: 'bad-e', state: 'verified' as const, lastCheckedOn: '' }, ...facts.employments],
+      entities: facts.entities,
+      evidences: [
+        { evidenceId: 'bad-ev', kind: 'consent_letter' as const, endedOn: '2026/10/01' },
+        { evidenceId: 'bad-ev2', kind: 'credential_copy' as const, latestCheck: { result: 'mismatch' as const, checkedOn: 'x' } },
+        ...facts.evidences,
+      ],
+    };
+    expect(scanTimers(bad, '2026-11-08')).toEqual(scanTimers(facts, '2026-11-08'));
+  });
+
+  it('今天的日期壞掉時什麼都不做', () => {
+    expect(scanTimers(facts, '2026-13-01')).toEqual([]);
+  });
+
   it('沒有事實時回傳空陣列', () => {
     expect(scanTimers({ mandates: [], certificates: [], employments: [], entities: [], evidences: [] }, '2026-11-08')).toEqual([]);
   });
