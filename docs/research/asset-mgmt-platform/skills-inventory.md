@@ -48,7 +48,6 @@
 | `eli5` | 圖解 | 給外行人的大圖少字說明 | HTML Artifact | 倉庫已有 `eli5-architecture.html`、`eli5-business-model.html` |
 | `anthropic-skills:docx` / `pdf` / `docs` | 文件 | 提案書本文、PDF 匯出 | .docx、.pdf、Docs | 簡報之外若要附說明書使用 |
 | `superpowers:writing-plans` | 計畫 | 把規格拆成執行步驟 | Markdown | 主對話規劃分工時可用 |
-| `i-have-adhd-zh-tw:i-have-adhd-zh-tw` | 文字風格 | 全域規定的台灣繁中風格 | 無 | 所有產出必須遵守 |
 
 已啟用的 plugin：`operations`、`design`、`engineering`、`sales`、`product-management`、`data`、`cowork-plugin-management`、`productivity`（共 8 個）。
 
