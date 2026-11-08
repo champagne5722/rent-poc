@@ -49,6 +49,17 @@ export const HOLDER_KIND_LABELS: Record<HolderKind, string> = {
   other: '其他',
 };
 
+export const FUND_KIND_LABELS = { rent: '租金', deposit: '押金' } as const;
+
+/** 押金收款帳戶持有人的顯示文字，例如「代管業者 808-***5678」。 */
+export function holderText(row: { holderKind: HolderKind | null; holderMaskedId: string | null; holderIsCash: boolean }): string {
+  if (row.holderKind === null) return '';
+  const parts: string[] = [HOLDER_KIND_LABELS[row.holderKind]];
+  if (row.holderIsCash) parts.push('現金收取');
+  else if (row.holderMaskedId !== null) parts.push(row.holderMaskedId);
+  return parts.join(' ');
+}
+
 export const REPAIR_STATUS_LABELS: Record<RepairStatus, string> = {
   reported: '已報修',
   in_progress: '處理中',

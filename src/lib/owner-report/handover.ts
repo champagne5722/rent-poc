@@ -4,7 +4,7 @@
 
 import { handoverDelayLabel } from '../receivables';
 import type { ReportContext } from './context';
-import { diffDays, inMonth } from './dates';
+import { compareText, diffDays, inMonth } from './dates';
 import { handoverFlag } from './labels';
 import type { HandoverRow } from './types';
 
@@ -16,10 +16,10 @@ export interface HandoverResult {
 export function buildHandovers(ctx: ReportContext): HandoverResult {
   const end = ctx.bounds.end;
   const rows: HandoverRow[] = [];
-  const pending: string[] = [];
+  const missingNotes: string[] = [];
 
   const sorted = [...ctx.input.handovers].sort((a, b) =>
-    a.receivedAt < b.receivedAt ? -1 : a.receivedAt > b.receivedAt ? 1 : a.handoverId < b.handoverId ? -1 : 1,
+    compareText([a.receivedAt, b.receivedAt], [a.handoverId, b.handoverId]),
   );
 
   for (const h of sorted) {
@@ -42,7 +42,7 @@ export function buildHandovers(ctx: ReportContext): HandoverResult {
     const difference = delivered && h.handedOverAmount !== null ? h.amount - h.handedOverAmount : null;
     const note = ctx.options.varianceNotes?.[h.handoverId]?.trim();
 
-    if (difference !== null && difference !== 0 && !note) pending.push(h.handoverId);
+    if (difference !== null && difference !== 0 && !note) missingNotes.push(h.handoverId);
 
     rows.push({
       handoverId: h.handoverId,
@@ -61,5 +61,5 @@ export function buildHandovers(ctx: ReportContext): HandoverResult {
       flag: label ? handoverFlag(label) : null,
     });
   }
-  return { rows, pendingVarianceNotes: pending };
+  return { rows, pendingVarianceNotes: missingNotes };
 }

@@ -75,7 +75,7 @@ describe('入帳明細', () => {
         amount: -20000,
         paymentAccountMask: '012-***1234',
         source: 'statement_file',
-        note: '沖銷分錄 J_SEP，原因：金額登錄錯誤',
+        note: '沖銷分錄 J_SEP（入帳確認），原因：金額登錄錯誤',
         reversed: false,
         reversesJournalId: 'J_SEP',
       },

@@ -3,7 +3,7 @@
 
 import { accountTotals, isReversal, naturalBalance, type Journal } from '../ledger';
 import { toTaipeiDate } from '../receivables';
-import { assertDate, monthBounds, type MonthBounds } from './dates';
+import { assertDate, compareText, inMonth, monthBounds, type MonthBounds } from './dates';
 import type { OwnerReportInput, OwnerReportOptions, ReportPaymentAccount, ReportUnit } from './types';
 
 export interface ReportContext {
@@ -17,6 +17,8 @@ export interface ReportContext {
   journals: Journal[];
   journalsByCase: Map<string, Journal[]>;
   journalById: Map<string, Journal>;
+  /** 月底前被沖銷的原分錄 ID。 */
+  reversedIds: Set<string>;
   accounts: Map<string, ReportPaymentAccount>;
   postedDate(journal: Journal): string;
   /** 沖銷分錄的原分錄。原分錄不在範圍內時丟 RangeError。 */
@@ -26,9 +28,9 @@ export interface ReportContext {
   isInMonth(journal: Journal): boolean;
 }
 
-export function assertMoney(value: number, name: string, options: { allowNegative?: boolean } = {}): void {
-  if (!Number.isSafeInteger(value) || (!options.allowNegative && value < 0)) {
-    throw new RangeError(`${name}必須是${options.allowNegative ? '' : ' 0 以上的'}安全整數元：${value}`);
+function assertMoney(value: number, name: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError(`${name}必須是 0 以上的安全整數元：${value}`);
   }
 }
 
@@ -43,7 +45,10 @@ function checkInput(input: OwnerReportInput, options: OwnerReportOptions): void 
   for (const a of input.allocations) {
     assertMoney(a.amount, `配置 ${a.id} 的金額`);
     if (a.active && a.deactivatedAt !== null) {
-      throw new RangeError(`配置 ${a.id} 仍有效，不得有失效時間`);
+      throw new RangeError(`配置 ${a.id} 仍有效，不能有失效時間`);
+    }
+    if (!a.active && a.deactivatedAt === null) {
+      throw new RangeError(`配置 ${a.id} 已失效，必須有失效時間，否則還原不了月底當時的狀態`);
     }
   }
   for (const d of input.depositLedgers) assertMoney(d.expectedAmount, `案件 ${d.caseId} 的約定押金`);
@@ -77,13 +82,15 @@ export function createContext(input: OwnerReportInput, month: string, options: O
   const postedDate = (journal: Journal) => toTaipeiDate(journal.postedAt);
   const journals = input.journals
     .filter((j) => j.orgId === options.orgId && unitByCase.has(j.caseId) && postedDate(j) <= bounds.end)
-    .sort((a, b) => Date.parse(a.postedAt) - Date.parse(b.postedAt) || (a.journalId < b.journalId ? -1 : 1));
+    .sort((a, b) => Date.parse(a.postedAt) - Date.parse(b.postedAt) || compareText([a.journalId, b.journalId]));
 
   const journalById = new Map<string, Journal>();
+  const reversedIds = new Set<string>();
   const journalsByCase = new Map<string, Journal[]>();
   for (const journal of journals) {
     if (journalById.has(journal.journalId)) throw new RangeError(`分錄 ID 重複：${journal.journalId}`);
     journalById.set(journal.journalId, journal);
+    if (isReversal(journal)) reversedIds.add(journal.reversesJournalId);
     const list = journalsByCase.get(journal.caseId) ?? [];
     list.push(journal);
     journalsByCase.set(journal.caseId, list);
@@ -100,6 +107,7 @@ export function createContext(input: OwnerReportInput, month: string, options: O
     journals,
     journalsByCase,
     journalById,
+    reversedIds,
     accounts,
     postedDate,
     originalOf(journal) {
@@ -113,8 +121,7 @@ export function createContext(input: OwnerReportInput, month: string, options: O
       return totals ? naturalBalance(account, totals) : 0;
     },
     isInMonth(journal) {
-      const date = postedDate(journal);
-      return date >= bounds.start && date <= bounds.end;
+      return inMonth(postedDate(journal), bounds);
     },
   };
 }

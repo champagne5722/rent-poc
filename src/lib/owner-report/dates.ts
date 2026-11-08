@@ -51,6 +51,15 @@ export function diffDays(later: string, earlier: string): number {
   return toDay(later) - toDay(earlier);
 }
 
+/** 字串遞增比較。依序比較多個鍵，全部相等回傳 0。 */
+export function compareText(...pairs: Array<readonly [string, string]>): number {
+  for (const [a, b] of pairs) {
+    if (a < b) return -1;
+    if (a > b) return 1;
+  }
+  return 0;
+}
+
 /** 日期落在該月（含頭尾）。 */
 export function inMonth(date: string, bounds: MonthBounds): boolean {
   return date >= bounds.start && date <= bounds.end;

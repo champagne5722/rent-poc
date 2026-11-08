@@ -2,7 +2,7 @@
 // 列出月底仍未完成的紀錄（含沒有費用的），以及本月完成或取消的紀錄。
 
 import type { ReportContext } from './context';
-import { inMonth } from './dates';
+import { compareText, inMonth } from './dates';
 import type { RepairRow, RepairStatus } from './types';
 
 export function buildRepairs(ctx: ReportContext): RepairRow[] {
@@ -10,7 +10,7 @@ export function buildRepairs(ctx: ReportContext): RepairRow[] {
   const rows: RepairRow[] = [];
 
   const sorted = [...ctx.input.repairs].sort((a, b) =>
-    a.reportedAt < b.reportedAt ? -1 : a.reportedAt > b.reportedAt ? 1 : a.repairId < b.repairId ? -1 : 1,
+    compareText([a.reportedAt, b.reportedAt], [a.repairId, b.repairId]),
   );
 
   for (const r of sorted) {

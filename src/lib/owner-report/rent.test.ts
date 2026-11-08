@@ -199,3 +199,22 @@ describe('輸入檢查', () => {
     expect(input).toEqual(copy);
   });
 });
+
+describe('配置的失效時間', () => {
+  it('已失效卻沒有失效時間的配置丟 RangeError，因為還原不了月底當時的狀態', () => {
+    const input = {
+      ...rentFixture(),
+      allocations: [allocation({ id: 'AL_X', periodId: 'P_A1_10', active: false, postedAt: '2026-10-06T10:00:00+08:00' })],
+    };
+    expect(() => buildOwnerReport(input, '2026-10', options())).toThrow(RangeError);
+  });
+  it('仍有效卻帶失效時間的配置丟 RangeError', () => {
+    const input = {
+      ...rentFixture(),
+      allocations: [
+        allocation({ id: 'AL_X', periodId: 'P_A1_10', deactivatedAt: '2026-11-01T10:00:00+08:00', postedAt: '2026-10-06T10:00:00+08:00' }),
+      ],
+    };
+    expect(() => buildOwnerReport(input, '2026-10', options())).toThrow(RangeError);
+  });
+});

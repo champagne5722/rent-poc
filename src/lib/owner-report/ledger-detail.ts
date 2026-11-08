@@ -2,6 +2,7 @@
 // 上月分錄在本月被沖銷時，沖銷列出現在本月，上月報表不變。
 
 import {
+  defaultLedgerRegistry,
   depositAccount,
   isReversal,
   parseAccountCode,
@@ -54,10 +55,6 @@ export interface LedgerDetailResult {
 
 export function buildLedgerDetail(ctx: ReportContext): LedgerDetailResult {
   const receipts = new Map(ctx.input.receipts.map((r) => [r.journalId, r] as const));
-  const reversedIds = new Set<string>();
-  for (const journal of ctx.journals) {
-    if (isReversal(journal)) reversedIds.add(journal.reversesJournalId);
-  }
 
   const rows: LedgerDetailRow[] = [];
   const bySource: Record<ReportSource, number> = { manual: 0, statement_file: 0, cash: 0 };
@@ -81,7 +78,7 @@ export function buildLedgerDetail(ctx: ReportContext): LedgerDetailResult {
         amount: -total,
         paymentAccountMask: facts ? facts.account.maskedId : null,
         source: facts ? facts.source : null,
-        note: joinNote([`沖銷分錄 ${original.journalId}`, `原因：${journal.reason}`]),
+        note: joinNote([`沖銷分錄 ${original.journalId}（${defaultLedgerRegistry.get(original.eventType)?.label ?? original.eventType}）`, `原因：${journal.reason}`]),
         reversed: false,
         reversesJournalId: journal.reversesJournalId,
       });
@@ -109,7 +106,7 @@ export function buildLedgerDetail(ctx: ReportContext): LedgerDetailResult {
         paymentAccountMask: facts.account.isCash ? null : facts.account.maskedId,
         source: facts.source,
         note: facts.receipt.note,
-        reversed: reversedIds.has(journal.journalId),
+        reversed: ctx.reversedIds.has(journal.journalId),
         reversesJournalId: null,
       });
     }

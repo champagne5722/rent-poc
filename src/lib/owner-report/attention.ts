@@ -1,10 +1,8 @@
 // 需要留意區段：由其他區段推導，不存表。
 // 順序固定：逾期、押金未交付、代收交付逾期。同一類內依單位在輸入的順序，再依代收日。
 
-import { FLAG_DEPOSIT_NOT_HANDED_OVER, FLAG_OVERDUE } from './labels';
+import { FLAG_DEPOSIT_NOT_HANDED_OVER, FLAG_OVERDUE, FUND_KIND_LABELS } from './labels';
 import type { AttentionItem, HandoverRow, RentRow } from './types';
-
-const FUND_LABEL = { rent: '租金', deposit: '押金' } as const;
 
 export function buildAttention(rent: readonly RentRow[], handovers: readonly HandoverRow[]): AttentionItem[] {
   const items: AttentionItem[] = [];
@@ -24,7 +22,7 @@ export function buildAttention(rent: readonly RentRow[], handovers: readonly Han
   }
 
   const handoverNote = (h: HandoverRow, state: string) =>
-    `代收${FUND_LABEL[h.fundKind]}，代收日 ${h.receivedAt}，${state}，已 ${h.elapsedDays} 日`;
+    `代收${FUND_KIND_LABELS[h.fundKind]}，代收日 ${h.receivedAt}，${state}，已 ${h.elapsedDays} 日`;
 
   const unitOrder = new Map(rent.map((row, index) => [row.unitId, index] as const));
   const byUnit = (a: HandoverRow, b: HandoverRow) =>

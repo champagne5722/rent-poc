@@ -4,10 +4,12 @@
 // 區段的每一列都至少有一行：欄位型區段（抬頭、摘要、租金、押金、代收代付與交付）每個欄位一行，
 // 紀錄型區段（需要留意、修繕、入帳與沖銷明細、來源比例、註記）每筆紀錄一行。
 
-import { holderText } from './deposit';
 import {
+  FLAG_DEPOSIT_NOT_HANDED_OVER,
   FLAG_OVERDUE,
   FLAG_REVERSED,
+  FUND_KIND_LABELS,
+  holderText,
   LEDGER_TYPE_LABELS,
   REPAIR_STATUS_LABELS,
   SOURCE_CSV_VALUES,
@@ -54,11 +56,9 @@ export interface CsvRow {
 
 const ATTENTION_LABELS: Record<AttentionKind, string> = {
   overdue: '逾期',
-  deposit_not_handed_over: '押金未交付',
+  deposit_not_handed_over: FLAG_DEPOSIT_NOT_HANDED_OVER,
   handover_delay: '代收交付逾期',
 };
-
-const FUND_LABELS = { rent: '租金', deposit: '押金' } as const;
 
 function row(section: string, item: string, over: Partial<CsvRow> = {}): CsvRow {
   return { section, unitId: '', address: '', item, date: '', amount: null, source: '', flag: '', note: '', ...over };
@@ -77,7 +77,7 @@ export function reportToCsvRows(report: OwnerReport): CsvRow[] {
   const rows: CsvRow[] = [];
   const h = report.header;
 
-  const S = CSV_SECTIONS;
+  const S = CSV_SECTIONS; // 區段名稱縮寫，下面每列都要用
   rows.push(
     row(S.header, '屋主', { note: `${h.ownerName}（${h.ownerId}）` }),
     row(S.header, '期間', { date: h.periodStart, note: `${h.periodStart} 至 ${h.periodEnd}` }),
@@ -167,7 +167,7 @@ export function reportToCsvRows(report: OwnerReport): CsvRow[] {
 
   for (const x of report.handovers) {
     const unit = { unitId: x.unitId, address: x.address };
-    const kind = FUND_LABELS[x.fundKind];
+    const kind = FUND_KIND_LABELS[x.fundKind];
     rows.push(
       row(S.handovers, `代收${kind}`, { ...unit, date: x.receivedAt, amount: x.amount }),
       row(S.handovers, `交付${kind}`, {

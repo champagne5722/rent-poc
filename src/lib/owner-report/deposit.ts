@@ -13,7 +13,6 @@ import {
 import { toTaipeiDate } from '../receivables';
 import type { ReportContext } from './context';
 import type { DepositDeductionRow, DepositRow } from './types';
-import { HOLDER_KIND_LABELS } from './labels';
 
 interface DepositEffect {
   received: number;
@@ -46,10 +45,6 @@ function depositEffect(ctx: ReportContext, journal: Journal): DepositEffect {
 
 export function buildDeposit(ctx: ReportContext): DepositRow[] {
   const ledgers = new Map(ctx.input.depositLedgers.map((l) => [l.caseId, l] as const));
-  const reversedIds = new Set<string>();
-  for (const journal of ctx.journals) {
-    if (isReversal(journal)) reversedIds.add(journal.reversesJournalId);
-  }
   const rows: DepositRow[] = [];
 
   for (const unit of ctx.units) {
@@ -103,7 +98,7 @@ export function buildDeposit(ctx: ReportContext): DepositRow[] {
         amount: depositEffect(ctx, journal).deducted,
         reason: d.reason,
         disputed: d.disputed,
-        reversed: reversedIds.has(journal.journalId),
+        reversed: ctx.reversedIds.has(journal.journalId),
       });
     }
 
@@ -123,12 +118,4 @@ export function buildDeposit(ctx: ReportContext): DepositRow[] {
     });
   }
   return rows;
-}
-
-export function holderText(row: Pick<DepositRow, 'holderKind' | 'holderMaskedId' | 'holderIsCash'>): string {
-  if (row.holderKind === null) return '';
-  const parts: string[] = [HOLDER_KIND_LABELS[row.holderKind]];
-  if (row.holderIsCash) parts.push('現金收取');
-  else if (row.holderMaskedId !== null) parts.push(row.holderMaskedId);
-  return parts.join(' ');
 }
