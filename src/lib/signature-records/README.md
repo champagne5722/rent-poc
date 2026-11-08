@@ -37,7 +37,7 @@
 - `signature_records.signer_id` 參照 `signers.id`。`signers` 換型別時一起改，`insertSignatureRecords` 用子查詢依 `(contract_id, position)` 找簽署人列，要改成吃 `tx`。
 - 資料庫 trigger 是 SQLite 語法，搬到 PostgreSQL 要改成 plpgsql。規則不變：除了 `snapshot_at_sign` 從空值補一次，任何欄位都不得改，也不得刪除。測試在 `repository.test.ts`，換資料庫後同一組測試必須全過。
 - 三個同步函式在交易內被呼叫。交易內方法改成帶 `tx` 之後，它們跟著改成吃 `tx`，`prepareOutcome` 與 `context` 的設計不變。
-- 日期欄位 `snapshot_at_*` 存 JSON 文字。換成 jsonb 時讀取端的 `JSON.parse` 可以拿掉。
+- 快照欄位 `snapshot_at_send`、`snapshot_at_sign` 存 JSON 文字。換成 jsonb 時讀取端的 `JSON.parse` 可以拿掉。
 
 ## 給 E 線 MIL-138、139
 
