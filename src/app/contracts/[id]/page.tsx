@@ -58,6 +58,7 @@ import {
   type DetailAction,
 } from '@/lib/contract-detail';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
+import { evaluateRouting } from '@/lib/signature-routing';
 
 const STATUS_COLORS: Record<ContractStatus, string> = {
   draft: 'default',
@@ -148,6 +149,8 @@ function ContractDetail({ id }: { id: string }) {
 
   if (!contract) return null;
   const isDraft = contract.status === 'draft';
+  // 簽名框上的席位名稱（區分管理人員與經紀人）依簽署序列；分流條件有問題時退回角色名稱
+  const routing = evaluateRouting(contract.fields.routing);
   const isSigning = isSigningStatus(contract.status);
   const signer = detailCurrentSigner(signingProgress);
   const signingSteps = detailSigningSteps(contract.status);
@@ -481,6 +484,7 @@ function ContractDetail({ id }: { id: string }) {
                       pdfUrl={`/api/contracts/${id}/pdf`}
                       value={contract.signature_fields}
                       readOnly
+                      seats={routing.ok ? routing.seats : undefined}
                     />
                   </Card>
                 </Col>

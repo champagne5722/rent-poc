@@ -1,7 +1,7 @@
 // 合約範本的版面常數與簽署欄位置推導。
 // 這裡只有純數字與純函式（不碰 fs / pdf-lib），所以 client 端的簽署區編輯器也能引用；
 // 實際畫 PDF 的 src/lib/pdf.ts 一律吃這裡的常數，避免同一組版面數字在兩邊各寫一份。
-import type { ContractPartyRole } from './types';
+import type { ContractPartyRole, SignerRole } from './types';
 
 /** A4（PDF points），原點左下、y 向上。 */
 export const PAGE_W = 595.28;
@@ -44,15 +44,46 @@ function lineAdvance(size: number, gapAfter = 0): number {
  * src/lib/pdf-layout.test.ts 會拿真的產出 PDF 對這兩個數字做迴歸。
  */
 export function signatureStampBaselines(): Record<ContractPartyRole, number> {
+  const [partyA, partyB] = signatureBlockLayout([{ role: 'party_a' }, { role: 'party_b' }]);
+  return { party_a: partyA.stampBaseline, party_b: partyB.stampBaseline };
+}
+
+/** 簽署欄的印列順序（ADR-0018 決議 14）：固定甲方、乙方、執業人員，與簽署順序無關。 */
+export const SIGNATURE_PRINT_ORDER = ['party_a', 'party_b', 'practitioner'] as const satisfies readonly SignerRole[];
+
+/** 一個要印出的簽署席位。`slot` 是規則列的 rule_id（ADR-0021 決議 5），同角色有多個席位時靠它區分。 */
+export interface SignatureBlockSeat {
+  role: SignerRole;
+  slot?: string;
+}
+
+/** 一個簽署欄的落點。 */
+export interface SignatureBlockSpot extends SignatureBlockSeat {
+  /** 該欄「簽章：」的 baseline y（PDF 座標，原點左下）。 */
+  stampBaseline: number;
+}
+
+/**
+ * 簽署欄版面：席位清單進、落點出（ADR-0018 決議 14）。純函式，沒有 I/O。
+ *
+ * 輸入順序是簽署順序，這裡依 {@link SIGNATURE_PRINT_ORDER} 重排成印列順序。
+ * 同一角色的多個席位保留輸入時的先後（例如包租又有經紀人：管理人員在前、經紀人在後）。
+ * 每個簽署欄的形狀相同：標題列、兩行資料、「簽章：」加簽名空白，所以落點只看印列的第幾個。
+ * 兩方合約（甲方、乙方）的落點與 N 列版面之前完全相同，既有合約的 PDF 不動（ADR-0006）。
+ *
+ * 這段是把 generateContractPdf 簽署欄的排版順序原樣重走一遍。src/lib/pdf-layout.test.ts
+ * 會拿真的產出 PDF 對落點做迴歸。
+ */
+export function signatureBlockLayout(seats: readonly SignatureBlockSeat[]): SignatureBlockSpot[] {
+  const printed = SIGNATURE_PRINT_ORDER.flatMap((role) => seats.filter((seat) => seat.role === role));
   let y = PAGE_H - MARGIN;
   y -= SIGN_BLOCK_TOP_GAP;
   y -= lineAdvance(SIGN_HEADING_SIZE, SIGN_HEADING_GAP_AFTER); // 立契約書人
-  y -= lineAdvance(BODY_SIZE, SIGN_ROW_GAP_AFTER); // 甲方（出租人）：…
-  y -= lineAdvance(BODY_SIZE, SIGN_ROW_GAP_AFTER); // Email：…
-  const partyA = y - BODY_SIZE; // 甲方「簽章：」
-  y -= lineAdvance(BODY_SIZE, SIGN_STAMP_BLANK);
-  y -= lineAdvance(BODY_SIZE, SIGN_ROW_GAP_AFTER); // 乙方（承租人）：…
-  y -= lineAdvance(BODY_SIZE, SIGN_ROW_GAP_AFTER); // Email：…
-  const partyB = y - BODY_SIZE; // 乙方「簽章：」
-  return { party_a: partyA, party_b: partyB };
+  return printed.map((seat) => {
+    y -= lineAdvance(BODY_SIZE, SIGN_ROW_GAP_AFTER); // 身分列，例如「甲方（出租人）：…」
+    y -= lineAdvance(BODY_SIZE, SIGN_ROW_GAP_AFTER); // 第二列，例如「Email：…」
+    const stampBaseline = y - BODY_SIZE; // 「簽章：」
+    y -= lineAdvance(BODY_SIZE, SIGN_STAMP_BLANK);
+    return { ...seat, stampBaseline };
+  });
 }

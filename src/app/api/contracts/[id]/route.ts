@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { deleteContractWithEvents, getContract, getContractRelations, getDb } from '@/lib/db';
 import { contractSubject, signing } from '@/lib/signing-module';
+import { routingInputError } from '@/lib/signature-routing';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -26,6 +27,8 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
   }
 
   const body = await request.json();
+  const routingError = routingInputError(body.fields?.routing);
+  if (routingError) return Response.json({ error: routingError }, { status: 400 });
   const fields = { ...contract.fields, ...(body.fields ?? {}) };
   const signatureFields = body.signature_fields ?? contract.signature_fields;
   getDb()
