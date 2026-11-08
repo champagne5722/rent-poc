@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { generateContractPdf } from './pdf';
 import { signatureBlockLayout, signatureStampBaselines } from './pdf-layout';
 import { bindTemplate } from './clause-library';
-import type { ContractFields } from './types';
+import type { LeaseContractFields } from './types';
 
 // signatureStampBaselines() 是把 generateContractPdf 的排版順序重走一遍推出來的，
 // 這支測試拿真的產出 PDF 回頭核對，避免兩邊的版面邏輯偷偷長歪。
 
-const fields: ContractFields = {
+const fields: LeaseContractFields = {
   propertyName: '測試物件',
   propertyAddress: '台北市中正區測試路 1 號',
   propertyType: '整層住家',
@@ -30,7 +30,7 @@ const fields: ContractFields = {
 };
 
 /** 從產出的 PDF 讀回兩個「簽章：」的頁碼與 baseline y。 */
-async function readStampPositions(f: ContractFields = fields): Promise<{ page: number; y: number }[]> {
+async function readStampPositions(f: LeaseContractFields = fields): Promise<{ page: number; y: number }[]> {
   const bytes = await generateContractPdf(f);
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const doc = await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise;

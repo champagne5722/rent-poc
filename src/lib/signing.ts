@@ -1,3 +1,4 @@
+import { contractTypeDefinition, listSummaryOf, partyOf } from './contract-types';
 import { buildSignerSequence, routeSignatures, type RoutingFacts, type SeatAssignee } from './signature-routing';
 import type { Signer } from './signing-module/provider';
 import { SIGNER_ROLE_LABELS, type Contract } from './types';
@@ -25,11 +26,9 @@ export function prepareContractSigners(
   if (route.kind === 'rejected') return refuse(route.reason);
   if (route.kind === 'not_required') return refuse('這個組合不送簽，由雙方確認');
 
-  const { fields } = contract;
   const assignees: Record<string, SeatAssignee> = { ...practitioners };
   for (const seat of route.plan.seats) {
-    if (seat.role === 'party_a') assignees[seat.ruleId] = { name: fields.landlordName, email: fields.landlordEmail };
-    if (seat.role === 'party_b') assignees[seat.ruleId] = { name: fields.tenantName, email: fields.tenantEmail };
+    if (seat.role === 'party_a' || seat.role === 'party_b') assignees[seat.ruleId] = partyOf(contract, seat.role);
   }
 
   const built = buildSignerSequence(route.plan, assignees, contract.signature_fields);
@@ -44,5 +43,5 @@ export function prepareContractSigners(
 }
 
 export function contractDocumentFileName(contract: Contract): string {
-  return `租賃合約-${contract.fields.propertyName || contract.id}`;
+  return `${contractTypeDefinition(contract.contract_type).documentName}-${listSummaryOf(contract).propertyName || contract.id}`;
 }

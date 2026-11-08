@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getContract } from '@/lib/db';
-import { generateContractPdf, PDF_PAGE_SIZE } from '@/lib/pdf';
+import { contractPdfRenderer } from '@/lib/contract-pdf';
+import { missingFieldsForSendOf } from '@/lib/contract-types';
 import { getPracticeRegistry } from '@/lib/practice-registry';
 import { prepareContractSend, recordSendSnapshots } from '@/lib/practitioner-assignment/send';
 import { contractDocumentFileName } from '@/lib/signing';
@@ -17,32 +18,27 @@ export async function POST(_request: NextRequest, { params }: Ctx) {
     return Response.json({ error: '僅草稿可送簽' }, { status: 409 });
   }
 
-  const f = contract.fields;
-  const missing: string[] = [];
-  if (!f.landlordName.trim()) missing.push('甲方姓名');
-  if (!/.+@.+\..+/.test(f.landlordEmail)) missing.push('甲方 Email');
-  if (!f.tenantName.trim()) missing.push('乙方姓名');
-  if (!/.+@.+\..+/.test(f.tenantEmail)) missing.push('乙方 Email');
-  if (!f.startDate || !f.endDate) missing.push('租期起迄');
-  if (f.rent == null) missing.push('租金');
+  // PDF 與必填欄位都依合約類型。沒有 PDF 的類型（委託管理合約屬 MIL-74、MIL-77）尚未支援送簽。
+  const renderer = contractPdfRenderer(contract.contract_type);
+  if (!renderer) {
+    return Response.json({ error: '這個合約類型尚未支援送簽' }, { status: 400 });
+  }
+  const missing = missingFieldsForSendOf(contract);
   if (missing.length) {
     return Response.json({ error: `請先完成欄位：${missing.join('、')}` }, { status: 400 });
   }
-  // 簽署序列由簽章分流規則表產生（ADR-0018）。PDF 與欄位檢查目前只支援租賃合約，委託管理合約屬 MIL-74、MIL-77。
-  if (contract.contract_type !== 'lease') {
-    return Response.json({ error: '這個合約類型尚未支援送簽' }, { status: 400 });
-  }
+  // 簽署序列由簽章分流規則表產生（ADR-0018）
   // 送簽前檢查（ADR-0018 決議 10）：分流、執業人員指派與資格。不符時列出全部原因，簽署人與判定事實快照通過才產生
   const prepared = await prepareContractSend(contract, getPracticeRegistry(), new Date().toISOString());
   if (!prepared.ok) {
     return Response.json({ error: prepared.error, reasons: prepared.reasons }, { status: prepared.status });
   }
 
-  const pdf = await generateContractPdf(f, prepared.printed);
+  const pdf = await renderer.render(contract.fields, prepared.printed);
   try {
     const task = await signing.send(
       contractSubject(contract.id),
-      { fileName: contractDocumentFileName(contract), pdf, pageSize: PDF_PAGE_SIZE },
+      { fileName: contractDocumentFileName(contract), pdf, pageSize: renderer.pageSize },
       prepared.signers
     );
     await recordSendSnapshots(contract.id, prepared);

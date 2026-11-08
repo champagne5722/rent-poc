@@ -36,7 +36,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type {
-  Contract,
+  LeaseContract,
   ContractEvent,
   ContractFile,
   ContractRelations,
@@ -85,7 +85,7 @@ function formatSize(bytes: number | null): string {
 function ContractDetail({ id }: { id: string }) {
   const { message } = AntApp.useApp();
   const router = useRouter();
-  const [contract, setContract] = useState<Contract | null>(null);
+  const [contract, setContract] = useState<LeaseContract | null>(null);
   const [relations, setRelations] = useState<ContractRelations | null>(null);
   const [signingProgress, setSigningProgress] = useState<SigningProgress | null>(null);
   const [events, setEvents] = useState<ContractEvent[]>([]);

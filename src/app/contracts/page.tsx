@@ -25,10 +25,13 @@ import Link from 'next/link';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { Contract, ContractStatus } from '@/lib/types';
 import { CONTRACT_STATUS_LABELS, isSigningStatus } from '@/lib/types';
-import { partyLabels } from '@/lib/labels';
 import {
   countByStatus,
   lastActionAt,
+  listPartyBColumn,
+  listPeriodLabel,
+  listPropertyLabel,
+  listRentLabel,
   propertyNameOptions,
   selectContracts,
   signingProgressLabels,
@@ -117,6 +120,8 @@ function ContractList() {
     [status, propertyName, range]
   );
   const rows = useMemo(() => selectContracts(items, filter), [items, filter]);
+  // 乙方欄的欄名與儲存格依合約類型取字（MIL-122、MIL-73）
+  const partyB = useMemo(() => listPartyBColumn(rows), [rows]);
 
   // 列上快速操作共用：呼叫既有 API，成功後重新載入列表
   const act = async (contract: Contract, path: string, successText: string) => {
@@ -228,19 +233,10 @@ function ContractList() {
         scroll={{ x: 'max-content' }}
         columns={[
           { title: '#', dataIndex: 'id', width: 56 },
-          { title: '物件', render: (_, r) => r.fields.propertyName || '—' },
-          { title: partyLabels('lease').partyBFull, render: (_, r) => r.fields.tenantName || '—' },
-          {
-            title: '租金',
-            width: 100,
-            render: (_, r) => (r.fields.rent != null ? `$${r.fields.rent.toLocaleString()}` : '—'),
-          },
-          {
-            title: '租期',
-            width: 210,
-            render: (_, r) =>
-              r.fields.startDate && r.fields.endDate ? `${r.fields.startDate} ~ ${r.fields.endDate}` : '—',
-          },
+          { title: '物件', render: (_, r) => listPropertyLabel(r) },
+          { title: partyB.title, render: (_, r) => partyB.cell(r) },
+          { title: '租金', width: 100, render: (_, r) => listRentLabel(r) },
+          { title: '租期', width: 210, render: (_, r) => listPeriodLabel(r) },
           {
             title: '狀態',
             width: 100,

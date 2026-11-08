@@ -1,16 +1,14 @@
 import { NextRequest } from 'next/server';
 import { getProperty, insertContractWithEvent, listContracts } from '@/lib/db';
-import { bindTemplate } from '@/lib/clause-library';
-import { toEquipmentAnnex } from '@/lib/equipment';
+import { DEFAULT_CONTRACT_TYPE, initialFieldsFor } from '@/lib/contract-types';
 import { routingInputError } from '@/lib/signature-routing';
-import type { ContractFields } from '@/lib/types';
 
 export async function GET() {
   return Response.json({ data: listContracts() });
 }
 
-// 從物件建立合約草稿：物件資料在此帶入成快照，之後與物件脫鉤（見 docs/domain-model.md）；
-// 範本版本也在此綁定，選用條款在 wizard 第①步勾選後才寫進快照（ADR-0005）
+// 從物件建立合約草稿：欄位快照由合約類型定義產生（物件資料帶入成快照、綁定範本版本，見 contract-types）。
+// 目前建約入口只建租賃合約，委託管理合約的建立屬 MIL-74。
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const property = getProperty(Number(body.property_id));
@@ -19,30 +17,11 @@ export async function POST(request: NextRequest) {
   const routingError = routingInputError(body.routing);
   if (routingError) return Response.json({ error: routingError }, { status: 400 });
 
-  const fields: ContractFields = {
-    ...(body.routing ? { routing: body.routing } : {}),
-    landlordName: '',
-    landlordEmail: '',
-    tenantName: '',
-    tenantEmail: '',
-    propertyName: property.name,
-    propertyAddress: property.address,
-    propertyType: property.type,
-    propertySize: property.size,
-    // 設備附件（ADR-0008）：物件的設備清單帶入成附件列，修繕責任預設出租方，之後逐約調整
-    equipmentAnnex: toEquipmentAnnex(property.equipment),
-    rent: property.default_rent,
-    deposit: property.default_rent != null ? property.default_rent * 2 : null,
-    startDate: '',
-    endDate: '',
-    payDay: 5,
-    extra: '',
-    ...bindTemplate(),
-  };
+  const fields = initialFieldsFor(DEFAULT_CONTRACT_TYPE, { property, routing: body.routing });
 
   // 合約與「建立」歷程事件同交易寫入（ADR-0007）
   const id = insertContractWithEvent(
-    { property_id: property.id, fields: JSON.stringify(fields) },
+    { property_id: property.id, fields: JSON.stringify(fields), contract_type: DEFAULT_CONTRACT_TYPE },
     { type: 'created', actor: 'landlord' }
   );
   return Response.json({ data: { id } }, { status: 201 });
