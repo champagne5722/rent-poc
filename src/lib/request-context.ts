@@ -29,6 +29,14 @@ export class Unauthenticated extends Error {
   }
 }
 
+/** 登入了，但不是組織身分（例如承租人、平台營運者）。route 回 403。 */
+export class OrgContextRequired extends Error {
+  constructor(message = '此操作需要組織身分') {
+    super(message);
+    this.name = 'OrgContextRequired';
+  }
+}
+
 /** 平台營運者對目標組織做事時，呼叫端另外帶的資料（ADR-0022 決議 7）。 */
 export interface OperatorTarget {
   orgId: string;

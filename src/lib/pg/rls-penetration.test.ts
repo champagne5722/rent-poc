@@ -133,8 +133,14 @@ describe.each(Object.entries(ORG_TABLE_CASES))('%s 的跨組織探測', (table, 
     const id = await seedA();
     expect((await asB((tx) => tx.query(`SELECT id FROM ${table} WHERE id = $1`, [id]))).rows).toEqual([]);
     expect((await asB((tx) => tx.query(`SELECT count(*)::int AS n FROM ${table}`))).rows).toEqual([{ n: 0 }]);
-    expect((await asB((tx) => tx.query(`UPDATE ${table} SET org_id = org_id WHERE id = $1 RETURNING id`, [id]))).rows).toEqual([]);
-    expect((await asB((tx) => tx.query(`DELETE FROM ${table} WHERE id = $1 RETURNING id`, [id]))).rows).toEqual([]);
+    if (testCase.appendOnly) {
+      // 只增不改的表：app_rw 沒有 UPDATE 與 DELETE 權限，連別的組織的列也不必碰就被擋
+      await expect(asB((tx) => tx.query(`UPDATE ${table} SET org_id = org_id WHERE id = $1 RETURNING id`, [id]))).rejects.toThrow(/permission denied/);
+      await expect(asB((tx) => tx.query(`DELETE FROM ${table} WHERE id = $1 RETURNING id`, [id]))).rejects.toThrow(/permission denied/);
+    } else {
+      expect((await asB((tx) => tx.query(`UPDATE ${table} SET org_id = org_id WHERE id = $1 RETURNING id`, [id]))).rows).toEqual([]);
+      expect((await asB((tx) => tx.query(`DELETE FROM ${table} WHERE id = $1 RETURNING id`, [id]))).rows).toEqual([]);
+    }
     const stillThere = await withTx({ kind: 'org', orgId: orgA }, (tx) => tx.query(`SELECT id FROM ${table} WHERE id = $1`, [id]));
     expect(stillThere.rows).toHaveLength(1);
   });
@@ -143,7 +149,7 @@ describe.each(Object.entries(ORG_TABLE_CASES))('%s 的跨組織探測', (table, 
     const id = await seedA();
     await expect(
       withTx({ kind: 'org', orgId: orgA }, (tx) => tx.query(`UPDATE ${table} SET org_id = $2 WHERE id = $1`, [id, orgB])),
-    ).rejects.toThrow(/row-level security/);
+    ).rejects.toThrow(testCase.appendOnly ? /permission denied/ : /row-level security/);
   });
 
   it('在自己的脈絡寫入別的組織的 org_id，被 RLS 擋下', async () => {

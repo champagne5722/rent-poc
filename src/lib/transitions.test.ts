@@ -1,38 +1,32 @@
-import Database from 'better-sqlite3';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  appendContractEvent,
-  commitTransition,
-  copyContractAsDraft,
-  ensureSchema,
-  insertContractWithEvent,
-  listContractEvents,
-} from './db';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { commitTransition, createContract, getContract, listContractEvents } from './contracts';
+import { withTx } from './pg/database';
+import { setupRouteDb, type RouteDb } from './pg/route-test-kit';
+import { newUlid } from './pg/ulid';
+import type { OrgTx } from './pg/with-tx';
 import { applySigningResult, decideTransition } from './transitions';
-import type { Contract, ContractStatus } from './types';
+import type { ContractFields, ContractStatus } from './types';
 
-let db: Database.Database;
-
-// 測試用 in-memory DB：不碰 data/ 下的檔案
-beforeEach(() => {
-  db = new Database(':memory:');
-  ensureSchema(db);
+let kit: RouteDb;
+beforeAll(async () => {
+  kit = await setupRouteDb();
 });
+afterAll(() => kit.close());
+beforeEach(() => kit.reset());
 
-afterEach(() => {
-  db.close();
-});
+const inA = <T,>(fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId: kit.orgA }, fn);
 
-function seedContract(status: ContractStatus): Contract {
-  const result = db
-    .prepare("INSERT INTO contracts (property_id, status, fields) VALUES (NULL, ?, '{}')")
-    .run(status);
-  return { id: Number(result.lastInsertRowid), status } as Contract;
+/** 建一份指定狀態的合約，歷程只有「建立」。 */
+async function seedContract(status: ContractStatus): Promise<string> {
+  return inA(async (tx) => {
+    const id = await createContract(tx, { property_id: null, fields: {} as ContractFields });
+    if (status !== 'draft') await tx.query('UPDATE org.contracts SET status = $2 WHERE id = $1', [id, status]);
+    return id;
+  });
 }
 
-function statusOf(id: number): ContractStatus {
-  return (db.prepare('SELECT status FROM contracts WHERE id = ?').get(id) as { status: ContractStatus }).status;
-}
+const statusOf = async (id: string) => (await inA((tx) => getContract(tx, id)))?.status;
+const eventTypes = async (id: string) => (await inA((tx) => listContractEvents(tx, id))).map((e) => e.type);
 
 const PARTY_A = { role: 'party_a', name: '林房東', email: 'landlord@example.com' } as const;
 const PARTY_B = { role: 'party_b', name: '王租客', email: 'tenant@example.com' } as const;
@@ -142,25 +136,17 @@ describe('decideTransition：合約狀態由簽署角色投影', () => {
 });
 
 describe('applySigningResult（狀態轉移與歷程事件同交易）', () => {
-  it('走完一輪簽署流程後，事件序列與狀態一致', () => {
-    const contract = seedContract('draft');
-    appendContractEvent(contract.id, { type: 'created', actor: 'landlord' }, db);
+  it('走完一輪簽署流程後，事件序列與狀態一致', async () => {
+    const id = await seedContract('draft');
 
-    applySigningResult(contract, { type: 'sent', first: PARTY_B }, db);
-    applySigningResult(
-      { ...contract, status: 'awaiting_tenant' },
-      { type: 'signer_signed', signer: PARTY_B, next: PARTY_A },
-      db
-    );
-    applySigningResult(
-      { ...contract, status: 'awaiting_landlord' },
-      { type: 'signer_signed', signer: PARTY_A, next: null },
-      db
-    );
-    applySigningResult({ ...contract, status: 'awaiting_landlord' }, { type: 'completed' }, db);
+    await inA((tx) => applySigningResult(tx, id, { type: 'sent', first: PARTY_B }));
+    await inA((tx) => applySigningResult(tx, id, { type: 'signer_signed', signer: PARTY_B, next: PARTY_A }));
+    // 最後一位簽完不動狀態，等全員完成
+    await inA((tx) => applySigningResult(tx, id, { type: 'signer_signed', signer: PARTY_A, next: null }));
+    await inA((tx) => applySigningResult(tx, id, { type: 'completed' }));
 
-    expect(statusOf(contract.id)).toBe('completed');
-    expect(listContractEvents(contract.id, db).map((e) => [e.type, e.actor])).toEqual([
+    expect(await statusOf(id)).toBe('completed');
+    expect((await inA((tx) => listContractEvents(tx, id))).map((e) => [e.type, e.actor])).toEqual([
       ['created', 'landlord'],
       ['sent', 'landlord'],
       ['signer_signed', 'party_b'],
@@ -168,131 +154,67 @@ describe('applySigningResult（狀態轉移與歷程事件同交易）', () => {
     ]);
   });
 
-  it('拒簽事件寫入原因附註，合約也留下拒簽原因', () => {
-    const contract = seedContract('awaiting_tenant');
-    applySigningResult(contract, { type: 'declined', signer: PARTY_B, reason: '租金認知有落差' }, db);
-
-    const events = listContractEvents(contract.id, db);
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ type: 'declined', actor: 'party_b', note: '租金認知有落差' });
-    expect(
-      (db.prepare('SELECT declined_reason FROM contracts WHERE id=?').get(contract.id) as { declined_reason: string })
-        .declined_reason
-    ).toBe('租金認知有落差');
+  it('回傳新狀態；合約的狀態以資料庫為準，不是呼叫端傳的', async () => {
+    const id = await seedContract('awaiting_tenant');
+    expect(await inA((tx) => applySigningResult(tx, id, { type: 'completed' }))).toBe('completed');
   });
 
-  it('沒有轉移時不改狀態也不寫事件，回傳 null', () => {
-    const contract = seedContract('draft');
-    expect(applySigningResult(contract, { type: 'completed' }, db)).toBeNull();
-    expect(statusOf(contract.id)).toBe('draft');
-    expect(listContractEvents(contract.id, db)).toHaveLength(0);
+  it('拒簽事件寫入原因附註，合約也留下拒簽原因', async () => {
+    const id = await seedContract('awaiting_tenant');
+    await inA((tx) => applySigningResult(tx, id, { type: 'declined', signer: PARTY_B, reason: '租金認知有落差' }));
+
+    const events = await inA((tx) => listContractEvents(tx, id));
+    expect(events.at(-1)).toMatchObject({ type: 'declined', actor: 'party_b', note: '租金認知有落差' });
+    expect((await inA((tx) => getContract(tx, id)))?.declined_reason).toBe('租金認知有落差');
   });
 
-  it('事件寫入失敗時，狀態一起回滾', () => {
-    const contract = seedContract('awaiting_tenant');
-    // 模擬歷程寫入失敗（磁碟錯誤、約束違反等）
-    db.exec("CREATE TRIGGER fail_event BEFORE INSERT ON contract_events BEGIN SELECT RAISE(ABORT, '寫入失敗'); END;");
-
-    expect(() => applySigningResult(contract, { type: 'completed' }, db)).toThrow();
-
-    db.exec('DROP TRIGGER fail_event');
-    expect(statusOf(contract.id)).toBe('awaiting_tenant');
-    expect(listContractEvents(contract.id, db)).toHaveLength(0);
+  it('沒有轉移時不改狀態也不寫事件，回傳 null', async () => {
+    const id = await seedContract('draft');
+    expect(await inA((tx) => applySigningResult(tx, id, { type: 'completed' }))).toBeNull();
+    expect(await statusOf(id)).toBe('draft');
+    expect(await eventTypes(id)).toEqual(['created']);
   });
 
-  it('狀態轉移失敗時，事件也不會留下', () => {
-    const contract = seedContract('awaiting_tenant');
-    db.exec("CREATE TRIGGER fail_status BEFORE UPDATE ON contracts BEGIN SELECT RAISE(ABORT, '更新失敗'); END;");
-
-    expect(() => applySigningResult(contract, { type: 'completed' }, db)).toThrow();
-
-    db.exec('DROP TRIGGER fail_status');
-    expect(statusOf(contract.id)).toBe('awaiting_tenant');
-    expect(listContractEvents(contract.id, db)).toHaveLength(0);
-  });
-});
-
-describe('系統側動作的歷程事件', () => {
-  function loadContract(id: number): Contract {
-    const row = db.prepare('SELECT * FROM contracts WHERE id = ?').get(id) as {
-      id: number;
-      property_id: number | null;
-      status: ContractStatus;
-      fields: string;
-      signature_fields: string;
-    };
-    return {
-      ...row,
-      fields: JSON.parse(row.fields),
-      signature_fields: JSON.parse(row.signature_fields),
-    } as Contract;
-  }
-
-  it('建立合約寫入「建立」事件', () => {
-    const id = insertContractWithEvent(
-      { property_id: null, fields: '{}' },
-      { type: 'created', actor: 'landlord' },
-      db
-    );
-    expect(listContractEvents(id, db)).toMatchObject([{ type: 'created', actor: 'landlord', note: null }]);
+  it('合約不存在，或是別的組織的合約，回傳 null 且不寫任何東西', async () => {
+    const other = await withTx({ kind: 'org', orgId: kit.orgB }, async (tx) => createContract(tx, { property_id: null, fields: {} as ContractFields }));
+    expect(await inA((tx) => applySigningResult(tx, newUlid(), { type: 'voided' }))).toBeNull();
+    expect(await inA((tx) => applySigningResult(tx, other, { type: 'voided' }))).toBeNull();
+    expect((await withTx({ kind: 'org', orgId: kit.orgB }, (tx) => getContract(tx, other)))?.status).toBe('draft');
   });
 
-  it('送簽把狀態與「送簽」事件一起寫入', () => {
-    const id = insertContractWithEvent({ property_id: null, fields: '{}' }, { type: 'created', actor: 'landlord' }, db);
-    commitTransition(
-      id,
-      {
-        status: 'awaiting_tenant',
-        event: { type: 'sent', actor: 'landlord', note: '寄送給乙方 tenant@example.com' },
-      },
-      db
+  it('事件寫入失敗時，狀態一起回滾', async () => {
+    const id = await seedContract('awaiting_tenant');
+    await kit.asOwner((db) =>
+      db.exec(`CREATE FUNCTION org.fail_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION '寫入失敗'; END $$;
+               CREATE TRIGGER fail_event BEFORE INSERT ON org.contract_events FOR EACH ROW WHEN (NEW.type = 'completed') EXECUTE FUNCTION org.fail_event();`),
     );
 
-    expect(statusOf(id)).toBe('awaiting_tenant');
-    expect(listContractEvents(id, db).map((e) => e.type)).toEqual(['created', 'sent']);
+    await expect(inA((tx) => applySigningResult(tx, id, { type: 'completed' }))).rejects.toThrow('寫入失敗');
+
+    expect(await statusOf(id)).toBe('awaiting_tenant');
+    expect(await eventTypes(id)).toEqual(['created']);
   });
 
-  it('撤回後複製：來源記「被複製為新草稿」，新約的「建立」附註衍生來源', () => {
-    const sourceId = seedContract('voided').id;
-    const newId = copyContractAsDraft(loadContract(sourceId), db);
+  it('狀態轉移失敗時，事件也不會留下', async () => {
+    const id = await seedContract('awaiting_tenant');
+    await kit.asOwner((db) =>
+      db.exec(`CREATE FUNCTION org.fail_status() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION '更新失敗'; END $$;
+               CREATE TRIGGER fail_status BEFORE UPDATE ON org.contracts FOR EACH ROW EXECUTE FUNCTION org.fail_status();`),
+    );
 
-    expect(listContractEvents(sourceId, db)).toMatchObject([
-      { type: 'copied', actor: 'landlord', note: `複製為新草稿：合約 #${newId}` },
-    ]);
-    expect(listContractEvents(newId, db)).toMatchObject([
-      { type: 'created', actor: 'landlord', note: `衍生自合約 #${sourceId}（撤回後修約）` },
-    ]);
+    await expect(inA((tx) => applySigningResult(tx, id, { type: 'completed' }))).rejects.toThrow('更新失敗');
+
+    await kit.asOwner((db) => db.exec('DROP TRIGGER fail_status ON org.contracts'));
+    expect(await statusOf(id)).toBe('awaiting_tenant');
+    expect(await eventTypes(id)).toEqual(['created']);
   });
 
-  it('拒簽後複製不記衍生來源（ADR-0006：拒簽是交易終點）', () => {
-    const sourceId = seedContract('declined').id;
-    const newId = copyContractAsDraft(loadContract(sourceId), db);
-
-    expect(listContractEvents(newId, db)).toMatchObject([{ type: 'created', actor: 'landlord', note: null }]);
-    expect(listContractEvents(sourceId, db).map((e) => e.type)).toEqual(['copied']);
-  });
-});
-
-describe('合約歷程 append-only', () => {
-  it('事件依發生順序回傳，且只有新增入口', () => {
-    const contract = seedContract('draft');
-    appendContractEvent(contract.id, { type: 'created', actor: 'landlord', note: '衍生自合約 #7（撤回後修約）' }, db);
-    appendContractEvent(contract.id, { type: 'sent', actor: 'landlord' }, db);
-
-    const events = listContractEvents(contract.id, db);
-    expect(events.map((e) => e.type)).toEqual(['created', 'sent']);
-    expect(events[0].note).toBe('衍生自合約 #7（撤回後修約）');
-    expect(events[0].created_at).toBeTruthy();
-  });
-
-  it('只回傳指定合約的事件', () => {
-    const a = seedContract('draft');
-    const b = seedContract('draft');
-    appendContractEvent(a.id, { type: 'created', actor: 'landlord' }, db);
-    appendContractEvent(b.id, { type: 'created', actor: 'landlord' }, db);
-    appendContractEvent(b.id, { type: 'copied', actor: 'landlord', note: '複製為新草稿：合約 #3' }, db);
-
-    expect(listContractEvents(a.id, db)).toHaveLength(1);
-    expect(listContractEvents(b.id, db)).toHaveLength(2);
+  it('commitTransition：送簽把狀態與「送簽」事件一起寫入', async () => {
+    const id = await seedContract('draft');
+    await inA((tx) =>
+      commitTransition(tx, id, { status: 'awaiting_tenant', event: { type: 'sent', actor: 'landlord', note: '寄送給乙方 tenant@example.com' } }),
+    );
+    expect(await statusOf(id)).toBe('awaiting_tenant');
+    expect(await eventTypes(id)).toEqual(['created', 'sent']);
   });
 });

@@ -79,7 +79,7 @@ export function compareByWorkPriority(a: Contract, b: Contract): number {
   return (
     WORK_PRIORITY[a.status] - WORK_PRIORITY[b.status] ||
     lastActionAt(b).localeCompare(lastActionAt(a)) ||
-    b.id - a.id
+    b.id.localeCompare(a.id)
   );
 }
 

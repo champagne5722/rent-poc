@@ -1,14 +1,29 @@
 import type Database from 'better-sqlite3';
 
-// 測試用：把資料庫退回 MIL-60 之前的形式，模擬已部署過的資料庫。
-// 下一次 ensureSchema() 會先回填，再移除這兩個舊形式。
-export function restoreLegacySigningSchema(db: Database.Database): void {
-  const columns = db.prepare('PRAGMA table_info(contracts)').all() as { name: string }[];
-  if (!columns.some((c) => c.name === 'dottedsign_task_id')) {
-    db.exec('ALTER TABLE contracts ADD COLUMN dottedsign_task_id TEXT');
-  }
+// 測試用：建出 MIL-60 之前的 SQLite 合約表，給 contract-backfill.test.ts 寫入舊資料。
+// 合約搬到 PostgreSQL 後（MIL-83），ensureSchema() 不再建這些表，它們只存在於舊的 data/rent-poc.db。
+export function createLegacyContractTables(db: Database.Database): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS contract_files (
+    CREATE TABLE contracts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      property_id TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      fields TEXT NOT NULL DEFAULT '{}',
+      signature_fields TEXT NOT NULL DEFAULT '[]',
+      dottedsign_task_id TEXT,
+      declined_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT
+    );
+    CREATE TABLE contract_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      contract_id INTEGER NOT NULL REFERENCES contracts(id),
+      type TEXT NOT NULL,
+      actor TEXT NOT NULL,
+      note TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    );
+    CREATE TABLE contract_files (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       contract_id INTEGER NOT NULL REFERENCES contracts(id),
       kind TEXT NOT NULL,

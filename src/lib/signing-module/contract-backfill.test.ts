@@ -1,37 +1,28 @@
 import Database from 'better-sqlite3';
-import crypto from 'crypto';
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureSchema, getContract, listContractEvents, setDb } from '../db';
+import { ensureSchema } from '../db';
 import type { ContractStatus } from '../types';
-import { createDottedSignProvider } from './dottedsign-adapter';
-import { createContractSubscriber } from '../contract-signing';
-import { createMockProvider } from './mock-adapter';
-import { restoreLegacySigningSchema } from './legacy-schema.fixture';
-import { createSigningModule } from './module';
-import type { SigningProvider } from './provider';
+import { migrateLegacyContractSigning } from './contract-backfill';
+import { createLegacyContractTables } from './legacy-schema.fixture';
+import type { SigningSubject } from './provider';
+import { listSignTaskFiles } from './sign-task-files';
+import { findSignTask, findSubjectByTaskRef, toSigningProgress } from './sign-task-store';
 
-// 既有合約的回填（MIL-56、MIL-58）與舊形式移除（MIL-60）：
-// 先把資料庫退回升級前的形式並寫入資料，再執行 ensureSchema()，之後一律經簽署模組介面檢查。
+// 舊 SQLite 資料的回填（MIL-56、MIL-58）與舊形式移除（MIL-60）。
+// 合約搬到 PostgreSQL 後（MIL-83），ensureSchema() 不再呼叫它，合約表也不在 SQLite 裡。
+// 這個檔案留著，讓搬資料腳本（MIL-90）與簽署任務搬遷（MIL-85）有可重用、有測試的「合約狀態與歷程 → 簽署進度」對照。
+// 這裡只驗 SQLite 內的結果：簽署任務、簽署人、文件紀錄。
 
 let db: Database.Database;
-// 文件本體寫在暫存目錄，不碰 data/
-let dataDir: string;
 
 beforeEach(() => {
   db = new Database(':memory:');
   ensureSchema(db);
-  restoreLegacySigningSchema(db);
-  setDb(db);
-  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'contract-backfill-'));
+  createLegacyContractTables(db);
 });
 
 afterEach(() => {
-  setDb(null);
   db.close();
-  fs.rmSync(dataDir, { recursive: true, force: true });
   vi.restoreAllMocks();
 });
 
@@ -45,96 +36,77 @@ const FIELDS = JSON.stringify({
 const TENANT = { role: 'party_b', name: '王租客', email: 'tenant@example.com' };
 const LANDLORD = { role: 'party_a', name: '林房東', email: 'landlord@example.com' };
 
-function legacyContract(status: ContractStatus, taskRef: string | null, fields = FIELDS) {
+function legacyContract(status: ContractStatus, taskRef: string | null, fields = FIELDS): SigningSubject {
   const result = db
     .prepare(
       `INSERT INTO contracts (status, fields, dottedsign_task_id, created_at, updated_at)
        VALUES (?, ?, ?, '2026-01-01 09:00:00', '2026-01-05 09:00:00')`
     )
     .run(status, fields, taskRef);
-  return { type: 'contract', id: Number(result.lastInsertRowid) } as const;
+  return { type: 'contract', id: String(result.lastInsertRowid) };
 }
 
-function legacyEvent(contractId: number, type: string, actor: string, createdAt: string) {
+function legacyEvent(subject: SigningSubject, type: string, actor: string, createdAt: string) {
   db.prepare('INSERT INTO contract_events (contract_id, type, actor, created_at) VALUES (?, ?, ?, ?)').run(
-    contractId,
+    Number(subject.id),
     type,
     actor,
     createdAt
   );
 }
 
-const upgrade = () => ensureSchema(db);
+const upgrade = () => migrateLegacyContractSigning(db);
 
-const moduleOf = (provider: SigningProvider) =>
-  createSigningModule({ provider, subscribers: { contract: createContractSubscriber() }, dataDir });
-const mockSigning = () => moduleOf(createMockProvider());
+const progressOf = (subject: SigningSubject) => {
+  const task = findSignTask(db, subject);
+  return task ? toSigningProgress(task) : null;
+};
 
-const liveProvider = (overrides: Partial<SigningProvider> = {}): SigningProvider => ({
-  id: 'dottedsign',
-  mode: 'live',
-  unsupported: { simulate: 'live 模式下請走真實 webhook' },
-  createTask: async () => ({ taskRef: '470' }),
-  getSignLink: async () => 'https://sign.example/abc',
-  resend: async () => {},
-  voidTask: async () => {},
-  downloadFile: async () => {
-    throw new Error('不應呼叫服務商下載');
-  },
-  parseWebhook: () => ({ kind: 'ignored' }),
-  ...overrides,
-});
-
-const webhook = (taskRef: string, action: string, email?: string) =>
-  JSON.stringify({ resource_id: taskRef, resource_type: 'task', action_name: action, event_email: email });
-
-const columnsOf = (target: Database.Database, table: string) =>
-  (target.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
-const tableExists = (target: Database.Database, table: string) =>
-  Boolean(target.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
+const columnsOf = (table: string) =>
+  (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+const tableExists = (table: string) =>
+  Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
 
 describe('回填後移除舊形式', () => {
-  it('回填後移除合約的任務編號欄位與舊的合約文件表，舊合約仍能下載文件', async () => {
+  it('回填後移除合約的任務編號欄位與舊的合約文件表', () => {
     const subject = legacyContract('completed', '470');
-    legacyFile(subject.id, 'signed_pdf', { status: 'saved', content: 'old-signed' });
+    legacyFile(subject, 'signed_pdf', { status: 'saved' });
     upgrade();
 
-    expect(columnsOf(db, 'contracts')).not.toContain('dottedsign_task_id');
-    expect(tableExists(db, 'contract_files')).toBe(false);
-    const live = moduleOf(liveProvider());
-    await expect(live.getProgress(subject)).resolves.toMatchObject({ status: 'completed' });
-    expect(new TextDecoder().decode((await live.downloadFile(subject, 'signed_pdf')).bytes)).toBe('old-signed');
+    expect(columnsOf('contracts')).not.toContain('dottedsign_task_id');
+    expect(tableExists('contract_files')).toBe(false);
+    expect(progressOf(subject)).toMatchObject({ status: 'completed' });
+    expect(listSignTaskFiles(db, findSignTask(db, subject)!.id)).toHaveLength(1);
   });
 
   it('有合約無法回填時保留舊形式，任務編號不會遺失', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     legacyContract('awaiting_tenant', 'mock-1-a', '{not json');
     const good = legacyContract('completed', '470');
-    legacyFile(good.id, 'signed_pdf', { status: 'saved' });
+    legacyFile(good, 'signed_pdf', { status: 'saved' });
 
     upgrade();
 
-    expect(columnsOf(db, 'contracts')).toContain('dottedsign_task_id');
-    expect(tableExists(db, 'contract_files')).toBe(true);
+    expect(columnsOf('contracts')).toContain('dottedsign_task_id');
+    expect(tableExists('contract_files')).toBe(true);
   });
 
-  it('全新資料庫沒有舊形式，ensureSchema 能重複執行', () => {
+  it('沒有舊形式的資料庫，重複執行是 no-op', () => {
     const fresh = new Database(':memory:');
     ensureSchema(fresh);
 
-    expect(() => ensureSchema(fresh)).not.toThrow();
-    expect(columnsOf(fresh, 'contracts')).not.toContain('dottedsign_task_id');
-    expect(tableExists(fresh, 'contract_files')).toBe(false);
+    expect(() => migrateLegacyContractSigning(fresh)).not.toThrow();
+    expect(() => migrateLegacyContractSigning(fresh)).not.toThrow();
     fresh.close();
   });
 });
 
 describe('回填的簽署進度', () => {
-  it('待乙方簽：兩位都待簽，當前簽署人是乙方', async () => {
+  it('待乙方簽：兩位都待簽，當前簽署人是乙方', () => {
     const subject = legacyContract('awaiting_tenant', 'mock-1-a');
     upgrade();
 
-    await expect(mockSigning().getProgress(subject)).resolves.toEqual({
+    expect(progressOf(subject)).toEqual({
       status: 'in_progress',
       signers: [
         { ...TENANT, status: 'pending', signedAt: null },
@@ -144,12 +116,12 @@ describe('回填的簽署進度', () => {
     });
   });
 
-  it('待甲方簽：乙方已簽，簽署時間取自合約歷程，當前簽署人是甲方', async () => {
+  it('待甲方簽：乙方已簽，簽署時間取自合約歷程，當前簽署人是甲方', () => {
     const subject = legacyContract('awaiting_landlord', 'mock-1-a');
-    legacyEvent(subject.id, 'tenant_signed', 'tenant', '2026-01-02 10:00:00');
+    legacyEvent(subject, 'tenant_signed', 'tenant', '2026-01-02 10:00:00');
     upgrade();
 
-    await expect(mockSigning().getProgress(subject)).resolves.toEqual({
+    expect(progressOf(subject)).toEqual({
       status: 'in_progress',
       signers: [
         { ...TENANT, status: 'signed', signedAt: '2026-01-02 10:00:00' },
@@ -159,13 +131,13 @@ describe('回填的簽署進度', () => {
     });
   });
 
-  it('已完成：兩位都已簽，甲方的簽署時間是完成時間', async () => {
+  it('已完成：兩位都已簽，甲方的簽署時間是完成時間', () => {
     const subject = legacyContract('completed', 'mock-1-a');
-    legacyEvent(subject.id, 'tenant_signed', 'tenant', '2026-01-02 10:00:00');
-    legacyEvent(subject.id, 'completed', 'landlord', '2026-01-03 10:00:00');
+    legacyEvent(subject, 'tenant_signed', 'tenant', '2026-01-02 10:00:00');
+    legacyEvent(subject, 'completed', 'landlord', '2026-01-03 10:00:00');
     upgrade();
 
-    await expect(mockSigning().getProgress(subject)).resolves.toEqual({
+    expect(progressOf(subject)).toEqual({
       status: 'completed',
       signers: [
         { ...TENANT, status: 'signed', signedAt: '2026-01-02 10:00:00' },
@@ -175,41 +147,39 @@ describe('回填的簽署進度', () => {
     });
   });
 
-  it('已完成但歷程沒有乙方簽署：乙方的簽署時間用完成時間', async () => {
+  it('已完成但歷程沒有乙方簽署：乙方的簽署時間用完成時間', () => {
     const subject = legacyContract('completed', 'mock-1-a');
-    legacyEvent(subject.id, 'completed', 'landlord', '2026-01-03 10:00:00');
+    legacyEvent(subject, 'completed', 'landlord', '2026-01-03 10:00:00');
     upgrade();
 
-    const progress = await mockSigning().getProgress(subject);
-    expect(progress?.signers.map((s) => s.signedAt)).toEqual(['2026-01-03 10:00:00', '2026-01-03 10:00:00']);
+    expect(progressOf(subject)?.signers.map((s) => s.signedAt)).toEqual(['2026-01-03 10:00:00', '2026-01-03 10:00:00']);
   });
 
-  it('已完成但沒有任何歷程：簽署時間用合約的更新時間', async () => {
+  it('已完成但沒有任何歷程：簽署時間用合約的更新時間', () => {
     const subject = legacyContract('completed', 'mock-1-a');
     upgrade();
 
-    const progress = await mockSigning().getProgress(subject);
-    expect(progress?.signers.map((s) => s.signedAt)).toEqual(['2026-01-05 09:00:00', '2026-01-05 09:00:00']);
+    expect(progressOf(subject)?.signers.map((s) => s.signedAt)).toEqual(['2026-01-05 09:00:00', '2026-01-05 09:00:00']);
   });
 
-  it('乙方拒簽：乙方標為拒簽，甲方維持待簽', async () => {
+  it('乙方拒簽：乙方標為拒簽，甲方維持待簽', () => {
     const subject = legacyContract('declined', 'mock-1-a');
-    legacyEvent(subject.id, 'declined', 'tenant', '2026-01-02 10:00:00');
+    legacyEvent(subject, 'declined', 'tenant', '2026-01-02 10:00:00');
     upgrade();
 
-    const progress = await mockSigning().getProgress(subject);
+    const progress = progressOf(subject);
     expect(progress?.status).toBe('declined');
     expect(progress?.signers.map((s) => s.status)).toEqual(['declined', 'pending']);
     expect(progress?.currentSigner).toBeNull();
   });
 
-  it('甲方拒簽：乙方已簽，甲方標為拒簽', async () => {
+  it('甲方拒簽：乙方已簽，甲方標為拒簽', () => {
     const subject = legacyContract('declined', 'mock-1-a');
-    legacyEvent(subject.id, 'tenant_signed', 'tenant', '2026-01-02 10:00:00');
-    legacyEvent(subject.id, 'declined', 'landlord', '2026-01-03 10:00:00');
+    legacyEvent(subject, 'tenant_signed', 'tenant', '2026-01-02 10:00:00');
+    legacyEvent(subject, 'declined', 'landlord', '2026-01-03 10:00:00');
     upgrade();
 
-    const progress = await mockSigning().getProgress(subject);
+    const progress = progressOf(subject);
     expect(progress?.status).toBe('declined');
     expect(progress?.signers.map((s) => [s.status, s.signedAt])).toEqual([
       ['signed', '2026-01-02 10:00:00'],
@@ -220,140 +190,42 @@ describe('回填的簽署進度', () => {
   it.each([
     ['乙方簽署前撤回', [], ['pending', 'pending']],
     ['乙方簽署後撤回', [['tenant_signed', 'tenant']], ['signed', 'pending']],
-  ])('%s：任務已撤回', async (_label, events, expected) => {
+  ])('%s：任務已撤回', (_label, events, expected) => {
     const subject = legacyContract('voided', 'mock-1-a');
-    for (const [type, actor] of events) legacyEvent(subject.id, type, actor, '2026-01-02 10:00:00');
+    for (const [type, actor] of events) legacyEvent(subject, type, actor, '2026-01-02 10:00:00');
     upgrade();
 
-    const progress = await mockSigning().getProgress(subject);
+    const progress = progressOf(subject);
     expect(progress?.status).toBe('voided');
     expect(progress?.signers.map((s) => s.status)).toEqual(expected);
     expect(progress?.currentSigner).toBeNull();
   });
 
-  it('草稿不回填，之後能照常送簽', async () => {
-    const subject = legacyContract('draft', null);
+  it('草稿與沒有任務編號的簽署中合約都不回填', () => {
+    const draft = legacyContract('draft', null);
+    const signingWithoutRef = legacyContract('awaiting_tenant', null);
     upgrade();
 
-    const signing = mockSigning();
-    await expect(signing.getProgress(subject)).resolves.toBeNull();
-    await signing.send(
-      subject,
-      { fileName: 'a', pdf: new Uint8Array([1]), pageSize: { width: 1, height: 1 } },
-      [{ ...TENANT, role: 'party_b', signatureFields: [] }]
-    );
-    await expect(signing.getProgress(subject)).resolves.toMatchObject({ status: 'in_progress' });
-  });
-
-  it('簽署中但沒有任務編號的合約不回填，仍能撤回', async () => {
-    const subject = legacyContract('awaiting_tenant', null);
-    upgrade();
-
-    const signing = mockSigning();
-    await expect(signing.getProgress(subject)).resolves.toBeNull();
-    await signing.voidTask(subject);
-    expect(getContract(subject.id)?.status).toBe('voided');
+    expect(progressOf(draft)).toBeNull();
+    expect(progressOf(signingWithoutRef)).toBeNull();
   });
 });
 
 describe('回填的服務商', () => {
-  it('任務編號以 mock- 開頭時記為 Mock：Mock 的 webhook 對得到', async () => {
-    const subject = legacyContract('awaiting_tenant', 'mock-1-a');
+  it('任務編號以 mock- 開頭時記為 Mock，其他記為點點簽；webhook 比對要帶服務商', () => {
+    const mock = legacyContract('awaiting_tenant', 'mock-1-a');
+    const live = legacyContract('awaiting_tenant', '470');
     upgrade();
 
-    await mockSigning().ingestWebhook(webhook('mock-1-a', 'signed', TENANT.email), new Headers());
-
-    expect(getContract(subject.id)?.status).toBe('awaiting_landlord');
-  });
-
-  it('任務編號以 mock- 開頭時，點點簽的 webhook 對不到', async () => {
-    const subject = legacyContract('awaiting_tenant', 'mock-1-a');
-    upgrade();
-    const parseWebhook: SigningProvider['parseWebhook'] = () => ({
-      kind: 'event',
-      taskRef: 'mock-1-a',
-      event: { type: 'signed' },
-    });
-    const live = moduleOf(liveProvider({ parseWebhook }));
-
-    await expect(live.ingestWebhook('{}', new Headers())).resolves.toEqual({
-      status: 200,
-      body: { ok: true, ignored: true },
-    });
-    expect(getContract(subject.id)?.status).toBe('awaiting_tenant');
-  });
-
-  it('其他任務編號記為點點簽：點點簽的 webhook 對得到，Mock 對不到', async () => {
-    const subject = legacyContract('awaiting_tenant', '470');
-    upgrade();
-
-    await expect(mockSigning().ingestWebhook(webhook('470', 'signed'), new Headers())).resolves.toEqual({
-      status: 200,
-      body: { ok: true, ignored: true },
-    });
-    expect(getContract(subject.id)?.status).toBe('awaiting_tenant');
-
-    const clientSecret = 'test-secret';
-    const live = moduleOf(createDottedSignProvider({ request: async () => ({}), clientSecret }));
-    const body = webhook('470', 'signed', TENANT.email);
-    const signature = crypto.createHmac('sha256', clientSecret).update(body).digest('hex');
-    await live.ingestWebhook(body, new Headers({ signature }));
-    expect(getContract(subject.id)?.status).toBe('awaiting_landlord');
-  });
-});
-
-describe('升級後繼續走完', () => {
-  it('回填後的待乙方簽合約，能經 mock advance 走到完成', async () => {
-    const subject = legacyContract('awaiting_tenant', 'mock-1-a');
-    legacyEvent(subject.id, 'sent', 'landlord', '2026-01-01 10:00:00');
-    upgrade();
-
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    const signing = mockSigning();
-    await expect(signing.simulateEvent(subject, 'signed')).resolves.toEqual({ status: 'awaiting_landlord' });
-    await expect(signing.simulateEvent(subject, 'completed')).resolves.toEqual({ status: 'completed' });
-
-    const progress = await signing.getProgress(subject);
-    expect(progress?.status).toBe('completed');
-    expect(progress?.signers.map((s) => s.status)).toEqual(['signed', 'signed']);
-    expect(listContractEvents(subject.id, db).map((e) => e.type)).toEqual(['sent', 'signer_signed', 'completed']);
-    // 升級前送簽的 mock 任務沒有保存 PDF，完成時保存失敗並留下紀錄，狀態照常完成
-    expect((await signing.listFiles(subject)).map((f) => [f.kind, f.status, f.error])).toEqual([
-      ['signed_pdf', 'failed', 'mock 模式找不到送簽時的 PDF'],
-    ]);
-  });
-
-  it('回填後的待甲方簽合約，能走到完成，乙方的簽署時間不被覆蓋', async () => {
-    const subject = legacyContract('awaiting_landlord', 'mock-1-a');
-    legacyEvent(subject.id, 'tenant_signed', 'tenant', '2026-01-02 10:00:00');
-    upgrade();
-
-    const signing = mockSigning();
-    await signing.simulateEvent(subject, 'completed');
-
-    const progress = await signing.getProgress(subject);
-    expect(progress?.signers[0].signedAt).toBe('2026-01-02 10:00:00');
-    expect(progress?.signers[1].status).toBe('signed');
-  });
-
-  it('回填後的簽署中合約，簽署連結與重寄的對象由簽署進度決定', async () => {
-    const subject = legacyContract('awaiting_landlord', '470');
-    legacyEvent(subject.id, 'tenant_signed', 'tenant', '2026-01-02 10:00:00');
-    upgrade();
-
-    const getSignLink = vi.fn(async () => 'https://sign.example/abc');
-    const resend = vi.fn(async () => {});
-    const live = moduleOf(liveProvider({ getSignLink, resend }));
-
-    await expect(live.getSignLink(subject)).resolves.toEqual({ signer: LANDLORD, url: 'https://sign.example/abc' });
-    await expect(live.resend(subject)).resolves.toEqual({ signer: LANDLORD });
-    expect(getSignLink).toHaveBeenCalledWith('470', 'landlord@example.com', undefined);
-    expect(resend).toHaveBeenCalledWith('470');
+    expect(findSubjectByTaskRef(db, 'mock', 'mock-1-a')).toEqual(mock);
+    expect(findSubjectByTaskRef(db, 'dottedsign', 'mock-1-a')).toBeNull();
+    expect(findSubjectByTaskRef(db, 'dottedsign', '470')).toEqual(live);
+    expect(findSubjectByTaskRef(db, 'mock', '470')).toBeNull();
   });
 });
 
 describe('回填能重複執行', () => {
-  it('第二次執行不改任何簽署進度', async () => {
+  it('第二次執行不改任何簽署進度，也不多建簽署任務', () => {
     const subjects = [
       legacyContract('awaiting_tenant', 'mock-1-a'),
       legacyContract('awaiting_landlord', 'mock-2-b'),
@@ -362,170 +234,95 @@ describe('回填能重複執行', () => {
       legacyContract('voided', 'mock-5-e'),
     ];
     upgrade();
-    const signing = mockSigning();
-    const first = await Promise.all(subjects.map((s) => signing.getProgress(s)));
+    const first = subjects.map(progressOf);
     expect(first.every(Boolean)).toBe(true);
 
+    // 第一次回填成功後舊形式已移除，這裡把它補回去，模擬「舊形式還在」時重跑
+    db.exec('ALTER TABLE contracts ADD COLUMN dottedsign_task_id TEXT');
     upgrade();
 
-    await expect(Promise.all(subjects.map((s) => signing.getProgress(s)))).resolves.toEqual(first);
-    expect(getContract(subjects[0].id)?.status).toBe('awaiting_tenant');
-  });
-
-  it('推進後再執行，簽署進度不會退回', async () => {
-    const subject = legacyContract('awaiting_tenant', 'mock-1-a');
-    upgrade();
-    const signing = mockSigning();
-    await signing.simulateEvent(subject, 'signed');
-    const advanced = await signing.getProgress(subject);
-
-    upgrade();
-
-    await expect(signing.getProgress(subject)).resolves.toEqual(advanced);
-  });
-
-  it('升級後才簽署中的合約，再執行不會多建簽署任務', async () => {
-    const subject = legacyContract('draft', null);
-    upgrade();
-    const signing = mockSigning();
-    await signing.send(
-      subject,
-      { fileName: 'a', pdf: new Uint8Array([1]), pageSize: { width: 1, height: 1 } },
-      [
-        { ...TENANT, role: 'party_b', signatureFields: [] },
-        { ...LANDLORD, role: 'party_a', signatureFields: [] },
-      ]
-    );
-    const before = await signing.getProgress(subject);
-
-    upgrade();
-
-    await expect(signing.getProgress(subject)).resolves.toEqual(before);
+    expect(subjects.map(progressOf)).toEqual(first);
+    expect(db.prepare('SELECT count(*) AS n FROM sign_tasks').get()).toEqual({ n: 5 });
   });
 });
 
 // 升級前的合約文件紀錄：檔案在 data/contract-files/<合約 id>/，以合約為鍵
 function legacyFile(
-  contractId: number,
+  subject: SigningSubject,
   kind: 'signed_pdf' | 'audit_trail',
-  row: { status: 'saved' | 'failed'; error?: string; content?: string }
+  row: { status: 'saved' | 'failed'; error?: string }
 ) {
   const suffix = kind === 'signed_pdf' ? 'signed' : 'audit-trail';
-  const fileName = `contract-${contractId}-${suffix}.pdf`;
-  const relPath = row.status === 'saved' ? `contract-files/${contractId}/${fileName}` : null;
-  if (relPath) {
-    fs.mkdirSync(path.join(dataDir, `contract-files/${contractId}`), { recursive: true });
-    fs.writeFileSync(path.join(dataDir, relPath), row.content ?? `legacy-${kind}`);
-  }
+  const fileName = `contract-${subject.id}-${suffix}.pdf`;
+  const relPath = row.status === 'saved' ? `contract-files/${subject.id}/${fileName}` : null;
   db.prepare(
     `INSERT INTO contract_files (contract_id, kind, status, file_name, rel_path, byte_size, content_type, error, saved_at)
      VALUES (?, ?, ?, ?, ?, ?, 'application/pdf', ?, '2026-01-05 09:00:00')`
-  ).run(contractId, kind, row.status, fileName, relPath, relPath ? 10 : null, row.error ?? null);
+  ).run(Number(subject.id), kind, row.status, fileName, relPath, relPath ? 10 : null, row.error ?? null);
 }
 
 describe('回填的合約文件', () => {
-  it('既有文件紀錄轉入，舊檔案路徑不搬，不呼叫服務商就能下載', async () => {
+  it('既有文件紀錄轉入，舊檔案路徑原樣保留，不搬檔', () => {
     const subject = legacyContract('completed', '470');
-    legacyFile(subject.id, 'signed_pdf', { status: 'saved', content: 'old-signed' });
-    legacyFile(subject.id, 'audit_trail', { status: 'saved', content: 'old-audit' });
+    legacyFile(subject, 'signed_pdf', { status: 'saved' });
+    legacyFile(subject, 'audit_trail', { status: 'saved' });
     upgrade();
 
-    const live = moduleOf(liveProvider());
-    const files = await live.listFiles(subject);
+    const files = listSignTaskFiles(db, findSignTask(db, subject)!.id);
     expect(files.map((f) => [f.kind, f.status, f.rel_path, f.saved_at])).toEqual([
       ['audit_trail', 'saved', `contract-files/${subject.id}/contract-${subject.id}-audit-trail.pdf`, '2026-01-05 09:00:00'],
       ['signed_pdf', 'saved', `contract-files/${subject.id}/contract-${subject.id}-signed.pdf`, '2026-01-05 09:00:00'],
     ]);
-    const signed = await live.downloadFile(subject, 'signed_pdf');
-    expect(new TextDecoder().decode(signed.bytes)).toBe('old-signed');
-    expect(signed.fileName).toBe(`contract-${subject.id}-signed.pdf`);
-    expect(new TextDecoder().decode((await live.downloadFile(subject, 'audit_trail')).bytes)).toBe('old-audit');
   });
 
-  it('保存失敗的紀錄也轉入，補抓後覆蓋', async () => {
+  it('保存失敗的紀錄也轉入', () => {
     const subject = legacyContract('completed', '470');
-    legacyFile(subject.id, 'audit_trail', { status: 'failed', error: '下載連結回應 403' });
+    legacyFile(subject, 'audit_trail', { status: 'failed', error: '下載連結回應 403' });
     upgrade();
 
-    const live = moduleOf(liveProvider({ downloadFile: async () => new TextEncoder().encode('new') }));
-    expect((await live.listFiles(subject)).map((f) => [f.kind, f.status, f.error])).toEqual([
-      ['audit_trail', 'failed', '下載連結回應 403'],
-    ]);
-    await live.saveFiles(subject, { kinds: ['audit_trail'], force: true });
-    expect((await live.listFiles(subject)).map((f) => [f.kind, f.status, f.error])).toEqual([
-      ['audit_trail', 'saved', null],
-    ]);
+    const files = listSignTaskFiles(db, findSignTask(db, subject)!.id);
+    expect(files.map((f) => [f.kind, f.status, f.error])).toEqual([['audit_trail', 'failed', '下載連結回應 403']]);
   });
 
-  it('升級前完成的 mock 合約仍能下載已保存的已簽 PDF', async () => {
-    const subject = legacyContract('completed', 'mock-3-c');
-    legacyFile(subject.id, 'signed_pdf', { status: 'saved', content: 'old-mock' });
-    upgrade();
+  it('合約文件對不到簽署任務時略過，不擋住開檔', () => {
+    const subject = legacyContract('completed', null);
+    legacyFile(subject, 'signed_pdf', { status: 'saved' });
 
-    const file = await mockSigning().downloadFile(subject, 'signed_pdf');
-    expect(new TextDecoder().decode(file.bytes)).toBe('old-mock');
-  });
-
-  it('重跑回填不覆蓋之後的保存結果', async () => {
-    const subject = legacyContract('completed', '470');
-    legacyFile(subject.id, 'signed_pdf', { status: 'saved', content: 'old-signed' });
-    upgrade();
-    const live = moduleOf(liveProvider({ downloadFile: async () => new TextEncoder().encode('refetched') }));
-    await live.saveFiles(subject, { kinds: ['signed_pdf'], force: true });
-
-    upgrade();
-
-    expect(new TextDecoder().decode((await live.downloadFile(subject, 'signed_pdf')).bytes)).toBe('refetched');
+    expect(upgrade).not.toThrow();
+    expect(db.prepare('SELECT count(*) AS n FROM sign_task_files').get()).toEqual({ n: 0 });
   });
 });
 
 describe('回填遇到壞資料', () => {
-  it('合約欄位不是合法 JSON 時略過該列，其他合約照常回填，不擋住開檔', async () => {
+  it('合約欄位不是合法 JSON 時略過該列，其他合約照常回填，不擋住開檔', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const broken = legacyContract('awaiting_tenant', 'mock-1-a', '{not json');
     const good = legacyContract('awaiting_tenant', 'mock-2-b');
 
     expect(upgrade).not.toThrow();
 
-    const signing = mockSigning();
-    await expect(signing.getProgress(broken)).resolves.toBeNull();
-    await expect(signing.getProgress(good)).resolves.toMatchObject({ status: 'in_progress' });
+    expect(progressOf(broken)).toBeNull();
+    expect(progressOf(good)).toMatchObject({ status: 'in_progress' });
   });
 
-  it('兩份合約共用任務編號時，第二份略過，不擋住開檔', async () => {
+  it('兩份合約共用任務編號時，第二份略過，不擋住開檔', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const first = legacyContract('awaiting_tenant', '470');
     const second = legacyContract('awaiting_tenant', '470');
 
     expect(upgrade).not.toThrow();
 
-    const signing = mockSigning();
-    await expect(signing.getProgress(first)).resolves.toMatchObject({ status: 'in_progress' });
-    await expect(signing.getProgress(second)).resolves.toBeNull();
+    expect(progressOf(first)).toMatchObject({ status: 'in_progress' });
+    expect(progressOf(second)).toBeNull();
   });
 
-  it('合約欄位缺簽署人資料時，姓名與 email 記為空字串', async () => {
-    const subject = legacyContract('awaiting_tenant', 'mock-1-a', '{}');
-    upgrade();
-
-    const progress = await mockSigning().getProgress(subject);
-    expect(progress?.currentSigner).toEqual({ role: 'party_b', name: '', email: '' });
-  });
-
-  it('合約文件對不到簽署任務時略過，不擋住開檔', async () => {
-    const subject = legacyContract('completed', null);
-    legacyFile(subject.id, 'signed_pdf', { status: 'saved' });
-
-    expect(upgrade).not.toThrow();
-    await expect(mockSigning().listFiles(subject)).resolves.toEqual([]);
-  });
-
-  it('簽署人欄位不是字串時記為空字串，不擋住開檔', async () => {
-    const subject = legacyContract('awaiting_tenant', 'mock-1-a', JSON.stringify({ tenantName: { a: 1 }, tenantEmail: 7 }));
+  it('合約欄位缺簽署人資料，或簽署人欄位不是字串時，姓名與 email 記為空字串', () => {
+    const missing = legacyContract('awaiting_tenant', 'mock-1-a', '{}');
+    const odd = legacyContract('awaiting_tenant', 'mock-2-b', JSON.stringify({ tenantName: { a: 1 }, tenantEmail: 7 }));
 
     expect(upgrade).not.toThrow();
 
-    const progress = await mockSigning().getProgress(subject);
-    expect(progress?.currentSigner).toEqual({ role: 'party_b', name: '', email: '' });
+    expect(progressOf(missing)?.currentSigner).toEqual({ role: 'party_b', name: '', email: '' });
+    expect(progressOf(odd)?.currentSigner).toEqual({ role: 'party_b', name: '', email: '' });
   });
 });

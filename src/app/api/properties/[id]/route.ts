@@ -36,5 +36,11 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
 export async function DELETE(_request: NextRequest, { params }: Ctx) {
   const { id } = await params;
   if (!isUlid(id)) return notFound();
-  return inOrgTx(async (tx) => ((await deleteProperty(tx, id)) ? jsonOk({ data: { id } }) : notFound()));
+  return inOrgTx(async (tx) => {
+    const result = await deleteProperty(tx, id);
+    if (result === 'not_found') return notFound();
+    // 物件有合約時只得封存（ADR-0025 決議 14）。封存功能屬 B 線，目前只擋刪除
+    if (result === 'has_contracts') return jsonError(409, '物件已有合約，不能刪除，只能封存');
+    return jsonOk({ data: { id } });
+  });
 }

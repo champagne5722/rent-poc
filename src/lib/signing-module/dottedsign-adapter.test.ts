@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SignatureField } from '../types';
 import { createDottedSignProvider, toDsCoord, type DottedSignRequest } from './dottedsign-adapter';
 import type { SignableDocument, Signer } from './provider';
+import { ulidOf } from '../test-ids';
 
 const A4 = { width: 595.28, height: 841.89 };
 
@@ -80,7 +81,7 @@ describe('建立任務的請求組裝', () => {
   it('一位簽署人帶多個角色的簽署區域時，組成同一個 stage 的多個 field_settings', async () => {
     const { calls, provider } = capture();
     await provider.createTask({
-      subject: { type: 'contract', id: 7 },
+      subject: { type: 'contract', id: ulidOf(7) },
       document,
       signers: [
         {
@@ -105,7 +106,7 @@ describe('建立任務的請求組裝', () => {
 
   it('依序簽署、立即開始，stages 順序等於簽署序列，檔名清洗掉特殊字元', async () => {
     const { calls, provider } = capture();
-    const { taskRef } = await provider.createTask({ subject: { type: 'contract', id: 7 }, document, signers });
+    const { taskRef } = await provider.createTask({ subject: { type: 'contract', id: ulidOf(7) }, document, signers });
 
     expect(taskRef).toBe('470');
     expect(calls).toEqual([
@@ -165,7 +166,7 @@ describe('簽署人驗證設定', () => {
     },
     { role: 'party_a', name: '林房東', email: 'landlord@example.com', signatureFields: [] },
   ];
-  const subject = { type: 'contract', id: 7 };
+  const subject = { type: 'contract', id: ulidOf(7) };
 
   function verifying(verifySigners: boolean | undefined, request: DottedSignRequest) {
     return createDottedSignProvider({ request, clientSecret: 'test-secret', verifySigners });

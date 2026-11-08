@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 import { createMockProvider } from './mock-adapter';
+import { ulidOf } from '../test-ids';
 
 const headers = new Headers();
 const event = JSON.stringify({ resource_id: 'mock-1-abc', resource_type: 'task', action_name: 'completed' });
@@ -25,7 +26,7 @@ describe('mock adapter 的 webhook', () => {
 });
 
 describe('mock adapter 的文件下載', () => {
-  const subject = { type: 'contract', id: 7 } as const;
+  const subject = { type: 'contract', id: ulidOf(7) } as const;
   const document = { fileName: '租賃合約', pdf: new Uint8Array([37, 80, 68, 70, 1]), pageSize: { width: 1, height: 1 } };
 
   it('已簽 PDF 回傳建立任務時收到的 PDF', async () => {

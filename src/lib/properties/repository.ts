@@ -1,4 +1,5 @@
 import { appendAudit } from '@/lib/audit';
+import { propertyHasContracts } from '@/lib/contracts';
 import { parseStoredEquipment } from '@/lib/equipment';
 import { newUlid } from '@/lib/pg/ulid';
 import type { OrgTx } from '@/lib/pg/with-tx';
@@ -122,16 +123,23 @@ function changedFields(before: Property, after: Property): string[] {
   return AUDITED_FIELDS.filter((f) => JSON.stringify(before[f]) !== JSON.stringify(after[f]));
 }
 
+export type DeletePropertyResult = 'deleted' | 'not_found' | 'has_contracts';
+
 /**
- * 刪除物件，回傳有沒有刪到。租賃單位與錨點留在 registry（ADR-0025 決議 14）。
- * 「有合約只能封存」的檢查等合約進 PostgreSQL 後（MIL-83）再加。
+ * 刪除物件。租賃單位與錨點留在 registry（ADR-0025 決議 14）。
+ * 物件有任何合約時只得封存，不得刪（MIL-83）：這裡先鎖住物件再檢查，回 'has_contracts'。
+ * 鎖住物件列也讓同時建立合約的交易排在後面（合約的外鍵檢查要這一列的共享鎖），
+ * 它醒來時物件已經不在，複合外鍵讓它失敗。資料庫的複合外鍵是最後一道防線。
  */
-export async function deleteProperty(tx: OrgTx, id: string): Promise<boolean> {
-  const { rows } = await tx.query<{ rental_unit_id: string }>(
-    'DELETE FROM org.properties WHERE id = $1 RETURNING rental_unit_id',
+export async function deleteProperty(tx: OrgTx, id: string): Promise<DeletePropertyResult> {
+  const { rows: locked } = await tx.query<{ rental_unit_id: string }>(
+    'SELECT rental_unit_id FROM org.properties WHERE id = $1 FOR UPDATE',
     [id],
   );
-  if (rows.length === 0) return false;
-  await appendAudit(tx, { action: 'property.delete', object: { type: 'property', id }, payload: { rental_unit_id: rows[0].rental_unit_id } });
-  return true;
+  if (locked.length === 0) return 'not_found';
+  if (await propertyHasContracts(tx, id)) return 'has_contracts';
+
+  await tx.query('DELETE FROM org.properties WHERE id = $1', [id]);
+  await appendAudit(tx, { action: 'property.delete', object: { type: 'property', id }, payload: { rental_unit_id: locked[0].rental_unit_id } });
+  return 'deleted';
 }
