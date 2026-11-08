@@ -38,10 +38,7 @@ export async function POST(request: NextRequest, { params }: Ctx) {
         case 'created':
           return jsonOk({ data: { id: result.id, suffix: result.suffix } }, { status: 201 });
         case 'needs_confirmation':
-          return jsonOk(
-            { error: '整戶有已完成且租期未屆滿的租賃合約，新增分租單位前請先確認', code: 'whole_unit_active_lease' },
-            { status: 409 },
-          );
+          return jsonError(409, '整戶有已完成且租期未屆滿的租賃合約，新增分租單位前請先確認', 'whole_unit_active_lease');
         case 'archived':
           return jsonError(409, '物件已封存，不能新增分租單位');
         case 'not_found':

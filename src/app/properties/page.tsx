@@ -28,6 +28,7 @@ import { AnchorSection } from '@/components/AnchorFields';
 import { DisplayCode } from '@/components/DisplayCode';
 import { anchorSummary, ANCHOR_STATUS_COLORS, ANCHOR_STATUS_LABELS } from '@/lib/properties/anchor-display';
 import { buildAnchorPayload } from '@/lib/properties/anchor-form';
+import { unitShortText } from '@/lib/properties/unit-display';
 
 interface EquipmentPickerProps {
   vocabulary: EquipmentVocabularyItem[];
@@ -267,8 +268,7 @@ function PropertiesPage() {
           {
             title: '單位',
             width: 120,
-            render: (_, record) =>
-              record.unit?.unit_type === 'sublet' ? `分租 ${record.unit.label ?? record.unit.suffix}` : '整戶',
+            render: (_, record) => (record.unit ? unitShortText(record.unit) : '—'),
           },
           { title: '地址', dataIndex: 'address' },
           {

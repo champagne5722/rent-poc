@@ -12,6 +12,7 @@ import Link from 'next/link';
 import { AnchorKeyFields } from '@/components/AnchorFields';
 import { DisplayCode } from '@/components/DisplayCode';
 import { shortUlid } from '@/lib/pg/ulid';
+import { unitFullText } from '@/lib/properties/unit-display';
 import { ANCHOR_STATUS_COLORS, ANCHOR_STATUS_LABELS, anchorKeyText, anchorLocationText } from '@/lib/properties/anchor-display';
 import { buildAnchorPayload } from '@/lib/properties/anchor-form';
 import { formatEquipmentItem } from '@/lib/equipment';
@@ -63,7 +64,7 @@ function AnchorPanel({ property, onKeyed }: { property: Property; onKeyed: () =>
           title="這個物件還沒有建號"
           description="目前只靠門牌登錄。補上建號後，產權狀態會變成「已建號」。"
           action={
-            <Button type="primary" icon={<EditOutlined />} onClick={() => setOpen(true)}>
+            <Button icon={<EditOutlined />} onClick={() => setOpen(true)}>
               補建號
             </Button>
           }
@@ -108,10 +109,6 @@ function AnchorPanel({ property, onKeyed }: { property: Property; onKeyed: () =>
   );
 }
 
-function unitText(unit: Pick<NonNullable<Property['unit']>, 'unit_type' | 'suffix' | 'label'>): string {
-  return unit.unit_type === 'sublet' ? `分租 ${unit.label ?? ''}（後綴 ${unit.suffix}）` : `整戶（後綴 ${unit.suffix}）`;
-}
-
 function BasicPanel({ property }: { property: Property }) {
   return (
     <Descriptions
@@ -123,7 +120,7 @@ function BasicPanel({ property }: { property: Property }) {
         { key: 'display-code', label: '顯示編碼', children: <DisplayCode code={property.unit?.display_code} /> },
         ...(property.unit
           ? [
-              { key: 'unit', label: '單位', children: unitText(property.unit) },
+              { key: 'unit', label: '單位', children: unitFullText(property.unit) },
               ...(property.unit.floor ? [{ key: 'floor', label: '樓層', children: property.unit.floor }] : []),
             ]
           : []),
@@ -179,7 +176,7 @@ function UnitsPanel({ property, reloadToken }: { property: Property; reloadToken
       locale={{ emptyText: '同一產權下沒有其他單位' }}
       columns={[
         { title: '顯示編碼', width: 130, render: (_, u) => <DisplayCode code={u.display_code} /> },
-        { title: '單位', width: 160, render: (_, u) => unitText(u) },
+        { title: '單位', width: 160, render: (_, u) => unitFullText(u) },
         { title: '樓層', dataIndex: 'floor', width: 80, render: (v: string | null) => v ?? '—' },
         {
           title: '物件',

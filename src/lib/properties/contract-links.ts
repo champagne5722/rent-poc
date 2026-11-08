@@ -9,6 +9,11 @@ import type { OrgTx } from '@/lib/pg/with-tx';
 // - 呼叫端：repository 的 removeProperty（刪除或封存）與 createSubletUnit（新增分租單位前的警告）。
 // - C 線的案件完成後，「任何合約」改為「任何案件」（ADR-0025 決議 14），也只改這裡。
 // - SQLite 版沒有組織欄位。呼叫端必須先確認物件屬於呼叫者組織，才拿結果做決定。
+// - SQLite 版是本機同步讀取，所以放在 PostgreSQL 交易內呼叫（ADR-0012 決議 10 禁止的是外部 I/O 與長時間阻塞）。
+//
+// 已知的過渡期競態：物件列在 PostgreSQL 上鎖，合約在 SQLite，兩邊沒有共同的鎖。
+// 刪除物件與同時建立合約交錯時，可能刪掉物件而留下合約，或在剛封存的物件上建出合約。
+// 合約搬進 PostgreSQL 後，用 (org_id, property_id) 複合外鍵與同一交易的鎖解決。
 
 /** 物件有沒有任何合約，不分狀態與類型。有就只能封存，不能刪除（P0-06 AC8）。 */
 export async function hasContractsForProperty(propertyId: string, _tx: OrgTx): Promise<boolean> {

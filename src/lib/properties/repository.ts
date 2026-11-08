@@ -134,6 +134,8 @@ function displayCodeOf(row: UnitRow): string | null {
   return formatDisplayCode({ countyLetter: row.display_city_code, townCode: row.display_town_code, rentalUnitId: row.display_unit_id });
 }
 
+const isoOrNull = (value: Date | null): string | null => (value ? value.toISOString() : null);
+
 function toUnit(row: UnitRow): PropertyUnit {
   return {
     suffix: row.suffix,
@@ -157,7 +159,7 @@ function toProperty(row: Row, anchor: PropertyAnchor | null, unit: PropertyUnit 
     id: row.id,
     rental_unit_id: row.rental_unit_id,
     unit,
-    archived_at: row.archived_at ? row.archived_at.toISOString() : null,
+    archived_at: isoOrNull(row.archived_at),
     anchor,
     name: row.name,
     address: row.address,
@@ -167,7 +169,7 @@ function toProperty(row: Row, anchor: PropertyAnchor | null, unit: PropertyUnit 
     note: row.note,
     equipment: parseStoredEquipment(row.equipment),
     created_at: row.created_at.toISOString(),
-    updated_at: row.updated_at ? row.updated_at.toISOString() : null,
+    updated_at: isoOrNull(row.updated_at),
   };
 }
 
@@ -341,6 +343,12 @@ export type CreateSubletResult =
   /** 整戶有已完成且租期未屆滿的租賃合約，使用者還沒確認（P0-06 AC4）。 */
   | { kind: 'needs_confirmation' };
 
+// registry 函式丟出的 SQLSTATE（見 0032 的 create_sublet_unit）
+const PG_NO_DATA_FOUND = 'P0002'; // 來源單位不存在，或不是呼叫者組織的
+const PG_OBJECT_NOT_IN_STATE = '55000'; // 錨點已合併或停用
+const PG_INVALID_PARAMETER = '22023'; // 房號或樓層格式
+const PG_PROGRAM_LIMIT = '54000'; // 單位後綴用完
+
 /** registry 拒絕新增分租單位（房號格式、錨點已合併、後綴用完）。呼叫端必須讓交易回滾。 */
 export class SubletUnitRejectedError extends Error {}
 
@@ -373,8 +381,10 @@ export async function createSubletUnit(tx: OrgTx, sourcePropertyId: string, inpu
     suffix = created[0].suffix;
   } catch (error) {
     const { code, message } = error as { code?: string; message?: string };
-    if (code === 'P0002') return { kind: 'not_found' };
-    if (code === '55000' || code === '22023' || code === '54000') throw new SubletUnitRejectedError(message);
+    if (code === PG_NO_DATA_FOUND) return { kind: 'not_found' };
+    if (code === PG_OBJECT_NOT_IN_STATE || code === PG_INVALID_PARAMETER || code === PG_PROGRAM_LIMIT) {
+      throw new SubletUnitRejectedError(message);
+    }
     throw error;
   }
 
@@ -422,6 +432,6 @@ export async function listSiblingUnits(tx: OrgTx, propertyId: string): Promise<S
     const unit = units.get(r.unit_id);
     const prop = propById.get(r.property_id);
     if (!unit || !prop) return [];
-    return [{ ...unit, property_id: r.property_id, name: prop.name, archived_at: prop.archived_at ? prop.archived_at.toISOString() : null }];
+    return [{ ...unit, property_id: r.property_id, name: prop.name, archived_at: isoOrNull(prop.archived_at) }];
   });
 }

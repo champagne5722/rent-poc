@@ -74,6 +74,12 @@ describe('jsonError', () => {
     expect(await res.json()).toEqual({ error: '合約不存在' });
   });
 
+  it('帶 code 時本文是 { error, code }，讓前端分辨原因', async () => {
+    const res = jsonError(409, '請先確認', 'needs_confirmation');
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: '請先確認', code: 'needs_confirmation' });
+  });
+
   it('狀態碼不是 4xx 或 5xx 時丟錯，避免把錯誤回成 200', () => {
     expect(() => jsonError(200, 'x')).toThrow(RangeError);
     expect(() => jsonError(302, 'x')).toThrow(RangeError);
