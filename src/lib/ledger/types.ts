@@ -7,20 +7,24 @@ export interface JournalLine {
   credit: number;
 }
 
-/** 分錄的共同欄位。ID 一律是 string（ULID）。時間由呼叫端傳入。 */
-interface JournalBase {
+/** 分錄標頭：由呼叫端傳入的 ID 與時間。ID 一律是 string（ULID）。 */
+export interface JournalHeader {
   journalId: string;
   orgId: string;
   /** 一筆分錄只屬於一個案件（ADR-0015 決議 4）。先存文字，不掛外鍵（ADR-0050 決議 2）。 */
   caseId: string;
-  /** 事件類型是開放字串，由事件登錄決定有哪些（ADR-0050 決議 3）。 */
-  eventType: string;
   /** `business_event_id`。與事件類型、組織一起唯一。 */
   eventId: string;
   /** ISO 8601 時間字串。報表月份依此欄（ADR-0015 決議 4）。 */
   postedAt: string;
   /** 銀行日，`YYYY-MM-DD`。 */
   effectiveDate: string;
+}
+
+/** 分錄的共同欄位。 */
+interface JournalBase extends JournalHeader {
+  /** 事件類型是開放字串，由事件登錄決定有哪些（ADR-0050 決議 3）。 */
+  eventType: string;
   lines: readonly JournalLine[];
 }
 
@@ -53,7 +57,6 @@ export const LEDGER_ERROR_CODES = [
   'line_both_sides',
   'line_empty',
   'unbalanced',
-  'total_unsafe',
   'invalid_id',
   'invalid_date',
   'unknown_event',

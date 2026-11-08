@@ -24,14 +24,13 @@ export {
   fundsHandedOver,
   prepaidApplied,
   receiptConfirmed,
-  reversal,
   type AmountPayload,
   type DepositReturnedPayload,
   type FundsHandedOverPayload,
   type ReceiptConfirmedPayload,
-  type ReversalPayload,
 } from './events';
-export { isValidEffectiveDate, isValidPostedAt, type JournalHeader } from './header';
+export { reversal, type ReversalPayload } from './reversal-event';
+export { isValidEffectiveDate, isValidPostedAt } from './header';
 export { buildJournal, type BuildJournalInput } from './journal';
 export { asRecord, readAmount, readId } from './payload';
 export {
@@ -50,6 +49,7 @@ export {
   LEDGER_ERROR_CODES,
   isReversal,
   type Journal,
+  type JournalHeader,
   type JournalLine,
   type LedgerError,
   type LedgerErrorCode,

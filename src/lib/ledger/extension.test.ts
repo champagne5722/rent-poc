@@ -167,9 +167,12 @@ describe('核心函式沒有依事件類型分支', () => {
   it('原始碼守門：核心檔案不得出現 E1 事件類型的字串常值', () => {
     const coreFiles = ['accounts.ts', 'balances.ts', 'header.ts', 'journal.ts', 'payload.ts', 'registry.ts', 'reversal.ts', 'validate.ts'];
     const literal = new RegExp(`['"](${E1_EVENT_TYPES.join('|')})['"]`);
+    // 不管比對哪個字串，只要對 eventType 做相等比較、switch 或 case，就是在依事件類型分支。
+    const branching = /eventType\s*[!=]==?|switch\s*\(|\bcase\s+['"`]|\.type\s*[!=]==?/;
     for (const file of coreFiles) {
       const source = readFileSync(join(__dirname, file), 'utf8');
       expect(source, `${file} 不得寫死事件類型`).not.toMatch(literal);
+      expect(source, `${file} 不得依事件類型分支`).not.toMatch(branching);
     }
   });
 });

@@ -1,4 +1,4 @@
-// E1 的六個事件與分錄模板（ADR-0015 決議 2 的表）。
+// E1 的事件與分錄模板（ADR-0015 決議 2 的表）。沖銷事件在 reversal-event.ts。
 // 其他線（例如 F 線的 handover_released、handover_received）用同一個 defineLedgerEvent()
 // 另寫事件檔，再用 extendLedgerRegistry() 加進登錄表。不改這個檔案，也不改核心函式。
 
@@ -11,6 +11,7 @@ import {
 } from './accounts';
 import { asRecord, readAmount, readId } from './payload';
 import { createLedgerRegistry, defineLedgerEvent, type ParseResult } from './registry';
+import { reversal } from './reversal-event';
 import type { JournalLine } from './types';
 
 const dr = (account: string, amount: number): JournalLine => ({ account, debit: amount, credit: 0 });
@@ -134,29 +135,6 @@ export const fundsHandedOver = defineLedgerEvent<FundsHandedOverPayload>({
     dr(bankAccount(toPaymentAccountId), amount),
     cr(bankAccount(fromPaymentAccountId), amount),
   ],
-});
-
-export interface ReversalPayload {
-  /** 原分錄的明細。沖銷分錄把每列借貸互換。 */
-  lines: readonly JournalLine[];
-}
-
-/**
- * 沖銷。借貸與原分錄相反。不可直接寫入，必須經 `buildReversal()`，
- * 因為沖銷要帶原因與原分錄 ID。
- */
-export const reversal = defineLedgerEvent<ReversalPayload>({
-  type: 'reversal',
-  label: '沖銷',
-  postable: false,
-  parsePayload(raw) {
-    const errors: string[] = [];
-    const source = asRecord(raw, errors);
-    if (!source) return { ok: false, errors };
-    if (!Array.isArray(source.lines)) errors.push('lines 必須是陣列');
-    return finish(errors, { lines: source.lines as JournalLine[] });
-  },
-  template: ({ lines }) => lines.map((line) => ({ account: line.account, debit: line.credit, credit: line.debit })),
 });
 
 export const E1_LEDGER_EVENTS = [

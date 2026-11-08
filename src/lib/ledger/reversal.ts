@@ -2,8 +2,8 @@
 // 資料庫另有三道防線：唯一鍵擋重複沖銷、觸發器雙向比對借貸、觸發器擋沖銷沖銷分錄。
 // 這裡讓應用層先擋下，並把「不得沖銷沖銷分錄」寫進型別。
 
-import { reversal } from './events';
 import { checkHeader } from './header';
+import { reversal } from './reversal-event';
 import { ledgerError, type LedgerError, type LedgerResult, type OriginalJournal, type ReversalJournal } from './types';
 import { validateJournal } from './validate';
 
@@ -26,7 +26,7 @@ export function buildReversal(journal: OriginalJournal, input: BuildReversalInpu
   const errors: LedgerError[] = [];
 
   if (journal.reversesJournalId !== null) {
-    errors.push(ledgerError('cannot_reverse_reversal', '沖銷分錄不得再被沖銷，更正要發新的入帳確認'));
+    errors.push(ledgerError('cannot_reverse_reversal', '沖銷分錄不得再被沖銷，要更正時，沖銷後另發新的入帳確認'));
     return { ok: false, errors };
   }
 
@@ -36,6 +36,13 @@ export function buildReversal(journal: OriginalJournal, input: BuildReversalInpu
   }
 
   errors.push(...checkHeader({ ...input, orgId: journal.orgId, caseId: journal.caseId }));
+  // 沖銷是一筆新的分錄，ID 與業務事件 ID 都必須是新的（ADR-0015 決議 4）。
+  if (input.journalId === journal.journalId) {
+    errors.push(ledgerError('invalid_id', '沖銷分錄的 ID 不得與原分錄相同'));
+  }
+  if (input.eventId === journal.eventId) {
+    errors.push(ledgerError('invalid_id', '沖銷的業務事件 ID 不得沿用原分錄的'));
+  }
 
   const originalCheck = validateJournal(journal);
   if (!originalCheck.ok) {

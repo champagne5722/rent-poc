@@ -51,6 +51,10 @@ describe('buildJournal 標頭檢查', () => {
   it.each([
     ['postedAt 不是日期', { postedAt: 'yesterday' }],
     ['postedAt 沒有時區', { postedAt: '2026-11-08T03:00:00' }],
+    ['postedAt 不存在的日子', { postedAt: '2026-02-30T00:00:00Z' }],
+    ['postedAt 24 點', { postedAt: '2026-11-08T24:00:00Z' }],
+    ['postedAt 分鐘超出', { postedAt: '2026-11-08T03:60:00Z' }],
+    ['postedAt 時區偏移超出', { postedAt: '2026-11-08T03:00:00+25:00' }],
     ['effectiveDate 不是日期', { effectiveDate: '11/08/2026' }],
     ['effectiveDate 不存在的日子', { effectiveDate: '2026-02-30' }],
     ['effectiveDate 月份超出', { effectiveDate: '2026-13-01' }],

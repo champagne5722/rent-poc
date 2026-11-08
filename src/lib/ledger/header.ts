@@ -1,14 +1,11 @@
 // 分錄標頭欄位的檢查：ID 與時間。時間由呼叫端傳入，這裡不讀系統時鐘。
 
 import { isValidLedgerId } from './accounts';
-import { ledgerError, type LedgerError } from './types';
+import { ledgerError, type JournalHeader, type LedgerError } from './types';
 
-const POSTED_AT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+// `Date.parse` 會把 2026-02-30 當成 3 月 2 日，所以日期與時間的範圍都自己檢查。
+const POSTED_AT_PATTERN = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/;
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-export function isValidPostedAt(value: unknown): boolean {
-  return typeof value === 'string' && POSTED_AT_PATTERN.test(value) && !Number.isNaN(Date.parse(value));
-}
 
 /** `YYYY-MM-DD`，且必須是日曆上存在的日子。 */
 export function isValidEffectiveDate(value: unknown): boolean {
@@ -20,13 +17,15 @@ export function isValidEffectiveDate(value: unknown): boolean {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
-export interface JournalHeader {
-  journalId: string;
-  orgId: string;
-  caseId: string;
-  eventId: string;
-  postedAt: string;
-  effectiveDate: string;
+/** 含時區的 ISO 8601 字串。日期必須存在，時 0 到 23，分與秒 0 到 59，時區偏移最多 ±23:59。 */
+export function isValidPostedAt(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const match = POSTED_AT_PATTERN.exec(value);
+  if (!match) return false;
+  const [hour, minute, second] = [Number(match[2]), Number(match[3]), Number(match[4])];
+  if (hour > 23 || minute > 59 || second > 59) return false;
+  if (match[5] !== undefined && (Number(match[5]) > 23 || Number(match[6]) > 59)) return false;
+  return isValidEffectiveDate(match[1]);
 }
 
 const ID_LABELS: ReadonlyArray<readonly [keyof JournalHeader, string]> = [

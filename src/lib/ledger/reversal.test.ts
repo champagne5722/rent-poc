@@ -123,6 +123,11 @@ describe('buildReversal：其他檢查', () => {
     expect(codes(broken, INPUT)).toEqual(['original_invalid']);
   });
 
+  it('沖銷分錄的 ID 與業務事件 ID 不得沿用原分錄的 → invalid_id', () => {
+    expect(codes(original(), { ...INPUT, journalId: 'J1' })).toEqual(['invalid_id']);
+    expect(codes(original(), { ...INPUT, eventId: 'EV1' })).toEqual(['invalid_id']);
+  });
+
   it('新分錄的 ID 或日期不合法 → 回報標頭錯誤，並與缺原因一起回報', () => {
     expect(codes(original(), { ...INPUT, journalId: '', effectiveDate: '2026-02-30', reason: '' })).toEqual(
       expect.arrayContaining(['invalid_id', 'invalid_date', 'reason_required']),

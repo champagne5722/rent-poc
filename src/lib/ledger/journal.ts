@@ -1,9 +1,9 @@
 // 由事件類型與 payload 建出一筆分錄。這是之後 `postJournal()` 寫入前的純函式部分。
 // 這個檔案不認識任何事件類型。事件長什麼樣子，全由登錄表裡的定義決定。
 
-import { checkHeader, type JournalHeader } from './header';
+import { checkHeader } from './header';
 import type { LedgerRegistry } from './registry';
-import { ledgerError, type LedgerError, type LedgerResult, type OriginalJournal } from './types';
+import { ledgerError, type JournalHeader, type LedgerError, type LedgerResult, type OriginalJournal } from './types';
 import { validateJournal } from './validate';
 
 export interface BuildJournalInput extends JournalHeader {
