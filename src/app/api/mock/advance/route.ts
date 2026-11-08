@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { contractNotFound } from '@/lib/contracts/route';
+import { isUlid } from '@/lib/pg/ulid';
 import { contractSubject, signing, signingErrorResponse } from '@/lib/signing-module';
 import { jsonOk } from '@/lib/http';
 
@@ -6,7 +8,8 @@ import { jsonOk } from '@/lib/http';
 // live 模式的 403 由簽署模組回覆，所以 body 解析失敗時，這裡不回錯誤。
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) ?? {};
-  const contractId = Number(body.contract_id);
+  const contractId = body.contract_id;
+  if (!isUlid(contractId)) return contractNotFound();
   try {
     const { status } = await signing.simulateEvent(contractSubject(contractId), body.event, body.reason);
     return jsonOk({ data: { id: contractId, status } });

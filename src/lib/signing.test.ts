@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { Contract, ContractStatus } from './types';
 import { contractDocumentFileName, prepareContractSigners } from './signing';
 import type { RoutingFacts } from './signature-routing';
+import { ulidOf } from './test-ids';
 
 function makeContract(status: ContractStatus): Contract {
   return {
-    id: 1,
+    id: ulidOf(1),
     property_id: null,
     contract_type: 'lease',
     status,
@@ -89,9 +90,9 @@ describe('contractDocumentFileName（送簽文件檔名）', () => {
     expect(contractDocumentFileName(makeContract('draft'))).toBe('租賃合約-測試物件');
   });
 
-  it('沒有物件名稱時用合約編號', () => {
+  it('沒有物件名稱時用合約 ID 末 6 碼', () => {
     const contract = makeContract('draft');
     contract.fields.propertyName = '';
-    expect(contractDocumentFileName(contract)).toBe('租賃合約-1');
+    expect(contractDocumentFileName(contract)).toBe('租賃合約-000001');
   });
 });

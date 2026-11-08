@@ -17,6 +17,7 @@ import dayjs from 'dayjs';
 import type { Contract, ContractStatus, Property } from '@/lib/types';
 import { CONTRACT_STATUS_LABELS } from '@/lib/types';
 import { lastActionAt } from '@/lib/contract-list';
+import { shortUlid } from '@/lib/pg/ulid';
 import {
   selectWorkbenchTodos,
   todoActionFor,
@@ -51,7 +52,7 @@ function TodoRow({ contract }: { contract: Contract }) {
           {contract.fields.tenantName || '（未填租客）'}
         </div>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          合約 #{contract.id}・{dayjs(lastActionAt(contract)).format('MM-DD HH:mm')}
+          合約 #{shortUlid(contract.id)}・{dayjs(lastActionAt(contract)).format('MM-DD HH:mm')}
         </Typography.Text>
       </div>
       <Tag color={STATUS_COLORS[contract.status]}>{CONTRACT_STATUS_LABELS[contract.status]}</Tag>

@@ -100,7 +100,7 @@ function toNewSignTask(row: LegacyContractRow, events: LegacyEventRow[]): NewSig
   return {
     provider: providerOf(row.task_ref),
     taskRef: row.task_ref,
-    subject: { type: 'contract', id: row.id },
+    subject: { type: 'contract', id: String(row.id) },
     status: plan.status,
     createdAt: events.find((e) => e.type === 'sent')?.created_at ?? row.created_at,
     updatedAt: row.updated_at,

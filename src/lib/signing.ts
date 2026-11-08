@@ -1,3 +1,4 @@
+import { shortUlid } from './pg/ulid';
 import { buildSignerSequence, routeSignatures, type RoutingFacts, type SeatAssignee } from './signature-routing';
 import type { Signer } from './signing-module/provider';
 import { SIGNER_ROLE_LABELS, type Contract } from './types';
@@ -38,5 +39,5 @@ export function prepareContractSigners(contract: Contract, facts: RoutingFacts):
 }
 
 export function contractDocumentFileName(contract: Contract): string {
-  return `租賃合約-${contract.fields.propertyName || contract.id}`;
+  return `租賃合約-${contract.fields.propertyName || shortUlid(contract.id)}`;
 }

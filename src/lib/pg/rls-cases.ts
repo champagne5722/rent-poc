@@ -17,7 +17,7 @@ import type { OrgTx } from './with-tx';
 
 export interface OrgTableCase {
   /**
-   * 只增不改的表（同意紀錄）。app_rw 沒有 UPDATE 與 DELETE 權限，
+   * 只增不改的表（同意紀錄、合約歷程）。app_rw 沒有 UPDATE 與 DELETE 權限，
    * 探測 2、3 改成預期「permission denied」，而不是 0 列。其餘探測不變。
    */
   appendOnly?: boolean;
@@ -50,6 +50,27 @@ export const ORG_TABLE_CASES: Record<string, OrgTableCase> = {
         orgId,
         '滲透測試設備',
       ]);
+      return id;
+    },
+  },
+  'org.contracts': {
+    async seed(tx, orgId) {
+      const id = newUlid();
+      // legacy_id 固定：兩個組織寫同一組業務鍵 (org_id, legacy_id) 都要成功（陷阱 6）
+      await tx.query('INSERT INTO org.contracts (id, org_id, legacy_id) VALUES ($1, $2, 1)', [id, orgId]);
+      return id;
+    },
+  },
+  'org.contract_events': {
+    appendOnly: true,
+    async seed(tx, orgId) {
+      const contractId = newUlid();
+      await tx.query('INSERT INTO org.contracts (id, org_id) VALUES ($1, $2)', [contractId, orgId]);
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.contract_events (id, org_id, contract_id, type, actor, legacy_id) VALUES ($1, $2, $3, 'created', 'landlord', 1)`,
+        [id, orgId, contractId],
+      );
       return id;
     },
   },

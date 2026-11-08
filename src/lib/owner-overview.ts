@@ -53,7 +53,7 @@ export type LeaseCaseFact = {
   /** 代管業者或包租業者的執業主體；自管是 null。 */
   managerId: string | null;
   /** 屋主組織的案件對應的既有合約，用來連到合約詳情頁。 */
-  contractId: number | null;
+  contractId: string | null;
   /** 案件的租期迄日（ADR-0016 決議 15），YYYY-MM-DD。 */
   leaseEnd: string | null;
   /** 簽約中時目前輪到的簽署角色。 */

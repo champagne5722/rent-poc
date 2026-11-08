@@ -141,7 +141,7 @@ export function contractEventColor(type: string): string {
 }
 
 export interface ContractEventEntry {
-  key: number;
+  key: string;
   label: string;
   actorLabel: string;
   time: string;
@@ -187,7 +187,7 @@ const DOWNLOAD_PATHS: Record<ContractFileKind, string> = {
   audit_trail: 'audit-trail',
 };
 
-export function contractFileDownloadHref(contractId: number, kind: ContractFileKind): string {
+export function contractFileDownloadHref(contractId: string, kind: ContractFileKind): string {
   return `/api/contracts/${contractId}/${DOWNLOAD_PATHS[kind]}`;
 }
 
@@ -250,7 +250,7 @@ export type ContractChainRole = 'predecessor' | 'self' | 'successor';
 
 export interface ContractChainNode {
   role: ContractChainRole;
-  id: number;
+  id: string;
   status: ContractStatus;
   note: string;
   /** 本約不連自己，其餘連到該合約詳情頁 */
@@ -263,7 +263,7 @@ const CHAIN_NOTES: Record<ContractChainRole, string> = {
   successor: '本約撤回後衍生',
 };
 
-function chainNode(role: ContractChainRole, id: number, status: ContractStatus): ContractChainNode {
+function chainNode(role: ContractChainRole, id: string, status: ContractStatus): ContractChainNode {
   return {
     role,
     id,
