@@ -8,16 +8,19 @@ import { App as AntApp, Alert, Button, Card, Descriptions, Select, Space, Spin, 
 import { RightOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { Property } from '@/lib/types';
+import type { ContractRoutingConditions, Property } from '@/lib/types';
 import { formatEquipmentItem } from '@/lib/equipment';
 import { STEP_PROPERTY } from '@/lib/contract-wizard';
+import { DEFAULT_ROUTING, evaluateRouting } from '@/lib/signature-routing';
 import { TemplateNotice, WizardStepsBar } from '@/components/ContractWizard';
+import RoutingConditionsPanel from '@/components/RoutingConditionsPanel';
 
 function NewContractWizard() {
   const { message } = AntApp.useApp();
   const router = useRouter();
   const [properties, setProperties] = useState<Property[] | null>(null);
   const [propertyId, setPropertyId] = useState<string | null>(null);
+  const [routing, setRouting] = useState<ContractRoutingConditions>(DEFAULT_ROUTING);
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -34,11 +37,17 @@ function NewContractWizard() {
       message.error('請先選擇要出租的物件');
       return;
     }
+    // 規則未定義的分流條件擋下一步，原因已顯示在分流條件區
+    const routingEvaluation = evaluateRouting(routing);
+    if (!routingEvaluation.ok) {
+      message.error(routingEvaluation.reason);
+      return;
+    }
     setCreating(true);
     const res = await fetch('/api/contracts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ property_id: propertyId }),
+      body: JSON.stringify({ property_id: propertyId, routing }),
     });
     const json = await res.json();
     if (!res.ok) {
@@ -110,6 +119,8 @@ function NewContractWizard() {
                 ]}
               />
             )}
+
+            <RoutingConditionsPanel value={routing} onChange={setRouting} disabled={creating} />
 
             <TemplateNotice />
           </Space>

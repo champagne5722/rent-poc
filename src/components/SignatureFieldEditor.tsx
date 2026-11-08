@@ -2,15 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Rnd } from 'react-rnd';
-import { Alert, Button, Space, Spin, Typography } from 'antd';
+import { Alert, Button, Flex, Spin, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import {
   CONTRACT_PARTY_ROLES,
   SIGNER_ROLE_LABELS,
-  type ContractPartyRole,
   type SignatureField,
   type SignerRole,
 } from '@/lib/types';
+import { printOrder, seatOfField, type SeatView } from '@/lib/signature-routing';
 import {
   type AlignGuide,
   clampRect,
@@ -22,6 +22,8 @@ import {
 } from '@/lib/signature-layout';
 
 // 簽署區域編輯器：pdf.js 逐頁渲染 + react-rnd 拖放簽名框。
+// 新增按鈕由簽署序列的席位驅動（ADR-0021 決議 5），每個席位一顆，新增的框寫入 slot。
+// 沒有給 seats 時（舊用法）只有甲方、乙方兩顆，框不帶 slot。按鈕依印列順序（甲方、乙方、執業人員）排，與簽署順序無關。
 // 內部座標一律存「相對該頁的比例」（原點左上、y 向下）；
 // 送簽時才由後端轉成點點簽的 coord（原點左下），見 lib/signing-module/dottedsign-adapter.ts。
 // 預設落點、吸附／對齊線、出界夾回與重疊偵測都是 lib/signature-layout.ts 的純函式，這裡只做換算與畫面。
@@ -30,6 +32,8 @@ interface Props {
   value: SignatureField[];
   onChange?: (fields: SignatureField[]) => void;
   readOnly?: boolean;
+  /** 簽署序列的席位。沒有時是甲方、乙方兩個席位。 */
+  seats?: readonly SeatView[];
 }
 
 interface RenderedPage {
@@ -42,7 +46,7 @@ interface RenderedPage {
 const SIGNER_STYLES: Record<SignerRole, { color: string; bg: string }> = {
   party_a: { color: '#1677ff', bg: 'rgba(22,119,255,0.12)' },
   party_b: { color: '#fa8c16', bg: 'rgba(250,140,22,0.14)' },
-  // 編輯器不提供新增執業人員的簽名框（P0-12）。這裡只讓既有資料能顯示，顏色取 DESIGN.md 的 ink-muted。
+  // 執業人員的簽名框，顏色取 DESIGN.md 的 ink-muted。
   practitioner: { color: '#5d606b', bg: 'rgba(93,96,107,0.12)' },
 };
 
@@ -56,7 +60,14 @@ interface ActiveGuides {
   guides: AlignGuide[];
 }
 
-export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly }: Props) {
+/** 舊用法沒有簽署序列：只有甲方、乙方兩個席位，印列順序就是按鈕順序。 */
+const PARTY_ONLY_BUTTONS = CONTRACT_PARTY_ROLES.map((role) => ({
+  role,
+  slot: undefined as string | undefined,
+  label: SIGNER_ROLE_LABELS[role],
+}));
+
+export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly, seats }: Props) {
   const [pages, setPages] = useState<RenderedPage[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeGuides, setActiveGuides] = useState<ActiveGuides | null>(null);
@@ -109,16 +120,32 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
   // 範本的簽名欄在最後一頁；新增框優先落在那一頁的甲／乙簽名欄旁。
   const signaturePage = pages ? pages.length - 1 : 0;
 
-  const addField = (signer: ContractPartyRole, page: number) => {
-    const rect = defaultFieldRect({ signer, page, signaturePage, existing: valueRef.current });
+  const layoutSeats = seats?.map((seat) => ({ role: seat.role, slot: seat.ruleId }));
+  const buttons = seats
+    ? printOrder(seats).map((seat) => ({ role: seat.role, slot: seat.ruleId as string | undefined, label: seat.label }))
+    : PARTY_ONLY_BUTTONS;
+
+  const addField = (signer: SignerRole, slot: string | undefined, page: number) => {
+    const rect = defaultFieldRect({
+      signer,
+      slot,
+      seats: layoutSeats,
+      page,
+      signaturePage,
+      existing: valueRef.current,
+    });
     const field: SignatureField = {
       id: `sf-${Date.now()}-${idSeq.current++}`,
       signer,
+      ...(slot ? { slot } : {}),
       page,
       ...rect,
     };
     emit([...valueRef.current, field]);
   };
+
+  /** 簽名框上的文字：有簽署序列時用席位名稱，區分管理人員與經紀人。 */
+  const fieldLabel = (f: SignatureField) => (seats && seatOfField(f, seats)?.label) || SIGNER_ROLE_LABELS[f.signer];
 
   const updateField = (id: string, patch: Partial<SignatureField>) => {
     emit(valueRef.current.map((f) => (f.id === id ? { ...f, ...patch } : f)));
@@ -155,20 +182,24 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
           );
         return (
           <div key={page.index} style={{ marginBottom: 24 }}>
-            <Space style={{ marginBottom: 8, width: '100%', justifyContent: 'space-between' }}>
+            <Flex wrap align="center" justify="space-between" gap={8} style={{ marginBottom: 8 }}>
               <Typography.Text type="secondary">
                 第 {page.index + 1} 頁{page.index === signaturePage && '（範本簽名頁）'}
               </Typography.Text>
               {!readOnly && (
-                <Space>
-                  {CONTRACT_PARTY_ROLES.map((role) => (
-                    <Button key={role} size="small" onClick={() => addField(role, page.index)}>
-                      ＋ {SIGNER_ROLE_LABELS[role]}簽名框
+                <Flex wrap gap={8} justify="flex-end">
+                  {buttons.map((button) => (
+                    <Button
+                      key={button.slot ?? button.role}
+                      size="small"
+                      onClick={() => addField(button.role, button.slot, page.index)}
+                    >
+                      ＋ {button.label}簽名框
                     </Button>
                   ))}
-                </Space>
+                </Flex>
               )}
-            </Space>
+            </Flex>
             <div
               style={{
                 position: 'relative',
@@ -258,7 +289,7 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
                         pointerEvents: readOnly ? 'none' : undefined,
                       }}
                     >
-                      {SIGNER_ROLE_LABELS[f.signer]}簽名
+                      {fieldLabel(f)}簽名
                       {!readOnly && (
                         <DeleteOutlined
                           onClick={(e) => {
