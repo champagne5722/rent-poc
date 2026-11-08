@@ -89,7 +89,35 @@ export const ORG_TABLE_CASES: Record<string, OrgTableCase> = {
       return id;
     },
   },
+  // 鏡像帳（MIL-117）：只增不改。直接 INSERT 而不用 ledger 模組，因為探測 4 要在 A 的脈絡寫入 B 的 org_id。
+  // 業務鍵（案件、事件類型、事件 ID）固定：兩個組織寫同一組業務鍵都要成功。
+  'org.ledger_journals': {
+    appendOnly: true,
+    seed: (tx, orgId) => seedLedgerJournal(tx, orgId).then((seeded) => seeded.journalId),
+  },
+  'org.ledger_entries': {
+    appendOnly: true,
+    seed: (tx, orgId) => seedLedgerJournal(tx, orgId).then((seeded) => seeded.entryId),
+  },
 };
+
+/** 寫一筆平衡的分錄（兩列明細）。分錄的檢查在提交時執行，所以兩個 INSERT 要在同一個交易內。 */
+async function seedLedgerJournal(tx: OrgTx, orgId: string): Promise<{ journalId: string; entryId: string }> {
+  const journalId = newUlid();
+  const entryId = newUlid();
+  await tx.query(
+    `INSERT INTO org.ledger_journals (id, org_id, case_id, business_event_type, business_event_id, effective_date)
+     VALUES ($1, $2, 'PENETRATION', 'receipt_confirmed', 'PENETRATION-1', '2026-11-08')`,
+    [journalId, orgId],
+  );
+  await tx.query(
+    `INSERT INTO org.ledger_entries (id, org_id, case_id, journal_id, line_no, account, debit, credit) VALUES
+       ($1, $2, 'PENETRATION', $3, 1, 'asset.bank.PENETRATION', 100, 0),
+       ($4, $2, 'PENETRATION', $3, 2, 'liability.deposit.PENETRATION', 0, 100)`,
+    [entryId, orgId, journalId, newUlid()],
+  );
+  return { journalId, entryId };
+}
 
 /** 傳入系統目錄列出的 org 表名（schema.table），回傳沒有登記案例的表。 */
 export function tablesWithoutCase(tables: readonly string[]): string[] {

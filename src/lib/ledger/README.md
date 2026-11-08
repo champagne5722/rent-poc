@@ -1,8 +1,35 @@
-# ledger：鏡像帳純函式
+# ledger：鏡像帳
 
-這個模組是鏡像帳裡不碰資料庫的部分（MIL-159，母票 MIL-117）。依據是 ADR-0015 決議 2 到 5、13，與 ADR-0050 決議 1 到 3。
+鏡像帳分兩層。純函式層（MIL-159）不碰資料庫：分錄檢查、沖銷建構、事件登錄、科目編碼。資料庫層（MIL-117）是 `post.ts` 與 `store.ts`，加上 `db/migrations/0050_ledger.sql` 的兩張表與觸發器。依據是 ADR-0015 決議 2 到 5、13，與 ADR-0050 決議 1 到 3。
 
-模組只匯出純函式與型別。不建表，不呼叫資料庫，不匯入 `src/lib/db.ts`。時間與 ID 都由參數傳入。表、觸發器與 `postJournal()`、`reverseJournal()` 留在 MIL-117，等 A 線的 MIL-83。
+`index.ts` 只匯出純函式與型別。`postJournal()` 與 `reverseJournal()` 不從 `index.ts` 匯出，只有本目錄內的業務函式能用（`post.guard.test.ts` 掃描原始碼把關）。純函式層不匯入 `src/lib/db.ts`，時間與 ID 都由參數傳入。
+
+## 寫入入口（資料庫層）
+
+| 函式 | 用途 |
+|---|---|
+| `postJournal(tx, input, registry = defaultLedgerRegistry)` | 依事件類型與 payload 建分錄並寫入。`org_id` 取自 `tx` 的組織脈絡。 |
+| `reverseJournal(tx, input)` | 讀出原分錄，產生借貸互換的沖銷分錄並寫入。 |
+
+- `tx` 是 `OrgTx`（`withTx` 的 org 或 operator 脈絡）。呼叫端的交易失敗時，分錄一起回滾。
+- 失敗回傳 `LedgerResult` 的錯誤清單，不丟錯，什麼都不寫。資料庫約束與觸發器擋下時仍會丟錯，那代表程式有誤。
+- 錯誤碼多四個：`duplicate_event`（業務事件鍵已寫過）、`journal_not_found`（含別的組織的分錄）、`already_reversed`、`case_mismatch`（`reverseJournal` 的選填 `caseId` 與原分錄不同）。
+- `postedAt` 預設取資料庫的交易時間。只有測試與補登才指定。
+- 新增事件類型：寫事件定義，用 `extendLedgerRegistry` 擴充登錄表，當 `postJournal` 的第三個參數傳入。不改 `post.ts`，也不改 migration（資料庫的事件類型欄位是開放字串）。
+- 業務函式（`confirmReceipt()` 等）放在本目錄，組好 payload 再呼叫 `postJournal()`。F 線的 `recordHandoverRelease`、`recordHandoverReceipt` 也放這裡（ADR-0024）。
+
+## 資料庫的防線
+
+migration `0050_ledger.sql` 建 `org.ledger_journals` 與 `org.ledger_entries`。純函式層的檢查不取代它們，資料庫是最後一道防線。
+
+- 兩張表都 ENABLE 與 FORCE RLS，政策限 `app_rw`，只有 SELECT 與 INSERT。複合外鍵 `(org_id, case_id, journal_id)`。
+- 延遲約束觸發器掛在兩張表：每筆至少 2 列、借貸相等、檢查時比對 `app.org_id`（提交前切換組織脈絡仍被擋）。
+- `posted_txid` 由觸發器覆寫成目前交易，明細只准在建立分錄的同一個交易寫入。
+- UPDATE、DELETE 由列層級觸發器擋，TRUNCATE 由語句層級觸發器擋。`app_rw` 本來就沒有這三種權限。
+- 沖銷：`UNIQUE (org_id, reverses_journal_id)` 保證最多沖銷一次，觸發器雙向比對借貸、擋下沖銷分錄再被沖銷、要求案件相同。`reason` 欄位必填且不得空白。
+- `UNIQUE (org_id, business_event_type, business_event_id)` 擋下用舊 ID 重寫。
+- 金額 `bigint`，CHECK 限制在 0 到 2^53 - 1，恰好一欄大於 0。
+- `case_id` 是文字，不掛 `cases` 的外鍵。到 `cases` 的外鍵與案件成員讀取政策由 MIL-123 加入。收款帳戶是否屬於本組織由 MIL-118 處理，科目編碼目前只檢查格式。
 
 ## 規則
 
@@ -85,11 +112,9 @@ const registry = extendLedgerRegistry(defaultLedgerRegistry, [handoverReleased, 
 
 - `validate.test.ts`、`accounts.test.ts`、`events.test.ts`、`journal.test.ts`、`reversal.test.ts`：表格測試，期望值是手寫字面值。
 - `property.test.ts`：種子亂數（mulberry32）產生事件序列，驗證每筆分錄平衡，餘額等於另一套手算模型。
-- `extension.test.ts`：測試用的擴充事件，證明核心函式沒有依事件類型分支。另有原始碼守門測試，核心檔案不得出現 E1 事件類型的字串常值。
-
-## 之後 MIL-117 要接的
-
-- `postJournal()` 包 `buildJournal()`：先用這裡的純函式建出並檢查分錄，再寫入資料庫。
-- `reverseJournal()` 包 `buildReversal()`。
-- 業務函式（`confirmReceipt()` 等）組好 payload，呼叫 `postJournal()`。
-- 資料庫觸發器仍是最後一道防線，這裡的檢查不取代它。
+- `extension.test.ts`：測試用的擴充事件，證明核心函式沒有依事件類型分支。另有原始碼守門測試，核心檔案不得出現 E1 事件類型的字串常值，範圍含 `post.ts` 與 `store.ts`。
+- `post.pglite.test.ts`：`postJournal`、`reverseJournal` 經 `withTx` 寫進 PGlite，含擴充事件。
+- `post.property.test.ts`：隨機事件序列寫進資料庫，每筆平衡，餘額等於手算。
+- `post.guard.test.ts`：寫入入口只有本目錄能用。
+- `ledger.pg.test.ts`：真實 PostgreSQL（需 `TEST_DATABASE_URL`），含併發。
+- `src/lib/pg/ledger-schema.test.ts`：ADR-0015 實測結果的 15 個情境加欄位約束。
