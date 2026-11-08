@@ -10,8 +10,9 @@ import type { ContractRoutingConditions, SignatureField } from '../types';
 import { createMockProvider } from '../signing-module/mock-adapter';
 import { createSigningModule } from '../signing-module/module';
 import type { SigningProvider } from '../signing-module/provider';
-import { listCredentialSnapshots, replaceAssignments } from './repository';
-import { prepareContractSend, recordSendSnapshots } from './send';
+import { listSignatureRecords } from '../signature-records/repository';
+import { replaceAssignments } from './repository';
+import { prepareContractSend } from './send';
 
 // 整合測試：走簽署模組介面，配 Mock adapter，三位簽署人從送簽走到完成（MIL-69）。
 // 資料庫是記憶體，執業人員資料來自 seed adapter。
@@ -98,8 +99,7 @@ describe('包租租賃合約：乙方、執業人員、甲方三位走到完成'
     if (!prepared.ok) throw new Error(prepared.error);
     const signing = moduleWith(provider);
     const subject = { type: 'contract', id } as const;
-    await signing.send(subject, document, prepared.signers);
-    await recordSendSnapshots(id, prepared, db);
+    await signing.send(subject, document, prepared.signers, prepared.sendContext);
     return { id, subject, signing, prepared };
   }
 
@@ -150,22 +150,21 @@ describe('包租租賃合約：乙方、執業人員、甲方三位走到完成'
     expect(prepared.signers.map((s) => s.signatureFields.map((f) => f.id))).toEqual([['b'], ['p'], ['a']]);
   });
 
-  it('送簽前只算出快照，建立簽署任務之後才保存', async () => {
+  it('送簽前只算出簽章紀錄的資料，建立簽署任務之後才保存', async () => {
     const id = newContract(MASTER_LEASE_FIELDS, MASTER_LEASE_FIELDS_ON_PAGE);
     await replaceAssignments(id, [ASSIGN_CHEN(MASTER_LEASE_SLOT)], db);
     const prepared = await prepare(id);
-    expect(prepared.ok && prepared.snapshots).toHaveLength(1);
-    expect(await listCredentialSnapshots(id, db)).toEqual([]);
+    expect(prepared.ok && prepared.sendContext?.records).toHaveLength(1);
+    expect(await listSignatureRecords(id, db)).toEqual([]);
   });
 
-  it('送簽時留下判定事實快照', async () => {
+  it('送簽時留下簽章紀錄與當時的證書快照', async () => {
     const { id } = await sendMasterLease();
-    const [snapshot] = await listCredentialSnapshots(id, db);
-    expect(snapshot).toMatchObject({
-      slot: MASTER_LEASE_SLOT,
+    const [record] = await listSignatureRecords(id, db);
+    expect(record).toMatchObject({
+      ruleId: MASTER_LEASE_SLOT,
       practitionerId: 'pr-chen',
-      decidedAt: AT,
-      result: { signable: true, renewalWindow: null },
+      snapshotAtSend: { decidedAt: AT, result: { signable: true, renewalWindow: null } },
     });
   });
 
@@ -242,7 +241,7 @@ describe('擋下送簽', () => {
     if (prepared.ok) return;
     expect(prepared.reasons.map((r) => r.code)).toContain('practitioner_not_assigned');
     expect(await moduleWith().getProgress({ type: 'contract', id })).toBeNull();
-    expect(await listCredentialSnapshots(id, db)).toEqual([]);
+    expect(await listSignatureRecords(id, db)).toEqual([]);
   });
 
   it('候選人專任旗標為否：被擋下，原因說明', async () => {

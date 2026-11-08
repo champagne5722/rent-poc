@@ -87,6 +87,16 @@ function runContract(name: string, factory: () => PracticeRegistry) {
       expect(chen!.accountEmail).toBe('chen.yijun@beichen.example.com');
     });
 
+    it('候選帶任職 ID 與證書號碼；沒有證書的人證號是 null（簽章紀錄用，MIL-70）', async () => {
+      const registry = factory();
+      const chen = await registry.getPractitioner('pr-chen', { licenseKind: 'master_lease' });
+      expect(chen!.employmentId).toEqual(expect.any(String));
+      expect(chen!.employmentId).not.toBe('');
+      expect(chen!.certificateNo).toEqual(expect.any(String));
+      const zhang = await registry.getPractitioner('pr-zhang', { licenseKind: 'master_lease' });
+      expect(zhang!.certificateNo).toBeNull();
+    });
+
     it('getPractitioner 不套用資格條件，才能列出被拒的原因', async () => {
       const registry = factory();
       const wu = await registry.getPractitioner('pr-wu', { licenseKind: 'master_lease' });

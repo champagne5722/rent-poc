@@ -1,4 +1,4 @@
-// 指派與判定事實快照的 repository（MIL-69）。介面一律回傳 Promise，A 線遷移到 PostgreSQL 時只換內部。
+// 指派的 repository（MIL-69）。判定事實快照在 MIL-70 改由簽章紀錄承接，見 src/lib/signature-records/。介面一律回傳 Promise，A 線遷移到 PostgreSQL 時只換內部。
 // 表的說明見 tables.ts。
 
 import type Database from 'better-sqlite3';
@@ -62,58 +62,4 @@ export async function copyAssignments(
      SELECT ?, slot, entity_id, practitioner_id, party_signer_id
        FROM contract_practitioner_assignments WHERE contract_id = ?`,
   ).run(toContractId, fromContractId);
-}
-
-export interface CredentialSnapshotInput {
-  slot: string;
-  practitionerId: string;
-  /** 判定時點，ISO 8601。 */
-  decidedAt: string;
-  /** 判定用的事實，原樣保存。 */
-  facts: unknown;
-  /** 判定結果，原樣保存。 */
-  result: unknown;
-}
-
-export async function saveCredentialSnapshots(
-  contractId: number,
-  snapshots: readonly CredentialSnapshotInput[],
-  db: Database.Database = getDb(),
-): Promise<void> {
-  const upsert = db.prepare(
-    `INSERT INTO contract_credential_snapshots (contract_id, slot, practitioner_id, decided_at, facts, result)
-     VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT (contract_id, slot) DO UPDATE SET
-       practitioner_id = excluded.practitioner_id,
-       decided_at = excluded.decided_at,
-       facts = excluded.facts,
-       result = excluded.result`,
-  );
-  db.transaction(() => {
-    for (const s of snapshots) {
-      upsert.run(contractId, s.slot, s.practitionerId, s.decidedAt, JSON.stringify(s.facts), JSON.stringify(s.result));
-    }
-  })();
-}
-
-export async function listCredentialSnapshots(
-  contractId: number,
-  db: Database.Database = getDb(),
-): Promise<CredentialSnapshotInput[]> {
-  const rows = db
-    .prepare('SELECT * FROM contract_credential_snapshots WHERE contract_id = ? ORDER BY slot')
-    .all(contractId) as Array<{
-    slot: string;
-    practitioner_id: string;
-    decided_at: string;
-    facts: string;
-    result: string;
-  }>;
-  return rows.map((r) => ({
-    slot: r.slot,
-    practitionerId: r.practitioner_id,
-    decidedAt: r.decided_at,
-    facts: JSON.parse(r.facts),
-    result: JSON.parse(r.result),
-  }));
 }
