@@ -1,0 +1,45 @@
+// 屋主月報表純函式模組（MIL-160，母票 MIL-134）。只匯出純函式與型別，不碰資料庫。
+
+export { buildOwnerReport } from './build';
+export {
+  CSV_BOM,
+  CSV_SECTIONS,
+  OWNER_REPORT_CSV_COLUMNS,
+  reportToCsv,
+  reportToCsvRows,
+  type CsvRow,
+} from './csv';
+export { IMMUTABLE_STATEMENT, OWNER_REPORT_NOTES } from './labels';
+export type {
+  AttentionItem,
+  AttentionKind,
+  DepositDeductionRow,
+  DepositRow,
+  FundKind,
+  HandoverRow,
+  LedgerDetailRow,
+  LedgerDetailType,
+  OverduePeriod,
+  OwnerReport,
+  OwnerReportInput,
+  OwnerReportOptions,
+  RentRow,
+  RepairRow,
+  RepairStatus,
+  ReportAllocation,
+  ReportDeduction,
+  ReportDepositLedger,
+  ReportHandover,
+  ReportHeader,
+  ReportHolderAcknowledgment,
+  ReportNote,
+  ReportPaymentAccount,
+  ReportPeriod,
+  ReportReceipt,
+  ReportRepair,
+  ReportSource,
+  ReportSummary,
+  ReportUnit,
+  SourceBreakdown,
+  SourceShare,
+} from './types';
