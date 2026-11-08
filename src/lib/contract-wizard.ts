@@ -20,6 +20,7 @@ import type {
   OptionalClause,
   SignatureField,
 } from './types';
+import { TERMS, partyLabels } from './labels';
 import { SIGNER_ROLE_LABELS } from './types';
 
 export const WIZARD_STEPS = [
@@ -39,9 +40,9 @@ export const STEP_CONFIRM = 3;
 // 平台提供的範本與選用條款庫定義在 src/lib/clause-library.ts（ADR-0005）。
 // 單範本時第①步的範本區顯示為說明不做選擇，選用條款則在該步逐約勾選。
 
-// 乙方先簽（ADR-0003）：確認頁對房東說明送簽後的預期。
-export const TENANT_FIRST_NOTICE =
-  '送簽後由乙方（租客）先簽，乙方完成後才輪到甲方（您）簽署，雙方都簽完合約才成立。';
+// 乙方先簽（ADR-0003）：確認頁對出租人說明送簽後的預期。
+const LEASE_PARTIES = partyLabels('lease');
+export const TENANT_FIRST_NOTICE = `送簽後由${LEASE_PARTIES.partyBFull}先簽，${TERMS.partyB}完成後才輪到${LEASE_PARTIES.partyAFull}簽署，雙方都簽完合約才成立。`;
 
 /** wizard 檢核看得到的狀態；欄位日期一律是 YYYY-MM-DD 字串。 */
 export interface WizardState {

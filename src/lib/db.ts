@@ -66,8 +66,8 @@ export function ensureSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_contract_events_contract ON contract_events (contract_id, id);
 
-    -- 設備詞彙庫（ADR-0008）：房東層的設備項目字典，平台預設（is_custom=0）與自訂項目（is_custom=1）同一份。
-    -- PoC 沒有登入，實質全系統一份；語意上屬房東，之後補登入時加 landlord_id 即可。
+    -- 設備詞彙庫（ADR-0008）：屋主層的設備項目字典，平台預設（is_custom=0）與自訂項目（is_custom=1）同一份。
+    -- PoC 沒有登入，實質全系統一份；語意上屬屋主，之後補登入時加 landlord_id 即可。
     CREATE TABLE IF NOT EXISTS equipment_vocabulary (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
