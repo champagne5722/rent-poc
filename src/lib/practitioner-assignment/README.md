@@ -20,10 +20,10 @@
 | 檔案 | 內容 |
 |---|---|
 | `seats.ts` | 純函式與型別，client 可引用：`licenseKindForSeat`、`entityPartyRoles`、`PractitionerAssignmentInput`、`PrintedPractitioner` |
-| `tables.ts` | `contract_practitioner_assignments`、`contract_credential_snapshots`，由 `ensureSchema` 建立 |
-| `repository.ts` | 指派與判定事實快照的存取，介面回傳 Promise。ID 一律 TEXT |
+| `tables.ts` | `contract_practitioner_assignments`，由 `ensureSchema` 建立 |
+| `repository.ts` | 指派的存取，介面回傳 Promise。ID 一律 TEXT |
 | `service.ts` | `evaluateSend`（組輸入、跑檢查）、`loadSeatOptions`（wizard 選項）、`validateAssignments`（存指派時）、`loadPrintedPractitioners`（PDF 簽署欄） |
-| `send.ts` | `prepareContractSend`：route handler 與整合測試共用的送簽準備，通過後保存判定事實快照 |
+| `send.ts` | `prepareContractSend`：route handler 與整合測試共用的送簽準備，通過後交出簽署人與 `sendContext`（簽章紀錄的送簽資料） |
 
 ## 簽名
 
@@ -52,10 +52,11 @@ checkSendPreconditions(facts: SendPreconditionFacts): SendPreconditionResult
 - 簽署人清單不綁合約 ID，用席位 `rule_id` 對應。
 - `credentialStatusAt` 簽署當下用事件時間，不用系統收到的時間。
 
-## 給 MIL-70（簽章紀錄）
+## MIL-70（簽章紀錄）已完成
 
-- `contract_credential_snapshots` 在送簽時保存判定用的事實與結果（`facts`、`result` 是 JSON），一個席位一列，重複送簽時覆蓋。MIL-70 要把它改成與簽署進度同交易的 `snapshot_at_send`，並補 `snapshot_at_sign`。
-- 事實裡有三層最新核對紀錄 ID（`latestCheckId`）。
+判定事實快照改由簽章紀錄承接，`contract_credential_snapshots` 與 `recordSendSnapshots` 已移除。
+`prepareContractSend` 回傳 `sendContext`，呼叫 `signing.send(subject, document, signers, sendContext)` 時由合約訂閱者在送簽交易內寫入。
+說明見 `src/lib/signature-records/README.md`。
 
 ## 給 MIL-76（同一人兼任）
 

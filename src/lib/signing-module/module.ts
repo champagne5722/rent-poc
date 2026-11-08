@@ -24,7 +24,7 @@ import {
   toSigningProgress,
   type SigningProgress,
 } from './sign-task-store';
-import { SigningRefusal, type SigningSubscriber } from './subscriber';
+import { SigningRefusal, type SendContext, type SigningSubscriber } from './subscriber';
 
 // 簽署模組（ADR-0010）：route handler 只呼叫這裡，服務商細節都在 adapter，
 // 業務實體的細節都在訂閱者。介面一律回傳 Promise，呼叫端看不到服務商任務編號。
@@ -98,13 +98,16 @@ export function createSigningModule({ provider, subscribers, dataDir, now = () =
     event: SigningEvent
   ): Promise<ProgressOutcome | null> {
     const db = getDb();
+    // 事件時間：服務商提供的優先，沒有時用現在時間。訂閱者的判定用它，不用系統收到事件的時間。
+    const eventAt = event.occurredAt ?? now().toISOString();
+    const prepared = await prepareOutcome(subject, subscriber, event, eventAt);
     const outcome = db.transaction(() => {
       const task = findSignTask(db, subject);
       if (!task) return logIgnored(subject, event, 'no_task');
       const advance = advanceProgress(task, event);
       if (!advance.accepted) return logIgnored(subject, event, advance.reason);
       saveProgress(db, task, advance);
-      subscriber.onOutcome(subject, advance.outcome);
+      subscriber.onOutcome(subject, advance.outcome, { eventAt, prepared });
       return advance.outcome;
     })();
     if (outcome?.type === 'completed') {
@@ -190,7 +193,13 @@ export function createSigningModule({ provider, subscribers, dataDir, now = () =
   return {
     mode: async () => provider.mode,
 
-    async send(subject: SigningSubject, document: SignableDocument, signers: Signer[]): Promise<SignTask> {
+    // context 是業務資料，原樣交給訂閱者的 onSent，在同一個交易內使用（MIL-70）
+    async send(
+      subject: SigningSubject,
+      document: SignableDocument,
+      signers: Signer[],
+      context?: SendContext
+    ): Promise<SignTask> {
       const subscriber = requireSubscriber(subject);
       refuseInvalidSequence(signers);
       const db = getDb();
@@ -202,7 +211,7 @@ export function createSigningModule({ provider, subscribers, dataDir, now = () =
         if (!insertSignTask(db, { provider: provider.id, taskRef, subject, signers })) {
           throw new SigningRefusal(409, '簽署標的或服務商任務編號已有簽署任務');
         }
-        subscriber.onSent(subject, { signers });
+        subscriber.onSent(subject, { signers, context });
       })();
       return { subject, mode: provider.mode };
     },
@@ -386,6 +395,22 @@ function requireCurrentSigner(
 function logIgnored(subject: SigningSubject, event: SigningEvent, reason: string): null {
   console.info(`[signing] 忽略簽署事件 ${event.type}：${subject.type} ${subject.id}，${reason}`);
   return null;
+}
+
+// 準備失敗不得擋下簽署進度：簽署已經發生，法律事實優先（ADR-0018 決議 11）
+async function prepareOutcome(
+  subject: SigningSubject,
+  subscriber: SigningSubscriber,
+  event: SigningEvent,
+  eventAt: string
+): Promise<unknown> {
+  if (!subscriber.prepareOutcome) return undefined;
+  try {
+    return await subscriber.prepareOutcome(subject, event, eventAt);
+  } catch (e) {
+    console.error(`[signing] ${subject.type} ${subject.id} 簽署事件的準備失敗：${errorMessage(e)}`);
+    return undefined;
+  }
 }
 
 // 訂閱者完成後的處理失敗不得讓 webhook 回非 2xx（MIL-52）
