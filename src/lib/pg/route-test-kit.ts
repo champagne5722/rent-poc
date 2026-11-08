@@ -3,7 +3,11 @@ import { useTxDriver as installTxDriver } from './database';
 import { pgliteDriver } from './drivers';
 import { asRole, createTestDb, type TestDb } from './test-harness';
 import { newUlid } from './ulid';
-import { TRANSITIONAL_PARTY_ID, TRANSITIONAL_USER_ID, type RequestContext } from '../request-context';
+import type { RequestContext } from '../request-context';
+
+// 測試用的固定使用者與 party（時間部分全 0，不會和真實 ULID 撞號）
+export const TEST_USER_ID = '00000000000000000000000003';
+export const TEST_PARTY_ID = '00000000000000000000000004';
 
 // route 層測試的共用工具（MIL-81 定下，之後各實體的 route 測試照用）。
 //
@@ -32,11 +36,16 @@ export function actAs(orgId: string): void {
     kind: 'org',
     orgId,
     orgKind: 'owner',
-    userId: TRANSITIONAL_USER_ID,
-    partyId: TRANSITIONAL_PARTY_ID,
+    userId: TEST_USER_ID,
+    partyId: TEST_PARTY_ID,
     role: 'admin',
     requestId: 'test',
   };
+}
+
+/** 讓 requestContext() 回傳指定的完整脈絡，例如經理人、承租人或營運者。 */
+export function actAsContext(rc: RequestContext): void {
+  state.current = rc;
 }
 
 /** 讓 requestContext() 丟指定的錯，例如 new Unauthenticated()。 */

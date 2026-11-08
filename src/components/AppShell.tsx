@@ -12,6 +12,8 @@ import {
 } from '@ant-design/icons';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import AccountBar from './AccountBar';
+import { isAuthScreen } from '@/lib/auth/auth-screens';
 import { NAV_ITEMS, CREATE_CONTRACT_HREF, resolveNavKey, shellFor, type NavKey } from '@/lib/nav';
 
 const NAV_ICONS: Record<NavKey, React.ReactNode> = {
@@ -26,11 +28,13 @@ const NAV_ICONS: Record<NavKey, React.ReactNode> = {
 // 因為屋主身分要在 server 端讀，只限屋主端的請求；其他路徑用後台殼層。
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  // 登入頁與 demo 驗證碼頁還沒有登入身分，不套任何殼層（MIL-103）
+  if (isAuthScreen(pathname)) return children;
   if (shellFor(pathname) === 'owner') return children;
   return <AdminShell pathname={pathname}>{children}</AdminShell>;
 }
 
-// 不做登入：打開即房東視角（見 GLOSSARY.md）
+// 登入由 MIL-103 提供：未登入的請求在 proxy 與根 layout 就被導向 /login，到這裡的都有 session
 // 後台殼層＝深色 collapsible side menu（規格 §4）：antd Layout＋Sider＋Menu mode="inline"，不引入 ProLayout
 function AdminShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
   const router = useRouter();
@@ -98,6 +102,7 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
           <Typography.Title level={5} style={{ margin: 0 }}>
             {currentLabel}
           </Typography.Title>
+          <AccountBar />
         </Layout.Header>
         <Layout.Content style={{ padding: 24 }}>{children}</Layout.Content>
       </Layout>

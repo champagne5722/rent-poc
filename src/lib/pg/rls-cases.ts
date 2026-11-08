@@ -54,3 +54,44 @@ export const ORG_TABLE_CASES: Record<string, OrgTableCase> = {
 export function tablesWithoutCase(tables: readonly string[]): string[] {
   return tables.filter((t) => !(t in ORG_TABLE_CASES));
 }
+
+// control schema 的表不掛組織 RLS（ADR-0012 決議 3），所以不進 ORG_TABLE_CASES。
+// 規則：control 的每張表必須在這裡登記「為什麼不掛 RLS」與「app_rw 拿到哪些權限」，
+// rls-penetration.test.ts 從系統目錄列出 control 的所有表，缺登記就讓測試失敗。
+// 這些表的資料不屬於任何一個組織（帳號、成員關係、session），權限逐表授予，不靠 RLS。
+export interface ControlTableException {
+  reason: string;
+  /** app_rw 在這張表上的權限，測試會比對系統目錄。空陣列代表 app_rw 沒有任何權限。 */
+  appRwPrivileges: readonly ('SELECT' | 'INSERT' | 'UPDATE' | 'DELETE')[];
+}
+
+export const CONTROL_TABLE_EXCEPTIONS: Record<string, ControlTableException> = {
+  'control.schema_migrations': {
+    reason: 'migration runner 的紀錄表，只給 app_owner（0001）',
+    appRwPrivileges: [],
+  },
+  'control.orgs': {
+    reason: '組織目錄，所有組織的名稱與種類。MIL-79',
+    appRwPrivileges: ['SELECT'],
+  },
+  'control.parties': {
+    reason: '自然人，以 email 為唯一鍵，不屬於任何組織（承租人跨組織）。MIL-103',
+    appRwPrivileges: ['SELECT', 'INSERT'],
+  },
+  'control.users': {
+    reason: '登入帳號，一個 party 一個帳號，帳號可屬多個組織。MIL-103',
+    appRwPrivileges: ['SELECT', 'INSERT'],
+  },
+  'control.org_memberships': {
+    reason: '帳號與組織的成員關係，登入時要跨組織查，才能決定組織脈絡。MIL-103，成員管理由 MIL-106 接手',
+    appRwPrivileges: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
+  },
+  'control.sessions': {
+    reason: '伺服器端 session，登入前沒有組織脈絡可用。只存 token 的雜湊。MIL-103',
+    appRwPrivileges: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
+  },
+  'control.login_otps': {
+    reason: '一次性驗證碼，登入前沒有組織脈絡可用。只存 HMAC 雜湊。MIL-103',
+    appRwPrivileges: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
+  },
+};

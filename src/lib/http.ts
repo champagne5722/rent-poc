@@ -50,3 +50,12 @@ function assertNoPromise(value: unknown, path: string, depth = 0): void {
   }
   for (const [key, item] of Object.entries(value)) assertNoPromise(item, `${path}.${key}`, depth + 1);
 }
+
+/** 讀 JSON 本文。不是合法的 JSON 時回 undefined，呼叫端回 400。 */
+export async function readJson(request: Request): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    return undefined;
+  }
+}

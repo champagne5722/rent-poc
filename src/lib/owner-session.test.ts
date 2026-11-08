@@ -1,33 +1,34 @@
 import { describe, expect, it } from 'vitest';
-import { OWNER_SESSION_ENV, SEED_OWNERS, resolveOwnerSession } from './owner-session';
+import { ownerSessionFromContext } from './owner-session';
+import type { RequestContext } from './request-context';
 
-const [first, second] = SEED_OWNERS;
+const ORG = '01HZZZZZZZZZZZZZZZZZZZZZZA';
+const PARTY = '01HZZZZZZZZZZZZZZZZZZZZZZB';
+const USER = '01HZZZZZZZZZZZZZZZZZZZZZZC';
 
-describe('resolveOwnerSession（屋主身分的假資料版本）', () => {
-  it('沒有設定環境變數時，用第一位 seed 屋主', () => {
-    expect(resolveOwnerSession({})).toEqual(first);
-    expect(resolveOwnerSession({ [OWNER_SESSION_ENV]: '' })).toEqual(first);
+const org = (orgKind: 'owner' | 'practice' | 'platform'): RequestContext => ({
+  kind: 'org',
+  orgId: ORG,
+  orgKind,
+  userId: USER,
+  partyId: PARTY,
+  role: 'admin',
+  requestId: 'r',
+});
+
+describe('ownerSessionFromContext（MIL-94 的回傳形狀）', () => {
+  it('屋主組織的 org 脈絡：回傳 partyId、ownerOrgId、displayName 三個欄位', () => {
+    const session = ownerSessionFromContext(org('owner'), '王美玲');
+    expect(session).toEqual({ partyId: PARTY, ownerOrgId: ORG, displayName: '王美玲' });
+    expect(Object.keys(session!).sort()).toEqual(['displayName', 'ownerOrgId', 'partyId']);
   });
 
-  it('環境變數指定 seed 屋主的 party ID 時，回傳該屋主', () => {
-    expect(resolveOwnerSession({ [OWNER_SESSION_ENV]: second.partyId })).toEqual(second);
-  });
-
-  it('前後空白不影響比對', () => {
-    expect(resolveOwnerSession({ [OWNER_SESSION_ENV]: ` ${second.partyId} ` })).toEqual(second);
-  });
-
-  it('設成 none 時沒有屋主身分', () => {
-    expect(resolveOwnerSession({ [OWNER_SESSION_ENV]: 'none' })).toBeNull();
-  });
-
-  it('指定的 party ID 不在 seed 裡時沒有屋主身分', () => {
-    expect(resolveOwnerSession({ [OWNER_SESSION_ENV]: 'party-unknown' })).toBeNull();
-  });
-
-  it('屋主身分只有 party ID、屋主組織 ID、顯示名稱三個欄位', () => {
-    expect(Object.keys(resolveOwnerSession({})!).sort()).toEqual(
-      ['displayName', 'ownerOrgId', 'partyId'],
-    );
+  it.each([
+    ['執業主體組織', org('practice')],
+    ['平台組織', org('platform')],
+    ['承租人', { kind: 'party', userId: USER, partyId: PARTY, requestId: 'r' } as RequestContext],
+    ['平台營運者', { kind: 'operator', userId: USER, partyId: PARTY, requestId: 'r' } as RequestContext],
+  ])('%s 沒有屋主身分', (_name, rc) => {
+    expect(ownerSessionFromContext(rc, '王美玲')).toBeNull();
   });
 });

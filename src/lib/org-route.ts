@@ -43,11 +43,4 @@ export async function readInOrgTx<R>(
   return result ? { ok: true, value: result.value } : { ok: false, response };
 }
 
-/** 讀 JSON 本文。不是合法的 JSON 時回 undefined，呼叫端回 400。 */
-export async function readJson(request: Request): Promise<unknown> {
-  try {
-    return await request.json();
-  } catch {
-    return undefined;
-  }
-}
+export { readJson } from './http';

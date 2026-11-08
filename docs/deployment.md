@@ -40,6 +40,12 @@ Cloud Run 的環境變數：
 | `DOTTEDSIGN_CLIENT_SECRET` | Secret Manager `dottedsign-client-secret` | 同上 |
 | `DOTTEDSIGN_VERIFY_SIGNERS` | 目前 workflow 不注入，正式環境上線前手動設定 | 設為 `1` 時，送簽替每位簽署人帶 `email` 驗證。未設定時不送。sandbox 停用驗證，帶了會回 400428，所以 demo 必須維持未設定。正式環境的 `email` 驗證尚未實測 |
 | `K_SERVICE` | Cloud Run 自動注入 | `src/proxy.ts` 用來判斷是否必須要求密碼 |
+| `AUTH_SECRET` | Secret Manager（建議名稱 `auth-secret`） | 登入驗證碼雜湊用的 HMAC 金鑰（MIL-103）。正式環境沒設定時，登入功能拒絕啟動，驗證碼寄不出去也驗不了。換金鑰會讓尚未使用的驗證碼全部失效，已建立的 session 不受影響 |
+| `SEED_OWNER_EMAIL` | repo variable 或 Secret Manager | 預設組織（既有資料所在的屋主組織）的 `admin`。這個 email 第一次通過驗證碼時建帳號並加入預設組織。沒設定時沒有人能進入既有資料 |
+| `PLATFORM_OPERATOR_EMAILS` | repo variable 或 Secret Manager | 平台營運者的 email，逗號分隔。第一次通過驗證碼時建帳號並加入平台組織。沒有自助註冊 |
+| `MAILER_ADAPTER` | 不注入（預設 `log`） | 寄信 adapter。目前只有 `log`：驗證碼寫進 server log，並顯示在 `/demo/otp`（Basic Auth 之後，不需登入）。真實寄信服務在 pilot 前由使用者選定，選定前不得放真實個資 |
+
+登入（MIL-103）與 Basic Auth 並存：先過 Basic Auth，再用 email 驗證碼登入。`/demo/otp` 只在 `log` adapter 下存在，且 `max-instances=1` 時才看得到每一封信（清單存在單一程序的記憶體）。
 
 GitHub repo variables：
 
