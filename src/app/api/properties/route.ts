@@ -1,36 +1,18 @@
 import { NextRequest } from 'next/server';
-import { ensureEquipmentVocabulary, getDb, listProperties } from '@/lib/db';
-import { parseEquipmentPayload } from '@/lib/equipment';
 import { jsonOk, jsonError } from '@/lib/http';
+import { inOrgTx, readJson } from '@/lib/org-route';
+import { createProperty, listProperties, parsePropertyInput } from '@/lib/properties';
 
 export async function GET() {
-  return jsonOk({ data: listProperties() });
+  return inOrgTx(async (tx) => jsonOk({ data: await listProperties(tx) }));
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const { name, address, type, size, default_rent, note, equipment } = body;
-  if (!name?.trim() || !address?.trim()) {
-    return jsonError(400, '名稱與地址為必填');
-  }
-  const items = parseEquipmentPayload(equipment);
-  if (!items) {
-    return jsonError(400, '設備清單格式有誤：每項需有名稱且數量為正整數，且不可重複');
-  }
-  // 表單可以就地新增自訂項目，這裡再補一次確保詞彙庫跟得上實際存下的清單
-  ensureEquipmentVocabulary(items.map((i) => i.name));
-  const result = getDb()
-    .prepare(
-      'INSERT INTO properties (name, address, type, size, default_rent, note, equipment) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    )
-    .run(
-      name.trim(),
-      address.trim(),
-      type ?? '整層住家',
-      size ?? null,
-      default_rent ?? null,
-      note ?? '',
-      JSON.stringify(items)
-    );
-  return jsonOk({ data: { id: Number(result.lastInsertRowid) } }, { status: 201 });
+  const parsed = parsePropertyInput(await readJson(request));
+  if (!parsed.ok) return jsonError(400, parsed.error);
+  // 建物件時同一個交易建待驗證錨點與 0000 單位，表單就地新增的自訂設備也一併補進詞彙庫
+  return inOrgTx(async (tx) => {
+    const id = await createProperty(tx, parsed.value);
+    return jsonOk({ data: { id } }, { status: 201 });
+  });
 }

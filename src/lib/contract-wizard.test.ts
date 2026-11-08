@@ -46,7 +46,7 @@ function sig(signer: SignatureField['signer'], id: string = signer): SignatureFi
 function contract(patch: Partial<Contract> = {}): Contract {
   return {
     id: 1,
-    property_id: 3,
+    property_id: '01HF7YAT00ABCDEFGHJKMNPQRS',
     contract_type: 'lease',
     status: 'draft',
     fields: fields(),

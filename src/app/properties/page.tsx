@@ -21,6 +21,7 @@ import { useRouter } from 'next/navigation';
 import type { EquipmentItem, EquipmentVocabularyItem, Property } from '@/lib/types';
 import { PROPERTY_TYPES } from '@/lib/types';
 import { formatEquipmentItem } from '@/lib/equipment';
+import { shortUlid } from '@/lib/pg/ulid';
 
 interface EquipmentPickerProps {
   vocabulary: EquipmentVocabularyItem[];
@@ -174,13 +175,17 @@ function PropertiesPage() {
     load();
   };
 
-  const remove = async (id: number) => {
-    await fetch(`/api/properties/${id}`, { method: 'DELETE' });
-    message.success('物件已刪除');
+  const remove = async (id: string) => {
+    const res = await fetch(`/api/properties/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      message.error((await res.json()).error ?? '刪除失敗');
+    } else {
+      message.success('物件已刪除');
+    }
     load();
   };
 
-  const createContract = async (propertyId: number) => {
+  const createContract = async (propertyId: string) => {
     const res = await fetch('/api/contracts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -210,7 +215,19 @@ function PropertiesPage() {
         loading={loading}
         dataSource={items}
         pagination={false}
+        scroll={{ x: 'max-content' }}
         columns={[
+          {
+            // ULID 末 6 碼：口頭溝通與客服對照用，不保證唯一；系統內與網址一律用完整 ULID
+            title: '編號',
+            dataIndex: 'id',
+            width: 110,
+            render: (id: string) => (
+              <Typography.Text type="secondary" code title={id} style={{ whiteSpace: 'nowrap' }}>
+                {shortUlid(id)}
+              </Typography.Text>
+            ),
+          },
           { title: '名稱', dataIndex: 'name' },
           { title: '地址', dataIndex: 'address' },
           { title: '型態', dataIndex: 'type', width: 100 },

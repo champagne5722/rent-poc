@@ -17,7 +17,7 @@ function NewContractWizard() {
   const { message } = AntApp.useApp();
   const router = useRouter();
   const [properties, setProperties] = useState<Property[] | null>(null);
-  const [propertyId, setPropertyId] = useState<number | null>(null);
+  const [propertyId, setPropertyId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
