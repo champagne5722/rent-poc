@@ -13,6 +13,9 @@ export interface HandoverSeed {
   unitSources: UnitHandoverSource[];
   receiverCandidates: { ownerPartyId: string; candidates: ReceiverCandidate[] }[];
   paymentAccounts: { ownerPartyId: string; accounts: PaymentAccount[] }[];
+  orgPaymentAccounts: { orgId: string; accounts: PaymentAccount[] }[];
+  /** 已簽 PDF 的位元組，鍵是文件 ID。 */
+  signedPdfs: Record<string, Uint8Array>;
   handovers: HandoverRecord[];
 }
 
@@ -45,6 +48,18 @@ export function createMemoryHandoverStore(seed: HandoverSeed): HandoverStore {
     },
     async listOwnerPaymentAccounts(ownerPartyId) {
       return copy(seed.paymentAccounts.find((p) => p.ownerPartyId === ownerPartyId)?.accounts ?? []);
+    },
+    async listHandoversByOrg(orgId) {
+      return [...handovers.values()]
+        .filter((h) => h.from.orgId === orgId || (h.target?.kind === 'mandatary' && h.target.orgId === orgId))
+        .map(copy);
+    },
+    async listOrgPaymentAccounts(orgId) {
+      return copy(seed.orgPaymentAccounts.find((p) => p.orgId === orgId)?.accounts ?? []);
+    },
+    async getSignedPdf(docId) {
+      const bytes = seed.signedPdfs[docId];
+      return bytes ? bytes.slice() : null;
     },
     newHandoverId() {
       sequence += 1;
