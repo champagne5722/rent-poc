@@ -7,6 +7,7 @@
 //
 // 這個檔案不認識任何事件類型。事件長什麼樣子由登錄表決定，其他線新增事件時只加事件定義與業務函式，
 // 再把擴充後的登錄表（extendLedgerRegistry）當第三個參數傳進來。
+// 登錄時間（posted_at）一律取資料庫的交易時間，呼叫端不能指定，報表月份才不會被倒填（ADR-0015 決議 4）。
 
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
@@ -15,7 +16,7 @@ import { defaultLedgerRegistry } from './events';
 import type { LedgerRegistry } from './registry';
 import { buildReversal } from './reversal';
 import { hasReversal, insertJournal, loadJournal, readContext } from './store';
-import { ledgerError, type LedgerResult, type OriginalJournal, type ReversalJournal } from './types';
+import { isReversal, ledgerError, type LedgerError, type LedgerResult, type OriginalJournal, type ReversalJournal } from './types';
 
 export interface PostJournalInput {
   /** 開放字串，必須已在登錄表中。 */
@@ -27,8 +28,6 @@ export interface PostJournalInput {
   payload: unknown;
   /** 銀行日，`YYYY-MM-DD`。 */
   effectiveDate: string;
-  /** 登錄時間，ISO 8601 含時區。預設取資料庫的交易時間，只有測試與補登才需要指定。 */
-  postedAt?: string;
 }
 
 /**
@@ -48,20 +47,13 @@ export async function postJournal(
     caseId: input.caseId,
     eventType: input.eventType,
     eventId: input.eventId,
-    postedAt: input.postedAt ?? context.now,
+    postedAt: context.now,
     effectiveDate: input.effectiveDate,
     payload: input.payload,
   });
   if (!built.ok) return built;
 
-  const journal = built.value;
-  const written = await insertJournal(tx, journal, newUlid);
-  if (!written) {
-    return {
-      ok: false,
-      errors: [ledgerError('duplicate_event', `業務事件已寫過：${journal.eventType} ${journal.eventId}。要更正請先沖銷，再用新的業務事件 ID 重新登錄`)],
-    };
-  }
+  if (!(await insertJournal(tx, built.value))) return duplicateEvent(built.value.eventType, built.value.eventId);
   return built;
 }
 
@@ -73,7 +65,6 @@ export interface ReverseJournalInput {
   /** 沖銷原因，必填。 */
   reason: string;
   effectiveDate: string;
-  postedAt?: string;
   /** 選填。業務函式知道自己在處理哪個案件時帶上，與原分錄不同就拒絕，防止沖銷到別的案件。 */
   caseId?: string;
 }
@@ -89,38 +80,38 @@ export async function reverseJournal(tx: OrgTx, input: ReverseJournalInput): Pro
   if (!stored) {
     return { ok: false, errors: [ledgerError('journal_not_found', `找不到分錄：${input.journalId}`)] };
   }
-  if (stored.reversesJournalId !== null) {
+  if (isReversal(stored)) {
     return { ok: false, errors: [ledgerError('cannot_reverse_reversal', '沖銷分錄不得再被沖銷，要更正時，沖銷後另發新的入帳確認')] };
   }
-  if (input.caseId !== undefined && input.caseId !== stored.header.caseId) {
-    return { ok: false, errors: [ledgerError('case_mismatch', `分錄屬於案件 ${stored.header.caseId}，不是 ${input.caseId}`)] };
+  if (input.caseId !== undefined && input.caseId !== stored.caseId) {
+    return { ok: false, errors: [ledgerError('case_mismatch', `分錄屬於案件 ${stored.caseId}，不是 ${input.caseId}`)] };
   }
-  if (await hasReversal(tx, context.orgId, input.journalId)) {
-    return { ok: false, errors: [ledgerError('already_reversed', `分錄 ${input.journalId} 已被沖銷，一筆分錄最多沖銷一次`)] };
-  }
+  if (await hasReversal(tx, context.orgId, input.journalId)) return alreadyReversed(input.journalId);
 
-  const original: OriginalJournal = { ...stored.header, reversesJournalId: null, reason: null, lines: stored.lines };
-  const built = buildReversal(original, {
+  const built = buildReversal(stored, {
     journalId: newUlid(),
     eventId: input.eventId,
     reason: input.reason,
-    postedAt: input.postedAt ?? context.now,
+    postedAt: context.now,
     effectiveDate: input.effectiveDate,
   });
   if (!built.ok) return built;
 
-  const written = await insertJournal(tx, built.value, newUlid);
-  if (!written) {
+  if (!(await insertJournal(tx, built.value))) {
     // 同一時間另一個交易搶先沖銷，或沖銷的業務事件 ID 已被用過
-    const reversed = await hasReversal(tx, context.orgId, input.journalId);
-    return {
-      ok: false,
-      errors: [
-        reversed
-          ? ledgerError('already_reversed', `分錄 ${input.journalId} 已被沖銷，一筆分錄最多沖銷一次`)
-          : ledgerError('duplicate_event', `業務事件已寫過：${built.value.eventType} ${built.value.eventId}`),
-      ],
-    };
+    if (await hasReversal(tx, context.orgId, input.journalId)) return alreadyReversed(input.journalId);
+    return duplicateEvent(built.value.eventType, built.value.eventId);
   }
   return built;
+}
+
+function duplicateEvent(eventType: string, eventId: string): { ok: false; errors: LedgerError[] } {
+  return {
+    ok: false,
+    errors: [ledgerError('duplicate_event', `業務事件已寫過：${eventType} ${eventId}。要更正請先沖銷，再用新的業務事件 ID 重新登錄`)],
+  };
+}
+
+function alreadyReversed(journalId: string): { ok: false; errors: LedgerError[] } {
+  return { ok: false, errors: [ledgerError('already_reversed', `分錄 ${journalId} 已被沖銷，一筆分錄最多沖銷一次`)] };
 }

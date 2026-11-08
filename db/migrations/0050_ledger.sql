@@ -143,6 +143,7 @@ DECLARE
   debit_sum   numeric;
   credit_sum  numeric;
   original_id text;
+  journal_txid bigint;
 BEGIN
   IF TG_TABLE_NAME = 'ledger_journals' THEN
     journal_key := NEW.id;
@@ -154,6 +155,14 @@ BEGIN
   -- 所以必須先比對脈絡與該列的組織（ADR-0015 決議 3，實測情境 13）
   IF context_org IS DISTINCT FROM NEW.org_id THEN
     RAISE EXCEPTION '分錄 % 提交時組織脈絡已不是 %，不得在提交前切換組織脈絡', journal_key, NEW.org_id;
+  END IF;
+
+  -- 明細的 BEFORE 觸發器已擋過一次追加。這裡再比對一次：分錄剛好在 BEFORE 觸發器查詢與外鍵檢查之間
+  -- 由另一個交易提交時，BEFORE 觸發器讀不到分錄而放行，外鍵卻看得到
+  SELECT reverses_journal_id, posted_txid INTO original_id, journal_txid FROM org.ledger_journals
+   WHERE org_id = NEW.org_id AND id = journal_key;
+  IF journal_txid IS DISTINCT FROM txid_current() THEN
+    RAISE EXCEPTION '不得對已提交的分錄追加明細：分錄 % 是在不同交易寫入的', journal_key;
   END IF;
 
   SELECT count(*), coalesce(sum(debit), 0), coalesce(sum(credit), 0)
@@ -169,8 +178,6 @@ BEGIN
   END IF;
 
   -- 沖銷：明細必須與原分錄借貸相反。兩個方向各比一次，多一列或少一列都擋下
-  SELECT reverses_journal_id INTO original_id FROM org.ledger_journals
-   WHERE org_id = NEW.org_id AND id = journal_key;
   IF original_id IS NOT NULL THEN
     IF EXISTS (
          (SELECT account, debit, credit FROM org.ledger_entries WHERE org_id = NEW.org_id AND journal_id = journal_key

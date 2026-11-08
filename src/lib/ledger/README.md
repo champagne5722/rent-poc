@@ -14,7 +14,8 @@
 - `tx` 是 `OrgTx`（`withTx` 的 org 或 operator 脈絡）。呼叫端的交易失敗時，分錄一起回滾。
 - 失敗回傳 `LedgerResult` 的錯誤清單，不丟錯，什麼都不寫。資料庫約束與觸發器擋下時仍會丟錯，那代表程式有誤。
 - 錯誤碼多四個：`duplicate_event`（業務事件鍵已寫過）、`journal_not_found`（含別的組織的分錄）、`already_reversed`、`case_mismatch`（`reverseJournal` 的選填 `caseId` 與原分錄不同）。
-- `postedAt` 預設取資料庫的交易時間。只有測試與補登才指定。
+- 登錄時間（`posted_at`）一律取資料庫的交易時間，呼叫端不能指定，報表月份才不會被倒填。
+- 科目類型 `asset`、`liability`、`income` 在資料庫的 CHECK 與 `ACCOUNT_KINDS` 各有一份。新增事件類型不受影響，但事件需要新的科目類型時，要同時改 migration 與 `accounts.ts`。
 - 新增事件類型：寫事件定義，用 `extendLedgerRegistry` 擴充登錄表，當 `postJournal` 的第三個參數傳入。不改 `post.ts`，也不改 migration（資料庫的事件類型欄位是開放字串）。
 - 業務函式（`confirmReceipt()` 等）放在本目錄，組好 payload 再呼叫 `postJournal()`。F 線的 `recordHandoverRelease`、`recordHandoverReceipt` 也放這裡（ADR-0024）。
 

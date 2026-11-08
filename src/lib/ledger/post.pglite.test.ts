@@ -6,7 +6,7 @@ import { newUlid } from '../pg/ulid';
 import { createWithTx, type OrgTx, type WithTx } from '../pg/with-tx';
 import { depositAccount, bankAccount, rentIncomeAccount } from './accounts';
 import { defaultLedgerRegistry } from './events';
-import { postJournal, reverseJournal } from './post';
+import { postJournal, reverseJournal, type ReverseJournalInput } from './post';
 import { asRecord, readAmount } from './payload';
 import { defineLedgerEvent, extendLedgerRegistry } from './registry';
 
@@ -72,16 +72,16 @@ describe('postJournal 與 reverseJournal', () => {
       ]);
     });
 
-    it('postedAt 預設取資料庫的交易時間，也可以明確指定', async () => {
-      const auto = await inOrg(orgA, (tx) => postJournal(tx, receipt()));
-      const fixed = await inOrg(orgA, (tx) => postJournal(tx, receipt({ postedAt: '2026-10-31T16:30:00.000Z' })));
-      expect(auto.ok && fixed.ok).toBe(true);
-      if (!auto.ok || !fixed.ok) return;
-      expect(auto.value.postedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z$/);
+    it('登錄時間一律取資料庫的交易時間，呼叫端傳 postedAt 也沒用', async () => {
+      const result = await inOrg(orgA, (tx) => postJournal(tx, { ...receipt(), postedAt: '2020-01-01T00:00:00.000Z' } as Parameters<typeof postJournal>[1]));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.postedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z$/);
+      expect(result.value.postedAt.startsWith('2020')).toBe(false);
       const stored = await inOrg(orgA, (tx) =>
-        tx.query<{ posted_at: string }>(`SELECT to_char(posted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS') AS posted_at FROM org.ledger_journals WHERE id = $1`, [fixed.value.journalId]),
+        tx.query<{ year: number }>(`SELECT extract(year FROM posted_at)::int AS year FROM org.ledger_journals WHERE id = $1`, [result.value.journalId]),
       );
-      expect(stored.rows[0].posted_at).toBe('2026-10-31T16:30:00');
+      expect(stored.rows[0].year).toBeGreaterThanOrEqual(2026);
     });
 
     it('同一個業務事件 ID 第二次寫入回傳 duplicate_event，不多寫一筆', async () => {
@@ -209,10 +209,8 @@ describe('postJournal 與 reverseJournal', () => {
       if (!result.ok) throw new Error('測試資料寫入失敗');
       return result.value;
     };
-    const reverse = (orgId: string, over: Record<string, unknown>) =>
-      inOrg(orgId, (tx) =>
-        reverseJournal(tx, { journalId: 'overridden', eventId: newUlid(), reason: '登錯', effectiveDate: '2026-11-09', ...over } as Parameters<typeof reverseJournal>[1]),
-      );
+    const reverse = (orgId: string, over: Partial<ReverseJournalInput> & Pick<ReverseJournalInput, 'journalId'>) =>
+      inOrg(orgId, (tx) => reverseJournal(tx, { eventId: newUlid(), reason: '登錯', effectiveDate: '2026-11-09', ...over }));
 
     it('寫入借貸互換的沖銷分錄，帶原因與原分錄 ID', async () => {
       const original = await post();
