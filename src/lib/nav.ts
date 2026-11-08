@@ -20,6 +20,10 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { key: 'design', label: '設計', href: '/design' },
 ];
 
+// 成員管理（MIL-106）：後台殼層與屋主端殼層的 header 各有一個入口，頁面用後台殼層。
+export const MEMBERS_HREF = '/settings/members';
+const MEMBERS_TITLE = '成員管理';
+
 // 常駐建約 CTA 的目的地＝建約 wizard 的第①步（選物件與範本，規格 §7）
 export const CREATE_CONTRACT_HREF = '/contracts/new';
 
@@ -57,6 +61,13 @@ export function resolveOwnerNavKey(pathname: string): OwnerNavKey | null {
     (item) => item.href !== OWNER_ROOT_HREF && matches(pathname, item.href),
   );
   return hit?.key ?? null;
+}
+
+/** 後台 header 的頁面標題：一級頁面用選單標籤，成員管理不在選單內，另外給標題。 */
+export function resolvePageTitle(pathname: string): string {
+  if (matches(pathname, MEMBERS_HREF)) return MEMBERS_TITLE;
+  const key = resolveNavKey(pathname);
+  return NAV_ITEMS.find((item) => item.key === key)?.label ?? '';
 }
 
 /** 依目前路徑決定側邊選單要高亮哪一項；不屬於任何一級頁面時回傳 null。 */

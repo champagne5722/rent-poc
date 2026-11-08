@@ -85,7 +85,8 @@ describe('POST /api/auth/verify', () => {
     await otp('owner@example.com');
     const res = await verify('Owner@Example.com', lastCode());
     expect(res.status).toBe(200);
-    expect(await json(res)).toEqual({ data: { redirectTo: '/' } });
+    // SEED_OWNER_EMAIL 的帳號只有屋主身分，登入後落到 /owner（MIL-106）
+    expect(await json(res)).toEqual({ data: { redirectTo: '/owner' } });
 
     const setCookie = res.headers.get('set-cookie')!;
     expect(setCookie).toMatch(new RegExp(`^${SESSION_COOKIE}=[A-Za-z0-9_-]{43,};`));

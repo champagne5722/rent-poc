@@ -14,7 +14,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import AccountBar from './AccountBar';
 import { isAuthScreen } from '@/lib/auth/auth-screens';
-import { NAV_ITEMS, CREATE_CONTRACT_HREF, resolveNavKey, shellFor, type NavKey } from '@/lib/nav';
+import { NAV_ITEMS, CREATE_CONTRACT_HREF, resolveNavKey, resolvePageTitle, shellFor, type NavKey } from '@/lib/nav';
 
 const NAV_ICONS: Record<NavKey, React.ReactNode> = {
   workbench: <DashboardOutlined />,
@@ -42,7 +42,7 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
   const { token } = theme.useToken();
 
   const selected = resolveNavKey(pathname);
-  const currentLabel = NAV_ITEMS.find((item) => item.key === selected)?.label ?? '';
+  const currentLabel = resolvePageTitle(pathname);
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
