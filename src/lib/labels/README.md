@@ -10,6 +10,7 @@
 | `statutoryTitle` | `(licenseKind: LicenseKind \| LicenseKind[], businessType?: BusinessType) => string` | 合約 PDF 的甲方或受託人稱謂、承租人端的對方稱謂、標章、MIL-109 批次查詢、F 線屋主端畫面 |
 | `practitionerTitle` | `(certificateKind: CertificateKind) => string` | 簽章欄的執業人員稱謂、經理人驗證畫面、審核佇列 |
 | `TERMS` | 常數 | 需要單一詞（例如「出租人」）而非整組標籤的畫面 |
+| `BUSINESS_TYPE_LABELS` | 常數 | 業務類型的畫面標籤：自管、代管、包租。建約 wizard 的分流條件使用 |
 | `LEGACY_TERMS` | 常數 | 之後的舊用詞 lint 測試 |
 
 ## 規則

@@ -13,6 +13,7 @@ import {
   Col,
   DatePicker,
   Descriptions,
+  Flex,
   Form,
   Input,
   InputNumber,
@@ -40,6 +41,7 @@ import dayjs from 'dayjs';
 import type {
   Contract,
   ContractFields,
+  ContractRoutingConditions,
   EquipmentAnnexRow,
   EquipmentVocabularyItem,
   SignatureField,
@@ -47,6 +49,14 @@ import type {
 import { REPAIR_RESPONSIBILITIES, REPAIR_RESPONSIBILITY_LABELS, SIGNER_ROLE_LABELS } from '@/lib/types';
 import { contractEquipmentAnnex, formatEquipmentItem, newAnnexRow } from '@/lib/equipment';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
+import RoutingConditionsPanel from '@/components/RoutingConditionsPanel';
+import {
+  DEFAULT_ROUTING,
+  countFieldsBySeat,
+  evaluateRouting,
+  seatOfField,
+  type SeatView,
+} from '@/lib/signature-routing';
 import {
   DEFAULT_TEMPLATE,
   OPTIONAL_CLAUSES,
@@ -63,13 +73,15 @@ import {
   STEP_FIELDS,
   STEP_PROPERTY,
   STEP_SIGNATURE,
-  TENANT_FIRST_NOTICE,
   WIZARD_STEPS,
+  applyRoutingChange,
   checkSignatureFields,
+  isPartiesOnly,
   mergeEditableFields,
   nextStepBlockReason,
   resumeStepIndex,
-  sendBlockReason,
+  sendBlockReasons,
+  signingSequenceNotice,
   stepStatuses,
   upgradeDraftFields,
 } from '@/lib/contract-wizard';
@@ -306,14 +318,23 @@ function CheckLine({ ok, text }: { ok: boolean; text: string }) {
   );
 }
 
-/** 簽署區檢核：甲乙各至少一框，並列出每一框的簽署方與頁碼。 */
+/**
+ * 簽署區檢核：每個簽署席位至少一框，並列出每一框的簽署方與頁碼。
+ * 兩方簽署序列（沒有執業人員）沿用原本的檢核文字，自管租賃合約的畫面不變。
+ */
 function SignatureChecklist({
+  fields,
   signatureFields,
   withDetail,
 }: {
+  fields: ContractFields;
   signatureFields: SignatureField[];
   withDetail?: boolean;
 }) {
+  const evaluation = evaluateRouting(fields.routing);
+  if (evaluation.ok && !isPartiesOnly(evaluation.seats)) {
+    return <SeatChecklist seats={evaluation.seats} signatureFields={signatureFields} withDetail={withDetail} />;
+  }
   const check = checkSignatureFields(signatureFields);
   return (
     <Space orientation="vertical" size={4}>
@@ -324,6 +345,34 @@ function SignatureChecklist({
           {signatureFields.map((f) => (
             <Tag key={f.id} color={f.signer === 'party_a' ? 'blue' : 'orange'}>
               {SIGNER_ROLE_LABELS[f.signer]}・第 {f.page + 1} 頁
+            </Tag>
+          ))}
+        </Space>
+      )}
+    </Space>
+  );
+}
+
+/** 有執業人員的簽署序列：依簽署順序列出每個席位的簽名框數。 */
+function SeatChecklist({
+  seats,
+  signatureFields,
+  withDetail,
+}: {
+  seats: readonly SeatView[];
+  signatureFields: SignatureField[];
+  withDetail?: boolean;
+}) {
+  return (
+    <Space orientation="vertical" size={4}>
+      {countFieldsBySeat(signatureFields, seats).map(({ seat, count }) => (
+        <CheckLine key={seat.ruleId} ok={count > 0} text={`${seat.fullLabel}簽名框 ${count} 個`} />
+      ))}
+      {withDetail && signatureFields.length > 0 && (
+        <Space size={4} wrap style={{ marginTop: 4 }}>
+          {signatureFields.map((f) => (
+            <Tag key={f.id} color={f.signer === 'party_a' ? 'blue' : f.signer === 'party_b' ? 'orange' : undefined}>
+              {seatOfField(f, seats)?.label ?? SIGNER_ROLE_LABELS[f.signer]}・第 {f.page + 1} 頁
             </Tag>
           ))}
         </Space>
@@ -468,6 +517,11 @@ export default function ContractWizard({ id }: { id: string }) {
   }
 
   const state = { fields, signatureFields: sigFields };
+  const routingEvaluation = evaluateRouting(fields.routing);
+  const seats = routingEvaluation.ok ? routingEvaluation.seats : undefined;
+  const partiesOnly = !seats || isPartiesOnly(seats);
+  // 有執業人員的簽署序列才在確認頁列出擋下原因並停用送簽；兩方序列沿用原本的行為（送簽時才提示）
+  const sendReasons = partiesOnly ? [] : sendBlockReasons(state);
 
   const goNext = async () => {
     const nextFields = step === STEP_FIELDS ? readFields() : fields;
@@ -497,13 +551,21 @@ export default function ContractWizard({ id }: { id: string }) {
     if (await saveDraft(next, sigFields)) message.success('已升版重建，條文換成平台最新版本');
   };
 
+  // 第①步改分流條件：寫入 fields.routing，並依新的簽署序列整理簽署區域，按「下一步」時隨草稿存回
+  const changeRouting = (routing: ContractRoutingConditions) => {
+    const next = applyRoutingChange(fields, sigFields, routing);
+    setFields(next.fields);
+    setSigFields(next.signatureFields);
+    if (next.removed > 0) message.warning(`簽署序列已沒有對應的席位，已移除 ${next.removed} 個簽署區域`);
+  };
+
   const goPrev = () => {
     if (step === STEP_FIELDS) setFields(readFields());
     setStep(step - 1);
   };
 
   const send = async () => {
-    const blocked = sendBlockReason(state);
+    const [blocked] = sendBlockReasons(state);
     if (blocked) {
       message.error(blocked);
       return;
@@ -575,11 +637,21 @@ export default function ContractWizard({ id }: { id: string }) {
       ),
     },
     { key: 'extra', label: '其他約定事項', span: 2, children: fields.extra || '（無）' },
+    ...(seats && !partiesOnly
+      ? [
+          {
+            key: 'routing',
+            label: '簽署序列',
+            span: 2,
+            children: seats.map((seat) => seat.fullLabel).join(' → '),
+          },
+        ]
+      : []),
     {
       key: 'signature',
       label: '簽署區',
       span: 2,
-      children: <SignatureChecklist signatureFields={sigFields} withDetail />,
+      children: <SignatureChecklist fields={fields} signatureFields={sigFields} withDetail />,
     },
   ];
 
@@ -621,6 +693,9 @@ export default function ContractWizard({ id }: { id: string }) {
               },
             ]}
           />
+          <Flex vertical gap={12} style={{ marginBottom: 12 }}>
+            <RoutingConditionsPanel value={fields.routing ?? DEFAULT_ROUTING} onChange={changeRouting} disabled={saving} />
+          </Flex>
           <TemplateNotice />
           <OptionalClauseChecklist fields={fields} onChange={changeClauses} />
           <TemplateUpgradeNotice fields={fields} onUpgrade={upgradeTemplate} disabled={saving} />
@@ -742,17 +817,21 @@ export default function ContractWizard({ id }: { id: string }) {
       {step === STEP_SIGNATURE && (
         <Row gutter={16}>
           <Col span={17}>
-            <Card size="small" title="在預覽上為甲乙雙方各拖放至少一個簽名框">
+            <Card
+              size="small"
+              title={partiesOnly ? '在預覽上為甲乙雙方各拖放至少一個簽名框' : '在預覽上為每個簽署席位各拖放至少一個簽名框'}
+            >
               <SignatureFieldEditor
                 pdfUrl={`/api/contracts/${id}/pdf?v=${pdfVersion}`}
                 value={sigFields}
                 onChange={setSigFields}
+                seats={seats}
               />
             </Card>
           </Col>
           <Col span={7}>
             <Card size="small" title="簽署區檢核">
-              <SignatureChecklist signatureFields={sigFields} withDetail />
+              <SignatureChecklist fields={fields} signatureFields={sigFields} withDetail />
             </Card>
           </Col>
         </Row>
@@ -764,9 +843,24 @@ export default function ContractWizard({ id }: { id: string }) {
             type="info"
             showIcon
             style={{ marginBottom: 12 }}
-            message="乙方先簽"
-            description={TENANT_FIRST_NOTICE}
+            message={partiesOnly ? '乙方先簽' : '依序簽署'}
+            description={signingSequenceNotice(fields)}
           />
+          {sendReasons.length > 0 && (
+            <Alert
+              type="error"
+              showIcon
+              style={{ marginBottom: 12 }}
+              title="目前無法送簽，請先處理下列事項"
+              description={
+                <Space orientation="vertical" size={4}>
+                  {sendReasons.map((reason) => (
+                    <Typography.Text key={reason}>・{reason}</Typography.Text>
+                  ))}
+                </Space>
+              }
+            />
+          )}
           <Descriptions column={2} size="small" bordered items={summaryItems} />
         </Card>
       )}
@@ -783,7 +877,13 @@ export default function ContractWizard({ id }: { id: string }) {
           </Button>
         )}
         {step === STEP_CONFIRM && (
-          <Button type="primary" icon={<SendOutlined />} loading={saving || sending} onClick={send}>
+          <Button
+            type="primary"
+            icon={<SendOutlined />}
+            loading={saving || sending}
+            disabled={sendReasons.length > 0}
+            onClick={send}
+          >
             確認送簽
           </Button>
         )}

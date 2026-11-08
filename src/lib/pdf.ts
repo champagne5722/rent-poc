@@ -3,10 +3,11 @@ import fontkit from '@pdf-lib/fontkit';
 import fs from 'fs';
 import path from 'path';
 import type { ContractFields, EquipmentAnnexRow } from './types';
-import { REPAIR_RESPONSIBILITY_LABELS } from './types';
+import { REPAIR_RESPONSIBILITY_LABELS, SIGNER_ROLE_LABELS } from './types';
 // 條款全文與條號集中在 contract-clauses.ts：wizard 也要顯示同一組條號與勾選條款。
 import { blank, buildContractClauses, usesEquipmentAnnex } from './contract-clauses';
 import { contractEquipmentAnnex } from './equipment';
+import { PARTY_ONLY_SEATS, evaluateRouting, printOrder, type SeatView } from './signature-routing';
 // 版面常數集中在 pdf-layout.ts：簽署區編輯器要用同一組數字推簽名欄的預設落點。
 import {
   ANNEX_CELL_PAD_X,
@@ -171,6 +172,28 @@ function drawEquipmentAnnex(w: Writer, rows: EquipmentAnnexRow[]): void {
   }
 }
 
+/** 依簽署序列取要印的席位，順序是印列順序（甲方、乙方、執業人員），與簽署順序無關。 */
+function printedSeats(fields: ContractFields): SeatView[] {
+  const evaluation = evaluateRouting(fields.routing);
+  return printOrder(evaluation.ok ? evaluation.seats : PARTY_ONLY_SEATS);
+}
+
+/**
+ * 一個簽署欄「簽章：」之前的兩行資料。
+ * 當事人印稱謂、姓名與 Email。執業人員印姓名與法定稱謂、執業主體，不印證號（ADR-0018 決議 14）。
+ * 執業人員尚未指派時姓名與執業主體留底線。指派執業人員屬 MIL-69，那時把姓名與執業主體傳進來。
+ */
+function signatureBlockLines(seat: SeatView, fields: ContractFields): [string, string] {
+  if (seat.role === 'party_a') {
+    return [`${seat.fullLabel}：${blank(fields.landlordName)}`, `Email：${blank(fields.landlordEmail)}`];
+  }
+  if (seat.role === 'party_b') {
+    return [`${seat.fullLabel}：${blank(fields.tenantName)}`, `Email：${blank(fields.tenantEmail)}`];
+  }
+  const title = seat.practitionerTitle ? `（${seat.practitionerTitle}）` : '';
+  return [`${SIGNER_ROLE_LABELS.practitioner}：${blank(null)}${title}`, `執業主體：${blank(null)}`];
+}
+
 export async function generateContractPdf(fields: ContractFields): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
@@ -193,19 +216,19 @@ export async function generateContractPdf(fields: ContractFields): Promise<Uint8
     w.text(clause.body, BODY_SIZE, { indent: 14, gapAfter: 8 });
   }
 
-  // 簽署欄：僅印出雙方基本資料與簽章提示文字；
+  // 簽署欄：依簽署序列的席位印 N 列（ADR-0018 決議 14），只印身分資料與簽章提示文字；
   // 實際簽名位置由房東在簽署區域編輯器拖放決定（見 docs/adr/0004）。
-  // 這段的排版順序被 pdf-layout.ts 的 signatureStampBaselines() 重走一遍以推出預設落點，改這裡要一起改。
+  // 這段的排版順序被 pdf-layout.ts 的 signatureBlockLayout() 重走一遍以推出預設落點，改這裡要一起改。
   // 一律另起一頁：選用條款勾幾條會改變條款區長度，簽署欄若跟著浮動，預設落點就對不上了。
   w.addPage();
   w.y -= SIGN_BLOCK_TOP_GAP;
   w.text('立契約書人', SIGN_HEADING_SIZE, { gapAfter: SIGN_HEADING_GAP_AFTER });
-  w.text(`甲方（出租人）：${blank(fields.landlordName)}`, BODY_SIZE, { gapAfter: SIGN_ROW_GAP_AFTER });
-  w.text(`Email：${blank(fields.landlordEmail)}`, BODY_SIZE, { gapAfter: SIGN_ROW_GAP_AFTER });
-  w.text('簽章：', BODY_SIZE, { gapAfter: SIGN_STAMP_BLANK });
-  w.text(`乙方（承租人）：${blank(fields.tenantName)}`, BODY_SIZE, { gapAfter: SIGN_ROW_GAP_AFTER });
-  w.text(`Email：${blank(fields.tenantEmail)}`, BODY_SIZE, { gapAfter: SIGN_ROW_GAP_AFTER });
-  w.text('簽章：', BODY_SIZE, { gapAfter: SIGN_STAMP_BLANK });
+  for (const seat of printedSeats(fields)) {
+    for (const line of signatureBlockLines(seat, fields)) {
+      w.text(line, BODY_SIZE, { gapAfter: SIGN_ROW_GAP_AFTER });
+    }
+    w.text('簽章：', BODY_SIZE, { gapAfter: SIGN_STAMP_BLANK });
+  }
   w.text(`中華民國　簽約日期以電子簽署完成日為準`, BODY_SIZE);
 
   // 設備附件頁排在簽署欄之後（內政部慣例：附件在本文與簽章之後），所以附件多長都不影響簽名框落點；
