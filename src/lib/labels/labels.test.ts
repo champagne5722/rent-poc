@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { partyLabels, statutoryTitle, type BusinessType, type LicenseKind } from './index';
+import {
+  LEGACY_TERMS,
+  TERMS,
+  partyLabels,
+  practitionerTitle,
+  statutoryTitle,
+  type BusinessType,
+  type CertificateKind,
+  type LicenseKind,
+} from './index';
 
 // 標籤對照表（MIL-122、GLOSSARY「角色與合約地位」、PRD 0.2）。
 // 預期值一律寫成字面值，來源是 GLOSSARY 與 PRD 的對照表。
@@ -73,5 +82,50 @@ describe('statutoryTitle：執業主體的法定稱謂（PRD 0.2）', () => {
 
   it('重複的業別視為一種', () => {
     expect(statutoryTitle(['brokerage', 'brokerage'])).toBe(BROKERAGE);
+  });
+});
+
+describe('practitionerTitle：執業人員的法定稱謂（GLOSSARY「法定稱謂」）', () => {
+  it.each([
+    ['rental_housing_manager', '租賃住宅管理人員'],
+    ['real_estate_broker', '不動產經紀人'],
+    ['real_estate_sales_agent', '不動產經紀營業員'],
+  ] as [CertificateKind, string][])('證書種類 %s → %s', (kind, expected) => {
+    expect(practitionerTitle(kind)).toBe(expected);
+  });
+});
+
+describe('TERMS 與 LEGACY_TERMS', () => {
+  it('TERMS 的甲乙方與四種合約地位用字', () => {
+    expect(TERMS).toEqual({
+      partyA: '甲方',
+      partyB: '乙方',
+      lessor: '出租人',
+      lessee: '承租人',
+      mandator: '委託人',
+      mandatary: '受託人',
+    });
+  });
+
+  it('LEGACY_TERMS 列出各處禁用的舊用詞（MIL-122 AC7）', () => {
+    expect([...LEGACY_TERMS.everywhere]).toEqual(['房東', '租客', '房客', '出租方', '承租方', '業主']);
+    expect([...LEGACY_TERMS.contractPdfAndLessee]).toEqual(['經理人']);
+  });
+
+  it('「業主」是「執業主體」的子字串，所以執業主體列為豁免詞', () => {
+    expect([...LEGACY_TERMS.exemptPhrases]).toEqual(['執業主體']);
+  });
+
+  it('對照表輸出的字都不含舊用詞', () => {
+    const banned = [...LEGACY_TERMS.everywhere, ...LEGACY_TERMS.contractPdfAndLessee];
+    const outputs = [
+      ...Object.values(TERMS),
+      ...(['lease', 'management'] as const).flatMap((t) => Object.values(partyLabels(t))),
+      ...(['management', 'master_lease', 'brokerage'] as const).map((k) => statutoryTitle(k)),
+      ...(['rental_housing_manager', 'real_estate_broker', 'real_estate_sales_agent'] as const).map(
+        practitionerTitle,
+      ),
+    ];
+    for (const out of outputs) for (const term of banned) expect(out).not.toContain(term);
   });
 });
