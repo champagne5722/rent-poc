@@ -4,7 +4,7 @@ import { newUlid } from '../pg/ulid';
 import type { OrgKind, OrgRole } from '../request-context';
 import { AUTH_CONFIG, type AuthConfig } from './config';
 import { hashSessionToken, newSessionToken } from './crypto';
-import type { SessionIdentity } from './account-service';
+import type { IdentityFacts, SessionIdentity } from './account-service';
 
 // session 的資料庫操作（control.sessions）與登入、登出、拒絕的稽核事件。
 //
@@ -138,16 +138,14 @@ export async function dropExpiredSession(tx: Tx<'control'>, sessionId: string): 
   await tx.query('DELETE FROM control.sessions WHERE id = $1', [sessionId]);
 }
 
-export interface MembershipFacts {
-  orgKind?: OrgKind;
-  role?: OrgRole;
-}
+/** 成員資格還在時的事實。org 身分帶組織種類與角色，其餘身分沒有額外事實。 */
+export type MembershipFacts = { kind: 'org'; orgKind: OrgKind; role: OrgRole } | { kind: 'operator' } | { kind: 'party' };
 
 /** 目前身分的成員資格還在不在。回傳 null 代表已失效。在 control 脈絡讀。 */
 export async function recheckMembership(
   tx: Tx<'control'>,
   session: SessionRow,
-  facts: { partyHasCaseMembership(tx: Tx<'control'>, partyId: string): Promise<boolean> },
+  facts: IdentityFacts,
 ): Promise<MembershipFacts | null> {
   const identity = session.identity;
   if (!identity) return null;
@@ -160,7 +158,7 @@ export async function recheckMembership(
       );
       // 平台組織的成員只能以 operator 身分運作，org 身分指到平台組織視同失效
       if (!rows[0] || rows[0].kind === 'platform') return null;
-      return { orgKind: rows[0].kind, role: rows[0].role };
+      return { kind: 'org', orgKind: rows[0].kind, role: rows[0].role };
     }
     case 'operator': {
       const { rows } = await tx.query(
@@ -168,9 +166,9 @@ export async function recheckMembership(
           WHERE m.user_id = $1 AND o.kind = 'platform'`,
         [session.userId],
       );
-      return rows.length > 0 ? {} : null;
+      return rows.length > 0 ? { kind: 'operator' } : null;
     }
     case 'party':
-      return (await facts.partyHasCaseMembership(tx, session.partyId)) ? {} : null;
+      return (await facts.partyHasCaseMembership(tx, session.partyId)) ? { kind: 'party' } : null;
   }
 }

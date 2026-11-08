@@ -270,6 +270,20 @@ describe('每個請求重查', () => {
     expect(events[1]).toMatchObject({ actor_type: 'party', payload: { actor_identity_level: 1, identity: 'org', reason: 'membership_removed' } });
   });
 
+  it('被移出預設組織的 SEED_OWNER_EMAIL 帳號，再登入也不會被加回來（移除是有效的）', async () => {
+    await loginAs('owner@example.com', { env: OWNER_ENV });
+    await kit.asOwner((db) => db.query('DELETE FROM control.org_memberships'));
+    const again = await loginAs('owner@example.com', { env: OWNER_ENV, now: at(120_000) });
+    expect(again.identity).toBeNull();
+    await expect(resolveRequestContext(again.token, at(121_000), 'r')).rejects.toMatchObject({ reason: 'no_identity' });
+  });
+
+  it('環境變數只在帳號第一次建立時生效：帳號已存在後才設 SEED_OWNER_EMAIL 不會補成員', async () => {
+    await loginAs('late@example.com');
+    const later = await loginAs('late@example.com', { env: { SEED_OWNER_EMAIL: 'late@example.com' }, now: at(120_000) });
+    expect(later.identity).toBeNull();
+  });
+
   it('角色被改動時，下一個請求就帶新的角色', async () => {
     const { token } = await loginAs('owner@example.com', { env: OWNER_ENV });
     await kit.asOwner((db) => db.query(`UPDATE control.org_memberships SET role = 'viewer'`));

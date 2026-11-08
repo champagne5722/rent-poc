@@ -16,6 +16,11 @@ export const metadata: Metadata = {
   description: '租賃合約電子簽約與物件管理平台',
 };
 
+/** 登入後回到原本要去的頁面。pathname 來自 proxy，不含查詢字串。 */
+function loginUrl(pathname: string): string {
+  return pathname === '/' ? '/login' : `/login?next=${encodeURIComponent(pathname)}`;
+}
+
 /**
  * 整頁載入時驗證登入（MIL-103）。proxy 只檢查 cookie 在不在，這裡才查 session 與成員資格，
  * 失效的 session（登出後的舊 cookie、被移出組織）在重新整理時被導向登入頁。
@@ -29,7 +34,7 @@ async function requireLogin(): Promise<void> {
   } catch (error) {
     if (!(error instanceof Unauthenticated)) throw error;
     // redirect() 靠丟例外運作，不能放在 try 裡
-    redirect(error.reason === 'no_identity' ? '/login?notice=no-identity' : '/login');
+    redirect(error.reason === 'no_identity' ? '/login?notice=no-identity' : loginUrl(pathname));
   }
 }
 

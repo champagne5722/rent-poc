@@ -12,7 +12,7 @@ export interface Account {
 }
 
 /**
- * 通過驗證碼的 email 找或建帳號（party 與 user），並補上環境變數指定的成員資格。
+ * 通過驗證碼的 email 找或建帳號（party 與 user）。帳號第一次建立時，補上環境變數指定的成員資格。
  * party 可能早就存在：承租人在登入前，送簽時就會依 email 建 party（MIL-115）。
  * 沒有任何成員資格的帳號照樣建立，session 的身分為空，建組織的流程由 MIL-106 接手。
  */
@@ -35,19 +35,24 @@ export async function provisionAccount(
   );
   const partyId = party.rows[0].id;
 
-  await tx.query(
-    `INSERT INTO control.users (id, party_id, created_at) VALUES ($1, $2, $3) ON CONFLICT (party_id) DO NOTHING`,
+  // 只有帳號第一次建立時才補環境變數指定的成員資格。之後 admin 把這個帳號移出組織是有效的，
+  // 不得在下次登入時又被加回來（ADR-0022 決議 2）。所以 SEED_OWNER_EMAIL 必須在該帳號第一次登入前設定
+  const created = await tx.query<{ id: string }>(
+    `INSERT INTO control.users (id, party_id, created_at) VALUES ($1, $2, $3)
+     ON CONFLICT (party_id) DO NOTHING RETURNING id`,
     [newUlid(), partyId, at],
   );
-  const user = await tx.query<{ id: string }>('SELECT id FROM control.users WHERE party_id = $1', [partyId]);
-  const userId = user.rows[0].id;
-
-  for (const grant of bootstrapGrants(email, env)) {
-    await tx.query(
-      `INSERT INTO control.org_memberships (id, org_id, user_id, role, created_at) VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (org_id, user_id) DO NOTHING`,
-      [newUlid(), grant.orgId, userId, grant.role, at],
-    );
+  let userId = created.rows[0]?.id;
+  if (userId) {
+    for (const grant of bootstrapGrants(email, env)) {
+      await tx.query(
+        `INSERT INTO control.org_memberships (id, org_id, user_id, role, created_at) VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (org_id, user_id) DO NOTHING`,
+        [newUlid(), grant.orgId, userId, grant.role, at],
+      );
+    }
+  } else {
+    userId = (await tx.query<{ id: string }>('SELECT id FROM control.users WHERE party_id = $1', [partyId])).rows[0].id;
   }
   return { userId, partyId, displayName: party.rows[0].display_name };
 }

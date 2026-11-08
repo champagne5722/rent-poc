@@ -19,10 +19,10 @@ export async function POST(request: Request): Promise<Response> {
     case 'invalid_email':
       return jsonError(400, '請輸入正確的 email');
     case 'rate_limited':
-      return jsonOk(
-        { error: `寄送太頻繁，請 ${result.retryAfterSec} 秒後再試`, retryAfterSec: result.retryAfterSec },
-        { status: 429, headers: { 'Retry-After': String(result.retryAfterSec) } },
-      );
+      return jsonError(429, `寄送太頻繁，請 ${result.retryAfterSec} 秒後再試`, {
+        extra: { retryAfterSec: result.retryAfterSec },
+        headers: { 'Retry-After': String(result.retryAfterSec) },
+      });
     case 'sent':
       return jsonOk({ data: { sent: true } });
   }

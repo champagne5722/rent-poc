@@ -2,7 +2,7 @@ import { createLogMailer, type LogMailer, type LoggedMail } from './log-mailer';
 import type { Mailer } from './types';
 
 // Mailer 的取得入口。app 內只從這裡拿，不直接建 adapter。
-// 環境變數 MAILER_ADAPTER：目前只有 log（預設）。真實寄信服務還沒選定，設成別的值一律拒絕，
+// 環境變數 MAILER_ADAPTER：目前只有 log（本機預設，正式環境必須明確設定）。真實寄信服務還沒選定，設成別的值一律拒絕，
 // 不得默默退回 log，否則正式環境會把驗證碼寫進 log 而不自知。
 
 export { type MailMessage, type Mailer } from './types';
@@ -18,23 +18,31 @@ export function setMailer(mailer: Mailer | undefined): void {
   g.__rentPocMailerOverride = mailer;
 }
 
-export function mailerAdapterName(env: Readonly<Record<string, string | undefined>> = process.env): string {
-  return env[MAILER_ADAPTER_ENV]?.trim() || 'log';
+/**
+ * 目前要用的 adapter 名稱。本機與測試沒設定時是 log；正式環境（NODE_ENV=production）必須明確設定，
+ * 沒設定回傳 null。否則忘了設定的正式環境會把驗證碼寫進 log，/demo/otp 也會把它們列給任何人看
+ * （log adapter 只因 demo 只放測試資料才可接受，ADR-0022 決議 3）。
+ */
+export function mailerAdapterName(env: Readonly<Record<string, string | undefined>> = process.env): string | null {
+  const name = env[MAILER_ADAPTER_ENV]?.trim();
+  if (name) return name;
+  return env.NODE_ENV === 'production' ? null : 'log';
 }
 
 export function getMailer(env: Readonly<Record<string, string | undefined>> = process.env): Mailer {
   if (g.__rentPocMailerOverride) return g.__rentPocMailerOverride;
   const name = mailerAdapterName(env);
-  if (name !== 'log') throw new Error(`MAILER_ADAPTER=${name} 不存在。目前只有 log，真實寄信服務在 pilot 前選定`);
+  if (name === null) throw new Error(`正式環境必須設定 ${MAILER_ADAPTER_ENV}。目前只有 log，真實寄信服務在 pilot 前選定`);
+  if (name !== 'log') throw new Error(`${MAILER_ADAPTER_ENV}=${name} 不存在。目前只有 log，真實寄信服務在 pilot 前選定`);
   return (g.__rentPocLogMailer ??= createLogMailer());
 }
 
 /**
  * demo 的驗證碼頁用。只有目前的 adapter 是 log 時才回傳信件，否則回傳 null，頁面據此 404。
- * 測試用 setMailer 換成別的 adapter 時也是 null。
+ * 測試用 setMailer 換成別的 adapter 時、正式環境沒明確設定時也是 null。
  */
 export function recentLoggedMail(env: Readonly<Record<string, string | undefined>> = process.env): readonly LoggedMail[] | null {
   if (g.__rentPocMailerOverride) return null;
   if (mailerAdapterName(env) !== 'log') return null;
-  return ((g.__rentPocLogMailer ??= createLogMailer())).recent();
+  return (g.__rentPocLogMailer ??= createLogMailer()).recent();
 }

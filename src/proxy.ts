@@ -31,6 +31,7 @@ export function proxy(request: NextRequest) {
     hasSessionCookie: Boolean(request.cookies.get(SESSION_COOKIE)?.value),
   });
   if (gate === 'unauthorized') {
+    // proxy 不是 route handler，不經 jsonError（那條 ESLint 規則管的是 route）。本文形狀與 jsonError 相同
     return new NextResponse(JSON.stringify({ error: '尚未登入或沒有存取權' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },

@@ -1,6 +1,6 @@
 'use client';
 
-import { Alert, Button, Flex, Table, Typography, theme } from 'antd';
+import { Alert, Button, Col, Flex, Row, Table, Typography, theme } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useRouter } from 'next/navigation';
@@ -19,8 +19,9 @@ export default function DemoOtpList({ rows }: { rows: DemoMailRow[] }) {
   const { token } = theme.useToken();
 
   return (
-    <div style={{ minHeight: '100vh', background: token.colorBgLayout }}>
-    <Flex vertical gap="large" style={{ maxWidth: 800, margin: '0 auto', padding: token.paddingLG }}>
+    <Row justify="center" style={{ minHeight: '100vh', padding: token.paddingLG, background: token.colorBgLayout }}>
+      <Col xs={24} lg={16} xl={12}>
+    <Flex vertical gap="large">
       <Flex justify="space-between" align="center">
         <Typography.Title level={4} style={{ margin: 0 }}>
           最近的驗證碼
@@ -32,7 +33,7 @@ export default function DemoOtpList({ rows }: { rows: DemoMailRow[] }) {
       <Alert
         type="warning"
         showIcon
-        message="這一頁只在寄信用 log adapter 時存在"
+        title="這一頁只在寄信用 log adapter 時存在"
         description="只因 demo 只放測試資料才可接受。接上真實寄信服務後這一頁會消失。伺服器重啟後清單會清空。"
       />
       <Table<DemoMailRow>
@@ -54,6 +55,7 @@ export default function DemoOtpList({ rows }: { rows: DemoMailRow[] }) {
         ]}
       />
     </Flex>
-    </div>
+      </Col>
+    </Row>
   );
 }

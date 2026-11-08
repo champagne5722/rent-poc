@@ -32,9 +32,7 @@ export default function AccountBar() {
       {name && (
         <Flex align="center" gap="small">
           <UserOutlined aria-hidden />
-          <Typography.Text ellipsis={{ tooltip: name }} style={{ maxWidth: 280 }}>
-            {name}
-          </Typography.Text>
+          <Typography.Text>{name}</Typography.Text>
         </Flex>
       )}
       <LogoutButton />

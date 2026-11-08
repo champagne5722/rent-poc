@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { connection } from 'next/server';
 import DemoOtpList, { type DemoMailRow } from '@/components/DemoOtpList';
+import { AUTH_CONFIG } from '@/lib/auth/config';
 import { recentLoggedMail } from '@/lib/mailer';
 
 export const metadata: Metadata = { title: 'demo 驗證碼｜租房雲端管理平台' };
@@ -19,7 +20,7 @@ export default async function DemoOtpPage() {
     sentAt: mail.sentAt.toISOString(),
     to: mail.to,
     kind: mail.kind,
-    code: mail.text.match(/\d{6}/)?.[0] ?? null,
+    code: mail.text.match(new RegExp(`\\d{${AUTH_CONFIG.otpLength}}`))?.[0] ?? null,
   }));
   return <DemoOtpList rows={rows} />;
 }

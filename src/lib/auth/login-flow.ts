@@ -138,12 +138,12 @@ export async function resolveRequestContext(
     case 'ok': {
       const { session, membership } = checked;
       const base = { userId: session.userId, partyId: session.partyId, requestId };
-      const identity = session.identity!;
-      if (identity.kind === 'org') {
-        // recheckMembership 對 org 身分一定回傳 orgKind 與 role
-        return { kind: 'org', orgId: identity.orgId, orgKind: membership.orgKind!, role: membership.role!, ...base };
+      if (membership.kind === 'org' && session.identity?.kind === 'org') {
+        return { kind: 'org', orgId: session.identity.orgId, orgKind: membership.orgKind, role: membership.role, ...base };
       }
-      return { kind: identity.kind, ...base };
+      // org 以外的身分沒有組織欄位。org 身分一定走上面那一支，recheckMembership 保證兩者同時成立
+      if (membership.kind === 'org') throw new Error('成員資格與 session 身分不一致');
+      return { kind: membership.kind, ...base };
     }
   }
 }

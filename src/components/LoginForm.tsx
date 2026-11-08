@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Alert, Button, Card, Flex, Form, Input, Typography, theme } from 'antd';
+import { Alert, Button, Card, Col, Flex, Form, Input, Row, Typography, theme } from 'antd';
+import { AUTH_CONFIG } from '@/lib/auth/config';
 import LogoutButton from './LogoutButton';
 
 // 登入頁（MIL-103，ADR-0022）：兩步。第一步輸入 email 寄驗證碼，第二步輸入 6 碼驗證碼。
 // 不論 email 有沒有帳號，第一步的回應與畫面都相同。驗證碼錯誤、過期、用過、錯太多次，畫面訊息也相同。
 
-const OTP_LENGTH = 6; // 與 src/lib/auth/config.ts 的 otpLength 一致（假設值）
-const RESEND_SECONDS = 60; // 與 otpResendIntervalMs 一致（假設值）
+// 數字取自 src/lib/auth/config.ts（假設值）
+const OTP_LENGTH = AUTH_CONFIG.otpLength;
+const RESEND_SECONDS = Math.round(AUTH_CONFIG.otpResendIntervalMs / 1000);
 
 type Step = 'email' | 'code';
 
@@ -82,12 +84,13 @@ export default function LoginForm({ next, noIdentity }: { next: string; noIdenti
   }
 
   return (
-    <Flex
+    <Row
       justify="center"
-      align="center"
+      align="middle"
       style={{ minHeight: '100vh', padding: token.paddingMD, background: token.colorBgLayout }}
     >
-      <Card style={{ width: '100%', maxWidth: 400 }}>
+      <Col xs={24} sm={14} md={10} lg={8} xl={6}>
+      <Card>
         <Flex vertical gap="large">
           <Flex vertical gap="small">
             <Typography.Title level={4} style={{ margin: 0 }}>
@@ -96,18 +99,18 @@ export default function LoginForm({ next, noIdentity }: { next: string; noIdenti
             <Typography.Text type="secondary">
               {noIdentity
                 ? '你已用 email 驗證登入。'
-                : step === 'email' ? '輸入 email，我們會寄 6 碼驗證碼給你。' : `驗證碼已寄出。請輸入 ${email} 收到的 6 碼驗證碼。`}
+                : step === 'email' ? `輸入 email，我們會寄 ${OTP_LENGTH} 碼驗證碼給你。` : `驗證碼已寄出。請輸入 ${email} 收到的 ${OTP_LENGTH} 碼驗證碼。`}
             </Typography.Text>
           </Flex>
 
-          {error && <Alert type="error" showIcon message={error} />}
+          {error && <Alert type="error" showIcon title={error} />}
 
           {noIdentity ? (
             <Flex vertical gap="middle">
               <Alert
                 type="info"
                 showIcon
-                message="這個帳號還沒有加入任何組織"
+                title="這個帳號還沒有加入任何組織"
                 description="請洽組織管理員邀請你加入。自行建立屋主或經理人組織的功能還在準備中。"
               />
               <LogoutButton type="default" label="登出並改用其他 email" />
@@ -164,6 +167,7 @@ export default function LoginForm({ next, noIdentity }: { next: string; noIdenti
           )}
         </Flex>
       </Card>
-    </Flex>
+      </Col>
+    </Row>
   );
 }
