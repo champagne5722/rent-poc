@@ -55,10 +55,35 @@ export interface EquipmentAnnexRow {
   note: string;
 }
 
+/** 錨點狀態（ADR-0013）。待驗證是還沒有建號、以門牌登錄。 */
+export const ANCHOR_STATUSES = ['pending_verification', 'keyed', 'merged', 'retired'] as const;
+export type AnchorStatus = (typeof ANCHOR_STATUSES)[number];
+
+/**
+ * 物件頁的「產權」區塊用的產權錨點摘要（MIL-143）。不含錨點 ID：錨點是跨組織的全域資料，畫面用不到。
+ * 待驗證的錨點五欄鍵與名稱都是 null。名稱一律是「臺」，來自 registry 的參照表。
+ */
+export interface PropertyAnchor {
+  status: AnchorStatus;
+  city_code: string | null;
+  town_code: string | null;
+  section_code: string | null;
+  building_no: string | null;
+  sub_no: string | null;
+  city_name: string | null;
+  town_name: string | null;
+  /** 段名加小段名，例如「龍泉 一」。 */
+  section_name: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
 export interface Property {
   id: string; // ULID（ADR-0012 決議 9）
   // 物件持有的租賃單位，建物件時由 registry 同交易建立，不得為空（ADR-0013）
   rental_unit_id: string;
+  /** 租賃單位所屬的產權錨點。讀不到時是 null（不應發生，畫面照樣能顯示）。 */
+  anchor: PropertyAnchor | null;
   name: string;
   address: string;
   type: PropertyType;

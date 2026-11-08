@@ -3,7 +3,9 @@ import { parseStoredEquipment } from '@/lib/equipment';
 import { newUlid } from '@/lib/pg/ulid';
 import type { OrgTx } from '@/lib/pg/with-tx';
 import { normalizeAddress } from '@/lib/registry/address-match';
-import type { Property, PropertyType } from '@/lib/types';
+import { sectionLabel } from '@/lib/registry/section-code';
+import type { AnchorKey } from '@/lib/registry/section-code';
+import type { AnchorStatus, Property, PropertyAnchor, PropertyType } from '@/lib/types';
 import type { PropertyInput } from './input';
 import { ensureNames } from './vocabulary';
 
@@ -29,10 +31,88 @@ interface Row {
 
 const COLUMNS = 'id, rental_unit_id, name, address, type, size, default_rent, note, equipment, created_at, updated_at';
 
-function toProperty(row: Row): Property {
+/** 補建號與建立物件時填了鍵，都會遇到的錯誤。route 轉成固定的 HTTP 回應。 */
+export class AnchorKeyCollisionError extends Error {
+  constructor() {
+    // 固定訊息，不帶鍵與對方的任何資料。B3（MIL-144）把這條路徑換成送審核台的流程
+    super('撞號處理尚未實作');
+  }
+}
+export class AnchorAlreadyKeyedError extends Error {
+  constructor() {
+    super('產權已建號，不能再補建號');
+  }
+}
+/** DB 端的鍵檢查沒過（段碼表與 seed 不同步、建號格式）。純函式已先驗過，所以正常不會發生。 */
+export class AnchorKeyRejectedError extends Error {}
+
+function rethrowAnchorError(error: unknown): never {
+  const { code, message } = error as { code?: string; message?: string };
+  if (code === '23505') throw new AnchorKeyCollisionError();
+  if (code === '55000') throw new AnchorAlreadyKeyedError();
+  if (code === '22023') throw new AnchorKeyRejectedError(message);
+  throw error;
+}
+
+interface AnchorRow {
+  unit_id: string;
+  anchor_id: string;
+  status: AnchorStatus;
+  city_code: string | null;
+  town_code: string | null;
+  section_code: string | null;
+  building_no: string | null;
+  sub_no: string | null;
+  city_name: string | null;
+  town_name: string | null;
+  section_name: string | null;
+  section_sub_name: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+interface UnitAnchor {
+  anchorId: string;
+  anchor: PropertyAnchor;
+}
+
+/** 讀租賃單位所屬的錨點。registry 只能經函式讀，函式只回呼叫者組織有物件指向的單位。 */
+async function fetchAnchors(tx: OrgTx, unitIds: string[]): Promise<Map<string, UnitAnchor>> {
+  if (unitIds.length === 0) return new Map();
+  const { rows } = await tx.query<AnchorRow>('SELECT * FROM registry.get_anchors_for_units($1::text[])', [unitIds]);
+  return new Map(
+    rows.map((r) => [
+      r.unit_id,
+      {
+        anchorId: r.anchor_id,
+        anchor: {
+          status: r.status,
+          city_code: r.city_code,
+          town_code: r.town_code,
+          section_code: r.section_code,
+          building_no: r.building_no,
+          sub_no: r.sub_no,
+          city_name: r.city_name,
+          town_name: r.town_name,
+          section_name: r.section_name === null ? null : sectionLabel({ name: r.section_name, subName: r.section_sub_name ?? '' }),
+          latitude: r.latitude,
+          longitude: r.longitude,
+        },
+      },
+    ]),
+  );
+}
+
+/** 讀一個租賃單位的錨點。讀不到（單位不是呼叫者組織的）回 undefined。 */
+async function fetchUnitAnchor(tx: OrgTx, unitId: string): Promise<UnitAnchor | undefined> {
+  return (await fetchAnchors(tx, [unitId])).get(unitId);
+}
+
+function toProperty(row: Row, anchor: PropertyAnchor | null): Property {
   return {
     id: row.id,
     rental_unit_id: row.rental_unit_id,
+    anchor,
     name: row.name,
     address: row.address,
     type: row.type,
@@ -48,25 +128,32 @@ function toProperty(row: Row): Property {
 /** 新的在前。ULID 隨時間遞增，所以 id DESC 就是建立時間由新到舊。 */
 export async function listProperties(tx: OrgTx): Promise<Property[]> {
   const { rows } = await tx.query<Row>(`SELECT ${COLUMNS} FROM org.properties ORDER BY id DESC`);
-  return rows.map(toProperty);
+  const anchors = await fetchAnchors(tx, rows.map((r) => r.rental_unit_id));
+  return rows.map((r) => toProperty(r, anchors.get(r.rental_unit_id)?.anchor ?? null));
 }
 
 export async function getProperty(tx: OrgTx, id: string): Promise<Property | null> {
   const { rows } = await tx.query<Row>(`SELECT ${COLUMNS} FROM org.properties WHERE id = $1`, [id]);
-  return rows[0] ? toProperty(rows[0]) : null;
+  if (!rows[0]) return null;
+  return toProperty(rows[0], (await fetchUnitAnchor(tx, rows[0].rental_unit_id))?.anchor ?? null);
 }
 
-/** 建立物件，回傳物件 ID。錨點、0000 單位、物件在同一個交易，任一失敗一起回滾。 */
+/**
+ * 建立物件，回傳物件 ID。錨點、0000 單位、物件在同一個交易，任一失敗一起回滾。
+ * 有鍵時最後補建號：撞號丟 AnchorKeyCollisionError，呼叫端必須讓交易回滾，才不會留下半成品。
+ */
 export async function createProperty(tx: OrgTx, input: PropertyInput): Promise<string> {
   await ensureNames(tx, input.equipment.map((i) => i.name));
 
   const anchorId = newUlid();
   const unitId = newUlid();
-  await tx.query('SELECT * FROM registry.create_pending_anchor($1, $2, $3, $4)', [
+  await tx.query('SELECT * FROM registry.create_pending_anchor($1, $2, $3, $4, $5, $6)', [
     anchorId,
     unitId,
     input.address,
     normalizeAddress(input.address).normalized,
+    input.anchor?.latitude ?? null,
+    input.anchor?.longitude ?? null,
   ]);
 
   const id = newUlid();
@@ -85,9 +172,49 @@ export async function createProperty(tx: OrgTx, input: PropertyInput): Promise<s
       JSON.stringify(input.equipment),
     ],
   );
+  // 補建號要在物件列之後：函式確認呼叫者組織有物件指向這個錨點
+  if (input.anchor?.key) await assignAnchorKey(tx, anchorId, input.anchor.key);
   // 稽核與業務資料同一個交易。payload 不放名稱與地址：canonical 寫入後刪不掉（ADR-0019 決議 5）
   await appendAudit(tx, { action: 'property.create', object: { type: 'property', id }, payload: { rental_unit_id: unitId } });
   return id;
+}
+
+async function assignAnchorKey(tx: OrgTx, anchorId: string, key: AnchorKey): Promise<void> {
+  try {
+    await tx.query('SELECT registry.assign_anchor_key($1, $2, $3, $4, $5, $6)', [
+      anchorId,
+      key.cityCode,
+      key.townCode,
+      key.sectionCode,
+      key.buildingNo,
+      key.subNo,
+    ]);
+  } catch (error) {
+    rethrowAnchorError(error);
+  }
+}
+
+/**
+ * 補建號：待驗證的錨點補上鍵，沒有撞號時轉已建號。回傳新的產權摘要。找不到物件（含別的組織的）回 null。
+ * 撞號丟 AnchorKeyCollisionError，已建號丟 AnchorAlreadyKeyedError。呼叫端必須讓交易回滾，
+ * 因為 PostgreSQL 在函式丟錯後交易已中止。
+ */
+export async function setPropertyAnchorKey(tx: OrgTx, propertyId: string, key: AnchorKey): Promise<PropertyAnchor | null> {
+  const { rows } = await tx.query<{ rental_unit_id: string }>(
+    'SELECT rental_unit_id FROM org.properties WHERE id = $1 FOR UPDATE',
+    [propertyId],
+  );
+  if (!rows[0]) return null;
+  const unitId = rows[0].rental_unit_id;
+  const current = await fetchUnitAnchor(tx, unitId);
+  if (!current) return null;
+  await assignAnchorKey(tx, current.anchorId, key);
+  await appendAudit(tx, {
+    action: 'property.anchor_key',
+    object: { type: 'property', id: propertyId },
+    payload: { rental_unit_id: unitId },
+  });
+  return (await fetchUnitAnchor(tx, unitId))?.anchor ?? null;
 }
 
 /** 修改物件。找不到（含別的組織的物件）回 null。不改租賃單位。 */
@@ -95,7 +222,7 @@ export async function updateProperty(tx: OrgTx, id: string, input: PropertyInput
   // 鎖住這一列再讀：兩個修改重疊時，後到的看到的是前一個提交後的值，稽核的 changed 才不會漏
   const { rows: current } = await tx.query<Row>(`SELECT ${COLUMNS} FROM org.properties WHERE id = $1 FOR UPDATE`, [id]);
   if (!current[0]) return null;
-  const before = toProperty(current[0]);
+  const before = toProperty(current[0], null);
   await ensureNames(tx, input.equipment.map((i) => i.name));
   const { rows } = await tx.query<Row>(
     `UPDATE org.properties
@@ -106,7 +233,7 @@ export async function updateProperty(tx: OrgTx, id: string, input: PropertyInput
     [id, input.name, input.address, input.type ?? null, input.size, input.default_rent, input.note, JSON.stringify(input.equipment)],
   );
   if (!rows[0]) return null;
-  const after = toProperty(rows[0]);
+  const after = toProperty(rows[0], (await fetchUnitAnchor(tx, rows[0].rental_unit_id))?.anchor ?? null);
   // 沒有任何欄位改變時不寫事件：只會增加鏈頭的鎖競爭與雜訊
   const changed = changedFields(before, after);
   if (changed.length > 0) {

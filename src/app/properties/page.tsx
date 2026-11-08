@@ -14,14 +14,19 @@ import {
   Space,
   Table,
   Tag,
+  theme,
   Typography,
 } from 'antd';
 import { PlusOutlined, FileAddOutlined } from '@ant-design/icons';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { EquipmentItem, EquipmentVocabularyItem, Property } from '@/lib/types';
 import { PROPERTY_TYPES } from '@/lib/types';
 import { formatEquipmentItem } from '@/lib/equipment';
 import { shortUlid } from '@/lib/pg/ulid';
+import { AnchorSection } from '@/components/AnchorFields';
+import { anchorSummary, ANCHOR_STATUS_COLORS, ANCHOR_STATUS_LABELS } from '@/lib/properties/anchor-display';
+import { buildAnchorPayload } from '@/lib/properties/anchor-form';
 
 interface EquipmentPickerProps {
   vocabulary: EquipmentVocabularyItem[];
@@ -109,6 +114,7 @@ function EquipmentPicker({ vocabulary, value = [], onChange, onAddCustom }: Equi
 function PropertiesPage() {
   const { message } = AntApp.useApp();
   const router = useRouter();
+  const { token } = theme.useToken();
   const [items, setItems] = useState<Property[]>([]);
   const [vocabulary, setVocabulary] = useState<EquipmentVocabularyItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,17 +160,22 @@ function PropertiesPage() {
     if (target === 'new') {
       form.resetFields();
     } else {
-      form.setFieldsValue(target);
+      // 產權不在這裡改：補建號在詳情頁，已建號的鍵由平台營運者更正
+      const { anchor: _anchor, ...rest } = target;
+      void _anchor;
+      form.setFieldsValue(rest);
     }
   };
 
   const save = async () => {
     const values = await form.validateFields();
     const isNew = editing === 'new';
+    // 只有建立時送產權；修改物件不動產權錨點
+    const payload = isNew ? { ...values, anchor: buildAnchorPayload(values.anchor) } : { ...values, anchor: undefined };
     const res = await fetch(isNew ? '/api/properties' : `/api/properties/${(editing as Property).id}`, {
       method: isNew ? 'POST' : 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(values),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       message.error((await res.json()).error ?? '儲存失敗');
@@ -229,8 +240,28 @@ function PropertiesPage() {
               </Typography.Text>
             ),
           },
-          { title: '名稱', dataIndex: 'name' },
+          {
+            title: '名稱',
+            dataIndex: 'name',
+            render: (name: string, record) => (
+              <Link href={`/properties/${record.id}`} style={{ color: token.colorPrimary }}>
+                {name}
+              </Link>
+            ),
+          },
           { title: '地址', dataIndex: 'address' },
+          {
+            title: '產權',
+            dataIndex: 'anchor',
+            render: (_: unknown, record) =>
+              record.anchor?.status === 'keyed' ? (
+                anchorSummary(record.anchor)
+              ) : (
+                <Tag color={ANCHOR_STATUS_COLORS[record.anchor?.status ?? 'pending_verification']}>
+                  {ANCHOR_STATUS_LABELS[record.anchor?.status ?? 'pending_verification']}
+                </Tag>
+              ),
+          },
           { title: '型態', dataIndex: 'type', width: 100 },
           { title: '坪數', dataIndex: 'size', width: 80, render: (v) => v ?? '—' },
           {
@@ -283,6 +314,7 @@ function PropertiesPage() {
         onCancel={() => setEditing(null)}
         okText="儲存"
         cancelText="取消"
+        width={720}
         forceRender
       >
         <Form form={form} layout="vertical" initialValues={{ type: '整層住家', equipment: [] }}>
@@ -309,6 +341,11 @@ function PropertiesPage() {
           <Form.Item name="note" label="備註">
             <Input.TextArea rows={2} />
           </Form.Item>
+          {editing === 'new' ? (
+            <AnchorSection form={form} />
+          ) : (
+            <Typography.Text type="secondary">產權在物件詳情頁查看與補建號。</Typography.Text>
+          )}
         </Form>
       </Modal>
     </>

@@ -4,7 +4,17 @@ import { createPgTestDatabase, type PgTestDatabase } from '@/lib/pg/pg-database-
 import { newUlid } from '@/lib/pg/ulid';
 import { createWithTx, type WithTx } from '@/lib/pg/with-tx';
 import { EQUIPMENT_OPTIONS } from '@/lib/types';
-import { createProperty, deleteProperty, getProperty, listProperties, listVocabulary, parsePropertyInput, updateProperty } from '.';
+import {
+  AnchorKeyCollisionError,
+  createProperty,
+  deleteProperty,
+  getProperty,
+  listProperties,
+  listVocabulary,
+  parsePropertyInput,
+  setPropertyAnchorKey,
+  updateProperty,
+} from '.';
 
 // 真實 PostgreSQL（pg 驅動、連線池 2 條、app_rw）。PGlite 與 pg 的型別轉換不完全相同：
 // timestamptz、jsonb、text[]、count(*)。route 層測試用 PGlite，這裡確認 pg 路徑一樣。
@@ -37,6 +47,7 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
     expect(created).toEqual({
       id,
       rental_unit_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/),
+      anchor: expect.objectContaining({ status: 'pending_verification', building_no: null, latitude: null }),
       name: '物件',
       address: '台北市大安區某路 1 號',
       type: '整層住家',
@@ -101,5 +112,55 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
     for (const r of results) expect(r.filter((v) => !v.is_custom)).toHaveLength(EQUIPMENT_OPTIONS.length);
     const final = await withTx({ kind: 'org', orgId: org }, (tx) => listVocabulary(tx));
     expect(final).toHaveLength(EQUIPMENT_OPTIONS.length);
+  });
+
+  describe('產權錨點（MIL-143）', () => {
+    const key = { city: 'A', town: '02', section: '0021', buildingNo: '4242', subNo: '' };
+    const keyedInput = (buildingNo: string) => input({ anchor: { key: { ...key, buildingNo } } });
+
+    it('建立時填鍵：已建號，名稱取自參照表；補建號後一樣；pg 的座標是 number', async () => {
+      const id = await withTx({ kind: 'org', orgId: orgA }, (tx) =>
+        createProperty(tx, input({ anchor: { key: { ...key, buildingNo: '4201' }, latitude: 25.0338, longitude: 121.5435 } })),
+      );
+      const keyed = await withTx({ kind: 'org', orgId: orgA }, (tx) => getProperty(tx, id));
+      expect(keyed!.anchor).toEqual({
+        status: 'keyed',
+        city_code: 'A',
+        town_code: '02',
+        section_code: '0021',
+        building_no: '04201',
+        sub_no: '000',
+        city_name: '臺北市',
+        town_name: '大安區',
+        section_name: '龍泉 一',
+        latitude: 25.0338,
+        longitude: 121.5435,
+      });
+
+      const pendingId = await withTx({ kind: 'org', orgId: orgA }, (tx) => createProperty(tx, input()));
+      const after = await withTx({ kind: 'org', orgId: orgA }, (tx) =>
+        setPropertyAnchorKey(tx, pendingId, { cityCode: 'A', townCode: '02', sectionCode: '0021', buildingNo: '04202', subNo: '000' }),
+      );
+      expect(after).toMatchObject({ status: 'keyed', building_no: '04202' });
+    });
+
+    it('撞號丟固定錯誤，交易回滾不留半成品', async () => {
+      await withTx({ kind: 'org', orgId: orgA }, (tx) => createProperty(tx, keyedInput('4243')));
+      const before = (await dbh.owner.query('SELECT count(*)::int AS n FROM registry.anchors')).rows;
+      await expect(withTx({ kind: 'org', orgId: orgB }, (tx) => createProperty(tx, keyedInput('4243')))).rejects.toThrow(
+        AnchorKeyCollisionError,
+      );
+      expect((await dbh.owner.query('SELECT count(*)::int AS n FROM registry.anchors')).rows).toEqual(before);
+    });
+
+    it('兩個交易同時搶同一個鍵：一個成功，另一個也得到固定的撞號錯誤，不是唯一索引的錯誤', async () => {
+      const results = await Promise.allSettled([
+        withTx({ kind: 'org', orgId: orgA }, (tx) => createProperty(tx, keyedInput('4244'))),
+        withTx({ kind: 'org', orgId: orgB }, (tx) => createProperty(tx, keyedInput('4244'))),
+      ]);
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      const failed = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+      expect(failed.reason).toBeInstanceOf(AnchorKeyCollisionError);
+    });
   });
 });

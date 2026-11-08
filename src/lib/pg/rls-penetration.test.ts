@@ -1,7 +1,14 @@
 import type { PGliteInterface } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pgliteDriver } from './drivers';
-import { ORG_TABLE_CASES, tablesWithoutCase } from './rls-cases';
+import {
+  ORG_TABLE_CASES,
+  REGISTRY_FUNCTION_CASES,
+  REGISTRY_TABLE_CASES,
+  registryFunctionsWithoutCase,
+  registryTablesWithoutCase,
+  tablesWithoutCase,
+} from './rls-cases';
 import { asRole, createTestDb, type TestDb } from './test-harness';
 import { newUlid } from './ulid';
 import { createWithTx, type Tx, type WithTx } from './with-tx';
@@ -98,8 +105,14 @@ describe.each(Object.entries(ORG_TABLE_CASES))('%s 的跨組織探測', (table, 
     const id = await seedA();
     expect((await asB((tx) => tx.query(`SELECT id FROM ${table} WHERE id = $1`, [id]))).rows).toEqual([]);
     expect((await asB((tx) => tx.query(`SELECT count(*)::int AS n FROM ${table}`))).rows).toEqual([{ n: 0 }]);
-    expect((await asB((tx) => tx.query(`UPDATE ${table} SET org_id = org_id WHERE id = $1 RETURNING id`, [id]))).rows).toEqual([]);
-    expect((await asB((tx) => tx.query(`DELETE FROM ${table} WHERE id = $1 RETURNING id`, [id]))).rows).toEqual([]);
+    if (testCase.appendOnly) {
+      // 只增不改的表：app_rw 沒有 UPDATE 與 DELETE 權限，連別的組織的列也不必碰就被擋
+      await expect(asB((tx) => tx.query(`UPDATE ${table} SET org_id = org_id WHERE id = $1 RETURNING id`, [id]))).rejects.toThrow(/permission denied/);
+      await expect(asB((tx) => tx.query(`DELETE FROM ${table} WHERE id = $1 RETURNING id`, [id]))).rejects.toThrow(/permission denied/);
+    } else {
+      expect((await asB((tx) => tx.query(`UPDATE ${table} SET org_id = org_id WHERE id = $1 RETURNING id`, [id]))).rows).toEqual([]);
+      expect((await asB((tx) => tx.query(`DELETE FROM ${table} WHERE id = $1 RETURNING id`, [id]))).rows).toEqual([]);
+    }
     const stillThere = await withTx({ kind: 'org', orgId: orgA }, (tx) => tx.query(`SELECT id FROM ${table} WHERE id = $1`, [id]));
     expect(stillThere.rows).toHaveLength(1);
   });
@@ -108,7 +121,7 @@ describe.each(Object.entries(ORG_TABLE_CASES))('%s 的跨組織探測', (table, 
     const id = await seedA();
     await expect(
       withTx({ kind: 'org', orgId: orgA }, (tx) => tx.query(`UPDATE ${table} SET org_id = $2 WHERE id = $1`, [id, orgB])),
-    ).rejects.toThrow(/row-level security/);
+    ).rejects.toThrow(testCase.appendOnly ? /permission denied/ : /row-level security/);
   });
 
   it('在自己的脈絡寫入別的組織的 org_id，被 RLS 擋下', async () => {
@@ -131,4 +144,84 @@ describe.each(Object.entries(ORG_TABLE_CASES))('%s 的跨組織探測', (table, 
     await seedA();
     await expect(asB((tx) => testCase.seed(tx, orgB))).resolves.toBeTruthy();
   });
+});
+
+// registry 的表與函式（MIL-143）。registry 不掛組織 RLS，隔離靠「app_rw 不能直接碰表」與「函式不分辨別人的 ID 與不存在的 ID」。
+describe('registry 的表與函式', () => {
+  const REGISTRY_TABLES_SQL = `SELECT n.nspname || '.' || c.relname AS name
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'registry' AND c.relkind IN ('r', 'p') ORDER BY 1`;
+  // app_rw 能執行的函式：以 has_function_privilege 判斷，所以觸發器函式（沒有授權）不列入
+  const REGISTRY_FUNCTIONS_SQL = `SELECT n.nspname || '.' || p.proname AS name
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'registry' AND has_function_privilege('app_rw', p.oid, 'EXECUTE') ORDER BY 1`;
+
+  const names = async (sql: string) => (await testDb.base.query<{ name: string }>(sql)).rows.map((r) => r.name);
+
+  it('registry 的每張表都登記了案例，也沒有登記不存在的表', async () => {
+    const tables = await names(REGISTRY_TABLES_SQL);
+    expect(registryTablesWithoutCase(tables), '這些 registry 表沒有案例，請到 src/lib/pg/rls-cases.ts 登記').toEqual([]);
+    expect(Object.keys(REGISTRY_TABLE_CASES).filter((t) => !tables.includes(t))).toEqual([]);
+  });
+
+  it('app_rw 能執行的每個 registry 函式都登記了案例，也沒有登記不存在的函式', async () => {
+    const functions = await names(REGISTRY_FUNCTIONS_SQL);
+    expect(registryFunctionsWithoutCase(functions), '這些 registry 函式沒有案例，請到 src/lib/pg/rls-cases.ts 登記').toEqual([]);
+    expect(Object.keys(REGISTRY_FUNCTION_CASES).filter((f) => !functions.includes(f))).toEqual([]);
+  });
+
+  it.each(Object.keys(REGISTRY_TABLE_CASES))('app_rw 不能直接讀寫 %s', async (table) => {
+    const db = await testDb.fresh();
+    try {
+      await expect(db.query(`SELECT * FROM ${table}`)).rejects.toThrow(/permission denied/);
+      await expect(db.query(`DELETE FROM ${table}`)).rejects.toThrow(/permission denied/);
+      await expect(db.query(`INSERT INTO ${table} DEFAULT VALUES`)).rejects.toThrow(/permission denied/);
+      // 欄位名稱各表不同，UPDATE 改看權限本身：四種權限都沒有，連欄位層級的權限也沒有
+      const { rows } = await db.query<{ priv: string; ok: boolean }>(
+        `SELECT p AS priv,
+                has_table_privilege('app_rw', $1, p)
+                  OR (p IN ('SELECT', 'INSERT', 'UPDATE') AND has_any_column_privilege('app_rw', $1, p)) AS ok
+           FROM unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE']) AS p`,
+        [table],
+      );
+      expect(rows.filter((r) => r.ok)).toEqual([]);
+    } finally {
+      await db.close();
+    }
+  });
+
+  describe.each(Object.entries(REGISTRY_FUNCTION_CASES).filter(([, c]) => c.probe !== null))(
+    '%s 的跨組織探測',
+    (_name, fnCase) => {
+      it('B 組織探測 A 組織的 ID，與探測不存在的 ID，結果逐位元相同', async () => {
+        const db = await testDb.fresh();
+        try {
+          const withTx = createWithTx(pgliteDriver(db));
+          const orgA = newUlid();
+          const orgB = newUlid();
+          await asRole(db, 'app_owner', () =>
+            db.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, 'A', 'owner'), ($2, 'B', 'owner')`, [orgA, orgB]),
+          );
+          const target = await withTx({ kind: 'org', orgId: orgA }, async (tx) => {
+            const anchorId = newUlid();
+            const unitId = newUlid();
+            await tx.query('SELECT * FROM registry.create_pending_anchor($1, $2, $3)', [anchorId, unitId, '滲透測試地址']);
+            await tx.query(
+              'INSERT INTO org.properties (id, org_id, rental_unit_id, name, address) VALUES ($1, $2, $3, $4, $5)',
+              [newUlid(), orgA, unitId, '滲透測試物件', '滲透測試地址'],
+            );
+            return { anchorId, unitId };
+          });
+          const outcome = (t: { anchorId: string; unitId: string }) =>
+            withTx({ kind: 'org', orgId: orgB }, (tx) => fnCase.probe!(tx, t)).then(
+              (value) => ({ value }),
+              (error: { code?: string; message?: string }) => ({ error: { code: error.code, message: error.message } }),
+            );
+          expect(await outcome(target)).toEqual(await outcome({ anchorId: newUlid(), unitId: newUlid() }));
+        } finally {
+          await db.close();
+        }
+      });
+    },
+  );
 });
