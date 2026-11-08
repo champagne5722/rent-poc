@@ -1,7 +1,7 @@
 // 去重鍵 external_id（ADR-0014 決議 7）。
 
 import { createHash } from 'node:crypto';
-import { isRealIsoDate } from './dates';
+import { assertValidRow } from './validate';
 import type { StatementRow } from './types';
 
 /**
@@ -13,11 +13,8 @@ import type { StatementRow } from './types';
 export function externalIdFor(row: StatementRow, accountId: string): string {
   const serial = row.transactionSerial?.trim();
   if (serial) return serial;
-  if (accountId === '') throw new RangeError('收款帳戶 ID 不得為空');
-  if (!isRealIsoDate(row.transactionDate)) throw new RangeError(`入帳日必須是 YYYY-MM-DD：${row.transactionDate}`);
-  if (!Number.isSafeInteger(row.depositAmount) || row.depositAmount <= 0) {
-    throw new RangeError(`金額必須是正整數元：${row.depositAmount}`);
-  }
+  if (accountId === '') throw new RangeError('收款帳戶 ID 必須非空');
+  assertValidRow(row);
   if (!Number.isSafeInteger(row.sameDaySeq) || row.sameDaySeq < 1) {
     throw new RangeError(`當日同值序號必須是 1 以上的整數：${row.sameDaySeq}`);
   }

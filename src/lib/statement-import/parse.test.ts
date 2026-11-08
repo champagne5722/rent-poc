@@ -40,6 +40,7 @@ describe('parseStatementDate（西元與民國年）', () => {
     ['1150305', '2026-03-05'],
     ['115年3月5日', '2026-03-05'],
     ['民國115年3月5日', '2026-03-05'],
+    ['民國115/03/05', '2026-03-05'],
     ['099/01/05', '2010-01-05'],
     ['99/01/05', '2010-01-05'],
     ['2028/02/29', '2028-02-29'],
@@ -85,6 +86,8 @@ describe('parseStatementAmount', () => {
     ['0', 'amount_missing'],
     ['abc', 'invalid_amount'],
     ['1.2.3', 'invalid_amount'],
+    ['(-100)', 'invalid_amount'],
+    ['(+100)', 'invalid_amount'],
     ['1,000.50', 'amount_not_integer'],
     ['9007199254740993', 'amount_unsafe'],
   ])('%j 回傳 %s', (input, code) => {
@@ -231,9 +234,9 @@ describe('parseStatementCsv：列層級', () => {
     ]);
   });
 
-  it('引號沒有關閉：回報錯誤並處理已讀到的列', () => {
+  it('引號沒有關閉：回報錯誤，該筆記錄不當成成功列，之前的列照常處理', () => {
     const result = parseStatementCsv(`${header}2026-03-05,100,,a\n2026-03-06,200,,"b\n`, mapping);
-    expect(result.rows).toHaveLength(2);
+    expect(result.rows.map((r) => r.depositAmount)).toEqual([100]);
     expect(result.errors).toEqual([{ lineNo: 3, code: 'unterminated_quote', detail: '' }]);
   });
 

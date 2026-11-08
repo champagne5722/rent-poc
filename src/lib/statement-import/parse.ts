@@ -1,22 +1,19 @@
 // 對帳檔 CSV 解析（ADR-0014 決議 3、7、ADR-0050 決議 7）。純函式，不讀檔、不碰資料庫。
 
+import { daysInMonth, formatDate } from '../receivables/dates';
 import { tokenizeCsv } from './csv';
-import type { ColumnMapping, ParseError, ParseErrorCode, ParseStatementResult, StatementRow } from './types';
+import type { CsvRecord } from './csv';
+import type { ColumnMapping, ParseErrorCode, ParseStatementResult, StatementRow } from './types';
 
 const ROC_YEAR_OFFSET = 1911;
 const MIN_YEAR = 1911;
 const MAX_YEAR = 2999;
 
-function isRealDate(year: number, month: number, day: number): boolean {
-  if (year < MIN_YEAR || year > MAX_YEAR || month < 1 || month > 12 || day < 1) return false;
-  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
-  const days = month === 2 ? (leap ? 29 : 28) : [4, 6, 9, 11].includes(month) ? 30 : 31;
-  return day <= days;
-}
-
 function toIso(year: number, month: number, day: number): string | null {
-  if (!isRealDate(year, month, day)) return null;
-  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  if (year < MIN_YEAR || year > MAX_YEAR || month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) {
+    return null;
+  }
+  return formatDate(year, month, day);
 }
 
 /**
@@ -31,7 +28,7 @@ export function parseStatementDate(raw: string): string | null {
   let day: number;
   let yearDigits: number;
 
-  const separated = /^(\d{1,4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(datePart);
+  const separated = /^(?:民國)?(\d{1,4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(datePart);
   const chinese = /^(?:民國)?(\d{1,4})年(\d{1,2})月(\d{1,2})日?$/.exec(datePart);
   const compact = /^(\d{7}|\d{8})$/.exec(datePart);
   if (separated || chinese) {
@@ -69,6 +66,7 @@ export function parseStatementAmount(raw: string): AmountParse {
   if (paren) {
     negative = true;
     text = paren[1];
+    if (/^[+-]/.test(text)) return { ok: false, code: 'invalid_amount' };
   }
   const m = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(text);
   if (!m) return { ok: false, code: 'invalid_amount' };
@@ -130,6 +128,26 @@ function readAmount(mapping: ColumnMapping, cell: (name: string | undefined) => 
   return { kind: 'error', code: 'amount_missing', detail };
 }
 
+type HeaderSearch = { found: true; index: number } | { found: false; missing: string[] };
+
+/** 找表頭：第一個包含全部對應欄位的記錄。找不到時，用命中最多的記錄回報缺哪些欄位。 */
+function findHeader(records: CsvRecord[], required: string[]): HeaderSearch {
+  const wanted = [...new Set(required)];
+  let bestHits = 0;
+  let bestMissing = wanted;
+  for (let i = 0; i < records.length; i += 1) {
+    const names = new Set(records[i].cells.map((c) => c.trim()));
+    const missing = wanted.filter((n) => !names.has(n));
+    if (missing.length === 0) return { found: true, index: i };
+    const hits = wanted.length - missing.length;
+    if (hits > bestHits) {
+      bestHits = hits;
+      bestMissing = missing;
+    }
+  }
+  return { found: false, missing: bestMissing };
+}
+
 /**
  * 依欄位對應把對帳檔文字解析成標準列。
  * 成功列只含入帳列。出帳列計入 skippedCount，空列計入 blankCount，壞掉的列進 errors，不影響其他列。
@@ -141,25 +159,12 @@ export function parseStatementCsv(text: string, mapping: ColumnMapping): ParseSt
   const required = requiredHeaders(mapping);
   const result: ParseStatementResult = { rows: [], skippedCount: 0, blankCount: 0, errors: [] };
 
-  // 找表頭：第一個包含全部對應欄位的記錄。找不到時，用命中最多的記錄回報缺哪些欄位。
-  let headerIndex = -1;
-  let bestHit = -1;
-  let bestMissing = [...new Set(required)];
-  for (let i = 0; i < records.length; i += 1) {
-    const names = new Set(records[i].cells.map((c) => c.trim()));
-    const missing = [...new Set(required)].filter((n) => !names.has(n));
-    const hit = new Set(required).size - missing.length;
-    if (hit > bestHit && hit > 0) {
-      bestHit = hit;
-      bestMissing = missing;
-      headerIndex = i;
-    }
-    if (missing.length === 0) break;
-  }
-  if (headerIndex < 0 || bestMissing.length > 0) {
-    result.errors.push({ lineNo: null, code: 'header_not_found', detail: bestMissing.join('、') });
+  const header = findHeader(records, required);
+  if (!header.found) {
+    result.errors.push({ lineNo: null, code: 'header_not_found', detail: header.missing.join('、') });
     return result;
   }
+  const headerIndex = header.index;
 
   const headers = records[headerIndex].cells.map((c) => c.trim());
   const indexOf = (name: string | undefined) => (name === undefined ? -1 : headers.indexOf(name));
@@ -168,15 +173,16 @@ export function parseStatementCsv(text: string, mapping: ColumnMapping): ParseSt
   for (const record of records.slice(headerIndex + 1)) {
     const cell = (name: string | undefined) => cleanCell(record.cells[indexOf(name)]);
     if (record.unterminated) {
+      // 引號沒關閉時，這筆記錄吃掉了檔案其餘部分，內容不可信，不當成成功列。
       result.errors.push({ lineNo: record.lineNo, code: 'unterminated_quote', detail: '' });
+      continue;
     }
     if (record.cells.every((c) => c.trim() === '')) {
       result.blankCount += 1;
       continue;
     }
     const pushError = (code: ParseErrorCode, detail: string) => {
-      const error: ParseError = { lineNo: record.lineNo, code, detail };
-      result.errors.push(error);
+      result.errors.push({ lineNo: record.lineNo, code, detail });
     };
 
     const dateRaw = cell(mapping.transactionDate);

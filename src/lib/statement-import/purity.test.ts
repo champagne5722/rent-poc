@@ -14,7 +14,7 @@ describe('模組只含純函式', () => {
     expect(code).not.toMatch(/new Date\s*\(\s*\)/);
     expect(code).not.toMatch(/Math\.random/);
     const imports = [...code.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
-    // 只允許同目錄的檔案，以及 node:crypto（SHA-256，確定性的雜湊）。
-    expect(imports.every((p) => p.startsWith('./') || p === 'node:crypto')).toBe(true);
+    // 只允許同目錄的檔案、receivables 的日期工具，以及 node:crypto（SHA-256，確定性的雜湊）。
+    expect(imports.every((p) => p.startsWith('./') || p === '../receivables/dates' || p === 'node:crypto')).toBe(true);
   });
 });

@@ -107,6 +107,7 @@ describe('matchStatementRow：匯款識別比對', () => {
     ['遮罩帳號', '***43210', '43210'],
     ['帳號含連字號', '987-654-3210', '43210'],
     ['帳號就是五碼', '43210', '43210'],
+    ['帳號前後有空白', ' 9876543210 ', '43210'],
   ])('帳號末五碼：%s', (_name, account, identifier) => {
     const r = row({ counterpartyName: '', counterpartyAccount: account });
     expect(matchStatementRow(r, withIdentifier(identifier, 'account_last5'))).toMatchObject({ ok: true });
@@ -118,6 +119,7 @@ describe('matchStatementRow：匯款識別比對', () => {
     ['列沒有戶名', row({ counterpartyName: '' }), 'name', '陳大華'],
     ['帳號末五碼不同', row({ counterpartyName: '', counterpartyAccount: '9876543211' }), 'account_last5', '43210'],
     ['列沒有帳號', row({ counterpartyName: '', counterpartyAccount: '' }), 'account_last5', '43210'],
+    ['遮罩在尾端的帳號', row({ counterpartyName: '', counterpartyAccount: '43210***' }), 'account_last5', '43210'],
     ['列的帳號不足五碼', row({ counterpartyName: '', counterpartyAccount: '3210' }), 'account_last5', '43210'],
     ['戶名識別不拿來比帳號', row({ counterpartyName: '', counterpartyAccount: '陳大華' }), 'name', '陳大華'],
   ] as const)('不命中：%s', (_name, r, kind, identifier) => {

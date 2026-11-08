@@ -16,7 +16,7 @@ export function tokenizeCsv(text: string, delimiter: string): CsvRecord[] {
   let fieldStart = true;
   let line = 1;
   let recordLine = 1;
-  let pending = false; // 目前這筆記錄已有內容或已開始
+  let recordStarted = false; // 目前這筆記錄已有內容或已開始
 
   const endRecord = (unterminated: boolean) => {
     cells.push(field);
@@ -24,7 +24,7 @@ export function tokenizeCsv(text: string, delimiter: string): CsvRecord[] {
     cells = [];
     field = '';
     fieldStart = true;
-    pending = false;
+    recordStarted = false;
   };
 
   for (let i = 0; i < text.length; i += 1) {
@@ -43,9 +43,9 @@ export function tokenizeCsv(text: string, delimiter: string): CsvRecord[] {
       }
       continue;
     }
-    if (!pending) {
+    if (!recordStarted) {
       recordLine = line;
-      pending = true;
+      recordStarted = true;
     }
     if (ch === '"' && fieldStart) {
       inQuotes = true;
@@ -64,6 +64,6 @@ export function tokenizeCsv(text: string, delimiter: string): CsvRecord[] {
     }
   }
   if (inQuotes) endRecord(true);
-  else if (pending) endRecord(false);
+  else if (recordStarted) endRecord(false);
   return records;
 }
