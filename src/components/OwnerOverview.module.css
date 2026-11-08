@@ -1,0 +1,74 @@
+/* 屋主資產總覽的版面。只放結構、間距（DESIGN.md spacing）與斷點，顏色由 antd token 在元件內帶入。 */
+
+.num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 頁首：單位組與金額組，寬度不足時換列 */
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px; /* md xl */
+}
+
+.statGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px; /* md lg */
+}
+
+/* 需要注意清單的每一項：標籤、內容、動作三欄 */
+.attentionItem {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px; /* sm */
+  row-gap: 4px; /* xxs */
+  padding-block: 12px; /* sm */
+}
+
+.attentionTag {
+  margin-inline-end: 0;
+  justify-self: start;
+}
+
+/* 全部租賃單位：寬螢幕用表格，窄螢幕每個單位一張卡片（P0-20 規則 6） */
+.cards {
+  display: none;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px; /* xs md */
+}
+
+@media (max-width: 991.98px) {
+  .table {
+    display: none;
+  }
+
+  .cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px; /* sm */
+  }
+}
+
+/* antd md 斷點以下：需要注意的項目改成兩列，標籤與動作在上、內容在下 */
+@media (max-width: 767.98px) {
+  .attentionItem {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .attentionBody {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .stats {
+    gap: 16px; /* md */
+  }
+}
