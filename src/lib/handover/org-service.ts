@@ -14,16 +14,22 @@ import {
   type ServiceResult,
 } from './service';
 import type { HandoverSnapshot } from './snapshot';
-import type { HandoverRecord, HandoverStore, HolderChangeEvidence, PaymentAccount } from './store';
+import {
+  EVIDENCE_FILE_MAX_BYTES,
+  type HandoverRecord,
+  type HandoverStore,
+  type HolderChangeEvidence,
+  type PaymentAccount,
+} from './store';
 import { handoverSides, type HandoverSides } from './transitions';
 
 const fail = (...errors: string[]): { ok: false; errors: string[] } => ({ ok: false, errors });
 
+/** 找不到，或這個組織、屋主不是交出方、接收方、屋主。route handler 依它回 404。 */
+export const HANDOVER_NOT_FOUND = '找不到這個移交。';
+
 /** 這個組織在移交裡的角色。receiver 是新受託人，releaser 是舊受託人（交出方）。 */
 export type OrgHandoverRole = 'receiver' | 'releaser';
-
-/** 記憶體 adapter 經 Server Action 收檔，受 Next.js 預設 1 MB 請求上限限制，所以先訂 800 KB。 */
-export const EVIDENCE_FILE_MAX_BYTES = 800 * 1024;
 
 function roleOf(record: HandoverRecord, orgId: string): OrgHandoverRole | null {
   // 屋主還沒確認的草稿只有屋主看得到
@@ -144,7 +150,7 @@ export async function acceptHandover(
   now: Date,
 ): Promise<ServiceResult> {
   const detail = await getOrgHandoverDetail(store, orgId, id, now);
-  if (!detail || detail.role !== 'receiver') return fail('找不到這個移交。');
+  if (!detail || detail.role !== 'receiver') return fail(HANDOVER_NOT_FOUND);
   const { record } = detail;
   if (record.state === 'cancelled') return fail('這個移交已經取消了。');
   if (record.state !== 'owner_confirmed') return fail('這個移交已經接手了。');
@@ -224,7 +230,7 @@ export async function exportHandoverPackage(
   const allowed =
     record !== null &&
     (viewer.kind === 'owner' ? record.ownerPartyId === viewer.partyId : roleOf(record, viewer.orgId) !== null);
-  if (!record || !allowed) return fail('找不到這個移交。');
+  if (!record || !allowed) return fail(HANDOVER_NOT_FOUND);
   if (!canExport(record) || !record.frozenSnapshot || !record.snapshotHash) {
     return fail('移交完成後才能匯出移交包。');
   }

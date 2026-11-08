@@ -15,67 +15,24 @@ import {
   Popconfirm,
   Radio,
   Select,
-  Tag,
   Typography,
-  theme,
 } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import dayjs, { type Dayjs } from 'dayjs';
-import {
-  PRACTICE_ENTITY_STATUS_LABELS,
-  RECEIVER_MANDATE_LABELS,
-  formatSnapshotValue,
-  targetLabel,
-} from '@/lib/handover/labels';
+import { PRACTICE_ENTITY_STATUS_LABELS, RECEIVER_MANDATE_LABELS, targetLabel } from '@/lib/handover/labels';
 import { checkHandoverPreconditions, type HandoverTargetFacts } from '@/lib/handover/preconditions';
 import type { ConfirmTargetInput, HandoverDetail } from '@/lib/handover/service';
-import { missingKey, type HandoverManualFields, type HandoverSnapshot } from '@/lib/handover/snapshot';
+import type { HandoverManualFields } from '@/lib/handover/snapshot';
 import { cancelHandoverAction, confirmHandoverAction, saveManualFieldsAction } from '../actions';
-import { HandoverStateTag, SidesStatus } from '../HandoverParts';
+import { ExportPackageButton, HandoverStateTag, SidesStatus, SnapshotContent } from '../HandoverParts';
 import styles from '../handovers.module.css';
 
 const NEXT_STEP: Partial<Record<HandoverDetail['record']['state'], string>> = {
   owner_confirmed: '等待新受託人確認接手並指定生效日。',
   accepted: '等待生效日。生效日到達時，系統會先完成交出側，再完成接收側。',
-  released: '交出側已生效，等待接收側完成。這個階段不能取消。',
+  released: '交出側已完成，接收側處理中。這個階段不能取消。',
 };
-
-function SnapshotContent({
-  snapshot,
-  acknowledged = [],
-}: {
-  snapshot: HandoverSnapshot;
-  /** 屋主確認時勾選知悉的缺項，確認後在缺項旁標示。 */
-  acknowledged?: string[];
-}) {
-  const { token } = theme.useToken();
-  return (
-    <div className={styles.categories} style={{ ['--handover-hairline' as string]: token.colorSplit }}>
-      {snapshot.categories.map((category) => (
-        <section key={category.key} aria-labelledby={`cat-${category.key}`}>
-          <Typography.Title level={5} id={`cat-${category.key}`} style={{ marginTop: 0 }}>
-            {category.label}
-          </Typography.Title>
-          {category.items.map((item) => (
-            <div key={item.key} className={styles.itemRow}>
-              <Typography.Text type="secondary">{item.label}</Typography.Text>
-              <span className={styles.wrap}>
-                {item.status === 'present' && <Typography.Text>{formatSnapshotValue(category.key, item)}</Typography.Text>}
-                {item.status === 'missing' && (
-                  <Tag color="warning" style={{ marginInlineEnd: 0 }}>
-                    {acknowledged.includes(missingKey(category.key, item.key)) ? '缺項，屋主已知悉' : '缺項'}
-                  </Tag>
-                )}
-                {item.status === 'not_applicable' && <Typography.Text type="secondary">不適用（沒有租賃案件）</Typography.Text>}
-              </span>
-            </div>
-          ))}
-        </section>
-      ))}
-    </div>
-  );
-}
 
 function CancelButton({ id, onDone }: { id: string; onDone: (errors: string[]) => void }) {
   const [pending, startTransition] = useTransition();
@@ -410,6 +367,12 @@ function HandoverDetailInner({ detail, today }: { detail: HandoverDetail; today:
           {cancellable && (
             <Flex>
               <CancelButton id={record.id} onDone={setErrors} />
+            </Flex>
+          )}
+          {record.state === 'completed' && (
+            <Flex>
+              {/* TODO(MIL-108)：依 authorize() 的結果決定是否顯示「匯出移交包」 */}
+              <ExportPackageButton href={`/owner/handovers/${record.id}/package`} />
             </Flex>
           )}
         </>

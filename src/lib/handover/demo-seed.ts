@@ -330,7 +330,7 @@ const HANDOVERS: HandoverRecord[] = [
     target: { kind: 'mandatary', orgId: YAOSHI.orgId, name: YAOSHI.name },
     state: 'completed',
     effectiveDate: '2026-10-01',
-    acknowledgedMissing: [],
+    acknowledgedMissing: ['condition.equipment_attachments'],
     manual: FILLED,
     ...frozen('ho-0005', 'ru-0205', OUTGOING_SOURCE, FILLED),
     receiverAccount: {

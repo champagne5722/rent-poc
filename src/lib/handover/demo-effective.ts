@@ -2,7 +2,7 @@
 // 真正的生效處理是 scan-timers 的計時器，兩側各一個交易並寫分錄（ADR-0024 決議 9、11），由 MIL-107 實作後刪掉這個檔案。
 // 用 node:crypto，只給 server 端用。
 import { checkHandoverPreconditions } from './preconditions';
-import { getOrgHandoverDetail } from './org-service';
+import { HANDOVER_NOT_FOUND, getOrgHandoverDetail } from './org-service';
 import { applyHandoverInput, currentSnapshot, type ServiceResult } from './service';
 import { hashHandoverSnapshot } from './snapshot-hash';
 import type { HandoverStore } from './store';
@@ -17,7 +17,7 @@ export async function simulateRelease(
   now: Date,
 ): Promise<ServiceResult> {
   const detail = await getOrgHandoverDetail(store, orgId, id, now);
-  if (!detail) return fail('找不到這個移交。');
+  if (!detail) return fail(HANDOVER_NOT_FOUND);
   const { record } = detail;
   if (record.state !== 'accepted') return fail('接手後、交出側生效前才能模擬交出側生效。');
 
@@ -50,7 +50,7 @@ export async function simulateReceive(
   now: Date,
 ): Promise<ServiceResult> {
   const detail = await getOrgHandoverDetail(store, orgId, id, now);
-  if (!detail) return fail('找不到這個移交。');
+  if (!detail) return fail(HANDOVER_NOT_FOUND);
   const next = applyHandoverInput(detail.record, 'receive', now.toISOString());
   if (!next) return fail('交出側生效後才能模擬接收側完成。');
   await store.saveHandover(next);

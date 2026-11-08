@@ -71,6 +71,9 @@ export interface HolderChangeEvidence {
   file: { name: string; size: number; sha256: string } | null;
 }
 
+/** 記憶體 adapter 經 Server Action 收證明檔案，受 Next.js 預設 1 MB 請求上限限制，所以先訂 800 KB。 */
+export const EVIDENCE_FILE_MAX_BYTES = 800 * 1024;
+
 /** 接收方確認接手時選的收款帳戶（ADR-0024 決議 9）。 */
 export interface ReceiverAccountChoice {
   paymentAccountId: string;
