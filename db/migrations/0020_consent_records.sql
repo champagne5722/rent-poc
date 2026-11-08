@@ -47,8 +47,9 @@ REVOKE ALL ON org.consent_records FROM PUBLIC;
 REVOKE UPDATE, DELETE, TRUNCATE ON org.consent_records FROM app_rw;
 GRANT SELECT, INSERT ON org.consent_records TO app_rw;
 
--- 觸發器：UPDATE、DELETE、TRUNCATE 一律擋下，表的擁有者與 superuser 也一樣。
--- 權限只擋 app_rw，這一層擋住其他有權限的身分（沿用 audit.forbid_change 的做法，函式放 org 區）
+-- 觸發器：擋下 superuser 與其他有權限的身分。superuser 的 UPDATE、DELETE、TRUNCATE 與擁有者的 TRUNCATE 會丟錯。
+-- 擁有者 app_owner 在 FORCE RLS 下沒有政策，看不到任何列，所以它的 UPDATE 與 DELETE 影響 0 列，資料同樣不會變。
+-- 沿用 audit.forbid_change 的做法，函式放 org 區。
 CREATE FUNCTION org.forbid_consent_change() RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog, pg_temp

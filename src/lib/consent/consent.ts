@@ -15,12 +15,15 @@ import {
 // 告知與同意紀錄（PRD P0-24，MIL-84）。其他 spec 線只從這裡（./index.ts）呼叫。
 //
 // 規則（介面的一部分）：
-// - 兩個函式都要在 withTx 的 callback 內，用呼叫端自己的 tx。只收 org 與 operator 脈絡（OrgTx）。
+// - 兩個函式必須在 withTx 的 callback 內呼叫，用呼叫端自己的 tx。只收 org 與 operator 脈絡（OrgTx）。
 //   同意紀錄屬於 tx 的組織（org_id 由資料庫讀 app.org_id 寫入，沒有參數可以指定）。
 //   組織歸屬待法務確認（MIL-62 第 10 題）。
 // - recordConsent 先寫稽核事件（consent.record），再寫同意紀錄，兩者在同一個交易。
-//   交易回滾時兩者都不留下。呼叫端要把後續步驟（例如送簽）放在同一個 withTx，失敗就一起回滾。
-// - 紀錄只增不改。更改決定一律再記一筆新的，latestConsent 取最新一筆。
+//   交易回滾時兩者都不留下。呼叫端必須把後續步驟（例如送簽）放在同一個 withTx，失敗就一起回滾。
+// - 紀錄只增不改。更改決定一律再記一筆新的，latestConsent 取最後寫入的一筆。
+//   後寫入的紀錄即使版本較舊（例如對象回應的是寄出時的舊版連結），仍是最新決定，isCurrentVersion 會是 false。
+// - party ID 與 email 不會自動串成同一個對象。紀錄只存呼叫端給的識別，查詢時 partyId 或 email 任一相符即算。
+//   只用 email 記錄的同意，之後只用 partyId 查詢會查不到。呼叫端查詢時，手上有哪個識別就都帶上。
 // - 稽核事件的 payload 不放 email 與 party ID（稽核紀錄寫入後刪不掉，ADR-0019 決議 5）。
 // - 紀錄存文字的 SHA-256 與版本號，不存文字本身。文字改版後，舊版仍留在 NOTICE_CATALOG，
 //   用版本號還原。
@@ -32,7 +35,7 @@ export type ConsentDecision = (typeof CONSENT_DECISIONS)[number];
 export const CONSENT_SOURCES = ['in_app', 'email_link', 'staff_recorded'] as const;
 export type ConsentSource = (typeof CONSENT_SOURCES)[number];
 
-/** 同意的對象。party ID 與 email 至少要有一個。沒有帳號的承租人只有 email。 */
+/** 同意的對象。party ID 與 email 至少必須有一個。沒有帳號的承租人只有 email。 */
 export interface ConsentSubject {
   partyId?: string;
   email?: string;

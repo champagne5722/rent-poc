@@ -78,6 +78,9 @@ describe.skipIf(!adminUrl)('同意紀錄：真實 PostgreSQL', () => {
     await admin.query('SET ROLE app_owner');
     try {
       await expect(admin.query('TRUNCATE org.consent_records')).rejects.toThrow(/同意紀錄只增不改/);
+      // FORCE RLS 下擁有者沒有政策，看不到列：UPDATE 與 DELETE 影響 0 列，資料不變
+      expect((await admin.query("UPDATE org.consent_records SET decision = 'object'")).rowCount).toBe(0);
+      expect((await admin.query('DELETE FROM org.consent_records')).rowCount).toBe(0);
     } finally {
       await admin.query('RESET ROLE');
     }
