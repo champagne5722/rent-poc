@@ -46,6 +46,13 @@ export type LicenseKind = 'management' | 'master_lease' | 'brokerage';
 /** 案件的業務類型：自管、代管、包租（GLOSSARY「業務類型」）。 */
 export type BusinessType = 'self_managed' | 'managed' | 'master_lease';
 
+/** 業務類型的畫面標籤（GLOSSARY「業務類型」）。 */
+export const BUSINESS_TYPE_LABELS: Record<BusinessType, string> = {
+  self_managed: '自管',
+  managed: '代管',
+  master_lease: '包租',
+};
+
 /** 證書種類（MIL-61 統一識別字）。 */
 export type CertificateKind =
   | 'rental_housing_manager'
