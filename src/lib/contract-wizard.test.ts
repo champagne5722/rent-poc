@@ -113,7 +113,7 @@ describe('簽署角色的畫面標籤', () => {
     expect(SIGNER_ROLE_LABELS).toEqual({ party_a: '甲方', party_b: '乙方', practitioner: '執業人員' });
   });
 
-  it('簽署區編輯器只提供甲方與乙方', () => {
+  it('合約當事人的簽署角色只有甲方與乙方（執業人員的席位由簽署序列提供）', () => {
     expect(CONTRACT_PARTY_ROLES).toEqual(['party_a', 'party_b']);
   });
 });

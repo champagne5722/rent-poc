@@ -9,9 +9,11 @@ import {
   PAGE_H,
   PAGE_W,
   SIGN_STAMP_BLANK,
-  signatureStampBaselines,
+  signatureBlockLayout,
+  type SignatureBlockSeat,
+  type SignatureBlockSpot,
 } from './pdf-layout';
-import type { ContractPartyRole, SignatureField } from './types';
+import type { SignatureField, SignerRole } from './types';
 
 /** 相對頁面的矩形（0..1）。 */
 export interface Rect {
@@ -46,28 +48,35 @@ function toRatioRect(left: number, topY: number, width: number, height: number):
   return { x: left / PAGE_W, y: (PAGE_H - topY) / PAGE_H, w: width / PAGE_W, h: height / PAGE_H };
 }
 
-/** 範本簽名頁上甲乙簽名欄的落點。 */
-function stampRect(signer: ContractPartyRole): Rect {
-  const baseline = signatureStampBaselines()[signer];
+/** 範本簽名頁上一個簽署欄的落點。 */
+function stampRect(spot: SignatureBlockSpot): Rect {
   return toRatioRect(
     MARGIN + STAMP_LABEL_W + STAMP_LABEL_GAP,
-    baseline + STAMP_BOX_RISE,
+    spot.stampBaseline + STAMP_BOX_RISE,
     STAMP_BOX_W,
     SIGN_STAMP_BLANK
   );
 }
 
-/** 不是簽名頁時的備援落點：靠右下角，甲方在上、乙方在下。 */
-function fallbackRect(signer: ContractPartyRole): Rect {
-  const topY =
-    signer === 'party_a'
-      ? MARGIN + SIGN_STAMP_BLANK * 2 + FALLBACK_GAP
-      : MARGIN + SIGN_STAMP_BLANK;
+/**
+ * 不是簽名頁時的備援落點：靠右下角，依印列順序由上而下排，最後一個貼著下緣。
+ * 兩方時甲方在上、乙方在下，與 N 列版面之前相同。
+ */
+function fallbackRect(printIndex: number, count: number): Rect {
+  const fromBottom = count - 1 - printIndex;
+  const topY = MARGIN + SIGN_STAMP_BLANK * (fromBottom + 1) + FALLBACK_GAP * fromBottom;
   return toRatioRect(PAGE_W - MARGIN - STAMP_BOX_W, topY, STAMP_BOX_W, SIGN_STAMP_BLANK);
 }
 
+/** 沒有給簽署序列時的席位：甲方、乙方兩列，與 N 列版面之前相同。 */
+const PARTY_ONLY_SEATS: readonly SignatureBlockSeat[] = [{ role: 'party_a' }, { role: 'party_b' }];
+
 export interface DefaultFieldRectInput {
-  signer: ContractPartyRole;
+  signer: SignerRole;
+  /** 簽署席位（規則列的 rule_id）。沒有時以簽署角色對應該角色的第一個席位。 */
+  slot?: string;
+  /** 簽署序列的席位。沒有時是甲方、乙方兩列。 */
+  seats?: readonly SignatureBlockSeat[];
   /** 要放框的頁碼（0-based）。 */
   page: number;
   /** 範本簽名欄所在的頁碼（0-based），實務上是 PDF 最後一頁。 */
@@ -85,7 +94,14 @@ function samePosition(a: Rect, b: Rect): boolean {
  * 同一落點已經有框時往右下錯開一格，避免新框整個蓋住舊框。
  */
 export function defaultFieldRect(input: DefaultFieldRectInput): Rect {
-  const base = input.page === input.signaturePage ? stampRect(input.signer) : fallbackRect(input.signer);
+  const spots = signatureBlockLayout(input.seats ?? PARTY_ONLY_SEATS);
+  const found = spots.findIndex((spot) =>
+    input.slot !== undefined ? spot.slot === input.slot : spot.role === input.signer
+  );
+  // 序列裡找不到這個席位時（不該發生）放在最後一列，不讓編輯器壞掉
+  const index = found >= 0 ? found : spots.length - 1;
+  const base =
+    input.page === input.signaturePage ? stampRect(spots[index]) : fallbackRect(index, spots.length);
   const samePage = input.existing.filter((f) => f.page === input.page);
   let candidate = clampRect(base);
   for (let step = 1; step <= STACK_MAX_TRIES; step++) {
@@ -225,26 +241,43 @@ export interface CrossSignerOverlap {
   ids: [string, string];
 }
 
-/** 同一頁上甲乙雙方互相重疊的框；同一方的框重疊不算（例如刻意疊放的兩個甲方框）。 */
+/**
+ * 兩個框是否屬於不同的簽署席位：角色不同，或兩邊都有 slot 且 slot 不同。
+ * 舊資料沒有 slot，與同角色的新框視為同一席位。
+ */
+function differentSeat(a: SignatureField, b: SignatureField): boolean {
+  if (a.signer !== b.signer) return true;
+  return a.slot !== undefined && b.slot !== undefined && a.slot !== b.slot;
+}
+
+/** 同一頁上不同簽署席位互相重疊的框；同一席位的框重疊不算（例如刻意疊放的兩個甲方框）。 */
 export function crossSignerOverlaps(fields: SignatureField[]): CrossSignerOverlap[] {
   const found: CrossSignerOverlap[] = [];
   for (let i = 0; i < fields.length; i++) {
     for (let j = i + 1; j < fields.length; j++) {
       const a = fields[i];
       const b = fields[j];
-      if (a.page !== b.page || a.signer === b.signer) continue;
+      if (a.page !== b.page || !differentSeat(a, b)) continue;
       if (rectsOverlap(a, b)) found.push({ page: a.page, ids: [a.id, b.id] });
     }
   }
   return found;
 }
 
-/** 重疊警示文字；沒有重疊回 null。 */
+/** 重疊警示文字；沒有重疊回 null。涉及執業人員時不寫「甲乙」。 */
 export function overlapWarning(fields: SignatureField[]): string | null {
   const overlaps = crossSignerOverlaps(fields);
   if (overlaps.length === 0) return null;
   const pages = [...new Set(overlaps.map((o) => o.page))].sort((a, b) => a - b);
-  return `第 ${pages.map((p) => p + 1).join('、')} 頁有甲乙簽名框重疊，請分開擺放避免簽名蓋到彼此`;
+  const byId = new Map(fields.map((f) => [f.id, f]));
+  const partiesOnly = overlaps.every((o) =>
+    o.ids.every((id) => {
+      const role = byId.get(id)?.signer;
+      return role === 'party_a' || role === 'party_b';
+    })
+  );
+  const subject = partiesOnly ? '甲乙簽名框' : '不同簽署席位的簽名框';
+  return `第 ${pages.map((p) => p + 1).join('、')} 頁有${subject}重疊，請分開擺放避免簽名蓋到彼此`;
 }
 
 /** 重疊警示涉及的框 id，用來在編輯器上把該框標紅。 */

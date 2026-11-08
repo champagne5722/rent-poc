@@ -12,6 +12,8 @@
 | `facts.ts` | 由合約類型與 `fields.routing` 組出分流事實，純函式 |
 | `repository.ts` | `loadContractRoutingFacts(contractId)`，回傳 Promise。內部直接引用 `db.ts`，不在 `index.ts` 匯出 |
 | `types.ts` | `RoutingFacts`、`PlannedSeat`、`SignatureRoute` |
+| `seats.ts` | `evaluateRouting(stored)`：分流條件換成畫面用的席位（`SeatView`）或擋下原因。`printOrder`：簽署序列換成印列順序。`routingInputError`：存草稿時檢查形狀。純函式，client 與 server 都能引用 |
+| `seat-fields.ts` | `seatOfField`、`countFieldsBySeat`、`reconcileSignatureFields`：簽署區域與席位的對應。有 `slot` 的歸該席位，沒有 `slot` 的舊資料歸同角色的第一個席位 |
 
 ## 規則表的 13 列
 
@@ -70,7 +72,7 @@ fields.routing = {
 - 三個鍵必須都在，且型別正確。形狀不對時 `loadContractRoutingFacts` 回傳 `invalid_routing`，不退回預設值。
 - 文件類型由 `contracts.contract_type` 決定，不存在 `fields.routing`。
 
-寫入者：MIL-67 的 wizard 第一步。C 線建案件後，值改由案件提供，既有合約維持快照。
+寫入者：建約 wizard 第一步（MIL-67）。`/contracts/new` 建草稿時隨 `POST /api/contracts` 寫入，草稿的第①步改條件時隨 `PUT` 存回。C 線建案件後，值改由案件提供，既有合約維持快照。
 
 E 線不經過這個欄位。E 線自己組 `RoutingFacts`，直接呼叫 `routeSignatures`。
 
@@ -79,4 +81,10 @@ E 線不經過這個欄位。E 線自己組 `RoutingFacts`，直接呼叫 `route
 - 執業人員的指派與送簽檢查：MIL-69。目前規則要求執業人員的組合，`prepareContractSigners`（`src/lib/signing.ts`）會擋下。
 - `requiredFieldPages` 的 `status_annex` 檢查：MIL-71。
 - 同一人兼任的合併：MIL-76。`buildSignerSequence` 目前每個席位各是一位簽署人。
-- 簽署欄的 N 列版面與編輯器的 `slot`：MIL-67。型別 `SignatureField.slot` 已先加上。
+
+## 簽署欄與簽署區域（MIL-67）
+
+- PDF 簽署欄依簽署序列印 N 列。版面是 `src/lib/pdf-layout.ts` 的 `signatureBlockLayout(seats)`，印列順序固定甲方、乙方、執業人員。兩方合約的落點不變，`src/lib/pdf-two-party.golden.json` 是改動前的逐字位置，測試逐字比對。
+- 尚未指派的執業人員簽署欄印姓名與執業主體的底線。`pdf.ts` 的 `signatureBlockLines` 是 MIL-69 傳入姓名與執業主體的位置。
+- 簽署區編輯器依 `SeatView[]` 提供新增按鈕，新增的框寫入 `slot`。按鈕依印列順序排，與簽署順序無關。
+- 送簽前的原因清單是 `contract-wizard.ts` 的 `sendBlockReasons`。每個執業人員席位都列為「尚未指派」，MIL-69 補指派資料後改成查指派。

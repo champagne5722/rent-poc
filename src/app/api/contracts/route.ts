@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { getProperty, insertContractWithEvent, listContracts } from '@/lib/db';
 import { bindTemplate } from '@/lib/clause-library';
 import { toEquipmentAnnex } from '@/lib/equipment';
+import { routingInputError } from '@/lib/signature-routing';
 import type { ContractFields } from '@/lib/types';
 import { jsonOk, jsonError } from '@/lib/http';
 
@@ -15,8 +16,12 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const property = getProperty(Number(body.property_id));
   if (!property) return jsonError(400, '請指定有效的物件');
+  // 分流條件由建約 wizard 第一步填寫，存進欄位快照隨草稿保存（ADR-0021 決議 1）；沒帶則視為自管
+  const routingError = routingInputError(body.routing);
+  if (routingError) return jsonError(400, routingError);
 
   const fields: ContractFields = {
+    ...(body.routing ? { routing: body.routing } : {}),
     landlordName: '',
     landlordEmail: '',
     tenantName: '',
