@@ -1,24 +1,23 @@
-import Database from 'better-sqlite3';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createContractSubscriber } from '../contract-signing';
 import { createContract, getContract, listContractEvents } from '../contracts';
-import { ensureSchema, setDb } from '../db';
 import { withTx } from '../pg/database';
 import { setupRouteDb, type RouteDb } from '../pg/route-test-kit';
 import type { OrgTx } from '../pg/with-tx';
 import { createSeedPracticeRegistry, REGISTRY_UNAVAILABLE_REASON, type PracticeRegistryResolution } from '../practice-registry';
 import type { ContractFields, ContractRoutingConditions, SignatureField } from '../types';
 import { createMockProvider } from '../signing-module/mock-adapter';
+import type { SigningDb } from '../signing-module/db';
 import { createSigningModule } from '../signing-module/module';
 import type { SigningProvider } from '../signing-module/provider';
-import { getAssignments, listCredentialSnapshots, replaceAssignments } from './repository';
+import { listCredentialSnapshots, replaceAssignments } from './repository';
 import { loadSendInputs, prepareContractSend, recordSendSnapshots } from './send';
 
 // 整合測試：走簽署模組介面，配 Mock adapter，三位簽署人從送簽走到完成（MIL-69）。
-// 資料庫是記憶體，執業人員資料來自 seed adapter。
+// 資料庫是 PGlite（MIL-85），執業人員資料來自 seed adapter。
 
 const AT = '2026-11-09T12:00:00+08:00';
 const seed: PracticeRegistryResolution = {
@@ -27,7 +26,6 @@ const seed: PracticeRegistryResolution = {
 };
 
 let kit: RouteDb;
-let db: Database.Database;
 let dataDir: string;
 
 beforeAll(async () => {
@@ -39,15 +37,10 @@ const inA = <T,>(fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId: 
 
 beforeEach(async () => {
   await kit.reset();
-  db = new Database(':memory:');
-  ensureSchema(db);
-  setDb(db);
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'practitioner-send-'));
 });
 
 afterEach(() => {
-  setDb(null);
-  db.close();
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
@@ -97,7 +90,12 @@ const assign = (id: string, list: Parameters<typeof replaceAssignments>[2]) => i
 const snapshotsOf = (id: string) => inA((tx) => listCredentialSnapshots(tx, id));
 
 function moduleWith(provider: SigningProvider = createMockProvider()) {
-  return createSigningModule({ provider, subscribers: { contract: createContractSubscriber(inA) }, dataDir });
+  const db: SigningDb = {
+    requestOrg: async () => ({ kind: 'org', orgId: kit.orgA }),
+    inOrg: (ctx, fn) => withTx(ctx, fn),
+    inControl: (fn) => withTx({ kind: 'control' }, fn),
+  };
+  return createSigningModule({ provider, subscribers: { contract: createContractSubscriber() }, dataDir, db });
 }
 
 async function prepare(id: string, resolution = seed) {
@@ -118,8 +116,9 @@ describe('包租租賃合約：乙方、執業人員、甲方三位走到完成'
     if (!prepared.ok) throw new Error(prepared.error);
     const signing = moduleWith(provider);
     const subject = { type: 'contract', id } as const;
-    await signing.send(subject, document, prepared.signers);
-    await inA((tx) => recordSendSnapshots(tx, id, prepared));
+    await signing.send(subject, document, prepared.signers, {
+      alsoInTx: (tx) => recordSendSnapshots(tx, id, prepared),
+    });
     return { id, subject, signing, prepared };
   }
 

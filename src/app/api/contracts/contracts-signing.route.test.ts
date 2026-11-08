@@ -1,8 +1,8 @@
-import Database from 'better-sqlite3';
 import { NextRequest } from 'next/server';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
-import { DATA_DIR, ensureSchema, setDb } from '@/lib/db';
+import { DATA_DIR } from '@/lib/db';
+import { withTx } from '@/lib/pg/database';
 import { actAs, actAsError, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { newUlid } from '@/lib/pg/ulid';
 import { Unauthenticated } from '@/lib/request-context';
@@ -19,6 +19,8 @@ import { GET as getSignLink } from './[id]/sign-link/route';
 import { GET as getSignedPdf } from './[id]/signed-pdf/route';
 import { PUT } from './[id]/route';
 import { POST as voidContract } from './[id]/void/route';
+import { POST as webhook } from '../webhooks/dottedsign/route';
+import { GET as health } from '../health/route';
 import { POST as create } from './route';
 
 // 簽署模組把文件寫在 DATA_DIR。換成暫存目錄，測試不碰 repo 的 data/
@@ -37,10 +39,9 @@ vi.mock('@/lib/current-request-context', async () => ({
 }));
 
 // MIL-83：送簽、撤回、簽署連結與下載的 route 都改走 ULID。簽署模組用 mock 模式（沒有點點簽金鑰），
-// 合約在 PostgreSQL（PGlite），簽署任務在 SQLite（in-memory，MIL-85 搬走）。
+// 合約與簽署任務都在 PostgreSQL（PGlite，MIL-85）。
 
 let kit: RouteDb;
-let sqlite: Database.Database;
 beforeAll(async () => {
   kit = await setupRouteDb();
 });
@@ -51,13 +52,6 @@ afterAll(async () => {
 beforeEach(async () => {
   await kit.reset();
   actAs(kit.orgA);
-  sqlite = new Database(':memory:');
-  ensureSchema(sqlite);
-  setDb(sqlite);
-});
-afterEach(() => {
-  setDb(null);
-  sqlite.close();
 });
 
 const json = (res: Response) => res.json() as Promise<Record<string, any>>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -248,5 +242,75 @@ describe('GET /api/contracts/[id]/pdf', () => {
     actAs(kit.orgB);
     expect(await snap(await getPdf(req('GET'), ctx(id)))).toEqual(NOT_FOUND);
     expect(await snap(await getPdf(req('GET'), ctx('abc')))).toEqual(NOT_FOUND);
+  });
+});
+
+describe('送簽失敗與 webhook（MIL-85）', () => {
+  const failEventWrites = () =>
+    kit.asOwner((pg) =>
+      pg.exec(`CREATE FUNCTION org.fail_contract_events() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION '歷程寫入失敗'; END $$;
+               CREATE TRIGGER fail_contract_events BEFORE INSERT ON org.contract_events FOR EACH ROW EXECUTE FUNCTION org.fail_contract_events();`),
+    );
+  const taskRows = () =>
+    kit.asOwner(async (pg) => (await pg.query<{ provider_task_ref: string; org_id: string }>('SELECT provider_task_ref, org_id FROM control.sign_task_routes')).rows);
+  const webhookReq = (body: string) => new NextRequest('http://localhost/api/webhooks/dottedsign', { method: 'POST', body });
+
+  it('送簽寫入失敗：回 502 與原因，合約留在草稿，沒有簽署任務與路由列，送簽的 outbox 列轉失敗', async () => {
+    const id = await readyDraft();
+    await failEventWrites();
+
+    const res = await send(req('POST'), ctx(id));
+
+    expect(res.status).toBe(502);
+    expect(await json(res)).toEqual({ error: '歷程寫入失敗' });
+    expect(await statusOf(id)).toBe('draft');
+    expect(await taskRows()).toEqual([]);
+    const outbox = await withTx({ kind: 'org', orgId: kit.orgA }, async (tx) => (await tx.query('SELECT action, status, last_error FROM org.outbox')).rows);
+    expect(outbox).toEqual([{ action: 'create_sign_task', status: 'failed', last_error: '歷程寫入失敗' }]);
+    // 使用者能重新送簽
+    await kit.asOwner((pg) => pg.exec('DROP TRIGGER fail_contract_events ON org.contract_events'));
+    expect((await send(req('POST'), ctx(id))).status).toBe(200);
+  });
+
+  it('送簽成功：路由列指向送簽的組織，回應不帶服務商任務編號', async () => {
+    const id = await readyDraft();
+    const res = await send(req('POST'), ctx(id));
+    expect(Object.keys((await json(res)).data).sort()).toEqual(['id', 'mock', 'notices']);
+    const [route] = await taskRows();
+    expect(route.org_id).toBe(kit.orgA);
+    expect(route.provider_task_ref).toMatch(/^mock-/);
+  });
+
+  it('webhook：沒有請求身分也能由路由列處理，回 { ok: true }，合約往下一位前進', async () => {
+    const id = await readyDraft();
+    await send(req('POST'), ctx(id));
+    const [{ provider_task_ref }] = await taskRows();
+    // webhook 沒有登入，請求脈絡取不到
+    actAsError(new Unauthenticated());
+
+    const ack = await webhook(
+      webhookReq(JSON.stringify({ resource_id: provider_task_ref, resource_type: 'task', action_name: 'signed', event_email: 'tenant@example.com' })),
+    );
+
+    expect(ack.status).toBe(200);
+    expect(await json(ack)).toEqual({ ok: true });
+    actAs(kit.orgA);
+    expect(await statusOf(id)).toBe('awaiting_landlord');
+  });
+
+  it('webhook：空 body 是 ping，對不到的任務回 ignored，無效 JSON 回 400', async () => {
+    expect(await json(await webhook(webhookReq('')))).toEqual({ ok: true, ping: true });
+    const ignored = await webhook(webhookReq(JSON.stringify({ resource_id: 'no-such', resource_type: 'task', action_name: 'signed', event_email: 'x@example.com' })));
+    expect(ignored.status).toBe(200);
+    expect(await json(ignored)).toEqual({ ok: true, ignored: true });
+    const bad = await webhook(webhookReq('not-json'));
+    expect(bad.status).toBe(400);
+    expect(await json(bad)).toEqual({ error: expect.any(String) });
+  });
+
+  it('GET /api/health：能連上 PostgreSQL 回 { ok: true }', async () => {
+    const res = await health();
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({ ok: true });
   });
 });

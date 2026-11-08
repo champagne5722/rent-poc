@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getContract } from '@/lib/contracts';
 import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/contracts/route';
-import { inOrgTx, readInOrgTx } from '@/lib/org-route';
+import { readInOrgTx } from '@/lib/org-route';
 import { generateContractPdf, PDF_PAGE_SIZE } from '@/lib/pdf';
 import { getPracticeRegistry } from '@/lib/practice-registry';
 import { loadSendInputs, prepareContractSend, recordSendSnapshots } from '@/lib/practitioner-assignment/send';
@@ -51,13 +51,10 @@ export async function POST(_request: NextRequest, { params }: ContractRouteCtx) 
     const task = await signing.send(
       contractSubject(contract.id),
       { fileName: contractDocumentFileName(contract), pdf, pageSize: PDF_PAGE_SIZE },
-      prepared.signers
+      prepared.signers,
+      // 判定事實快照與簽署任務、合約狀態同一個交易：建立簽署任務失敗時不留快照
+      { alsoInTx: (tx) => recordSendSnapshots(tx, contract.id, prepared) }
     );
-    // 簽署任務還在 SQLite 的過渡期，快照無法與它同交易。MIL-85 改成同一個交易
-    await inOrgTx(async (tx) => {
-      await recordSendSnapshots(tx, contract.id, prepared);
-      return jsonOk(null);
-    });
     // 簽署模組不對外提供服務商任務編號（ADR-0010），回應不帶 task_id
     return jsonOk({ data: { id: contract.id, mock: task.mode === 'mock', notices: prepared.notices } });
   } catch (e) {

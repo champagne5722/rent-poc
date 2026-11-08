@@ -1,7 +1,5 @@
-import Database from 'better-sqlite3';
 import { NextRequest } from 'next/server';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureSchema, setDb } from '@/lib/db';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withTx } from '@/lib/pg/database';
 import { actAs, actAsError, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { newUlid } from '@/lib/pg/ulid';
@@ -23,7 +21,6 @@ vi.mock('@/lib/current-request-context', async () => ({
 // 所以每個位置都驗本文，不只看狀態碼。簽署任務還在 SQLite（MIL-85 搬走），用 in-memory。
 
 let kit: RouteDb;
-let sqlite: Database.Database;
 beforeAll(async () => {
   kit = await setupRouteDb();
 });
@@ -31,13 +28,6 @@ afterAll(() => kit.close());
 beforeEach(async () => {
   await kit.reset();
   actAs(kit.orgA);
-  sqlite = new Database(':memory:');
-  ensureSchema(sqlite);
-  setDb(sqlite);
-});
-afterEach(() => {
-  setDb(null);
-  sqlite.close();
 });
 
 const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
