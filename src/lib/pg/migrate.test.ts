@@ -109,6 +109,9 @@ function runnerContract(label: string, open: () => Promise<Env>, opts: { concurr
         '0001_role.sql': `
           CREATE ROLE ${role} NOLOGIN;
           GRANT CREATE ON SCHEMA public TO ${role};
+          -- 紀錄表要能被 runAs 角色寫入（真實的 0001 把它轉給 app_owner）
+          GRANT USAGE ON SCHEMA control TO ${role};
+          GRANT INSERT ON control.schema_migrations TO ${role};
           CREATE TABLE made_before_role (id int);`,
         '0002_table.sql': 'CREATE TABLE made_by_role (id int);',
       });

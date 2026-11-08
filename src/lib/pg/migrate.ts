@@ -22,11 +22,15 @@ export interface MigrateOptions {
 
 const LOCK_KEY = '7940001'; // 任意固定值，所有執行 migration 的程序必須相同
 const FILE_PATTERN = /^\d{4}_[a-z0-9_]+\.sql$/;
-// 要求結尾分號，避免誤判 plpgsql 區塊的 BEGIN
+// 最佳努力的防呆，不是安全邊界。要求結尾分號，避免誤判 plpgsql 區塊的 BEGIN
 const TX_STATEMENT = /^\s*(BEGIN|COMMIT|ROLLBACK|START\s+TRANSACTION)(\s+(WORK|TRANSACTION))?\s*;/im;
 
 // 同一個程序內對同一個連線的呼叫排成一列，advisory lock 擋不住（同一個 session 可重入）
 const inProcessQueue = new WeakMap<object, Promise<unknown>>();
+
+export function quoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
 
 export async function migrate(db: SqlExecutor, options: MigrateOptions): Promise<string[]> {
   const previous = inProcessQueue.get(db) ?? Promise.resolve();
@@ -58,7 +62,8 @@ async function migrateLocked(db: SqlExecutor, { dir, runAs }: MigrateOptions): P
 
     const sources = new Map<string, { sql: string; sha256: string }>();
     for (const name of files) {
-      const sql = await readFile(path.join(dir, name), 'utf8');
+      // 換行統一成 LF，避免 Windows 換行讓 SHA-256 不符
+      const sql = (await readFile(path.join(dir, name), 'utf8')).replace(/\r\n/g, '\n');
       sources.set(name, { sql, sha256: createHash('sha256').update(sql).digest('hex') });
     }
     for (const [name, sha256] of done) {
@@ -78,7 +83,8 @@ async function migrateLocked(db: SqlExecutor, { dir, runAs }: MigrateOptions): P
     }
     return applied;
   } finally {
-    await db.query('SELECT pg_advisory_unlock($1::bigint)', [LOCK_KEY]);
+    // 連線已斷或交易已中止時解鎖會再丟錯，不能蓋掉原本的錯誤。連線結束時鎖本來就會釋放
+    await db.query('SELECT pg_advisory_unlock($1::bigint)', [LOCK_KEY]).catch(() => undefined);
   }
 }
 
@@ -93,12 +99,13 @@ async function listFiles(dir: string): Promise<string[]> {
 async function applyOne(db: SqlExecutor, name: string, sql: string, sha256: string, runAs?: string) {
   await db.exec('BEGIN');
   try {
-    // 先記錄再執行：同一個交易，失敗時記錄一併回滾。記錄用連線者的身分寫，不受 runAs 影響
-    await db.query('INSERT INTO control.schema_migrations (filename, sha256) VALUES ($1, $2)', [name, sha256]);
     if (runAs) {
       const { rows } = await db.query('SELECT 1 FROM pg_roles WHERE rolname = $1', [runAs]);
-      if (rows.length > 0) await db.exec(`SET LOCAL ROLE "${runAs.replace(/"/g, '""')}"`);
+      if (rows.length > 0) await db.exec(`SET LOCAL ROLE ${quoteIdent(runAs)}`);
     }
+    // 先記錄再執行：同一個交易，失敗時記錄一併回滾。
+    // 紀錄表由 runAs 角色擁有（0001 轉移），所以在 SET ROLE 之後寫。非 superuser 的管理者才寫得進去
+    await db.query('INSERT INTO control.schema_migrations (filename, sha256) VALUES ($1, $2)', [name, sha256]);
     await db.exec(sql);
     await db.exec('COMMIT');
   } catch (err) {

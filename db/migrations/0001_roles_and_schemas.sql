@@ -39,6 +39,11 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'app_owner、app_rw、audit_owner、vault_owner 不得有 SUPERUSER、BYPASSRLS、CREATEROLE、CREATEDB';
   END IF;
+  IF EXISTS (
+    SELECT FROM pg_roles WHERE rolname IN ('audit_owner', 'vault_owner', 'break_glass') AND rolcanlogin
+  ) THEN
+    RAISE EXCEPTION 'audit_owner、vault_owner、break_glass 必須是 NOLOGIN';
+  END IF;
 END
 $$;
 
@@ -55,9 +60,14 @@ $$;
 GRANT audit_owner, vault_owner TO app_owner WITH INHERIT FALSE, SET TRUE;
 
 -- 2. schema ---------------------------------------------------------------
--- control 在 runner 啟動時已建立（schema_migrations 放在裡面），這裡改擁有者
-ALTER SCHEMA control OWNER TO app_owner;
+-- control 在 runner 啟動時已建立（schema_migrations 放在裡面），這裡改擁有者。
+-- 順序有講究：非 superuser 的管理者（Cloud SQL）轉移擁有者之後就不能再碰這些物件，
+-- 所以後面的 GRANT 與 ALTER DEFAULT PRIVILEGES 都改用各 schema 的擁有者身分執行。
+-- 轉移擁有者時，PostgreSQL 要求新擁有者在目標位置有 CREATE，所以暫時授權，檔案結尾收回。
+GRANT CREATE ON SCHEMA control TO app_owner;
+DO $$ BEGIN EXECUTE format('GRANT CREATE ON DATABASE %I TO app_owner', current_database()); END $$;
 ALTER TABLE control.schema_migrations OWNER TO app_owner;
+ALTER SCHEMA control OWNER TO app_owner;
 CREATE SCHEMA org      AUTHORIZATION app_owner;
 CREATE SCHEMA registry AUTHORIZATION app_owner;
 CREATE SCHEMA audit    AUTHORIZATION audit_owner;
@@ -65,22 +75,32 @@ CREATE SCHEMA vault    AUTHORIZATION vault_owner;
 
 -- 3. 權限 -----------------------------------------------------------------
 -- app_rw 對五區都有 USAGE，才解析得到函式名稱。表的權限各區不同，見下。
-GRANT USAGE ON SCHEMA org, registry, audit, vault, control TO app_rw;
+-- 新表沒有任何預設權限（control、registry、audit、vault），每張表的建立者
+-- （含其他線的 migration）自己 REVOKE 與 GRANT，逐表授予。
+-- 函式預設不開放給 PUBLIC。SECURITY DEFINER 函式要明確 GRANT EXECUTE 給 app_rw。
 
+SET LOCAL ROLE app_owner;
+GRANT USAGE ON SCHEMA org, registry, control TO app_rw;
 -- control.schema_migrations 只給 app_owner
 REVOKE ALL ON control.schema_migrations FROM PUBLIC, app_rw;
-
 -- org：每張表都掛 RLS，所以 app_rw 預設有 DML，隔離靠 RLS 政策
 ALTER DEFAULT PRIVILEGES FOR ROLE app_owner IN SCHEMA org
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_rw;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+RESET ROLE;
 
--- control、registry、audit、vault：新表沒有任何預設權限。
--- 每張表的建立者（含其他線的 migration）自己 REVOKE 與 GRANT，逐表授予。
-
--- 函式預設不開放給 PUBLIC。SECURITY DEFINER 函式要明確 GRANT EXECUTE 給 app_rw
-ALTER DEFAULT PRIVILEGES FOR ROLE app_owner   REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+SET LOCAL ROLE audit_owner;
+GRANT USAGE ON SCHEMA audit TO app_rw;
 ALTER DEFAULT PRIVILEGES FOR ROLE audit_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+RESET ROLE;
+
+SET LOCAL ROLE vault_owner;
+GRANT USAGE ON SCHEMA vault TO app_rw;
 ALTER DEFAULT PRIVILEGES FOR ROLE vault_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+RESET ROLE;
 
 -- public schema 不給任何人建物件
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+
+-- 收回暫時的資料庫層級 CREATE。app_owner 之後只在自己擁有的 schema 內建物件
+DO $$ BEGIN EXECUTE format('REVOKE CREATE ON DATABASE %I FROM app_owner', current_database()); END $$;

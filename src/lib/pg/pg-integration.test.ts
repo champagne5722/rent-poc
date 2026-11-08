@@ -11,6 +11,11 @@ import { MIGRATIONS_DIR } from './test-harness';
 
 const adminUrl = process.env.TEST_DATABASE_URL;
 
+// CI 漏設或打錯 TEST_DATABASE_URL 時，下面整組會安靜跳過，結果仍是綠燈。這個測試在 CI 把它變成紅燈。
+it('CI 必須提供 TEST_DATABASE_URL', () => {
+  if (process.env.CI) expect(adminUrl, 'CI 的 vitest 步驟沒有 TEST_DATABASE_URL').toBeTruthy();
+});
+
 describe.skipIf(!adminUrl)('真實 PostgreSQL', () => {
   const dbName = `it_${Math.random().toString(36).slice(2, 10)}`;
   const urlFor = (user: string, password: string, db: string) => {

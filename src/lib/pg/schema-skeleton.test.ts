@@ -201,15 +201,22 @@ describe('PostgreSQL 骨架', () => {
       }
     });
 
-    it('預設組織不是執業主體，之後可由 C 線轉成屋主組織（只需 UPDATE，不需改結構）', async () => {
+    it('預設組織不是執業主體，且 orgs 沒有其他必填欄位，C 線轉成屋主組織只需 UPDATE 與新增成員', async () => {
       const { rows } = await testDb.base.query<{ kind: string }>(
         `SELECT kind FROM control.orgs WHERE kind <> 'platform'`,
       );
-      expect(rows[0].kind).not.toBe('practice');
+      expect(rows).toEqual([{ kind: 'owner' }]);
+      const required = await testDb.base.query<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns
+          WHERE table_schema = 'control' AND table_name = 'orgs'
+            AND is_nullable = 'NO' AND column_default IS NULL ORDER BY 1`,
+      );
+      expect(required.rows.map((r) => r.column_name)).toEqual(['id', 'kind', 'name']);
       const db = await testDb.base.clone();
       try {
-        await db.exec(`UPDATE control.orgs SET kind = 'practice', name = 'x' WHERE kind = 'owner'`);
-        await db.exec(`UPDATE control.orgs SET kind = 'owner', name = '某屋主' WHERE kind = 'practice'`);
+        await db.exec(`UPDATE control.orgs SET name = '某屋主' WHERE kind = 'owner'`);
+        const renamed = await db.query<{ name: string }>(`SELECT name FROM control.orgs WHERE kind = 'owner'`);
+        expect(renamed.rows[0].name).toBe('某屋主');
       } finally {
         await db.close();
       }

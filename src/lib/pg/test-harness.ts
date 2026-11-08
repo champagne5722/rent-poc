@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { PGlite, type PGliteInterface } from '@electric-sql/pglite';
-import { migrate } from './migrate';
+import { migrate, quoteIdent } from './migrate';
 
 /**
  * vitest 用的 PGlite harness（ADR-0012 決議 13、Action Item 5）。
@@ -31,7 +31,10 @@ export async function createTestDb(): Promise<TestDb> {
     base,
     fresh: async () => {
       const db = await base.clone();
-      await db.exec(`SET ROLE ${APP_ROLE}`);
+      await db.exec(`SET ROLE ${quoteIdent(APP_ROLE)}`);
+      // 不信任約定，當場確認：current_user 不是 app_rw 就不把連線交出去
+      const { rows } = await db.query<{ u: string }>('SELECT current_user AS u');
+      if (rows[0].u !== APP_ROLE) throw new Error(`測試連線的 current_user 是 ${rows[0].u}，不是 ${APP_ROLE}`);
       return db;
     },
     close: () => base.close(),
@@ -40,10 +43,10 @@ export async function createTestDb(): Promise<TestDb> {
 
 /** 暫時換成別的角色做事（建表、授權），做完或丟錯都回到 app_rw。 */
 export async function asRole<T>(db: PGliteInterface, role: string, fn: () => Promise<T>): Promise<T> {
-  await db.exec(`SET ROLE "${role}"`);
+  await db.exec(`SET ROLE ${quoteIdent(role)}`);
   try {
     return await fn();
   } finally {
-    await db.exec(`SET ROLE ${APP_ROLE}`);
+    await db.exec(`SET ROLE ${quoteIdent(APP_ROLE)}`);
   }
 }
