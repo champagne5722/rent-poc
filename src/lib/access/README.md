@@ -43,7 +43,7 @@
 | 9 | 案件狀態在該列的允許狀態內 | `state_not_allowed` |
 | 10 | 代操作的四個條件 | 見下表 |
 
-對外，所有拒絕與「資料不存在」是同一個回應（P0-02 AC1）。原因碼只給內部與稽核使用，不得放進 response body。
+對外，所有拒絕與「資料不存在」是同一個回應（P0-02 AC1）。原因碼只給內部與稽核使用，response body 必須不含原因碼。
 
 ### 代操作四個條件（ADR-0023 決議 7）
 
@@ -59,6 +59,13 @@
 | 4 至少一位可簽章的專任管理人員 | `hasSignableManager` | `no_signable_manager` |
 
 委託範圍對應：`rent_collection`（入帳確認、逾期提醒）、`deposit_management`（押金分錄）、`repair`（修繕）、`inspection`（確認點交、發起退租）。
+
+### 已知的取捨，載入事實時要注意
+
+- **委託終止後、移交生效前。** 受託人組織仍是主辦組織成員。非代操作的動作（讀取、`contract.draft_send`、`case_member.manage`、`handover.initiate`）不查委託，仍會通過。六個代操作動作由 `mandateCaseActive` 擋下。ADR-0023 決議 4 規定這段期間關閉受託人在連結案件的成員 `valid_period`，載入者必須據此把 `isHostOrgMember` 設為 `false`，或在 `onBehalf` 之外另加事實。MIL-119 接線時決定。
+- **`case_member.manage` 在代管案件。** 只有主辦組織（受託人）得更新，屋主（`lessor` 關係）無此權限。ADR-0023 決議 5 的「出租人或受託人」在代管案件對應主辦組織。屋主若要更新承租人 email，必須另開動作。
+- **`handover.initiate` 在委託管理案件。** 只在 `active` 允許。委託已 `terminated` 或 `expired` 後，委託人從連結的代管租賃案件（`lessor` 關係）發起。
+- **允許狀態是推論。** P0-09 與 ADR 沒有逐動作寫案件狀態。`ledger.*`、`repair.*` 在 `active`、`move_out`、`settling`，`inspection.confirm` 在 `active`、`move_out`，`move_out.start` 只在 `active`，`deposit.dispute` 在 `move_out`、`settling`，是依 ADR-0016 決議 3、6、7 推出。E 線 spec 若不同，改 `ACTIONS` 該列與測試預期表。
 
 ### 時間
 

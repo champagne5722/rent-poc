@@ -3,7 +3,6 @@
 // E 線加動作時，在 ACTIONS 加一列，並在 decide-access.test.ts 的預期表加對應列。
 
 import {
-  BUSINESS_TYPES,
   LEASE_CASE_STATES,
   MANAGEMENT_CASE_STATES,
   type BusinessType,
@@ -23,7 +22,6 @@ export type MandateScope = (typeof MANDATE_SCOPES)[number];
  * 案件變體：租賃案件依業務類型分三種，委託管理案件另算一種。
  * 動作表依變體決定主辦組織與案件關係的意義，例如 `lessor` 關係在代管案件是屋主，在包租案件是包租業者。
  */
-export const CASE_VARIANTS = [...BUSINESS_TYPES, 'management'] as const;
 export type CaseVariant = BusinessType | 'management';
 
 /** 終態：只允許讀取（ADR-0016 決議 15，P0-09 AC6）。不結束成員的 valid_period。 */
@@ -50,7 +48,7 @@ export interface OrgActionRule {
  *
  * - `hostRoles`：主辦組織成員走這條路徑，依變體列出允許的組織角色。沒有列的變體不允許。
  * - `relations`：案件成員走這條路徑，依變體列出允許的關係。沒有列的變體不允許。
- * - `states`：允許的案件狀態。寫入動作不得含終態。
+ * - `states`：允許的案件狀態。寫入動作必須不含終態。
  * - `onBehalfScope`：非 null 時，代管案件的主辦組織成員（受託人）走這個動作屬於代操作，必須通過委託範圍的四個條件。
  *   只適用 `managed` 變體的 `hostRoles` 路徑，屋主（`lessor` 關係）是本人，不查委託。
  */
@@ -89,7 +87,7 @@ export const ACTIONS = {
     },
     onBehalfScope: null,
   },
-  // 讀合約：包租案件的所有權人不得讀（P0-09 AC5）。經紀業者只得讀合約（ADR-0016 決議 14）。
+  // 讀合約：包租案件的所有權人讀不到（P0-09 AC5）。經紀業者只得讀合約（ADR-0016 決議 14）。
   'contract.read': {
     scope: 'case',
     effect: 'read',
@@ -210,7 +208,7 @@ export const ACTIONS = {
     },
     onBehalfScope: 'inspection',
   },
-  // 發起退租：承租人不得（ADR-0016 決議 7）。代管業者限委託範圍點交（ADR-0023 決議 7）。
+  // 發起退租：承租人無此權限（ADR-0016 決議 7）。代管業者限委託範圍點交（ADR-0023 決議 7）。
   'move_out.start': {
     scope: 'case',
     effect: 'write',

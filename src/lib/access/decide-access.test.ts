@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { LEASE_CASE_STATES, MANAGEMENT_CASE_STATES, type CaseMemberRelation, type CaseState } from '../cases';
+import {
+  LEASE_CASE_STATES,
+  MANAGEMENT_CASE_STATES,
+  type BusinessType,
+  type CaseKind,
+  type CaseMemberRelation,
+  type CaseState,
+  type LeaseCaseState,
+  type ManagementCaseState,
+} from '../cases';
 import {
   ACTIONS,
   ACTION_IDS,
@@ -23,7 +32,7 @@ const FULL_MANDATE: OnBehalfFacts = {
 
 interface Persona {
   id: string;
-  kind: 'lease' | 'management';
+  kind: CaseKind;
   make: (state: CaseState) => AccessFacts;
 }
 
@@ -33,11 +42,7 @@ interface PersonaOpts {
   relations: CaseMemberRelation[];
 }
 
-function leasePersona(
-  id: string,
-  businessType: 'self_managed' | 'managed' | 'master_lease',
-  opts: PersonaOpts,
-): Persona {
+function leasePersona(id: string, businessType: BusinessType, opts: PersonaOpts): Persona {
   return {
     id,
     kind: 'lease',
@@ -45,7 +50,7 @@ function leasePersona(
       orgRole: opts.role,
       caseFacts: {
         kind: 'lease',
-        state: state as (typeof LEASE_CASE_STATES)[number],
+        state: state as LeaseCaseState,
         businessType,
         isHostOrgMember: opts.host,
         relations: opts.relations,
@@ -63,7 +68,7 @@ function mgmtPersona(id: string, opts: PersonaOpts): Persona {
       orgRole: opts.role,
       caseFacts: {
         kind: 'management',
-        state: state as (typeof MANAGEMENT_CASE_STATES)[number],
+        state: state as ManagementCaseState,
         isHostOrgMember: opts.host,
         relations: opts.relations,
       },
@@ -190,7 +195,7 @@ const CASE_EXPECTATIONS: Record<string, Expectation> = {
     ],
     states: { lease: ['active', 'move_out'], management: [] },
   },
-  // 發起退租：承租人不得（ADR-0016 決議 7）
+  // 發起退租：承租人無此權限（ADR-0016 決議 7）
   'move_out.start': {
     personas: [...hostWriters('self', 'managed', 'master'), 'self.lessor', 'managed.owner', 'master.lessor'],
     states: { lease: ['active'], management: [] },

@@ -9,9 +9,19 @@ import {
   type CaseVariant,
   type OrgActionRule,
 } from './actions';
-import type { AccessDecision, AccessDenyReason, AccessFacts, CaseAccessFacts, OnBehalfFacts } from './facts';
+import type {
+  AccessDecision,
+  AccessDenyReason,
+  AccessFacts,
+  AccessVia,
+  CaseAccessFacts,
+  OnBehalfFacts,
+} from './facts';
 
-const deny = (reason: AccessDenyReason): AccessDecision => ({ allowed: false, reason });
+/** 案件層動作的兩條路徑。 */
+type CasePath = Exclude<AccessVia, 'org_role'>;
+
+const deny =(reason: AccessDenyReason): AccessDecision => ({ allowed: false, reason });
 
 /**
  * 判斷目前身分能不能對案件（或組織）執行動作。
@@ -42,7 +52,7 @@ function decideCaseAction(facts: AccessFacts, rule: CaseActionRule): AccessDecis
   if (!c.isHostOrgMember && c.relations.length === 0) return deny('not_a_member');
 
   const variant = variantOf(c);
-  const paths: ('host_org' | 'case_relation')[] = [];
+  const paths: CasePath[] = [];
   if (c.isHostOrgMember && rule.hostRoles[variant] !== undefined) paths.push('host_org');
   const grantedRelations = rule.relations[variant] ?? [];
   if (c.relations.some((r) => grantedRelations.includes(r))) paths.push('case_relation');
@@ -62,7 +72,7 @@ function checkPath(
   c: CaseAccessFacts,
   rule: CaseActionRule,
   variant: CaseVariant,
-  via: 'host_org' | 'case_relation',
+  via: CasePath,
 ): AccessDecision {
   if (rule.effect === 'write' && facts.orgRole === 'viewer') return deny('viewer_read_only');
 
