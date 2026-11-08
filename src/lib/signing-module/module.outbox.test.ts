@@ -464,6 +464,54 @@ describe('撤回與重寄：失敗留待重試', () => {
     expect((await outboxRows()).at(-1)?.status).toBe('skipped');
   });
 
+  it('服務商的 voided 事件比派送結果先到：撤回算完成，不回 409', async () => {
+    const subjectRef: { id?: string } = {};
+    const provider = liveProvider({
+      voidTask: async () => {
+        // 服務商撤回後，voided webhook 先寫入進度與合約
+        await moduleWith(
+          liveProvider({ parseWebhook: () => ({ kind: 'event', taskRef: 'void-first', event: { type: 'voided' } }) }),
+        ).ingestWebhook('{}', new Headers());
+      },
+      createTask: async () => ({ taskRef: 'void-first' }),
+    });
+    const { subject, signing } = await sentOver(provider);
+    subjectRef.id = subject.id;
+
+    await expect(signing.voidTask(subject)).resolves.toBeUndefined();
+
+    expect(await statusOf(subject.id)).toBe('voided');
+    expect(await eventTypes(subject.id)).toEqual(['sent', 'voided']);
+    expect((await outboxRows()).at(-1)).toMatchObject({ action: 'void_sign_task', status: 'done' });
+  });
+
+  it('撤回自己清掉同一個簽署標的停太久的 sending 列，不必等排程', async () => {
+    const { subject, signing } = await sentOver(liveProvider());
+    await inA((tx) =>
+      tx.query(
+        `INSERT INTO org.outbox (id, org_id, action, subject_type, subject_id, status, attempts, updated_at)
+         VALUES ($1, current_setting('app.org_id', true), 'void_sign_task', 'contract', $2, 'sending', 1,
+                 now() - ($3::int * interval '1 millisecond') - interval '1 second')`,
+        [newUlid(), subject.id, OUTBOX_STALE_MS],
+      ),
+    );
+
+    await signing.voidTask(subject);
+
+    expect(await statusOf(subject.id)).toBe('voided');
+  });
+
+  it('服務商撤回成功但寫回平台失敗：列轉回等待重試，不卡在 sending', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { subject, signing } = await sentOver(liveProvider());
+    await failContractEventWrites();
+
+    await expect(signing.voidTask(subject)).rejects.toThrow('歷程寫入失敗');
+
+    expect((await outboxRows()).at(-1)).toMatchObject({ action: 'void_sign_task', status: 'pending', attempts: 1 });
+    expect(await statusOf(subject.id)).toBe('awaiting_tenant');
+  });
+
   it('重寄失敗：回 502 並寫明已排入重試，outbox 留 pending；重試成功後完成', async () => {
     let fail = true;
     const resend = vi.fn(async () => {

@@ -209,7 +209,9 @@ describe('簽署流程：mock advance 推進、撤回、下載', () => {
     const link = await getSignLink(req('GET'), ctx(id));
     expect(link.status).toBe(409);
     expect((await json(link)).error).toEqual(expect.any(String));
-    expect((await resend(req('POST'), ctx(id))).status).toBe(409);
+    const resent = await resend(req('POST'), ctx(id));
+    expect(resent.status).toBe(409);
+    expect(await json(resent)).toEqual({ error: 'mock 模式不寄信' });
     expect(await snap(await getSignLink(req('GET'), ctx('abc')))).toEqual(NOT_FOUND);
     actAs(kit.orgB);
     expect(await snap(await resend(req('POST'), ctx(id)))).toEqual(NOT_FOUND);

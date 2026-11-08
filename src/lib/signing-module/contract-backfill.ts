@@ -5,7 +5,8 @@ import { insertLegacySignTask } from './legacy-sign-task-sqlite';
 import type { NewSignTask, SignerRecord, SignTaskStatus } from './sign-task-store';
 
 // 舊形式的轉移（MIL-56、MIL-58、MIL-60，ADR-0010）：合約的任務編號欄位與以合約為鍵的文件表。
-// 曾經由 ensureSchema() 每次開檔都呼叫（MIL-83 起不再呼叫，MIL-85 移除 ensureSchema）。先回填，再移除舊形式，所以已部署的資料庫在下次啟動時不會遺失資料。
+// 舊檔升級用，MIL-85 移除 ensureSchema 後沒有呼叫端，只剩測試與 MIL-90 對照。
+// 先回填，再移除舊形式，所以已部署的資料庫在下次啟動時不會遺失資料。
 // 舊形式移除後，這裡沒有來源，重跑等同 no-op。全新資料庫從來沒有舊形式，同樣 no-op。
 // 有合約無法回填時，兩個舊形式都保留：刪掉就再也找不回那份合約的服務商任務編號與文件紀錄。
 // 修好資料後重新啟動，就會回填並移除。

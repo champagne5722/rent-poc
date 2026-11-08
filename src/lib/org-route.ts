@@ -2,7 +2,7 @@ import { requestContext } from './current-request-context';
 import { jsonError, jsonOk } from './http';
 import { withTx } from './pg/database';
 import type { OrgTx } from './pg/with-tx';
-import { Unauthenticated, toDbContext } from './request-context';
+import { OrgContextRequired, Unauthenticated, toDbContext } from './request-context';
 
 // 組織範圍的 route handler 骨架（MIL-81 定下的寫法，之後的實體 route 照用）。
 //

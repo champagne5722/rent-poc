@@ -30,7 +30,7 @@ export interface SigningSubscriber {
   isCompleted(tx: OrgTx, subject: SigningSubject): Promise<boolean>;
 
   // 送簽前的檢查，在呼叫服務商之前執行：業務實體現在不能送簽時拋 SigningRefusal，
-  // 才不會在服務商多建一個用不到的任務。沒有這個檢查的訂閱者可以不實作。
+  // 才不會在服務商多建一個用不到的任務。沒有這個檢查的訂閱者得不實作。
   beforeSend?(tx: OrgTx, subject: SigningSubject): Promise<void>;
   // 不帶服務商任務編號：訂閱者看不到它（ADR-0010）。
   onSent(tx: OrgTx, subject: SigningSubject, sent: { signers: Signer[] }): Promise<void>;

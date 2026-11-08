@@ -280,19 +280,32 @@ export function createSigningModule({
       return { kind: 'failed', error, status };
     }
 
-    return db.inOrg(ctx, async (tx): Promise<DispatchResult> => {
-      if (row.action === 'void_sign_task') {
-        const outcome = await applyEventTx(tx, row.subject, subscriber, { type: 'voided' });
-        if (!outcome) {
-          // 呼叫服務商期間收到全員完成事件：applyEventTx 在交易內重讀進度，已完成的不會被改成已撤回
-          const reason = '呼叫服務商期間簽署任務已結束';
-          await completeOutbox(tx, row.id, { status: 'skipped', note: reason });
-          return { kind: 'skipped', reason };
+    try {
+      return await db.inOrg(ctx, async (tx): Promise<DispatchResult> => {
+        if (row.action === 'void_sign_task') {
+          const outcome = await applyEventTx(tx, row.subject, subscriber, { type: 'voided' });
+          if (!outcome) {
+            // 服務商的 voided webhook 比這裡先到：進度已是撤回，目的達成
+            if ((await findSignTask(tx, row.subject))?.status === 'voided') {
+              await completeOutbox(tx, row.id, { status: 'done', note: '撤回事件已先到' });
+              return { kind: 'done' };
+            }
+            // 呼叫服務商期間收到全員完成事件：applyEventTx 在交易內重讀進度，已完成的不會被改成已撤回
+            const reason = '呼叫服務商期間簽署任務已結束';
+            await completeOutbox(tx, row.id, { status: 'skipped', note: reason });
+            return { kind: 'skipped', reason };
+          }
         }
-      }
-      await completeOutbox(tx, row.id, { status: 'done' });
-      return { kind: 'done' };
-    });
+        await completeOutbox(tx, row.id, { status: 'done' });
+        return { kind: 'done' };
+      });
+    } catch (e) {
+      // 服務商已回應成功，平台沒記下來。列轉回等待重試，不留在 sending 卡住同一個簽署標的
+      const error = errorMessage(e);
+      console.error(`[signing] ${describeSubject(row.subject, subscriber)}的${row.action}已送出，但寫回平台失敗：${error}`);
+      await db.inOrg(ctx, (tx) => failOutbox(tx, row, error)).catch(() => undefined);
+      throw e;
+    }
   }
 
   // 派送失敗回給使用者的訊息：寫明已排入重試，或重試用完需人工處理
@@ -375,6 +388,7 @@ export function createSigningModule({
         const subscriber = await requireSubscriber(tx, subject);
         refuseIfUnsupported(provider.unsupported.resend, 409);
         const { signer } = await requireCurrentSigner(tx, subject, subscriber);
+        await recoverStaleOutbox(tx, subject);
         const entry = await enqueueOutbox(tx, { action: 'resend_sign_task', subject });
         return { signer, subscriber, entry };
       });
@@ -399,6 +413,7 @@ export function createSigningModule({
           return null;
         }
         if (task.status !== 'in_progress') throw new SigningRefusal(409, `僅簽署中的${subscriber.label}可撤回`);
+        await recoverStaleOutbox(tx, subject);
         const entry = await enqueueOutbox(tx, { action: 'void_sign_task', subject });
         return { subscriber, outboxId: entry.row.id };
       });
@@ -633,6 +648,6 @@ async function runAfterCompleted(subject: SigningSubject, subscriber: SigningSub
   try {
     await subscriber.afterCompleted(subject);
   } catch (e) {
-    console.error(`[signing] ${subject.type} ${subject.id} 完成後的處理失敗：${e instanceof Error ? e.message : e}`);
+    console.error(`[signing] ${subject.type} ${subject.id} 完成後的處理失敗：${errorMessage(e)}`);
   }
 }
