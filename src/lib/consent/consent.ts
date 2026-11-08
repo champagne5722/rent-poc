@@ -1,7 +1,6 @@
 import { appendAudit, type AuditRef } from '../audit';
-import { isUlid } from '../pg/ulid';
+import { isUlid, newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
-import { newUlid } from './new-id';
 import {
   NOTICE_CATALOG,
   NOTICE_TYPES,
