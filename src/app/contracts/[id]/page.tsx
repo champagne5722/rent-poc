@@ -57,6 +57,7 @@ import {
   type ContractFileRow,
   type DetailAction,
 } from '@/lib/contract-detail';
+import { DisplayCode, useDisplayCode } from '@/components/DisplayCode';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
 import { evaluateRouting } from '@/lib/signature-routing';
 
@@ -84,6 +85,8 @@ function ContractDetail({ id }: { id: string }) {
   const { message } = AntApp.useApp();
   const router = useRouter();
   const [contract, setContract] = useState<Contract | null>(null);
+  // 物件的顯示編碼（MIL-145）。合約只存物件 ID，編碼從物件讀；讀不到時不顯示這一列
+  const displayCode = useDisplayCode(contract?.property_id);
   const [relations, setRelations] = useState<ContractRelations | null>(null);
   const [signingProgress, setSigningProgress] = useState<SigningProgress | null>(null);
   const [events, setEvents] = useState<ContractEvent[]>([]);
@@ -273,6 +276,7 @@ function ContractDetail({ id }: { id: string }) {
       size="small"
       items={[
         { key: 'property', label: '物件', children: contract.fields.propertyName },
+        ...(displayCode === undefined ? [] : [{ key: 'display-code', label: '顯示編碼', children: <DisplayCode code={displayCode} /> }]),
         { key: 'address', label: '地址', children: contract.fields.propertyAddress },
         {
           key: 'landlord',

@@ -24,7 +24,9 @@ export async function POST(request: NextRequest, { params }: Ctx) {
   try {
     return await inOrgTx(async (tx) => {
       // 先確認物件存在再驗本文：本文有誤時，也不洩漏別的組織的物件存在
-      if (!(await getProperty(tx, id))) return notFound();
+      const current = await getProperty(tx, id);
+      if (!current) return notFound();
+      if (current.archived_at) return jsonError(409, '物件已封存，不能補建號');
       const key = parseAnchorKey(body);
       if (!key.ok) return jsonError(400, key.error);
       const anchor = await setPropertyAnchorKey(tx, id, key.value);

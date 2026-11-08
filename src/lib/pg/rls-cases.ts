@@ -118,6 +118,19 @@ export const REGISTRY_FUNCTION_CASES: Record<string, RegistryFunctionCase> = {
       (await tx.query('SELECT * FROM registry.get_anchors_for_units($1::text[])', [[unitId]])).rows,
     reason: '以單位 ID 讀錨點',
   },
+  // MIL-145
+  'registry.create_sublet_unit': {
+    probe: (tx, { unitId }) => tx.query('SELECT * FROM registry.create_sublet_unit($1, $2, $3, NULL)', [unitId, newUlid(), '301']),
+    reason: '以來源單位 ID 在同一錨點下新增分租單位，來源不是呼叫者組織的就失敗',
+  },
+  'registry.get_unit_details': {
+    probe: async (tx, { unitId }) => (await tx.query('SELECT * FROM registry.get_unit_details($1::text[])', [[unitId]])).rows,
+    reason: '以單位 ID 讀單位資料與顯示編碼要用的編碼',
+  },
+  'registry.get_sibling_units': {
+    probe: async (tx, { unitId }) => (await tx.query('SELECT * FROM registry.get_sibling_units($1)', [unitId])).rows,
+    reason: '以單位 ID 讀同一錨點下呼叫者組織的單位',
+  },
 };
 
 /** 傳入系統目錄列出的 registry 表名（schema.table），回傳沒有登記案例的表。 */

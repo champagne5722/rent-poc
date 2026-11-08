@@ -6,11 +6,17 @@ export {
   AnchorAlreadyKeyedError,
   AnchorKeyCollisionError,
   AnchorKeyRejectedError,
+  SubletUnitRejectedError,
   createProperty,
-  deleteProperty,
+  createSubletUnit,
   getProperty,
   listProperties,
+  listSiblingUnits,
+  removeProperty,
   setPropertyAnchorKey,
   updateProperty,
 } from './repository';
+export type { CreateSubletResult, RemovePropertyResult } from './repository';
+export { parseSubletInput } from './sublet';
+export type { SubletInput, SubletInputResult } from './sublet';
 export { addCustomItem, listVocabulary } from './vocabulary';
