@@ -22,8 +22,11 @@ export function createDottedSignProvider(deps: {
   request: DottedSignRequest;
   clientSecret: string;
   fetchFile?: FetchFile;
+  // 建立任務時是否替每位簽署人帶驗證（ADR-0018 決議 13）。預設不送。
+  // 沙盒停用驗證，帶了會回 400428，所以由部署設定（DOTTEDSIGN_VERIFY_SIGNERS）決定，不從金鑰字串推斷。
+  verifySigners?: boolean;
 }): SigningProvider {
-  const { request, clientSecret, fetchFile = (url) => fetch(url) } = deps;
+  const { request, clientSecret, fetchFile = (url) => fetch(url), verifySigners = false } = deps;
 
   const postTaskId = (path: string, taskRef: string) =>
     request(path, { method: 'POST', body: JSON.stringify({ task_id: Number(taskRef) }) });
@@ -34,10 +37,13 @@ export function createDottedSignProvider(deps: {
     unsupported: { simulate: 'live 模式下請走真實 webhook' },
 
     async createTask({ document, signers }) {
-      const json = (await request('/v1/sign_tasks', {
-        method: 'POST',
-        body: JSON.stringify(buildCreateTaskBody(document, signers)),
-      })) as { data: { task_id: number } };
+      const body = JSON.stringify(buildCreateTaskBody(document, signers, verifySigners));
+      let json: { data: { task_id: number } };
+      try {
+        json = (await request('/v1/sign_tasks', { method: 'POST', body })) as typeof json;
+      } catch (e) {
+        throw verifySigners ? explainVerifyFailure(e) : e;
+      }
       return { taskRef: String(json.data.task_id) };
     },
 
@@ -117,17 +123,17 @@ export function toDsCoord(
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-function buildCreateTaskBody(document: SignableDocument, signers: Signer[]) {
+function buildCreateTaskBody(document: SignableDocument, signers: Signer[], verifySigners: boolean) {
   return {
     file_name: document.fileName.replace(/[."*:<>?/\\|~#%&{}]/g, ''),
     base64_file: Buffer.from(document.pdf).toString('base64'),
     has_order: true, // stages 順序即簽署順序
     start: true, // 預設 false 只會建立草稿、不寄信給簽署人（實測踩過）
-    stages: signers.map((signer) => buildStage(signer, document.pageSize)),
+    stages: signers.map((signer) => buildStage(signer, document.pageSize, verifySigners)),
   };
 }
 
-function buildStage(signer: Signer, pageSize: SignableDocument['pageSize']) {
+function buildStage(signer: Signer, pageSize: SignableDocument['pageSize'], verifySigners: boolean) {
   return {
     name: signer.name,
     email: signer.email,
@@ -138,9 +144,29 @@ function buildStage(signer: Signer, pageSize: SignableDocument['pageSize']) {
       coord: toDsCoord(f, pageSize),
       options: { force: true },
     })),
+    ...(verifySigners ? { verify_methods: toVerifyMethods(signer) } : {}),
     // decline_enable 不硬帶 true：signer 同時是 task owner（同帳號信箱）時 API 會回 400417，
     // 交由 API 預設（owner 預設 false、其他簽署人預設 true）
   };
+}
+
+// 送驗證時每位簽署人都要有驗證，簽署人沒指定就用 email。
+// ⚠️ email 驗證不送 verify_source：官方文件只在 sms 與 twca_mid 要求它，email 驗證用簽署人的 email。
+function toVerifyMethods(signer: Signer): { verify_type: string }[] {
+  const methods = signer.verifyMethods?.length ? signer.verifyMethods : (['email'] as const);
+  return methods.map((verify_type) => ({ verify_type }));
+}
+
+// 驗證相關的錯誤碼：400428 invalid_verify_params（方案或群組沒開驗證，sandbox 實測）、
+// 403068 over_verify_method_usage（驗證額度用完）。送簽失敗並說明原因，不降級成不驗證（ADR-0018 決議 13）。
+const VERIFY_ERROR_CODES = /\b(400428|403068)\b/;
+
+function explainVerifyFailure(e: unknown): unknown {
+  if (!(e instanceof Error) || !VERIFY_ERROR_CODES.test(e.message)) return e;
+  return new Error(
+    `點點簽拒絕簽署人 email 驗證，送簽失敗。方案或群組可能沒有開放驗證，或驗證額度已用完。系統不會自動改成不驗證。原始回應：${e.message}`,
+    { cause: e }
+  );
 }
 
 // webhook 簽章（已實測確認）：header `Signature` = HMAC-SHA256(client_secret, raw body) 的 hex

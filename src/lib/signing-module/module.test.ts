@@ -12,6 +12,7 @@ import { restoreLegacySigningSchema } from './legacy-schema.fixture';
 import { createMockProvider } from './mock-adapter';
 import { createSigningModule, signingErrorResponse, SigningRefusal } from './module';
 import type { SignableDocument, Signer, SigningProvider } from './provider';
+import { ensureSignTaskTables, findSignTask } from './sign-task-store';
 import type { SigningSubscriber } from './subscriber';
 
 let db: Database.Database;
@@ -482,6 +483,99 @@ describe('模擬簽署事件（mock advance）', () => {
     await expect(moduleWith().simulateEvent(seed('draft'), 'signed')).rejects.toEqual(
       refusal(409, '目前狀態（draft）不接受此事件')
     );
+  });
+
+  it('模擬的簽署事件帶事件時間，記為簽署時間；全員完成時未簽者也用這個時間', async () => {
+    const subject = seed('awaiting_tenant', 'mock-1-abc');
+    const instants = [new Date('2026-11-08T02:03:04.000Z'), new Date('2026-11-08T05:06:07.000Z')];
+    const signing = createSigningModule({
+      provider: createMockProvider(),
+      subscribers: { contract: createContractSubscriber() },
+      dataDir,
+      now: () => instants.shift()!,
+    });
+
+    await signing.simulateEvent(subject, 'signed');
+    await signing.simulateEvent(subject, 'completed');
+
+    const progress = await signing.getProgress(subject);
+    const signedAt = progress!.signers.map((s) => new Date(s.signedAt!.replace(' ', 'T')).toISOString());
+    expect(signedAt).toEqual(['2026-11-08T02:03:04.000Z', '2026-11-08T05:06:07.000Z']);
+  });
+});
+
+describe('兼任角色與驗證設定', () => {
+  const PRACTITIONER_AND_PARTY_A: Signer = {
+    role: 'practitioner',
+    name: '陳管理',
+    email: 'manager@example.com',
+    concurrentRoles: ['party_a'],
+    verifyMethods: ['email'],
+    signatureFields: [
+      { id: 'f1', signer: 'practitioner', page: 0, x: 0.1, y: 0.8, w: 0.2, h: 0.1 },
+      { id: 'f2', signer: 'party_a', page: 1, x: 0.6, y: 0.8, w: 0.2, h: 0.1 },
+    ],
+  };
+  const PARTY_B: Signer = { role: 'party_b', name: '王租客', email: 'tenant@example.com', signatureFields: [] };
+
+  it('送簽時記下兼任角色，查簽署進度時回傳；沒有兼任的簽署人不帶這個欄位', async () => {
+    const subject = seed('draft');
+    const signing = moduleWith();
+    await signing.send(subject, document, [PARTY_B, PRACTITIONER_AND_PARTY_A]);
+
+    const progress = await signing.getProgress(subject);
+    expect(progress?.signers[0]).not.toHaveProperty('concurrentRoles');
+    expect(progress?.signers[1]).toMatchObject({ role: 'practitioner', concurrentRoles: ['party_a'] });
+  });
+
+  it('簽署進度推進後，兼任角色仍在', async () => {
+    const subject = seed('draft');
+    const signing = moduleWith();
+    await signing.send(subject, document, [PARTY_B, PRACTITIONER_AND_PARTY_A]);
+    await signing.simulateEvent(subject, 'signed');
+    await signing.simulateEvent(subject, 'completed');
+
+    const progress = await signing.getProgress(subject);
+    expect(progress?.signers[1]).toMatchObject({ status: 'signed', concurrentRoles: ['party_a'] });
+  });
+
+  it('兼任的簽署人整份傳給 adapter，簽署區域與驗證設定都不遺失', async () => {
+    const subject = seed('draft');
+    const createTask = vi.fn(async () => ({ taskRef: '470' }));
+    await moduleWith(liveProvider({ createTask })).send(subject, document, [PRACTITIONER_AND_PARTY_A]);
+    expect(createTask).toHaveBeenCalledWith({ subject, document, signers: [PRACTITIONER_AND_PARTY_A] });
+  });
+
+  it('簽署人表只有簽署進度需要的欄位，沒有電話與身分證字號', () => {
+    const columns = (db.prepare('PRAGMA table_info(signers)').all() as { name: string }[]).map((c) => c.name);
+    expect(columns.sort()).toEqual(
+      ['concurrent_roles', 'email', 'id', 'name', 'position', 'role', 'sign_task_id', 'signed_at', 'status'].sort()
+    );
+  });
+
+  it('升級前建立的簽署人表會補上兼任角色欄位，舊資料不受影響', () => {
+    const old = new Database(':memory:');
+    old.exec(`CREATE TABLE sign_tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, provider TEXT NOT NULL, provider_task_ref TEXT NOT NULL,
+        subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'in_progress',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT);
+      CREATE TABLE signers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, sign_task_id INTEGER NOT NULL, position INTEGER NOT NULL,
+        role TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+        signed_at TEXT);
+      INSERT INTO sign_tasks (provider, provider_task_ref, subject_type, subject_id) VALUES ('mock', 'm-1', 'contract', '1');
+      INSERT INTO signers (sign_task_id, position, role, name, email) VALUES (1, 0, 'party_b', '王租客', 'tenant@example.com');`);
+
+    ensureSignTaskTables(old);
+    ensureSignTaskTables(old);
+
+    old.prepare('UPDATE signers SET concurrent_roles = ? WHERE id = 1').run(JSON.stringify(['party_a']));
+    expect(findSignTask(old, { type: 'contract', id: 1 })?.signers[0].concurrentRoles).toEqual(['party_a']);
+    old.prepare('UPDATE signers SET concurrent_roles = NULL WHERE id = 1').run();
+    expect(findSignTask(old, { type: 'contract', id: 1 })?.signers).toEqual([
+      { role: 'party_b', name: '王租客', email: 'tenant@example.com', status: 'pending', signedAt: null },
+    ]);
+    old.close();
   });
 });
 
