@@ -63,6 +63,8 @@ function describeProviderContract(name: string, setup: () => ContractSetup) {
             role: 'practitioner',
             name: '陳管理',
             email: 'manager@example.com',
+            concurrentRoles: ['party_a'],
+            verifyMethods: ['email'],
             signatureFields: [
               { id: 'f1', signer: 'practitioner', page: 0, x: 0.1, y: 0.8, w: 0.2, h: 0.1 },
               { id: 'f2', signer: 'party_a', page: 1, x: 0.6, y: 0.8, w: 0.2, h: 0.1 },

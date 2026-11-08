@@ -26,6 +26,7 @@ export function ensureSignTaskTables(db: Database.Database): void {
     );
 
     -- 當前簽署人由資料推導：順序最前面的待簽者。電話與身分證字號不得寫入這張表。
+    -- concurrent_roles：兼任角色，角色字串的 JSON 陣列，沒有兼任時是 NULL（ADR-0018 決議 9）。
     CREATE TABLE IF NOT EXISTS signers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sign_task_id INTEGER NOT NULL REFERENCES sign_tasks(id),
@@ -35,9 +36,15 @@ export function ensureSignTaskTables(db: Database.Database): void {
       email TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
       signed_at TEXT,
+      concurrent_roles TEXT,
       UNIQUE (sign_task_id, position)
     );
   `);
+  // 升級前建立的表沒有這個欄位。SQLite 沒有 ADD COLUMN IF NOT EXISTS，先檢查再補。
+  const columns = db.prepare('PRAGMA table_info(signers)').all() as { name: string }[];
+  if (!columns.some((c) => c.name === 'concurrent_roles')) {
+    db.exec('ALTER TABLE signers ADD COLUMN concurrent_roles TEXT');
+  }
 }
 
 export type SignTaskStatus = 'in_progress' | 'completed' | 'declined' | 'voided';
@@ -49,6 +56,8 @@ export interface SignerRecord {
   email: string;
   status: SignerStatus;
   signedAt: string | null;
+  // 兼任的其他角色。沒有兼任時不帶這個欄位。
+  concurrentRoles?: SignerRole[];
 }
 
 export interface SignTaskRecord {
@@ -80,12 +89,16 @@ export function findSignTask(db: Database.Database, subject: SigningSubject): Si
   if (!row) return null;
 
   // 別名要加引號，PostgreSQL 才會保留大小寫
-  const signers = db
+  const signerRows = db
     .prepare(
-      `SELECT role, name, email, status, signed_at AS "signedAt" FROM signers
+      `SELECT role, name, email, status, signed_at AS "signedAt", concurrent_roles AS "concurrentRoles" FROM signers
         WHERE sign_task_id = ? ORDER BY position ASC`
     )
-    .all(row.id) as SignerRecord[];
+    .all(row.id) as (Omit<SignerRecord, 'concurrentRoles'> & { concurrentRoles: string | null })[];
+  const signers = signerRows.map(({ concurrentRoles, ...signer }): SignerRecord => {
+    const roles = concurrentRoles ? (JSON.parse(concurrentRoles) as SignerRole[]) : [];
+    return roles.length > 0 ? { ...signer, concurrentRoles: roles } : signer;
+  });
   return { id: row.id, taskRef: row.provider_task_ref, status: row.status, signers };
 }
 
@@ -119,7 +132,8 @@ export interface NewSignTask {
   createdAt?: string | null;
   updatedAt?: string | null;
   // 陣列順序就是簽署順序
-  signers: (Pick<SignerRecord, 'role' | 'name' | 'email'> & Partial<Pick<SignerRecord, 'status' | 'signedAt'>>)[];
+  signers: (Pick<SignerRecord, 'role' | 'name' | 'email'> &
+    Partial<Pick<SignerRecord, 'status' | 'signedAt' | 'concurrentRoles'>>)[];
 }
 
 // 回傳是否寫入。簽署標的或服務商任務編號已有簽署任務時不寫入，回 false。
@@ -142,8 +156,8 @@ export function insertSignTask(db: Database.Database, task: NewSignTask): boolea
   if (result.changes === 0) return false;
 
   const insertSigner = db.prepare(
-    `INSERT INTO signers (sign_task_id, position, role, name, email, status, signed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO signers (sign_task_id, position, role, name, email, status, signed_at, concurrent_roles)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
   task.signers.forEach((signer, position) => {
     insertSigner.run(
@@ -153,7 +167,8 @@ export function insertSignTask(db: Database.Database, task: NewSignTask): boolea
       signer.name,
       signer.email,
       signer.status ?? 'pending',
-      signer.signedAt ?? null
+      signer.signedAt ?? null,
+      signer.concurrentRoles?.length ? JSON.stringify(signer.concurrentRoles) : null
     );
   });
   return true;
