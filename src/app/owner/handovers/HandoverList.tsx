@@ -3,6 +3,7 @@
 import { Alert, Button, Card, Empty, Flex, Table, Typography, type TableColumnsType } from 'antd';
 import Link from 'next/link';
 import { targetLabel } from '@/lib/handover/labels';
+import { isOpenHandover } from '@/lib/handover/transitions';
 import type { HandoverListItem } from '@/lib/handover/service';
 import { HandoverStateTag, SidesStatus } from './HandoverParts';
 import styles from './handovers.module.css';
@@ -11,8 +12,6 @@ export interface LapsedMandatary {
   name: string;
   pendingUnits: number;
 }
-
-const OPEN = new Set(['draft', 'owner_confirmed', 'accepted', 'released']);
 
 function Parties({ item }: { item: HandoverListItem }) {
   return (
@@ -105,7 +104,7 @@ export default function HandoverList({
   createdCount: number | null;
   canStart: boolean;
 }) {
-  const open = items.filter((item) => OPEN.has(item.record.state));
+  const open = items.filter((item) => isOpenHandover(item.record.state));
   const completed = items.filter((item) => item.record.state === 'completed');
   const cancelled = items.filter((item) => item.record.state === 'cancelled');
 

@@ -34,7 +34,7 @@ export interface MandateCase {
 export interface UnitHandoverSource {
   rentalUnitId: string;
   hasActiveSigningTask: boolean;
-  /** 目前押金與預收款項所在收款帳戶的持有人名稱。 */
+  /** 目前押金與預收租金所在收款帳戶的持有人名稱。 */
   currentAccountHolder: string | null;
   snapshot: Omit<HandoverSnapshotFacts, 'handoverId' | 'rentalUnitId' | 'manual'>;
 }

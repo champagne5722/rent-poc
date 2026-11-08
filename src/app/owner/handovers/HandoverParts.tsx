@@ -4,7 +4,7 @@
 import { Flex, Tag, Typography, theme } from 'antd';
 import { CheckCircleFilled, ClockCircleOutlined } from '@ant-design/icons';
 import { HANDOVER_STATE_COLORS, HANDOVER_STATE_LABELS } from '@/lib/handover/labels';
-import type { HandoverState } from '@/lib/handover/transitions';
+import type { HandoverState, HandoverSides } from '@/lib/handover/transitions';
 
 export function HandoverStateTag({ state }: { state: HandoverState }) {
   return (
@@ -14,7 +14,7 @@ export function HandoverStateTag({ state }: { state: HandoverState }) {
   );
 }
 
-/** 一側是否完成（ADR-0015 後果段：中間狀態要顯示完成與否）。 */
+/** 一側是否完成（ADR-0015 後果段、ADR-0024 決議 8：中間狀態要顯示完成與否）。 */
 export function SideStatus({ label, done }: { label: string; done: boolean }) {
   const { token } = theme.useToken();
   return (
@@ -32,7 +32,7 @@ export function SideStatus({ label, done }: { label: string; done: boolean }) {
   );
 }
 
-export function SidesStatus({ sides }: { sides: { released: boolean; received: boolean } }) {
+export function SidesStatus({ sides }: { sides: HandoverSides }) {
   return (
     <Flex gap={12 /* sm */} wrap>
       <SideStatus label="交出側" done={sides.released} />

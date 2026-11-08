@@ -22,7 +22,7 @@ function MandateOption({ item }: { item: InitiatableMandate }) {
       <Typography.Text type="secondary">
         {mandate.mandatary.statutoryTitle}，委託標的 {mandate.units.length} 個租賃單位
       </Typography.Text>
-      <Flex vertical gap={4 /* xxs */} component="ul" style={{ margin: 0, paddingInlineStart: 20 }}>
+      <Flex vertical gap={4 /* xxs */} component="ul" style={{ margin: 0, paddingInlineStart: 24 /* lg */ }}>
         {mandate.units.map((unit) => (
           <li key={unit.rentalUnitId}>
             <Typography.Text>{unit.address}</Typography.Text>

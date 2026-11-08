@@ -98,6 +98,11 @@ function hasData(value: unknown): boolean {
   return true;
 }
 
+/** 缺項鍵 `類別.項目`。屋主勾選知悉與索引檔都用這個鍵。 */
+export function missingKey(categoryKey: SnapshotCategoryKey, itemKey: string): string {
+  return `${categoryKey}.${itemKey}`;
+}
+
 export function buildHandoverSnapshot(facts: HandoverSnapshotFacts): HandoverSnapshot {
   const { title, people, condition, money, manual } = facts;
   // 附件清單是空的就是沒有資料
@@ -144,7 +149,7 @@ export function buildHandoverSnapshot(facts: HandoverSnapshotFacts): HandoverSna
       label: '錢',
       items: [
         { key: 'deposit', label: '押金餘額', value: money.depositBalance, leaseOnly: true },
-        { key: 'prepaid_rent', label: '預收餘額', value: money.prepaidRentBalance, leaseOnly: true },
+        { key: 'prepaid_rent', label: '預收租金餘額', value: money.prepaidRentBalance, leaseOnly: true },
         { key: 'unpaid_periods', label: '未足額期別', value: money.unpaidPeriods, leaseOnly: true },
         { key: 'uncollected_remittance', label: '代收未交付', value: money.uncollectedRemittance, leaseOnly: true },
       ],
@@ -183,7 +188,7 @@ export function buildHandoverSnapshot(facts: HandoverSnapshotFacts): HandoverSna
   const missing = categories.flatMap((category) =>
     category.items
       .filter((item) => item.status === 'missing')
-      .map((item) => ({ key: `${category.key}.${item.key}`, category: category.label, label: item.label })),
+      .map((item) => ({ key: missingKey(category.key, item.key), category: category.label, label: item.label })),
   );
 
   return { handoverId: facts.handoverId, rentalUnitId: facts.rentalUnitId, categories, missing };

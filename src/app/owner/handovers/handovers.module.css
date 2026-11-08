@@ -42,8 +42,3 @@
 .itemRow + .itemRow {
   border-top: 1px solid var(--handover-hairline);
 }
-
-.hash {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  overflow-wrap: anywhere;
-}

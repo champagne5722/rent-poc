@@ -17,7 +17,14 @@ import type {
   PaymentAccount,
   ReceiverCandidate,
 } from './store';
-import { decideHandoverTransition, handoverSides, isCancellable, type HandoverInput } from './transitions';
+import {
+  decideHandoverTransition,
+  handoverSides,
+  isCancellable,
+  isOpenHandover,
+  type HandoverInput,
+  type HandoverSides,
+} from './transitions';
 
 export type ServiceResult<T = undefined> = { ok: true; value: T } | { ok: false; errors: string[] };
 
@@ -28,13 +35,11 @@ export function taipeiDate(now: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(now);
 }
 
-const OPEN_STATES = new Set(['draft', 'owner_confirmed', 'accepted', 'released']);
-
 const EMPTY_MANUAL: HandoverManualFields = { keyHandover: '', accessCardHandover: '', committeeContact: '' };
 
 export interface HandoverListItem {
   record: HandoverRecord;
-  sides: { released: boolean; received: boolean };
+  sides: HandoverSides;
 }
 
 export async function listOwnerHandovers(store: HandoverStore, ownerPartyId: string): Promise<HandoverListItem[]> {
@@ -66,7 +71,7 @@ export async function listInitiatableMandates(
       openHandoverByUnit: Object.fromEntries(
         mandate.units.map((unit) => [
           unit.rentalUnitId,
-          handovers.find((h) => h.rentalUnitId === unit.rentalUnitId && OPEN_STATES.has(h.state))?.id ?? null,
+          handovers.find((h) => h.rentalUnitId === unit.rentalUnitId && isOpenHandover(h.state))?.id ?? null,
         ]),
       ),
     }));
@@ -122,7 +127,7 @@ export interface CandidateView {
 export interface HandoverDetail {
   record: HandoverRecord;
   snapshot: HandoverSnapshot;
-  sides: { released: boolean; received: boolean };
+  sides: HandoverSides;
   cancellable: boolean;
   hasActiveSigningTask: boolean;
   currentAccountHolder: string | null;

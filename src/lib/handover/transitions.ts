@@ -52,8 +52,18 @@ export function isCancellable(state: HandoverState): boolean {
   return decideHandoverTransition(state, 'cancel') !== null;
 }
 
-/** 畫面要分別顯示交出側與接收側是否完成（ADR-0015 後果段）。 */
-export function handoverSides(state: HandoverState): { released: boolean; received: boolean } {
+/** 畫面要分別顯示交出側與接收側是否完成（ADR-0015 後果段、ADR-0024 決議 8）。 */
+export interface HandoverSides {
+  released: boolean;
+  received: boolean;
+}
+
+/** 進行中：還沒完成也沒取消。同一租賃單位同時只能有一個進行中的移交。 */
+export function isOpenHandover(state: HandoverState): boolean {
+  return state !== 'completed' && state !== 'cancelled';
+}
+
+export function handoverSides(state: HandoverState): HandoverSides {
   return {
     released: state === 'released' || state === 'completed',
     received: state === 'completed',

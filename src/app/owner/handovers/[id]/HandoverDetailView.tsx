@@ -30,7 +30,7 @@ import {
 } from '@/lib/handover/labels';
 import { checkHandoverPreconditions, type HandoverTargetFacts } from '@/lib/handover/preconditions';
 import type { ConfirmTargetInput, HandoverDetail } from '@/lib/handover/service';
-import type { HandoverManualFields, HandoverSnapshot } from '@/lib/handover/snapshot';
+import { missingKey, type HandoverManualFields, type HandoverSnapshot } from '@/lib/handover/snapshot';
 import { cancelHandoverAction, confirmHandoverAction, saveManualFieldsAction } from '../actions';
 import { HandoverStateTag, SidesStatus } from '../HandoverParts';
 import styles from '../handovers.module.css';
@@ -64,7 +64,7 @@ function SnapshotContent({
                 {item.status === 'present' && <Typography.Text>{formatSnapshotValue(category.key, item)}</Typography.Text>}
                 {item.status === 'missing' && (
                   <Tag color="warning" style={{ marginInlineEnd: 0 }}>
-                    {acknowledged.includes(`${category.key}.${item.key}`) ? '缺項，屋主已知悉' : '缺項'}
+                    {acknowledged.includes(missingKey(category.key, item.key)) ? '缺項，屋主已知悉' : '缺項'}
                   </Tag>
                 )}
                 {item.status === 'not_applicable' && <Typography.Text type="secondary">不適用（沒有租賃案件）</Typography.Text>}
@@ -188,7 +188,7 @@ function DraftForm({ detail, today }: { detail: HandoverDetail; today: string })
           showIcon
           title={`這個案件目前不能移交，原因有 ${reasons.length} 項`}
           description={
-            <ul style={{ margin: 0, paddingInlineStart: 20 }}>
+            <ul style={{ margin: 0, paddingInlineStart: 24 /* lg */ }}>
               {reasons.map((reason) => (
                 <li key={reason.code}>{reason.message}</li>
               ))}
@@ -296,7 +296,7 @@ function DraftForm({ detail, today }: { detail: HandoverDetail; today: string })
                   style={{ width: '100%', maxWidth: 240 }}
                 />
               </Form.Item>
-              <Form.Item label="押金與預收款項的收款帳戶" htmlFor="payment-account">
+              <Form.Item label="押金與預收租金的收款帳戶" htmlFor="payment-account">
                 <Select
                   id="payment-account"
                   value={accountId}
@@ -309,7 +309,7 @@ function DraftForm({ detail, today }: { detail: HandoverDetail; today: string })
                 <Form.Item
                   label="收款帳戶變更說明"
                   htmlFor="evidence-note"
-                  extra={`收款帳戶持有人會從「${detail.currentAccountHolder}」改為「${account.holderName}」。請說明押金與預收款項如何轉入。`}
+                  extra={`收款帳戶持有人會從「${detail.currentAccountHolder}」改為「${account.holderName}」。請說明押金與預收租金如何轉入。`}
                   style={{ marginBottom: 0 }}
                 >
                   <Input.TextArea
@@ -331,7 +331,7 @@ function DraftForm({ detail, today }: { detail: HandoverDetail; today: string })
           showIcon
           title="沒有完成"
           description={
-            <ul style={{ margin: 0, paddingInlineStart: 20 }}>
+            <ul style={{ margin: 0, paddingInlineStart: 24 /* lg */ }}>
               {errors.map((error) => (
                 <li key={error}>{error}</li>
               ))}
@@ -392,7 +392,7 @@ function HandoverDetailInner({ detail, today }: { detail: HandoverDetail; today:
           </Descriptions.Item>
           {record.snapshotHash && (
             <Descriptions.Item label="快照雜湊" span="filled">
-              <span className={styles.hash}>{record.snapshotHash}</span>
+              <Typography.Text code className={styles.wrap}>{record.snapshotHash}</Typography.Text>
             </Descriptions.Item>
           )}
         </Descriptions>
