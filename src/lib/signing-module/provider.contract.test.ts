@@ -53,6 +53,26 @@ function describeProviderContract(name: string, setup: () => ContractSetup) {
       expect(second.taskRef).not.toBe(first.taskRef);
     });
 
+    it('一位簽署人帶多個角色的簽署區域時，也能建立任務', async () => {
+      const { provider } = setup();
+      const { taskRef } = await provider.createTask({
+        subject,
+        document,
+        signers: [
+          {
+            role: 'practitioner',
+            name: '陳管理',
+            email: 'manager@example.com',
+            signatureFields: [
+              { id: 'f1', signer: 'practitioner', page: 0, x: 0.1, y: 0.8, w: 0.2, h: 0.1 },
+              { id: 'f2', signer: 'party_a', page: 1, x: 0.6, y: 0.8, w: 0.2, h: 0.1 },
+            ],
+          },
+        ],
+      });
+      expect(taskRef).not.toBe('');
+    });
+
     it('撤回已建立的任務會成功', async () => {
       const { provider } = setup();
       const { taskRef } = await provider.createTask({ subject, document, signers });
@@ -114,13 +134,29 @@ function describeProviderContract(name: string, setup: () => ContractSetup) {
       });
     });
 
-    it('帶 event_email 與 reason 時放進簽署事件', () => {
-      expect(parse(taskPayload('declined', { event_email: 'tenant@example.com', reason: '租金認知有落差' }))).toEqual({
+    it('帶 event_email 與 other_info.reason 時放進簽署事件', () => {
+      expect(
+        parse(taskPayload('declined', { event_email: 'tenant@example.com', other_info: { reason: '租金認知有落差' } }))
+      ).toEqual({
         kind: 'event',
         taskRef: '470',
         event: { type: 'declined', email: 'tenant@example.com', reason: '租金認知有落差' },
       });
     });
+
+    it('event_datetime 是秒數時，轉成 ISO 8601 的事件時間', () => {
+      expect(parse(taskPayload('signed', { event_datetime: 1794072431 }))).toMatchObject({
+        event: { type: 'signed', occurredAt: '2026-11-07T17:27:11.000Z' },
+      });
+    });
+
+    it.each([['字串', '2026-11-08T01:27:11+08:00'], ['null', null], ['物件', {}]])(
+      'event_datetime 是%s時不帶事件時間',
+      (_label, event_datetime) => {
+        const parsed = parse(taskPayload('signed', { event_datetime }));
+        expect(parsed).toEqual({ kind: 'event', taskRef: '470', event: { type: 'signed' } });
+      }
+    );
 
     it('body 不是 JSON 時回無效，狀態碼 400', () => {
       expect(parse('not-json')).toEqual({ kind: 'invalid', status: 400, reason: 'invalid json' });

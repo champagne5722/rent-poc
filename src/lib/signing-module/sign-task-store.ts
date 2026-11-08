@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
+import dayjs from 'dayjs';
 import type { SignerRole } from '../types';
-import type { CurrentSigner, SigningEventType, SigningProviderId, SigningSubject } from './provider';
+import type { CurrentSigner, SigningProviderId, SigningSubject } from './provider';
 
 // 簽署任務與簽署人的儲存（ADR-0010 決議 2）。
 // 這個檔案不 import db.ts，因為 ensureSchema() 要呼叫這裡，連線一律由呼叫端傳入。
@@ -56,6 +57,9 @@ export interface SignTaskRecord {
   status: SignTaskStatus;
   signers: SignerRecord[];
 }
+
+// 進度推進的輸入與輸出
+export type ProgressSnapshot = Pick<SignTaskRecord, 'status' | 'signers'>;
 
 // 簽署進度：簽署模組回給呼叫端的樣子，不含服務商任務編號
 export interface SigningProgress {
@@ -155,43 +159,23 @@ export function insertSignTask(db: Database.Database, task: NewSignTask): boolea
   return true;
 }
 
-// 依已接受的簽署事件更新簽署進度。接受與否仍由合約狀態機判斷（decideTransition），
-// 所以甲方的 signed 不會走到這裡，甲方要等全員完成才標為已簽。
-// 簽署標的沒有簽署任務時不做事：簽署中卻沒有任務編號的舊合約沒有回填，仍要能撤回。
-export function recordSigningEvent(db: Database.Database, subject: SigningSubject, event: SigningEventType): void {
-  const task = findSignTask(db, subject);
-  if (!task) return;
-
-  switch (event) {
-    case 'signed':
-      setCurrentSignerStatus(db, task, 'signed');
-      return;
-    case 'completed':
-      db.prepare(
-        `UPDATE signers SET status = 'signed', signed_at = COALESCE(signed_at, ${NOW})
-          WHERE sign_task_id = ? AND status <> 'signed'`
-      ).run(task.id);
-      setTaskStatus(db, task, 'completed');
-      return;
-    case 'declined':
-      setCurrentSignerStatus(db, task, 'declined');
-      setTaskStatus(db, task, 'declined');
-      return;
-    case 'voided':
-      setTaskStatus(db, task, 'voided');
-      return;
+// 寫入推進後的簽署進度。next 的簽署人順序與 task 相同，陣列索引就是 position。
+// 簽署時間優先用事件時間，服務商沒有提供時用現在時間。
+export function saveProgress(db: Database.Database, task: SignTaskRecord, next: ProgressSnapshot): void {
+  next.signers.forEach((signer, position) => {
+    if (signer.status === task.signers[position].status) return;
+    db.prepare(
+      `UPDATE signers
+          SET status = ?, signed_at = CASE WHEN ? = 'signed' THEN COALESCE(?, ${NOW}) ELSE NULL END
+        WHERE sign_task_id = ? AND position = ?`
+    ).run(signer.status, signer.status, toDbTime(signer.signedAt), task.id, position);
+  });
+  if (next.status !== task.status) {
+    db.prepare(`UPDATE sign_tasks SET status = ?, updated_at = ${NOW} WHERE id = ?`).run(next.status, task.id);
   }
 }
 
-function setCurrentSignerStatus(db: Database.Database, task: SignTaskRecord, status: 'signed' | 'declined'): void {
-  db.prepare(
-    `UPDATE signers
-        SET status = ?, signed_at = CASE WHEN ? = 'signed' THEN ${NOW} ELSE NULL END
-      WHERE sign_task_id = ?
-        AND position = (SELECT MIN(position) FROM signers WHERE sign_task_id = ? AND status = 'pending')`
-  ).run(status, status, task.id, task.id);
-}
-
-function setTaskStatus(db: Database.Database, task: SignTaskRecord, status: SignTaskStatus): void {
-  db.prepare(`UPDATE sign_tasks SET status = ?, updated_at = ${NOW} WHERE id = ?`).run(status, task.id);
+// 轉成與 NOW 相同的格式，同一欄位才不會混用兩種時間格式
+function toDbTime(time: string | null): string | null {
+  return time ? dayjs(time).format('YYYY-MM-DD HH:mm:ss') : null;
 }

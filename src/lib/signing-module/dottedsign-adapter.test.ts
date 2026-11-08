@@ -77,6 +77,29 @@ describe('建立任務的請求組裝', () => {
     },
   ];
 
+  it('一位簽署人帶多個角色的簽署區域時，組成同一個 stage 的多個 field_settings', async () => {
+    const { calls, provider } = capture();
+    await provider.createTask({
+      subject: { type: 'contract', id: 7 },
+      document,
+      signers: [
+        {
+          role: 'practitioner',
+          name: '陳管理',
+          email: 'manager@example.com',
+          signatureFields: [
+            { id: 'f1', signer: 'practitioner', page: 0, x: 0, y: 0, w: 1, h: 1 },
+            { id: 'f2', signer: 'party_a', page: 1, x: 0, y: 0, w: 1, h: 1 },
+          ],
+        },
+      ],
+    });
+
+    const body = calls[0].body as { stages: { field_settings: { page: number }[] }[] };
+    expect(body.stages).toHaveLength(1);
+    expect(body.stages[0].field_settings.map((f) => f.page)).toEqual([0, 1]);
+  });
+
   it('依序簽署、立即開始，stages 順序等於簽署序列，檔名清洗掉特殊字元', async () => {
     const { calls, provider } = capture();
     const { taskRef } = await provider.createTask({ subject: { type: 'contract', id: 7 }, document, signers });

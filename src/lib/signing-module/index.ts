@@ -1,4 +1,5 @@
 import path from 'path';
+import { createContractSubscriber } from '../contract-signing';
 import { DATA_DIR } from '../db';
 import { dsClientSecret, dsFetch, isMockMode } from '../dottedsign';
 import type { ContractFileKind } from '../types';
@@ -17,6 +18,7 @@ export const signing = createSigningModule({
         storeDir: path.join(DATA_DIR, 'mock-signing'),
       })
     : createDottedSignProvider({ request: dsFetch, clientSecret: dsClientSecret() }),
+  subscribers: { contract: createContractSubscriber() },
   dataDir: DATA_DIR,
 });
 

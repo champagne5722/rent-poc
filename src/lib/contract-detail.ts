@@ -54,6 +54,7 @@ export function detailActions(status: ContractStatus, opts: { mock: boolean }): 
       return [EDIT];
     case 'awaiting_tenant':
     case 'awaiting_landlord':
+    case 'awaiting_practitioner':
       return [VOID];
     case 'completed':
       // mock 模式沒有真實簽署任務，點點簽端沒有 Audit Trail File 可下載
@@ -71,6 +72,7 @@ const EVENT_COLORS: Record<string, string> = {
   created: 'gray',
   sent: 'blue',
   tenant_signed: 'blue',
+  signer_signed: 'blue',
   declined: 'red',
   completed: 'green',
   voided: 'orange',

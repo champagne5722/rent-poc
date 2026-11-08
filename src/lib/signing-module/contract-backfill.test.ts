@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ensureSchema, getContract, listContractEvents, setDb } from '../db';
 import type { ContractStatus } from '../types';
 import { createDottedSignProvider } from './dottedsign-adapter';
+import { createContractSubscriber } from '../contract-signing';
 import { createMockProvider } from './mock-adapter';
 import { createSigningModule } from './module';
 import type { SigningProvider } from './provider';
@@ -62,7 +63,9 @@ function legacyEvent(contractId: number, type: string, actor: string, createdAt:
 
 const upgrade = () => ensureSchema(db);
 
-const mockSigning = () => createSigningModule({ provider: createMockProvider(), dataDir });
+const moduleOf = (provider: SigningProvider) =>
+  createSigningModule({ provider, subscribers: { contract: createContractSubscriber() }, dataDir });
+const mockSigning = () => moduleOf(createMockProvider());
 
 const liveProvider = (overrides: Partial<SigningProvider> = {}): SigningProvider => ({
   id: 'dottedsign',
@@ -79,8 +82,8 @@ const liveProvider = (overrides: Partial<SigningProvider> = {}): SigningProvider
   ...overrides,
 });
 
-const webhook = (taskRef: string, action: string) =>
-  JSON.stringify({ resource_id: taskRef, resource_type: 'task', action_name: action });
+const webhook = (taskRef: string, action: string, email?: string) =>
+  JSON.stringify({ resource_id: taskRef, resource_type: 'task', action_name: action, event_email: email });
 
 describe('回填的簽署進度', () => {
   it('待乙方簽：兩位都待簽，當前簽署人是乙方', async () => {
@@ -214,7 +217,7 @@ describe('回填的服務商', () => {
     const subject = legacyContract('awaiting_tenant', 'mock-1-a');
     upgrade();
 
-    await mockSigning().ingestWebhook(webhook('mock-1-a', 'signed'), new Headers());
+    await mockSigning().ingestWebhook(webhook('mock-1-a', 'signed', TENANT.email), new Headers());
 
     expect(getContract(subject.id)?.status).toBe('awaiting_landlord');
   });
@@ -227,7 +230,7 @@ describe('回填的服務商', () => {
       taskRef: 'mock-1-a',
       event: { type: 'signed' },
     });
-    const live = createSigningModule({ provider: liveProvider({ parseWebhook }), dataDir });
+    const live = moduleOf(liveProvider({ parseWebhook }));
 
     await expect(live.ingestWebhook('{}', new Headers())).resolves.toEqual({
       status: 200,
@@ -247,11 +250,8 @@ describe('回填的服務商', () => {
     expect(getContract(subject.id)?.status).toBe('awaiting_tenant');
 
     const clientSecret = 'test-secret';
-    const live = createSigningModule({
-      provider: createDottedSignProvider({ request: async () => ({}), clientSecret }),
-      dataDir,
-    });
-    const body = webhook('470', 'signed');
+    const live = moduleOf(createDottedSignProvider({ request: async () => ({}), clientSecret }));
+    const body = webhook('470', 'signed', TENANT.email);
     const signature = crypto.createHmac('sha256', clientSecret).update(body).digest('hex');
     await live.ingestWebhook(body, new Headers({ signature }));
     expect(getContract(subject.id)?.status).toBe('awaiting_landlord');
@@ -272,7 +272,7 @@ describe('升級後繼續走完', () => {
     const progress = await signing.getProgress(subject);
     expect(progress?.status).toBe('completed');
     expect(progress?.signers.map((s) => s.status)).toEqual(['signed', 'signed']);
-    expect(listContractEvents(subject.id, db).map((e) => e.type)).toEqual(['sent', 'tenant_signed', 'completed']);
+    expect(listContractEvents(subject.id, db).map((e) => e.type)).toEqual(['sent', 'signer_signed', 'completed']);
     // 升級前送簽的 mock 任務沒有保存 PDF，完成時保存失敗並留下紀錄，狀態照常完成
     expect((await signing.listFiles(subject)).map((f) => [f.kind, f.status, f.error])).toEqual([
       ['signed_pdf', 'failed', 'mock 模式找不到送簽時的 PDF'],
@@ -299,7 +299,7 @@ describe('升級後繼續走完', () => {
 
     const getSignLink = vi.fn(async () => 'https://sign.example/abc');
     const resend = vi.fn(async () => {});
-    const live = createSigningModule({ provider: liveProvider({ getSignLink, resend }), dataDir });
+    const live = moduleOf(liveProvider({ getSignLink, resend }));
 
     await expect(live.getSignLink(subject)).resolves.toEqual({ signer: LANDLORD, url: 'https://sign.example/abc' });
     await expect(live.resend(subject)).resolves.toEqual({ signer: LANDLORD });
@@ -386,7 +386,7 @@ describe('回填的合約文件', () => {
     legacyFile(subject.id, 'audit_trail', { status: 'saved', content: 'old-audit' });
     upgrade();
 
-    const live = createSigningModule({ provider: liveProvider(), dataDir });
+    const live = moduleOf(liveProvider());
     const files = await live.listFiles(subject);
     expect(files.map((f) => [f.kind, f.status, f.rel_path, f.saved_at])).toEqual([
       ['audit_trail', 'saved', `contract-files/${subject.id}/contract-${subject.id}-audit-trail.pdf`, '2026-01-05 09:00:00'],
@@ -403,10 +403,7 @@ describe('回填的合約文件', () => {
     legacyFile(subject.id, 'audit_trail', { status: 'failed', error: '下載連結回應 403' });
     upgrade();
 
-    const live = createSigningModule({
-      provider: liveProvider({ downloadFile: async () => new TextEncoder().encode('new') }),
-      dataDir,
-    });
+    const live = moduleOf(liveProvider({ downloadFile: async () => new TextEncoder().encode('new') }));
     expect((await live.listFiles(subject)).map((f) => [f.kind, f.status, f.error])).toEqual([
       ['audit_trail', 'failed', '下載連結回應 403'],
     ]);
@@ -429,10 +426,7 @@ describe('回填的合約文件', () => {
     const subject = legacyContract('completed', '470');
     legacyFile(subject.id, 'signed_pdf', { status: 'saved', content: 'old-signed' });
     upgrade();
-    const live = createSigningModule({
-      provider: liveProvider({ downloadFile: async () => new TextEncoder().encode('refetched') }),
-      dataDir,
-    });
+    const live = moduleOf(liveProvider({ downloadFile: async () => new TextEncoder().encode('refetched') }));
     await live.saveFiles(subject, { kinds: ['signed_pdf'], force: true });
 
     upgrade();

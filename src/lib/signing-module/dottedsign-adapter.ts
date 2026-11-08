@@ -160,15 +160,15 @@ function isSigningEventType(action: unknown): action is SigningEventType {
   return SIGNING_EVENT_TYPES.includes(action as SigningEventType);
 }
 
-// payload 欄位：resource_id、resource_type、action_name、event_email（見整合筆記）。
-// viewed 等未處理的事件一律忽略。拒簽原因：sandbox 實測的 payload 未帶，有 reason 欄位才放進事件。
+// payload 欄位與實測範例見整合筆記。viewed、created、sent 等未處理的事件一律忽略。
 export function parseDottedSignPayload(rawBody: string): ParsedWebhook {
   let payload: {
     resource_id?: unknown;
     resource_type?: unknown;
     action_name?: unknown;
     event_email?: unknown;
-    reason?: unknown;
+    event_datetime?: unknown;
+    other_info?: { reason?: unknown } | null;
   } | null;
   try {
     payload = JSON.parse(rawBody);
@@ -182,6 +182,11 @@ export function parseDottedSignPayload(rawBody: string): ParsedWebhook {
 
   const event: SigningEvent = { type: payload.action_name };
   if (typeof payload.event_email === 'string') event.email = payload.event_email;
-  if (typeof payload.reason === 'string') event.reason = payload.reason;
+  const reason = payload.other_info?.reason;
+  if (typeof reason === 'string') event.reason = reason;
+  // event_datetime 實測是 Unix 秒數
+  if (typeof payload.event_datetime === 'number') {
+    event.occurredAt = new Date(payload.event_datetime * 1000).toISOString();
+  }
   return { kind: 'event', taskRef: String(payload.resource_id), event };
 }
