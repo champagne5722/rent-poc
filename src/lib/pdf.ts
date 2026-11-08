@@ -7,6 +7,7 @@ import { REPAIR_RESPONSIBILITY_LABELS, SIGNER_ROLE_LABELS } from './types';
 // 條款全文與條號集中在 contract-clauses.ts：wizard 也要顯示同一組條號與勾選條款。
 import { blank, buildContractClauses, usesEquipmentAnnex } from './contract-clauses';
 import { contractEquipmentAnnex } from './equipment';
+import type { PrintedPractitioner } from './practitioner-assignment/seats';
 import { PARTY_ONLY_SEATS, evaluateRouting, printOrder, type SeatView } from './signature-routing';
 // 版面常數集中在 pdf-layout.ts：簽署區編輯器要用同一組數字推簽名欄的預設落點。
 import {
@@ -181,20 +182,34 @@ function printedSeats(fields: ContractFields): SeatView[] {
 /**
  * 一個簽署欄「簽章：」之前的兩行資料。
  * 當事人印稱謂、姓名與 Email。執業人員印姓名與法定稱謂、執業主體，不印證號（ADR-0018 決議 14）。
- * 執業人員尚未指派時姓名與執業主體留底線。指派執業人員屬 MIL-69，那時把姓名與執業主體傳進來。
+ * 執業人員尚未指派時姓名與執業主體留底線。已指派時印登錄的姓名、法定稱謂與執業主體（MIL-69）。
  */
-function signatureBlockLines(seat: SeatView, fields: ContractFields): [string, string] {
+function signatureBlockLines(
+  seat: SeatView,
+  fields: ContractFields,
+  practitioner: PrintedPractitioner | undefined
+): [string, string] {
   if (seat.role === 'party_a') {
     return [`${seat.fullLabel}：${blank(fields.landlordName)}`, `Email：${blank(fields.landlordEmail)}`];
   }
   if (seat.role === 'party_b') {
     return [`${seat.fullLabel}：${blank(fields.tenantName)}`, `Email：${blank(fields.tenantEmail)}`];
   }
-  const title = seat.practitionerTitle ? `（${seat.practitionerTitle}）` : '';
-  return [`${SIGNER_ROLE_LABELS.practitioner}：${blank(null)}${title}`, `執業主體：${blank(null)}`];
+  const titleText = practitioner?.title ?? seat.practitionerTitle;
+  const title = titleText ? `（${titleText}）` : '';
+  return [
+    `${SIGNER_ROLE_LABELS.practitioner}：${blank(practitioner?.name)}${title}`,
+    `執業主體：${blank(practitioner?.entityName)}`,
+  ];
 }
 
-export async function generateContractPdf(fields: ContractFields): Promise<Uint8Array> {
+/**
+ * @param practitioners 已指派的執業人員，以席位 rule_id 為鍵。沒有的席位留底線。兩方合約不需要。
+ */
+export async function generateContractPdf(
+  fields: ContractFields,
+  practitioners: Readonly<Record<string, PrintedPractitioner>> = {}
+): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
   const font = await doc.embedFont(loadFontBytes(), { subset: false });
@@ -224,7 +239,7 @@ export async function generateContractPdf(fields: ContractFields): Promise<Uint8
   w.y -= SIGN_BLOCK_TOP_GAP;
   w.text('立契約書人', SIGN_HEADING_SIZE, { gapAfter: SIGN_HEADING_GAP_AFTER });
   for (const seat of printedSeats(fields)) {
-    for (const line of signatureBlockLines(seat, fields)) {
+    for (const line of signatureBlockLines(seat, fields, practitioners[seat.ruleId])) {
       w.text(line, BODY_SIZE, { gapAfter: SIGN_ROW_GAP_AFTER });
     }
     w.text('簽章：', BODY_SIZE, { gapAfter: SIGN_STAMP_BLANK });

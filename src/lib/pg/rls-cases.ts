@@ -74,6 +74,32 @@ export const ORG_TABLE_CASES: Record<string, OrgTableCase> = {
       return id;
     },
   },
+  'org.contract_practitioner_assignments': {
+    async seed(tx, orgId) {
+      const contractId = newUlid();
+      await tx.query('INSERT INTO org.contracts (id, org_id) VALUES ($1, $2)', [contractId, orgId]);
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.contract_practitioner_assignments (id, org_id, contract_id, slot, entity_id, practitioner_id)
+         VALUES ($1, $2, $3, 'penetration.slot', 'entity', 'practitioner')`,
+        [id, orgId, contractId],
+      );
+      return id;
+    },
+  },
+  'org.contract_credential_snapshots': {
+    async seed(tx, orgId) {
+      const contractId = newUlid();
+      await tx.query('INSERT INTO org.contracts (id, org_id) VALUES ($1, $2)', [contractId, orgId]);
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.contract_credential_snapshots (id, org_id, contract_id, slot, practitioner_id, decided_at, facts, result)
+         VALUES ($1, $2, $3, 'penetration.slot', 'practitioner', now(), '{}'::jsonb, '{}'::jsonb)`,
+        [id, orgId, contractId],
+      );
+      return id;
+    },
+  },
   'org.consent_records': {
     appendOnly: true,
     // 直接 INSERT 而不用 recordConsent：探測 4 要在 A 的脈絡寫入 B 的 org_id，recordConsent 沒有這個參數。

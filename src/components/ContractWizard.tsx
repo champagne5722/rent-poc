@@ -13,6 +13,7 @@ import {
   Col,
   DatePicker,
   Descriptions,
+  Divider,
   Flex,
   Form,
   Input,
@@ -51,6 +52,11 @@ import { contractEquipmentAnnex, formatEquipmentItem, newAnnexRow } from '@/lib/
 import { depositWarning, type DepositWarning } from '@/lib/deposit-warning';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
 import RoutingConditionsPanel from '@/components/RoutingConditionsPanel';
+import PractitionerAssignmentPanel, { type PartySignerPick } from '@/components/PractitionerAssignmentPanel';
+import type { PractitionerAssignmentInput, PrintedPractitioner } from '@/lib/practitioner-assignment/seats';
+import { entityPartyRoles } from '@/lib/practitioner-assignment/seats';
+import type { SeatOptions } from '@/lib/practitioner-assignment/service';
+import type { SendBlockReason, SendNotice } from '@/lib/send-preconditions';
 import {
   DEFAULT_ROUTING,
   countFieldsBySeat,
@@ -76,11 +82,13 @@ import {
   STEP_PROPERTY,
   STEP_SIGNATURE,
   WIZARD_STEPS,
+  applyPartySigner,
   applyRoutingChange,
   checkSignatureFields,
   isPartiesOnly,
   mergeEditableFields,
   nextStepBlockReason,
+  pruneAssignments,
   resumeStepIndex,
   sendBlockReasons,
   signingSequenceNotice,
@@ -393,6 +401,14 @@ function DepositWarningAlert({ warning, style }: { warning: DepositWarning | nul
   return <Alert type="warning" showIcon style={style} title="押金高於 2 個月租金" description={warning.message} />;
 }
 
+/** GET /api/contracts/[id]/practitioners 的回應。 */
+interface PractitionerData {
+  options: SeatOptions;
+  assignments: PractitionerAssignmentInput[];
+  printed: Record<string, PrintedPractitioner>;
+  evaluation: { ok: boolean; reasons: SendBlockReason[]; notices: SendNotice[] };
+}
+
 interface FormValues {
   landlordName?: string;
   landlordEmail?: string;
@@ -417,11 +433,26 @@ export default function ContractWizard({ id }: { id: string }) {
   const [pdfVersion, setPdfVersion] = useState(0);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  // 執業人員的指派（MIL-69）。草稿中可能只選了一半，存檔時只送選完的
+  const [assignments, setAssignments] = useState<PractitionerAssignmentInput[]>([]);
+  const [practitionerData, setPractitionerData] = useState<PractitionerData | null>(null);
   const [form] = Form.useForm<FormValues>();
   const initialised = useRef(false);
   // 欄位步驟邊填邊判斷：表單的值還沒併回 fields 快照前，警告要跟著輸入即時更新
   const watchedRent = Form.useWatch('rent', form);
   const watchedDeposit = Form.useWatch('deposit', form);
+
+  // 指派選項、已存的指派與送簽前檢查的結果。選項與檢查依已存的草稿計算，所以存檔後要重讀
+  const loadPractitioners = useCallback(
+    async (syncAssignments: boolean) => {
+      const res = await fetch(`/api/contracts/${id}/practitioners`);
+      if (!res.ok) return;
+      const { data } = (await res.json()) as { data: PractitionerData };
+      setPractitionerData(data);
+      if (syncAssignments) setAssignments(data.assignments);
+    },
+    [id]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -439,6 +470,7 @@ export default function ContractWizard({ id }: { id: string }) {
       setSigFields(data.signature_fields);
       // 中斷後續作：落在第一個還沒完成的步驟（規格 §7 草稿保全）
       setStep(resumeStepIndex(data));
+      void loadPractitioners(true);
       form.setFieldsValue({
         landlordName: data.fields.landlordName,
         landlordEmail: data.fields.landlordEmail,
@@ -455,7 +487,7 @@ export default function ContractWizard({ id }: { id: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id, form]);
+  }, [id, form, loadPractitioners]);
 
   // 把表單當下的值併回合約欄位快照（物件相關欄位在建立草稿時已帶入，不在表單編輯）。
   // 底稿一律取 fields 狀態而非載入當時的 contract.fields：不然在第①步改過的選用條款勾選，
@@ -484,13 +516,25 @@ export default function ContractWizard({ id }: { id: string }) {
           message.error((await res.json()).error ?? '草稿儲存失敗');
           return false;
         }
-        setPdfVersion((v) => v + 1); // 欄位改動要反映到 PDF 預覽
+        // 指派在欄位之後存：分流條件已存好，伺服器才驗得到席位。沒選完的不存
+        const saved = pruneAssignments(next.routing, assignments).filter((a) => a.entityId && a.practitionerId);
+        const assignRes = await fetch(`/api/contracts/${id}/practitioners`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ assignments: saved }),
+        });
+        if (!assignRes.ok) {
+          message.error((await assignRes.json()).error ?? '執業人員指派儲存失敗');
+          return false;
+        }
+        setPdfVersion((v) => v + 1); // 欄位與指派的改動要反映到 PDF 預覽
+        await loadPractitioners(false);
         return true;
       } finally {
         setSaving(false);
       }
     },
-    [id, message]
+    [id, message, assignments, loadPractitioners]
   );
 
   if (loadFailed) {
@@ -527,19 +571,26 @@ export default function ContractWizard({ id }: { id: string }) {
     );
   }
 
-  const state = { fields, signatureFields: sigFields };
+  // 指派還沒從伺服器讀回來之前不檢查指派，避免步驟列閃一下錯誤
+  const state = { fields, signatureFields: sigFields, assignments: practitionerData ? assignments : undefined };
   const routingEvaluation = evaluateRouting(fields.routing);
   const seats = routingEvaluation.ok ? routingEvaluation.seats : undefined;
   const partiesOnly = !seats || isPartiesOnly(seats);
   // 有執業人員的簽署序列才在確認頁列出擋下原因並停用送簽；兩方序列沿用原本的行為（送簽時才提示）
-  const sendReasons = partiesOnly ? [] : sendBlockReasons(state);
+  // 伺服器的送簽前檢查（資格、專任、Email 重複等）接在後面，同一句不重複列
+  const serverReasons = practitionerData?.evaluation.reasons.map((r) => r.message) ?? [];
+  const sendReasons = partiesOnly ? [] : [...new Set([...sendBlockReasons(state), ...serverReasons])];
+  const renewalNotices = practitionerData?.evaluation.notices ?? [];
+  const lockedPartyRoles = routingEvaluation.ok ? entityPartyRoles(routingEvaluation.plan) : [];
+  const partyALocked = lockedPartyRoles.includes('party_a');
+  const partyBLocked = lockedPartyRoles.includes('party_b');
 
   const fieldsStepDepositWarning = depositWarning(watchedRent, watchedDeposit);
   const confirmDepositWarning = depositWarning(fields.rent, fields.deposit);
 
   const goNext = async () => {
     const nextFields = step === STEP_FIELDS ? readFields() : fields;
-    const blocked = nextStepBlockReason(step, { fields: nextFields, signatureFields: sigFields });
+    const blocked = nextStepBlockReason(step, { fields: nextFields, signatureFields: sigFields, assignments });
     if (blocked) {
       message.error(blocked);
       // 第②步同時觸發表單的欄位錯誤提示
@@ -570,7 +621,19 @@ export default function ContractWizard({ id }: { id: string }) {
     const next = applyRoutingChange(fields, sigFields, routing);
     setFields(next.fields);
     setSigFields(next.signatureFields);
+    setAssignments(pruneAssignments(routing, assignments));
     if (next.removed > 0) message.warning(`簽署序列已沒有對應的席位，已移除 ${next.removed} 個簽署區域`);
+  };
+
+  // 選定當事人簽署人後，那一方的姓名與 Email 由簽署人帶入，不開放手填（ADR-0018 決議 2）
+  const pickPartySigner = ({ role, signer }: PartySignerPick) => {
+    const person = signer ?? { name: '', email: '' };
+    setFields((current) => (current ? applyPartySigner(current, role, person) : current));
+    form.setFieldsValue(
+      role === 'party_a'
+        ? { landlordName: person.name, landlordEmail: person.email }
+        : { tenantName: person.name, tenantEmail: person.email }
+    );
   };
 
   const goPrev = () => {
@@ -654,6 +717,23 @@ export default function ContractWizard({ id }: { id: string }) {
     ...(seats && !partiesOnly
       ? [
           {
+            key: 'practitioners',
+            label: '執業人員',
+            span: 2,
+            children: Object.keys(practitionerData?.printed ?? {}).length ? (
+              <Space orientation="vertical" size={2}>
+                {Object.entries(practitionerData?.printed ?? {}).map(([slot, p]) => (
+                  <Typography.Text key={slot}>
+                    {p.name}
+                    {p.title ? `（${p.title}）` : ''}・{p.entityName}
+                  </Typography.Text>
+                ))}
+              </Space>
+            ) : (
+              '（尚未指派）'
+            ),
+          },
+          {
             key: 'routing',
             label: '簽署序列',
             span: 2,
@@ -729,39 +809,68 @@ export default function ContractWizard({ id }: { id: string }) {
                 <Form.Item
                   name="landlordName"
                   label="甲方（房東）姓名"
-                  rules={[{ required: true, message: '請輸入甲方姓名' }]}
+                  rules={partyALocked ? [] : [{ required: true, message: '請輸入甲方姓名' }]}
                 >
-                  <Input />
+                  <Input disabled={partyALocked} />
                 </Form.Item>
               </Col>
               <Col span={12}>
                 <Form.Item
                   name="landlordEmail"
                   label="甲方 Email"
-                  rules={[{ required: true, type: 'email', message: '請輸入有效的甲方 Email' }]}
+                  rules={
+                    partyALocked
+                      ? []
+                      : [{ required: true, type: 'email', message: '請輸入有效的甲方 Email' }]
+                  }
                 >
-                  <Input />
+                  <Input disabled={partyALocked} />
                 </Form.Item>
               </Col>
               <Col span={12}>
                 <Form.Item
                   name="tenantName"
                   label="乙方（租客）姓名"
-                  rules={[{ required: true, message: '請輸入乙方姓名' }]}
+                  rules={partyBLocked ? [] : [{ required: true, message: '請輸入乙方姓名' }]}
                 >
-                  <Input />
+                  <Input disabled={partyBLocked} />
                 </Form.Item>
               </Col>
               <Col span={12}>
                 <Form.Item
                   name="tenantEmail"
                   label="乙方 Email"
-                  rules={[{ required: true, type: 'email', message: '請輸入有效的乙方 Email' }]}
+                  rules={
+                    partyBLocked
+                      ? []
+                      : [{ required: true, type: 'email', message: '請輸入有效的乙方 Email' }]
+                  }
                 >
-                  <Input />
+                  <Input disabled={partyBLocked} />
                 </Form.Item>
               </Col>
             </Row>
+            {!partiesOnly && (
+              <>
+                <Divider />
+                <Flex vertical gap={12}>
+                  {lockedPartyRoles.length > 0 && (
+                    <Typography.Text type="secondary">
+                      {lockedPartyRoles.map((role) => SIGNER_ROLE_LABELS[role]).join('、')}是執業主體，姓名與 Email
+                      由下方選定的當事人簽署人帶入。
+                    </Typography.Text>
+                  )}
+                  <PractitionerAssignmentPanel
+                    options={practitionerData?.options ?? null}
+                    assignments={assignments}
+                    onChange={setAssignments}
+                    onPartySigner={pickPartySigner}
+                    disabled={saving}
+                  />
+                </Flex>
+                <Divider />
+              </>
+            )}
 
             <Typography.Text strong>租金與租期</Typography.Text>
             <Row gutter={12} style={{ marginTop: 8 }}>
@@ -868,6 +977,9 @@ export default function ContractWizard({ id }: { id: string }) {
             description={signingSequenceNotice(fields)}
           />
           <DepositWarningAlert warning={confirmDepositWarning} style={{ marginBottom: 12 }} />
+          {renewalNotices.map((notice) => (
+            <Alert key={notice.seatRuleId} type="warning" showIcon style={{ marginBottom: 12 }} title="換證期限將到" description={`${notice.message}。換證窗口內仍可送簽。`} />
+          ))}
           {sendReasons.length > 0 && (
             <Alert
               type="error"

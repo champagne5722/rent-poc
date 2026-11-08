@@ -76,15 +76,19 @@ fields.routing = {
 
 E 線不經過這個欄位。E 線自己組 `RoutingFacts`，直接呼叫 `routeSignatures`。
 
+## 執業人員的指派（MIL-69）
+
+- 指派、`practiceRegistry`、送簽前檢查與判定事實快照見 `src/lib/practitioner-assignment/README.md`。
+- `prepareContractSigners(contract, facts, practitioners)` 的第三個參數是執業人員席位的簽署人，沒傳入時要求執業人員的組合仍會被擋下。資格檢查在 `checkSendPreconditions`，這裡不重複。
+
 ## 尚未做的事
 
-- 執業人員的指派與送簽檢查：MIL-69。目前規則要求執業人員的組合，`prepareContractSigners`（`src/lib/signing.ts`）會擋下。
 - `requiredFieldPages` 的 `status_annex` 檢查：MIL-71。
 - 同一人兼任的合併：MIL-76。`buildSignerSequence` 目前每個席位各是一位簽署人。
 
 ## 簽署欄與簽署區域（MIL-67）
 
 - PDF 簽署欄依簽署序列印 N 列。版面是 `src/lib/pdf-layout.ts` 的 `signatureBlockLayout(seats)`，印列順序固定甲方、乙方、執業人員。兩方合約的落點不變，`src/lib/pdf-two-party.golden.json` 是改動前的逐字位置，測試逐字比對。
-- 尚未指派的執業人員簽署欄印姓名與執業主體的底線。`pdf.ts` 的 `signatureBlockLines` 是 MIL-69 傳入姓名與執業主體的位置。
+- 尚未指派的執業人員簽署欄印姓名與執業主體的底線。已指派時 `generateContractPdf(fields, practitioners)` 傳入姓名、法定稱謂與執業主體（MIL-69），不印證號。
 - 簽署區編輯器依 `SeatView[]` 提供新增按鈕，新增的框寫入 `slot`。按鈕依印列順序排，與簽署順序無關。
-- 送簽前的原因清單是 `contract-wizard.ts` 的 `sendBlockReasons`。每個執業人員席位都列為「尚未指派」，MIL-69 補指派資料後改成查指派。
+- 送簽前的原因清單是 `contract-wizard.ts` 的 `sendBlockReasons`。沒有指派的執業人員席位列為「尚未指派」。資格由伺服器的 `checkSendPreconditions` 判定，確認頁併入列出。

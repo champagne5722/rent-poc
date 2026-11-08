@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server';
 import { getContract } from '@/lib/contracts';
 import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/contracts/route';
-import { readInOrgTx } from '@/lib/org-route';
+import { inOrgTx, readInOrgTx } from '@/lib/org-route';
 import { generateContractPdf, PDF_PAGE_SIZE } from '@/lib/pdf';
-import { loadContractRoutingFacts } from '@/lib/signature-routing/repository';
-import { contractDocumentFileName, prepareContractSigners } from '@/lib/signing';
+import { getPracticeRegistry } from '@/lib/practice-registry';
+import { loadSendInputs, prepareContractSend, recordSendSnapshots } from '@/lib/practitioner-assignment/send';
+import { contractDocumentFileName } from '@/lib/signing';
 import { contractSubject, signing, signingErrorResponse } from '@/lib/signing-module';
 import { jsonOk, jsonError } from '@/lib/http';
 
@@ -15,11 +16,11 @@ export async function POST(_request: NextRequest, { params }: ContractRouteCtx) 
   // 合約與分流條件在同一個交易讀。產 PDF 與呼叫簽署服務商都在交易外
   const read = await readInOrgTx(async (tx) => {
     const found = await getContract(tx, id);
-    return found ? { contract: found, routing: await loadContractRoutingFacts(tx, id) } : null;
+    return found ? { contract: found, inputs: await loadSendInputs(tx, id) } : null;
   });
   if (!read.ok) return read.response;
   if (!read.value) return contractNotFound();
-  const { contract, routing } = read.value;
+  const { contract, inputs } = read.value;
   if (contract.status !== 'draft') {
     return jsonError(409, '僅草稿可送簽');
   }
@@ -39,19 +40,26 @@ export async function POST(_request: NextRequest, { params }: ContractRouteCtx) 
   if (contract.contract_type !== 'lease') {
     return jsonError(400, '這個合約類型尚未支援送簽');
   }
-  if (!routing.ok) return jsonError(400, routing.reason);
-  const prepared = prepareContractSigners(contract, routing.facts);
-  if (!prepared.ok) return jsonError(prepared.status, prepared.error);
+  // 送簽前檢查（ADR-0018 決議 10）：分流、執業人員指派與資格。不符時列出全部原因，簽署人與判定事實快照通過才產生
+  const prepared = await prepareContractSend(contract, inputs, getPracticeRegistry(), new Date().toISOString());
+  if (!prepared.ok) {
+    return jsonOk({ error: prepared.error, reasons: prepared.reasons }, { status: prepared.status });
+  }
 
-  const pdf = await generateContractPdf(f);
+  const pdf = await generateContractPdf(f, prepared.printed);
   try {
     const task = await signing.send(
       contractSubject(contract.id),
       { fileName: contractDocumentFileName(contract), pdf, pageSize: PDF_PAGE_SIZE },
       prepared.signers
     );
+    // 簽署任務還在 SQLite 的過渡期，快照無法與它同交易。MIL-85 改成同一個交易
+    await inOrgTx(async (tx) => {
+      await recordSendSnapshots(tx, contract.id, prepared);
+      return jsonOk(null);
+    });
     // 簽署模組不對外提供服務商任務編號（ADR-0010），回應不帶 task_id
-    return jsonOk({ data: { id: contract.id, mock: task.mode === 'mock' } });
+    return jsonOk({ data: { id: contract.id, mock: task.mode === 'mock', notices: prepared.notices } });
   } catch (e) {
     return signingErrorResponse(e, '送簽失敗');
   }

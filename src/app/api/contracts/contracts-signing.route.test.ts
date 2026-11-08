@@ -105,7 +105,7 @@ describe('POST /api/contracts/[id]/send', () => {
     const id = await readyDraft();
     const res = await send(req('POST'), ctx(id));
     expect(res.status).toBe(200);
-    expect(await json(res)).toEqual({ data: { id, mock: true } });
+    expect(await json(res)).toEqual({ data: { id, mock: true, notices: [] } });
 
     const one = await json(await getOne(req('GET'), ctx(id)));
     expect(one.data.status).toBe('awaiting_tenant');
