@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { copyContractAsDraft, getContract } from '@/lib/db';
+import { copyAssignments } from '@/lib/practitioner-assignment/repository';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -11,5 +12,7 @@ export async function POST(_request: NextRequest, { params }: Ctx) {
   if (!contract) return Response.json({ error: '合約不存在' }, { status: 404 });
 
   const newId = copyContractAsDraft(contract);
+  // 沿用執業人員的指派。改派一律是撤回後衍生新草稿（ADR-0018 決議 11），新草稿仍要重新通過送簽前檢查
+  await copyAssignments(contract.id, newId);
   return Response.json({ data: { id: newId } }, { status: 201 });
 }
