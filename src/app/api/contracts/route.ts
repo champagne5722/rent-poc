@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
   if (!read.ok) return read.response;
   const property = read.value;
   if (!property) return jsonError(400, '請指定有效的物件');
+  if (property.archived_at) return jsonError(409, '物件已封存，不能建立合約');
   // 分流條件由建約 wizard 第一步填寫，存進欄位快照隨草稿保存（ADR-0021 決議 1）；沒帶則視為自管
   const routing = (body as { routing?: unknown }).routing;
   const routingError = routingInputError(routing);

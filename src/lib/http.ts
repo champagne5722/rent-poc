@@ -29,12 +29,15 @@ export function jsonOk<T>(body: T & NoPromise<T>, init: JsonInit = {}): Response
   return Response.json(body, init);
 }
 
-/** 錯誤回應，本文固定是 { error: message }。 */
-export function jsonError(status: number, message: string): Response {
+/**
+ * 錯誤回應，本文是 { error: message }。需要讓前端分辨原因時帶 code，本文變成 { error, code }。
+ * 例：新增分租單位前要使用者確認警告（409）。
+ */
+export function jsonError(status: number, message: string, code?: string): Response {
   if (!Number.isInteger(status) || status < 400 || status > 599) {
     throw new RangeError(`jsonError 的狀態碼必須是 4xx 或 5xx，收到 ${status}`);
   }
-  return Response.json({ error: message }, { status });
+  return Response.json(code === undefined ? { error: message } : { error: message, code }, { status });
 }
 
 const MAX_DEPTH = 20;

@@ -1,4 +1,6 @@
+import Database from 'better-sqlite3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { ensureSchema, setDb } from '@/lib/db';
 import { pgDriver } from '@/lib/pg/drivers';
 import { createPgTestDatabase, type PgTestDatabase } from '@/lib/pg/pg-database-kit';
 import { newUlid } from '@/lib/pg/ulid';
@@ -7,11 +9,11 @@ import { EQUIPMENT_OPTIONS } from '@/lib/types';
 import {
   AnchorKeyCollisionError,
   createProperty,
-  deleteProperty,
   getProperty,
   listProperties,
   listVocabulary,
   parsePropertyInput,
+  removeProperty,
   setPropertyAnchorKey,
   updateProperty,
 } from '.';
@@ -29,11 +31,18 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
   const orgB = newUlid();
 
   beforeAll(async () => {
+    // 刪除物件要問合約接縫，合約還在 SQLite
+    const sqlite = new Database(':memory:');
+    ensureSchema(sqlite);
+    setDb(sqlite);
     dbh = await createPgTestDatabase(adminUrl!, 2);
     withTx = createWithTx(pgDriver(dbh.pool));
     await dbh.owner.query(`SET ROLE app_owner; INSERT INTO control.orgs (id, name, kind) VALUES ('${orgA}', 'A', 'owner'), ('${orgB}', 'B', 'owner'); RESET ROLE`);
   });
-  afterAll(() => dbh.close());
+  afterAll(async () => {
+    setDb(null);
+    await dbh.close();
+  });
 
   const input = (over: Record<string, unknown> = {}) => {
     const parsed = parsePropertyInput({ name: '物件', address: '台北市大安區某路 1 號', equipment: [{ name: '冷氣', quantity: 2 }], ...over });
@@ -47,6 +56,8 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
     expect(created).toEqual({
       id,
       rental_unit_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/),
+      unit: { suffix: '0000', label: null, floor: null, unit_type: 'whole', status: 'active', display_code: null },
+      archived_at: null,
       anchor: expect.objectContaining({ status: 'pending_verification', building_no: null, latitude: null }),
       name: '物件',
       address: '台北市大安區某路 1 號',
@@ -63,7 +74,7 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
     expect(updated).toMatchObject({ name: '改名', equipment: [], rental_unit_id: created!.rental_unit_id });
     expect(updated!.updated_at).toMatch(/^\d{4}-/);
 
-    expect(await withTx({ kind: 'org', orgId: orgA }, (tx) => deleteProperty(tx, id))).toBe(true);
+    expect(await withTx({ kind: 'org', orgId: orgA }, (tx) => removeProperty(tx, id))).toBe('deleted');
     expect(await withTx({ kind: 'org', orgId: orgA }, (tx) => getProperty(tx, id))).toBeNull();
   });
 
@@ -90,7 +101,7 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
     const id = await withTx({ kind: 'org', orgId: orgA }, (tx) => createProperty(tx, input({ name: 'A 的' })));
     expect(await withTx({ kind: 'org', orgId: orgB }, (tx) => getProperty(tx, id))).toBeNull();
     expect(await withTx({ kind: 'org', orgId: orgB }, (tx) => updateProperty(tx, id, input()))).toBeNull();
-    expect(await withTx({ kind: 'org', orgId: orgB }, (tx) => deleteProperty(tx, id))).toBe(false);
+    expect(await withTx({ kind: 'org', orgId: orgB }, (tx) => removeProperty(tx, id))).toBe('not_found');
     expect((await withTx({ kind: 'org', orgId: orgB }, (tx) => listProperties(tx))).map((p) => p.name)).not.toContain('A 的');
     await expect(dbh.pool.query('SELECT * FROM registry.anchors')).rejects.toThrow(/permission denied/);
   });

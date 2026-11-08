@@ -38,6 +38,8 @@ export const AUDIT_ACTIONS = [
   'property.update',
   'property.delete',
   'property.anchor_key', // MIL-143：補建號，payload 只放租賃單位 ID，不放鍵與地址
+  'property.sublet_create', // MIL-145：新增分租單位，payload 只放租賃單位 ID 與單位後綴，不放房號與地址
+  'property.archive', // MIL-145：有合約的物件刪除時改為封存，payload 只放租賃單位 ID
   'anchor.merge',
   'handover.seal',
   'handover.accept',

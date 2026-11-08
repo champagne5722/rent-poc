@@ -1,5 +1,7 @@
+import Database from 'better-sqlite3';
 import { NextRequest } from 'next/server';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ensureSchema, setDb } from '@/lib/db';
 import { withTx } from '@/lib/pg/database';
 import { actAs, actAsError, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { isUlid, newUlid } from '@/lib/pg/ulid';
@@ -20,9 +22,18 @@ beforeAll(async () => {
   kit = await setupRouteDb();
 });
 afterAll(() => kit.close());
+// 刪除物件要問合約接縫（contract-links.ts），合約還在 SQLite
+let sqlite: Database.Database;
 beforeEach(async () => {
   await kit.reset();
   actAs(kit.orgA);
+  sqlite = new Database(':memory:');
+  ensureSchema(sqlite);
+  setDb(sqlite);
+});
+afterEach(() => {
+  setDb(null);
+  sqlite.close();
 });
 
 const NAME = '大安區溫馨兩房';
@@ -66,6 +77,9 @@ describe('GET /api/properties（清單）', () => {
     expect(data[1]).toEqual({
       id: first,
       rental_unit_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/),
+      // 待驗證的錨點沒有縣市與鄉鎮編碼，顯示編碼是 null（MIL-145；完整案例見 sublet.route.test.ts）
+      unit: { suffix: '0000', label: null, floor: null, unit_type: 'whole', status: 'active', display_code: null },
+      archived_at: null,
       // 沒有給產權時是待驗證錨點，鍵與座標都是空值（MIL-143；產權的完整案例見 anchor.route.test.ts）
       anchor: expect.objectContaining({ status: 'pending_verification', building_no: null }),
       name: '第一間',
@@ -208,7 +222,7 @@ describe('DELETE /api/properties/[id]（刪除）', () => {
     const unitId = (await json(await getOne(req('GET'), ctx(id)))).data.rental_unit_id;
     const res = await DELETE(req('DELETE'), ctx(id));
     expect(res.status).toBe(200);
-    expect(await json(res)).toEqual({ data: { id } });
+    expect(await json(res)).toEqual({ data: { id, result: 'deleted' } });
     expect((await getOne(req('GET'), ctx(id))).status).toBe(404);
     expect((await json(await getList())).data).toEqual([]);
     const { rows } = await kit.asOwner((db) => db.query('SELECT 1 FROM registry.rental_units WHERE id = $1', [unitId]));
