@@ -24,8 +24,8 @@ export interface SigningSubscriber {
   isCompleted(subject: SigningSubject): boolean;
 
   // 下面兩個在交易內被呼叫，不得呼叫外部 API。拋例外時簽署進度一起回滾（ADR-0010 決議 8）。
-  // taskRef 只給合約雙寫舊欄位用，由收尾那張票（MIL-60）移除。
-  onSent(subject: SigningSubject, sent: { taskRef: string; signers: Signer[] }): void;
+  // 不帶服務商任務編號：訂閱者看不到它（ADR-0010）。
+  onSent(subject: SigningSubject, sent: { signers: Signer[] }): void;
   onOutcome(subject: SigningSubject, outcome: ProgressOutcome): void;
 
   // 交易提交後、模組保存文件之後呼叫，失敗不回滾狀態

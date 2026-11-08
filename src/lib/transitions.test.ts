@@ -25,7 +25,7 @@ afterEach(() => {
 
 function seedContract(status: ContractStatus): Contract {
   const result = db
-    .prepare("INSERT INTO contracts (property_id, status, fields, dottedsign_task_id) VALUES (NULL, ?, '{}', 'task-1')")
+    .prepare("INSERT INTO contracts (property_id, status, fields) VALUES (NULL, ?, '{}')")
     .run(status);
   return { id: Number(result.lastInsertRowid), status } as Contract;
 }
@@ -146,20 +146,18 @@ describe('applySigningResult（狀態轉移與歷程事件同交易）', () => {
     const contract = seedContract('draft');
     appendContractEvent(contract.id, { type: 'created', actor: 'landlord' }, db);
 
-    applySigningResult(contract, { type: 'sent', first: PARTY_B }, {}, db);
+    applySigningResult(contract, { type: 'sent', first: PARTY_B }, db);
     applySigningResult(
       { ...contract, status: 'awaiting_tenant' },
       { type: 'signer_signed', signer: PARTY_B, next: PARTY_A },
-      {},
       db
     );
     applySigningResult(
       { ...contract, status: 'awaiting_landlord' },
       { type: 'signer_signed', signer: PARTY_A, next: null },
-      {},
       db
     );
-    applySigningResult({ ...contract, status: 'awaiting_landlord' }, { type: 'completed' }, {}, db);
+    applySigningResult({ ...contract, status: 'awaiting_landlord' }, { type: 'completed' }, db);
 
     expect(statusOf(contract.id)).toBe('completed');
     expect(listContractEvents(contract.id, db).map((e) => [e.type, e.actor])).toEqual([
@@ -172,7 +170,7 @@ describe('applySigningResult（狀態轉移與歷程事件同交易）', () => {
 
   it('拒簽事件寫入原因附註，合約也留下拒簽原因', () => {
     const contract = seedContract('awaiting_tenant');
-    applySigningResult(contract, { type: 'declined', signer: PARTY_B, reason: '租金認知有落差' }, {}, db);
+    applySigningResult(contract, { type: 'declined', signer: PARTY_B, reason: '租金認知有落差' }, db);
 
     const events = listContractEvents(contract.id, db);
     expect(events).toHaveLength(1);
@@ -185,7 +183,7 @@ describe('applySigningResult（狀態轉移與歷程事件同交易）', () => {
 
   it('沒有轉移時不改狀態也不寫事件，回傳 null', () => {
     const contract = seedContract('draft');
-    expect(applySigningResult(contract, { type: 'completed' }, {}, db)).toBeNull();
+    expect(applySigningResult(contract, { type: 'completed' }, db)).toBeNull();
     expect(statusOf(contract.id)).toBe('draft');
     expect(listContractEvents(contract.id, db)).toHaveLength(0);
   });
@@ -195,7 +193,7 @@ describe('applySigningResult（狀態轉移與歷程事件同交易）', () => {
     // 模擬歷程寫入失敗（磁碟錯誤、約束違反等）
     db.exec("CREATE TRIGGER fail_event BEFORE INSERT ON contract_events BEGIN SELECT RAISE(ABORT, '寫入失敗'); END;");
 
-    expect(() => applySigningResult(contract, { type: 'completed' }, {}, db)).toThrow();
+    expect(() => applySigningResult(contract, { type: 'completed' }, db)).toThrow();
 
     db.exec('DROP TRIGGER fail_event');
     expect(statusOf(contract.id)).toBe('awaiting_tenant');
@@ -206,7 +204,7 @@ describe('applySigningResult（狀態轉移與歷程事件同交易）', () => {
     const contract = seedContract('awaiting_tenant');
     db.exec("CREATE TRIGGER fail_status BEFORE UPDATE ON contracts BEGIN SELECT RAISE(ABORT, '更新失敗'); END;");
 
-    expect(() => applySigningResult(contract, { type: 'completed' }, {}, db)).toThrow();
+    expect(() => applySigningResult(contract, { type: 'completed' }, db)).toThrow();
 
     db.exec('DROP TRIGGER fail_status');
     expect(statusOf(contract.id)).toBe('awaiting_tenant');
@@ -239,23 +237,18 @@ describe('系統側動作的歷程事件', () => {
     expect(listContractEvents(id, db)).toMatchObject([{ type: 'created', actor: 'landlord', note: null }]);
   });
 
-  it('送簽把狀態、task_id 與「送簽」事件一起寫入', () => {
+  it('送簽把狀態與「送簽」事件一起寫入', () => {
     const id = insertContractWithEvent({ property_id: null, fields: '{}' }, { type: 'created', actor: 'landlord' }, db);
     commitTransition(
       id,
       {
         status: 'awaiting_tenant',
         event: { type: 'sent', actor: 'landlord', note: '寄送給乙方 tenant@example.com' },
-        dottedsignTaskId: 'task-42',
       },
       db
     );
 
-    const row = db.prepare('SELECT status, dottedsign_task_id FROM contracts WHERE id=?').get(id) as {
-      status: string;
-      dottedsign_task_id: string;
-    };
-    expect(row).toEqual({ status: 'awaiting_tenant', dottedsign_task_id: 'task-42' });
+    expect(statusOf(id)).toBe('awaiting_tenant');
     expect(listContractEvents(id, db).map((e) => e.type)).toEqual(['created', 'sent']);
   });
 

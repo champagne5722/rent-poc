@@ -1,6 +1,12 @@
 # 點點簽（DottedSign）整合筆記
 
-給接手開發團隊的整合備忘。程式碼入口：`src/lib/signing-module/dottedsign-adapter.ts`（點點簽 adapter：請求組裝、簽章驗證、webhook 解析）、`src/lib/dottedsign.ts`（HTTP client 與 token）。route handler 只呼叫簽署模組（ADR-0010）。文件來源：<https://developer.dottedsign.com/v1.0-sandbox/>（AI 可讀清單：`/v1.0-sandbox/llms.txt`）。
+給接手開發團隊的整合備忘。
+
+程式碼入口是點點簽 adapter：`src/lib/signing-module/dottedsign-adapter.ts`。點點簽 API 的細節全部集中在這裡，包含請求組裝、座標轉換、簽章驗證、webhook 解析與文件下載。HTTP client 與 token 在 `src/lib/dottedsign.ts`，由簽署模組組裝時注入 adapter。
+
+route handler 與合約層只呼叫簽署模組（`src/lib/signing-module/index.ts`），看不到服務商任務編號（ADR-0010）。簽署模組依環境變數選用點點簽 adapter 或 Mock adapter。
+
+文件來源：<https://developer.dottedsign.com/v1.0-sandbox/>（AI 可讀清單：`/v1.0-sandbox/llms.txt`）。
 
 ## 認證
 
@@ -48,7 +54,7 @@
 
 - 文件保存歸簽署模組（MIL-58、ADR-0010 決議 10），以簽署任務為鍵。全員完成的交易提交後，模組逐種呼叫 adapter 的 `downloadFile`。
 - 點點簽 adapter 每種文件各打一次 `download_link`，再下載預簽連結。檔案寫進 `data/sign-task-files/<簽署任務 id>/`，`sign_task_files` 表記檔名、路徑、大小與狀態。
-- MIL-58 前的紀錄由 `contract_files` 回填進 `sign_task_files`，路徑仍指向 `data/contract-files/<合約 id>/`，舊檔案不搬。
+- MIL-58 前的紀錄原本存在以合約為鍵的 `contract_files` 表。`ensureSchema()` 開檔時把它回填進 `sign_task_files`，再刪除這張表（MIL-60）。路徑仍指向 `data/contract-files/<合約 id>/`，舊檔案不搬也不刪。
 - **刻意放在狀態轉移的交易之外**：抓檔是外部 IO，失敗不回滾合約狀態，只把錯誤寫進 `sign_task_files.status = 'failed'` 與 `error`。模組吞掉所有例外，避免 webhook 回非 2xx。點點簽會重試，單日 10 次投遞失敗會停掉整個 application 的 webhook。
 - 補抓：`POST /api/contracts/[id]/files`（強制重抓，全成功回 200、有失敗回 207）。下載端點在檔案不存在時也會當場補抓一次。
 - 下載端點：`GET /api/contracts/[id]/signed-pdf`、`GET /api/contracts/[id]/audit-trail`，未完成狀態回 409 與明確訊息；`GET /api/contracts/[id]/files` 列出保存狀態。
