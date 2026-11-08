@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { contractSubject, signing, signingErrorResponse } from '@/lib/signing-module';
+import { jsonOk } from '@/lib/http';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest, { params }: Ctx) {
   const redirectUrl = `${origin}/contracts/${contractId}`;
   try {
     const { signer, url } = await signing.getSignLink(contractSubject(contractId), redirectUrl);
-    return Response.json({
+    return jsonOk({
       data: { role: signer.role, name: signer.name, email: signer.email, sign_link: url },
     });
   } catch (e) {

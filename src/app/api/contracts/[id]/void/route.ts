@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { contractSubject, signing, signingErrorResponse } from '@/lib/signing-module';
+import { jsonOk } from '@/lib/http';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -9,7 +10,7 @@ export async function POST(_request: NextRequest, { params }: Ctx) {
   const contractId = Number(id);
   try {
     await signing.voidTask(contractSubject(contractId));
-    return Response.json({ data: { id: contractId } });
+    return jsonOk({ data: { id: contractId } });
   } catch (e) {
     return signingErrorResponse(e, '撤回失敗');
   }

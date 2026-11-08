@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { deleteContractWithEvents, getContract, getContractRelations, getDb } from '@/lib/db';
 import { contractSubject, signing } from '@/lib/signing-module';
+import { jsonOk, jsonError } from '@/lib/http';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -9,8 +10,8 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function GET(_request: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const contract = getContract(Number(id));
-  if (!contract) return Response.json({ error: '合約不存在' }, { status: 404 });
-  return Response.json({
+  if (!contract) return jsonError(404, '合約不存在');
+  return jsonOk({
     data: contract,
     relations: getContractRelations(contract),
     signing_progress: await signing.getProgress(contractSubject(contract.id)),
@@ -20,9 +21,9 @@ export async function GET(_request: NextRequest, { params }: Ctx) {
 export async function PUT(request: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const contract = getContract(Number(id));
-  if (!contract) return Response.json({ error: '合約不存在' }, { status: 404 });
+  if (!contract) return jsonError(404, '合約不存在');
   if (contract.status !== 'draft') {
-    return Response.json({ error: '僅草稿可編輯；已送簽的合約請先撤回' }, { status: 409 });
+    return jsonError(409, '僅草稿可編輯；已送簽的合約請先撤回');
   }
 
   const body = await request.json();
@@ -33,17 +34,17 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
       "UPDATE contracts SET fields=?, signature_fields=?, updated_at=datetime('now','localtime') WHERE id=?"
     )
     .run(JSON.stringify(fields), JSON.stringify(signatureFields), contract.id);
-  return Response.json({ data: { id: contract.id } });
+  return jsonOk({ data: { id: contract.id } });
 }
 
 export async function DELETE(_request: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const contract = getContract(Number(id));
-  if (!contract) return Response.json({ error: '合約不存在' }, { status: 404 });
+  if (!contract) return jsonError(404, '合約不存在');
   if (contract.status !== 'draft') {
-    return Response.json({ error: '僅草稿可刪除' }, { status: 409 });
+    return jsonError(409, '僅草稿可刪除');
   }
   // 歷程隨合約保存，草稿刪除時一併移除
   deleteContractWithEvents(contract.id);
-  return Response.json({ data: { id: contract.id } });
+  return jsonOk({ data: { id: contract.id } });
 }

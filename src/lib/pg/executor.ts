@@ -11,6 +11,21 @@ export interface SqlExecutor {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
 }
 
+/**
+ * withTx 向驅動借一條連線。release(true) 表示連線狀態不明（例如 ROLLBACK 也失敗），
+ * pg 的驅動必須銷毀它，不得放回連線池。
+ */
+export interface TxLease {
+  conn: SqlExecutor;
+  release(broken: boolean): void;
+}
+
+/** 驅動 seam：pg 與 PGlite 各一個 adapter（drivers.ts），withTx 對兩者一視同仁。 */
+export interface TxDriver {
+  acquire(): Promise<TxLease>;
+  close(): Promise<void>;
+}
+
 /** pg 的 Client 不帶參數時走 simple query protocol，所以能一次送多條語句。 */
 export function fromPgClient(client: Client): SqlExecutor {
   return {

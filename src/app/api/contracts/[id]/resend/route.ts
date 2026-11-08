@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { contractSubject, signing, signingErrorResponse } from '@/lib/signing-module';
+import { jsonOk } from '@/lib/http';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -8,7 +9,7 @@ export async function POST(_request: NextRequest, { params }: Ctx) {
   const { id } = await params;
   try {
     const { signer } = await signing.resend(contractSubject(Number(id)));
-    return Response.json({ data: { resent_to: signer.email } });
+    return jsonOk({ data: { resent_to: signer.email } });
   } catch (e) {
     return signingErrorResponse(e, '重寄通知失敗');
   }

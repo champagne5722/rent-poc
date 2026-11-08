@@ -3,9 +3,10 @@ import { getProperty, insertContractWithEvent, listContracts } from '@/lib/db';
 import { bindTemplate } from '@/lib/clause-library';
 import { toEquipmentAnnex } from '@/lib/equipment';
 import type { ContractFields } from '@/lib/types';
+import { jsonOk, jsonError } from '@/lib/http';
 
 export async function GET() {
-  return Response.json({ data: listContracts() });
+  return jsonOk({ data: listContracts() });
 }
 
 // 從物件建立合約草稿：物件資料在此帶入成快照，之後與物件脫鉤（見 docs/domain-model.md）；
@@ -13,7 +14,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const property = getProperty(Number(body.property_id));
-  if (!property) return Response.json({ error: '請指定有效的物件' }, { status: 400 });
+  if (!property) return jsonError(400, '請指定有效的物件');
 
   const fields: ContractFields = {
     landlordName: '',
@@ -40,5 +41,5 @@ export async function POST(request: NextRequest) {
     { property_id: property.id, fields: JSON.stringify(fields) },
     { type: 'created', actor: 'landlord' }
   );
-  return Response.json({ data: { id } }, { status: 201 });
+  return jsonOk({ data: { id } }, { status: 201 });
 }

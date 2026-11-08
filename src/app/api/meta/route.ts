@@ -1,5 +1,6 @@
 import { signing } from '@/lib/signing-module';
+import { jsonOk } from '@/lib/http';
 
 export async function GET() {
-  return Response.json({ data: { mock: (await signing.mode()) === 'mock' } });
+  return jsonOk({ data: { mock: (await signing.mode()) === 'mock' } });
 }
