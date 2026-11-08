@@ -14,6 +14,7 @@ import type {
   SignerRole,
 } from './types';
 import { EQUIPMENT_OPTIONS } from './types';
+import type { ContractType } from './labels';
 import { parseStoredEquipment } from './equipment';
 import { migrateLegacyContractSigning } from './signing-module/contract-backfill';
 import { ensureSignTaskFileTable } from './signing-module/sign-task-files';
@@ -76,6 +77,13 @@ export function ensureSchema(db: Database.Database): void {
 
   // 既有資料表補欄位：SQLite 沒有 ADD COLUMN IF NOT EXISTS，先用 PRAGMA table_info 檢查再 ALTER
   addColumnIfMissing(db, 'contracts', 'derived_from', 'INTEGER REFERENCES contracts(id)');
+  // 合約類型（ADR-0021 決議 2）。既有合約沒有值，DEFAULT 讓它們全部成為 lease。
+  addColumnIfMissing(
+    db,
+    'contracts',
+    'contract_type',
+    "TEXT NOT NULL DEFAULT 'lease' CHECK (contract_type IN ('lease', 'management'))"
+  );
   ensureSignTaskTables(db);
   ensureSignTaskFileTable(db);
 
@@ -313,14 +321,15 @@ export function insertContractWithEvent(
     property_id: number | null;
     fields: string;
     signature_fields?: string;
+    contract_type?: ContractType;
   },
   event: ContractEventInput,
   db: Database.Database = getDb()
 ): number {
   return db.transaction(() => {
     const result = db
-      .prepare('INSERT INTO contracts (property_id, fields, signature_fields) VALUES (?, ?, ?)')
-      .run(values.property_id, values.fields, values.signature_fields ?? '[]');
+      .prepare('INSERT INTO contracts (property_id, fields, signature_fields, contract_type) VALUES (?, ?, ?, ?)')
+      .run(values.property_id, values.fields, values.signature_fields ?? '[]', values.contract_type ?? 'lease');
     const id = Number(result.lastInsertRowid);
     appendContractEvent(id, event, db);
     return id;
@@ -336,8 +345,16 @@ export function copyContractAsDraft(source: Contract, db: Database.Database = ge
   const derivedNote = isAmendment ? `衍生自合約 #${source.id}（撤回後修約）` : null;
   return db.transaction(() => {
     const result = db
-      .prepare('INSERT INTO contracts (property_id, fields, signature_fields, derived_from) VALUES (?, ?, ?, ?)')
-      .run(source.property_id, JSON.stringify(source.fields), JSON.stringify(source.signature_fields), derivedFrom);
+      .prepare(
+        'INSERT INTO contracts (property_id, fields, signature_fields, derived_from, contract_type) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(
+        source.property_id,
+        JSON.stringify(source.fields),
+        JSON.stringify(source.signature_fields),
+        derivedFrom,
+        source.contract_type
+      );
     const newId = Number(result.lastInsertRowid);
     appendContractEvent(newId, { type: 'created', actor: 'landlord', note: derivedNote }, db);
     appendContractEvent(source.id, { type: 'copied', actor: 'landlord', note: `複製為新草稿：合約 #${newId}` }, db);

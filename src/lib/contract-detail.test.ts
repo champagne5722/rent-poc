@@ -17,6 +17,7 @@ function makeContract(o: { id?: number; status?: ContractStatus; derived_from?: 
   return {
     id: o.id ?? 1,
     property_id: null,
+    contract_type: 'lease',
     derived_from: o.derived_from ?? null,
     status: o.status ?? 'draft',
     fields: {

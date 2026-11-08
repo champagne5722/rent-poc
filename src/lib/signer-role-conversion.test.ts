@@ -2,7 +2,8 @@ import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ensureSchema, getContract, setDb } from './db';
 import { defaultFieldRect } from './signature-layout';
-import { contractSignerSequence } from './signing';
+import { prepareContractSigners } from './signing';
+import { loadContractRoutingFacts } from './signature-routing/repository';
 import { createDottedSignProvider, type DottedSignRequest } from './signing-module/dottedsign-adapter';
 import type { SignatureField } from './types';
 
@@ -150,10 +151,14 @@ describe('轉換後的簽名框位置快照', () => {
       calls.push({ body: JSON.parse(String(init?.body)) });
       return { data: { task_id: 1 } };
     };
+    const routing = await loadContractRoutingFacts(id);
+    if (!routing.ok) throw new Error(routing.reason);
+    const prepared = prepareContractSigners(getContract(id)!, routing.facts);
+    if (!prepared.ok) throw new Error(prepared.error);
     await createDottedSignProvider({ request, clientSecret: 's' }).createTask({
       subject: { type: 'contract', id },
       document: { fileName: 'a', pdf: new Uint8Array([1]), pageSize: A4 },
-      signers: contractSignerSequence(getContract(id)!),
+      signers: prepared.signers,
     });
 
     expect(
