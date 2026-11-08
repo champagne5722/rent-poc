@@ -87,6 +87,7 @@ describe('建立任務的請求組裝', () => {
           role: 'practitioner',
           name: '陳管理',
           email: 'manager@example.com',
+          concurrentRoles: ['party_a'],
           signatureFields: [
             { id: 'f1', signer: 'practitioner', page: 0, x: 0, y: 0, w: 1, h: 1 },
             { id: 'f2', signer: 'party_a', page: 1, x: 0, y: 0, w: 1, h: 1 },
@@ -98,6 +99,8 @@ describe('建立任務的請求組裝', () => {
     const body = calls[0].body as { stages: { field_settings: { page: number }[] }[] };
     expect(body.stages).toHaveLength(1);
     expect(body.stages[0].field_settings.map((f) => f.page)).toEqual([0, 1]);
+    // 兼任角色是平台自己的資料，不送給點點簽，也不會送出驗證設定
+    expect(Object.keys(body.stages[0]).sort()).toEqual(['email', 'field_settings', 'name', 'stage_type']);
   });
 
   it('依序簽署、立即開始，stages 順序等於簽署序列，檔名清洗掉特殊字元', async () => {
@@ -140,6 +143,95 @@ describe('建立任務的請求組裝', () => {
         },
       },
     ]);
+  });
+});
+
+// 驗證設定（MIL-65、ADR-0018 決議 13）。是否送驗證由部署決定：未設定時不送（Mock 與 sandbox 停用驗證），
+// 設定後每位簽署人都帶 email 驗證。判定不從金鑰字串推斷，由環境變數 DOTTEDSIGN_VERIFY_SIGNERS 提供。
+describe('簽署人驗證設定', () => {
+  const document: SignableDocument = {
+    fileName: '租賃合約',
+    pdf: new Uint8Array([37, 80, 68, 70]),
+    pageSize: A4,
+  };
+  const signers: Signer[] = [
+    { role: 'party_b', name: '王租客', email: 'tenant@example.com', signatureFields: [] },
+    {
+      role: 'practitioner',
+      name: '陳管理',
+      email: 'manager@example.com',
+      verifyMethods: ['email'],
+      signatureFields: [],
+    },
+    { role: 'party_a', name: '林房東', email: 'landlord@example.com', signatureFields: [] },
+  ];
+  const subject = { type: 'contract', id: 7 };
+
+  function verifying(verifySigners: boolean | undefined, request: DottedSignRequest) {
+    return createDottedSignProvider({ request, clientSecret: 'test-secret', verifySigners });
+  }
+  const bodyOf = (init?: RequestInit) =>
+    JSON.parse(String(init?.body)) as { stages: { verify_methods?: unknown[] }[] };
+
+  it('設定送驗證時，每位簽署人都帶 email 驗證，不送 verify_source', async () => {
+    let body: ReturnType<typeof bodyOf> | undefined;
+    const provider = verifying(true, async (_path, init) => {
+      body = bodyOf(init);
+      return { data: { task_id: 470 } };
+    });
+    await provider.createTask({ subject, document, signers });
+
+    expect(body?.stages.map((s) => s.verify_methods)).toEqual([
+      [{ verify_type: 'email' }],
+      [{ verify_type: 'email' }],
+      [{ verify_type: 'email' }],
+    ]);
+    expect(JSON.stringify(body)).not.toContain('verify_source');
+  });
+
+  it.each([[undefined], [false]])('未設定送驗證（%s）時，stage 沒有 verify_methods，即使簽署人帶了驗證設定', async (flag) => {
+    let body: ReturnType<typeof bodyOf> | undefined;
+    const provider = verifying(flag, async (_path, init) => {
+      body = bodyOf(init);
+      return { data: { task_id: 470 } };
+    });
+    await provider.createTask({ subject, document, signers });
+
+    expect(body?.stages.every((s) => !('verify_methods' in s))).toBe(true);
+  });
+
+  it.each([
+    ['400428', '點點簽 API /v1/sign_tasks 失敗（400）：{"error_code":400428,"error_key":"invalid_verify_params"}'],
+    ['403068', '點點簽 API /v1/sign_tasks 失敗（403）：{"error_code":403068,"error_key":"over_verify_method_usage"}'],
+  ])('送了驗證卻收到 %s 時，送簽失敗並說明原因，不降級重送', async (_code, message) => {
+    let attempts = 0;
+    const provider = verifying(true, async () => {
+      attempts += 1;
+      throw new Error(message);
+    });
+
+    await expect(provider.createTask({ subject, document, signers })).rejects.toThrow(/簽署人 email 驗證.*不會自動改成不驗證/);
+    await expect(provider.createTask({ subject, document, signers })).rejects.toThrow(message);
+    expect(attempts).toBe(2);
+  });
+
+  it('沒送驗證時收到的錯誤原樣往外拋，不加驗證說明', async () => {
+    const message = '點點簽 API /v1/sign_tasks 失敗（400）：{"error_code":400428}';
+    const provider = verifying(false, async () => {
+      throw new Error(message);
+    });
+    await expect(provider.createTask({ subject, document, signers })).rejects.toThrow(
+      expect.objectContaining({ message })
+    );
+  });
+
+  it('送了驗證時，其他錯誤也原樣往外拋', async () => {
+    const provider = verifying(true, async () => {
+      throw new Error('點點簽 API /v1/sign_tasks 失敗（500）');
+    });
+    await expect(provider.createTask({ subject, document, signers })).rejects.toThrow(
+      expect.objectContaining({ message: '點點簽 API /v1/sign_tasks 失敗（500）' })
+    );
   });
 });
 
