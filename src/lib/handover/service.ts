@@ -305,7 +305,7 @@ export async function cancelHandover(
   const record = await ownedHandover(store, ownerPartyId, id);
   if (!record) return fail('找不到這個移交。');
   const next = applyInput(record, 'cancel', now.toISOString());
-  if (!next) return fail('交出側已經生效，不能取消。');
+  if (!next) return fail(record.state === 'cancelled' ? '這個移交已經取消了。' : '交出側已經生效，不能取消。');
   await store.saveHandover(next);
   return { ok: true, value: undefined };
 }

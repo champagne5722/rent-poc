@@ -1,17 +1,42 @@
-'use client';
+// 屋主端「移交」清單（MIL-97）：進行中與已完成的移交，每列顯示兩側是否完成。
+import { currentOwnerSession } from '@/lib/current-owner-session';
+import { handoverStore } from '@/lib/handover/demo-store';
+import { listInitiatableMandates, listOwnerHandovers } from '@/lib/handover/service';
+import HandoverList, { type LapsedMandatary } from './HandoverList';
 
-// 屋主端選單「移交」的暫時頁面，避免選單連到 404。移交畫面由 F 線後續的票提供。
-import { Flex, Typography } from 'antd';
+export default async function OwnerHandoversPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ created?: string }>;
+}) {
+  const session = await currentOwnerSession();
+  // 沒有屋主身分時 OwnerShell 顯示空狀態，不渲染這裡
+  if (!session) return null;
 
-export default function OwnerHandoversPage() {
+  const store = handoverStore();
+  const [items, mandates, params] = await Promise.all([
+    listOwnerHandovers(store, session.partyId),
+    listInitiatableMandates(store, session.partyId),
+    searchParams,
+  ]);
+
+  // 執業主體已失效、委託標的清單上還有單位沒有進行中移交時，提示屋主發起（P0-22 流程 1）
+  const lapsed: LapsedMandatary[] = mandates
+    .filter((m) => m.mandate.mandatary.status === 'lapsed')
+    .map((m) => ({
+      name: m.mandate.mandatary.name,
+      pendingUnits: Object.values(m.openHandoverByUnit).filter((id) => id === null).length,
+    }))
+    .filter((m) => m.pendingUnits > 0);
+
+  const created = Number.parseInt(params.created ?? '', 10);
+
   return (
-    <Flex vertical gap={12}>
-      <Typography.Title level={4} style={{ margin: 0 }}>
-        移交
-      </Typography.Title>
-      <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
-        之後會在這裡發起移交，並查看每個案件的移交包。畫面準備中。
-      </Typography.Paragraph>
-    </Flex>
+    <HandoverList
+      items={items}
+      lapsed={lapsed}
+      createdCount={Number.isNaN(created) ? null : created}
+      canStart={mandates.length > 0}
+    />
   );
 }
