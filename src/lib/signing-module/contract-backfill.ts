@@ -6,20 +6,26 @@ import { insertSignTask, type NewSignTask, type SignerRecord, type SignTaskStatu
 // 舊形式的轉移（MIL-56、MIL-58、MIL-60，ADR-0010）：合約的任務編號欄位與以合約為鍵的文件表。
 // ensureSchema() 每次開檔都呼叫。先回填，再移除舊形式，所以已部署的資料庫在下次啟動時不會遺失資料。
 // 舊形式移除後，這裡沒有來源，重跑等同 no-op。全新資料庫從來沒有舊形式，同樣 no-op。
+// 有合約無法回填時，兩個舊形式都保留：刪掉就再也找不回那份合約的服務商任務編號與文件紀錄。
+// 修好資料後重新啟動，就會回填並移除。
 export function migrateLegacyContractSigning(db: Database.Database): void {
-  const hasTaskRefColumn = (db.prepare('PRAGMA table_info(contracts)').all() as { name: string }[]).some(
-    (c) => c.name === 'dottedsign_task_id'
-  );
-  const hasFileTable = Boolean(
-    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'contract_files'").get()
-  );
-  if (!hasTaskRefColumn && !hasFileTable) return;
-
-  // 回填與移除同一次交易：任一步失敗就一起回滾，舊形式留著，下次開檔重來
+  // 檢查與移除同一次交易：任一步失敗就一起回滾，舊形式留著，下次開檔重來
   db.transaction(() => {
-    if (hasTaskRefColumn) backfillContractSignTasks(db);
+    const hasTaskRefColumn = (db.prepare('PRAGMA table_info(contracts)').all() as { name: string }[]).some(
+      (c) => c.name === 'dottedsign_task_id'
+    );
+    const hasFileTable = Boolean(
+      db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'contract_files'").get()
+    );
+    if (!hasTaskRefColumn && !hasFileTable) return;
+
+    const skipped = hasTaskRefColumn ? backfillContractSignTasks(db) : 0;
     // 要在簽署任務回填之後：文件紀錄靠簽署任務找鍵
     if (hasFileTable) backfillContractFiles(db);
+    if (skipped > 0) {
+      console.warn(`[signing] ${skipped} 份合約無法回填簽署任務，保留合約的任務編號欄位與 contract_files`);
+      return;
+    }
     if (hasTaskRefColumn) db.exec('ALTER TABLE contracts DROP COLUMN dottedsign_task_id');
     // 舊檔案 data/contract-files/ 不刪，回填後的紀錄仍指向舊路徑
     if (hasFileTable) db.exec('DROP TABLE contract_files');
@@ -45,7 +51,8 @@ interface LegacyEventRow {
   created_at: string;
 }
 
-function backfillContractSignTasks(db: Database.Database): void {
+// 回傳略過的合約數
+function backfillContractSignTasks(db: Database.Database): number {
   const rows = db
     .prepare(
       `SELECT c.id, c.status, c.fields, c.dottedsign_task_id AS task_ref, c.created_at, c.updated_at
@@ -54,18 +61,19 @@ function backfillContractSignTasks(db: Database.Database): void {
         WHERE t.id IS NULL AND c.dottedsign_task_id IS NOT NULL AND c.status <> 'draft'`
     )
     .all() as LegacyContractRow[];
-  if (rows.length === 0) return;
+  if (rows.length === 0) return 0;
 
   const readEvents = db.prepare('SELECT type, actor, created_at FROM contract_events WHERE contract_id = ? ORDER BY id');
-  db.transaction(() => {
-    for (const row of rows) {
-      const task = toNewSignTask(row, readEvents.all(row.id) as LegacyEventRow[]);
-      // 開檔時執行，壞資料只略過，不得擋住整個系統啟動
-      if (!task || !insertSignTask(db, task)) {
-        console.warn(`[signing] 合約 #${row.id} 無法回填簽署任務，已略過`);
-      }
+  let skipped = 0;
+  for (const row of rows) {
+    const task = toNewSignTask(row, readEvents.all(row.id) as LegacyEventRow[]);
+    // 開檔時執行，壞資料只略過，不得擋住整個系統啟動
+    if (!task || !insertSignTask(db, task)) {
+      console.warn(`[signing] 合約 #${row.id} 無法回填簽署任務，已略過`);
+      skipped += 1;
     }
-  })();
+  }
+  return skipped;
 }
 
 // 回填文件紀錄（MIL-58）：既有合約文件紀錄改以簽署任務為鍵。rel_path 原樣保留，舊檔案不搬。

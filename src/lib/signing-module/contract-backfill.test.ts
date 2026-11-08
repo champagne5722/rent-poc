@@ -106,6 +106,18 @@ describe('回填後移除舊形式', () => {
     expect(new TextDecoder().decode((await live.downloadFile(subject, 'signed_pdf')).bytes)).toBe('old-signed');
   });
 
+  it('有合約無法回填時保留舊形式，任務編號不會遺失', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    legacyContract('awaiting_tenant', 'mock-1-a', '{not json');
+    const good = legacyContract('completed', '470');
+    legacyFile(good.id, 'signed_pdf', { status: 'saved' });
+
+    upgrade();
+
+    expect(columnsOf(db, 'contracts')).toContain('dottedsign_task_id');
+    expect(tableExists(db, 'contract_files')).toBe(true);
+  });
+
   it('全新資料庫沒有舊形式，ensureSchema 能重複執行', () => {
     const fresh = new Database(':memory:');
     ensureSchema(fresh);

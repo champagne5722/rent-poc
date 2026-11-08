@@ -16,7 +16,7 @@ PoC 目標是驗證「建物件 → 擬約 → 設簽署區 → 點點簽依序�
 
 ## 技術面
 
-- **SQLite 單檔**、無正式 migration 工具：schema 以 `ensureSchema`（`CREATE ... IF NOT EXISTS`＋`PRAGMA` 檢查後補欄位）向前相容，加表加欄免刪庫。刪欄刪表要在 `ensureSchema` 裡先檢查是否存在，必要時先回填（前例：MIL-60 移除合約的任務編號欄位與 `contract_files` 表）。改欄型別仍＝刪 `data/rent-poc.db` 重來。
+- **SQLite 單檔**、無正式 migration 工具：schema 以 `ensureSchema`（`CREATE ... IF NOT EXISTS`＋`PRAGMA` 檢查後補欄位）向前相容，加表加欄免刪庫。刪欄刪表必須在 `ensureSchema` 裡先檢查是否存在，必要時先回填（前例：MIL-60 移除合約的任務編號欄位與 `contract_files` 表）。改欄型別仍＝刪 `data/rent-poc.db` 重來。
 - **測試僅涵蓋純邏輯 seam**（vitest 230+：狀態機與歷程事件、條款快照、列表／工作台／wizard／詳情頁的選擇邏輯、PDF 版面與簽署區幾何），route handler 與 UI 靠手動與 API 冒煙測試。
 - **簽署完成導回網址在本機開發指向 localhost**：簽署連結的 `redirect_url` 優先用 `APP_ORIGIN`，沒有設定時用系統當下 origin。demo 環境已設定 `APP_ORIGIN`，但導回後會看到 Basic Auth 登入框。正式版需正式登入。
 - **demo 環境只有 Basic Auth 與單一 SQLite 寫入端**：換版時可能遺失數十秒的寫入，不得放真實個資，pilot 前必須完成 PostgreSQL 遷移（ADR-0011）。

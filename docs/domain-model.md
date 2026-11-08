@@ -39,7 +39,7 @@ draft（草稿）
 - **Sign Task（簽署任務，`sign_tasks`）**：服務商、服務商任務編號、簽署標的（`subject_type` 加 `subject_id`）、狀態（`in_progress` / `completed` / `declined` / `voided`）、時間戳。一個簽署標的最多一筆，一個服務商任務編號最多一筆。只有簽署模組讀寫（ADR-0010）
 - **Signer（簽署人，`signers`）**：簽署任務、順序、簽署角色、姓名、email、狀態（`pending` / `signed` / `declined`）、簽署時間。順序就是簽署序列，送簽時凍結。當前簽署人是順序最前面的待簽者，不另存指標。電話與身分證字號不寫入這張表
 - **Sign Task File（簽署任務文件，`sign_task_files`）**：簽署任務、種類（已簽 PDF 或 Audit Trail File）、狀態、檔名、相對 `data/` 的路徑、大小、錯誤訊息。全員完成後保存（ADR-0007、ADR-0010）
-- 舊形式的轉移：MIL-60 之前的資料庫有合約的 `dottedsign_task_id` 欄位與以合約為鍵的 `contract_files` 表。`ensureSchema()` 開檔時先由它們回填簽署任務、簽署人與文件紀錄，再刪除欄位與表（`src/lib/signing-module/contract-backfill.ts`）。舊檔案留在 `data/contract-files/`，回填後的文件紀錄仍指向那裡
+- 舊形式的轉移：MIL-60 之前的資料庫有合約的 `dottedsign_task_id` 欄位與以合約為鍵的 `contract_files` 表。`ensureSchema()` 開檔時先由它們回填簽署任務、簽署人與文件紀錄，再刪除欄位與表（`src/lib/signing-module/contract-backfill.ts`）。有合約無法回填時，兩個舊形式都保留，並在啟動 log 留下警告。修好資料後重新啟動，就會回填並移除。舊檔案留在 `data/contract-files/`，回填後的文件紀錄仍指向那裡
 - 合約文件三層組裝：主約（公版鎖定）＋補充合約（房東自訂獨立頁）＋設備附件（系統產出表單頁），見 ADR-0008
 - **Contract Event（合約事件）**：附屬合約的 append-only 里程碑事件序列：型別（建立／送簽／簽署人簽署／拒簽／簽署完成／撤回／被複製，舊資料另有乙方簽署）、行為者（出租人／系統／甲方／乙方／執業人員，舊資料另有承租人）、時間、附註（拒簽原因、衍生對象等）；webhook 事件與狀態轉移同交易寫入，隨合約保存（ADR-0007）
 - **Template（範本）／Optional Clause（選用條款）**：平台資料，皆含版本；PoC 以程式內常數表達（`src/lib/clause-library.ts`），無維護介面（ADR-0005）
