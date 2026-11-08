@@ -92,8 +92,10 @@ export async function createProperty(tx: OrgTx, input: PropertyInput): Promise<s
 
 /** 修改物件。找不到（含別的組織的物件）回 null。不改租賃單位。 */
 export async function updateProperty(tx: OrgTx, id: string, input: PropertyInput): Promise<Property | null> {
-  const before = await getProperty(tx, id);
-  if (!before) return null;
+  // 鎖住這一列再讀：兩個修改重疊時，後到的看到的是前一個提交後的值，稽核的 changed 才不會漏
+  const { rows: current } = await tx.query<Row>(`SELECT ${COLUMNS} FROM org.properties WHERE id = $1 FOR UPDATE`, [id]);
+  if (!current[0]) return null;
+  const before = toProperty(current[0]);
   await ensureNames(tx, input.equipment.map((i) => i.name));
   const { rows } = await tx.query<Row>(
     `UPDATE org.properties
@@ -105,11 +107,11 @@ export async function updateProperty(tx: OrgTx, id: string, input: PropertyInput
   );
   if (!rows[0]) return null;
   const after = toProperty(rows[0]);
-  await appendAudit(tx, {
-    action: 'property.update',
-    object: { type: 'property', id },
-    payload: { changed: changedFields(before, after) },
-  });
+  // 沒有任何欄位改變時不寫事件：只會增加鏈頭的鎖競爭與雜訊
+  const changed = changedFields(before, after);
+  if (changed.length > 0) {
+    await appendAudit(tx, { action: 'property.update', object: { type: 'property', id }, payload: { changed } });
+  }
   return after;
 }
 

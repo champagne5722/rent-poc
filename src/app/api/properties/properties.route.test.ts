@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { withTx } from '@/lib/pg/database';
 import { actAs, actAsError, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { isUlid, newUlid } from '@/lib/pg/ulid';
+import { createProperty } from '@/lib/properties';
 import { Unauthenticated } from '@/lib/request-context';
 import { GET as getVocabulary } from '../equipment-vocabulary/route';
 import { DELETE, GET as getOne, PUT } from './[id]/route';
@@ -266,8 +267,8 @@ describe('跨組織與格式錯誤的 ID', () => {
 describe('稽核事件', () => {
   const events = (orgId: string) =>
     withTx({ kind: 'org', orgId }, async (tx) =>
-      (await tx.query<{ action: string; object_type: string; object_id: string; payload: Record<string, unknown> }>(
-        `SELECT action, object_type, object_id, payload FROM audit.events ORDER BY seq`,
+      (await tx.query<{ action: string; actor_type: string; object_type: string; object_id: string; payload: Record<string, unknown> }>(
+        `SELECT action, actor_type, object_type, object_id, payload FROM audit.events ORDER BY seq`,
       )).rows,
     );
 
@@ -277,9 +278,9 @@ describe('稽核事件', () => {
     await PUT(req('PUT', body({ name: '改名', note: '新備註' })), ctx(id));
     await DELETE(req('DELETE'), ctx(id));
     expect(await events(kit.orgA)).toEqual([
-      { action: 'property.create', object_type: 'property', object_id: id, payload: { rental_unit_id: unitId } },
-      { action: 'property.update', object_type: 'property', object_id: id, payload: { changed: ['name', 'note'] } },
-      { action: 'property.delete', object_type: 'property', object_id: id, payload: { rental_unit_id: unitId } },
+      { action: 'property.create', actor_type: 'party', object_type: 'property', object_id: id, payload: { rental_unit_id: unitId } },
+      { action: 'property.update', actor_type: 'party', object_type: 'property', object_id: id, payload: { changed: ['name', 'note'] } },
+      { action: 'property.delete', actor_type: 'party', object_type: 'property', object_id: id, payload: { rental_unit_id: unitId } },
     ]);
   });
 
@@ -288,10 +289,29 @@ describe('稽核事件', () => {
     expect(await events(kit.orgB)).toEqual([]);
   });
 
-  it('找不到物件的修改與刪除不寫事件，驗證失敗的建立也不寫', async () => {
+  it('changed 列出被改的欄位名稱：地址、設備也算，沒有變動時不寫事件', async () => {
+    const id = await create();
+    await PUT(req('PUT', body()), ctx(id)); // 內容完全相同
+    await PUT(req('PUT', body({ address: '新地址', equipment: [] })), ctx(id));
+    const rows = await events(kit.orgA);
+    expect(rows.map((r) => r.action)).toEqual(['property.create', 'property.update']);
+    expect(rows[1].payload).toEqual({ changed: ['address', 'equipment'] });
+  });
+
+  it('交易回滾時事件跟著回滾，物件也不留', async () => {
+    await expect(
+      withTx({ kind: 'org', orgId: kit.orgA }, async (tx) => {
+        await createProperty(tx, { name: 'n', address: 'a', size: null, default_rent: null, note: '', equipment: [] });
+        throw new Error('故意失敗');
+      }),
+    ).rejects.toThrow('故意失敗');
+    expect(await events(kit.orgA)).toEqual([]);
+    expect((await json(await getList())).data).toEqual([]);
+  });
+
+  it('找不到物件的修改與刪除不寫事件', async () => {
     await PUT(req('PUT', body()), ctx(newUlid()));
     await DELETE(req('DELETE'), ctx(newUlid()));
-    await post(body({ name: '' }));
     expect(await events(kit.orgA)).toEqual([]);
   });
 });
