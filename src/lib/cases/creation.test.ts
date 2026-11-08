@@ -363,6 +363,14 @@ describe('decideCaseCreation：後繼案件（ADR-0024 決議 2 到 4）', () =>
     ]);
   });
 
+  it('同一人同時在承租人與共同承租人清單時，只留承租人', () => {
+    const { members } = accepted(
+      decideCaseCreation(successor({ lesseePartyIds: ['p-1'], coLesseePartyIds: ['p-1', 'p-2'] }), NOW),
+    );
+    expect(members.filter((m) => m.partyId === 'p-1')).toEqual([{ partyId: 'p-1', relation: 'lessee' }]);
+    expect(members).toContainEqual({ partyId: 'p-2', relation: 'co_lessee' });
+  });
+
   it('租賃單位沒有承租人（空置）：只有 lessor 成員', () => {
     const { members } = accepted(decideCaseCreation(successor({ lesseePartyIds: [] }), NOW));
     expect(members).toEqual([{ partyId: 'party-owner', relation: 'lessor' }]);

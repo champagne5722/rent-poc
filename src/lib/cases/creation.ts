@@ -3,7 +3,7 @@
 // 寫入案件、成員與案件事件由之後的 repository 負責，見同目錄 README.md。
 
 import {
-  event,
+  buildCaseEvent,
   type BusinessType,
   type CaseEvent,
   type CaseMemberRelation,
@@ -97,7 +97,7 @@ export interface SuccessorCaseInput {
   businessType: BusinessType;
   /** 接收方案件的出租人：代管是屋主，改自管時是屋主本人。 */
   lessorPartyId: string;
-  /** 舊案件的承租人與共同承租人，承接原租約，所以一併帶過來。 */
+  /** 舊案件的承租人與共同承租人，承接原合約，所以一併帶過來。 */
   lesseePartyIds: readonly string[];
   coLesseePartyIds: readonly string[];
 }
@@ -155,12 +155,12 @@ export type CaseCreationResult =
   | { ok: false; reasons: CreationBlockReason[] };
 
 const MESSAGES: Record<CreationBlockCode, string> = {
-  business_type_not_allowed: '這個組織不能建立這種業務類型的案件。屋主組織只能建自管，執業主體組織只能建代管或包租。',
-  practice_entity_not_verified: '執業主體的對應業別不是已驗證，不能建立代管或包租案件。',
-  no_signable_manager: '沒有可簽章的專任管理人員，不能建立代管或包租案件。',
-  no_valid_mandate: '代管案件必須連到有效的委託管理案件，且委託標的要涵蓋這個租賃單位。',
-  invalid_party: '案件成員的當事人 ID 不能是空白。',
-  mandator_equals_mandatary: '委託人與受託人不能是同一個當事人。',
+  business_type_not_allowed: '這個組織不得建立這種業務類型的案件。屋主組織只得建自管，執業主體組織只得建代管或包租。',
+  practice_entity_not_verified: '執業主體的對應業別不是已驗證，不得建立代管或包租案件。',
+  no_signable_manager: '沒有可簽章的專任管理人員，不得建立代管或包租案件。',
+  no_valid_mandate: '代管案件必須連到有效的委託管理案件，且委託標的必須涵蓋這個租賃單位。',
+  invalid_party: '案件成員的當事人 ID 不得是空白。',
+  mandator_equals_mandatary: '委託人與受託人不得是同一個當事人。',
   invalid_valid_until: '委託期間的最後一天必須是有效的 YYYY-MM-DD 日期。',
 };
 
@@ -221,7 +221,7 @@ function decideNewLease(input: NewLeaseCaseInput, now: Date): CaseCreationResult
       handoverId: null,
     },
     members,
-    event: event('created', now, {
+    event: buildCaseEvent('created', now, {
       kind: 'lease',
       businessType,
       rentalUnitId: input.rentalUnitId,
@@ -256,7 +256,7 @@ function decideNewManagement(input: NewManagementCaseInput, now: Date): CaseCrea
       { partyId: input.mandatorPartyId, relation: 'mandator' },
       { partyId: input.mandataryPartyId, relation: 'mandatary' },
     ],
-    event: event('created', now, { kind: 'management', validUntil: input.validUntil }),
+    event: buildCaseEvent('created', now, { kind: 'management', validUntil: input.validUntil }),
   };
 }
 
@@ -273,8 +273,12 @@ function decideSuccessor(input: SuccessorCaseInput, now: Date): CaseCreationResu
   if (codes.length > 0) return blocked(codes);
 
   const members: NewCaseMember[] = [{ partyId: input.lessorPartyId, relation: 'lessor' }];
-  for (const partyId of new Set(input.lesseePartyIds)) members.push({ partyId, relation: 'lessee' });
-  for (const partyId of new Set(input.coLesseePartyIds)) members.push({ partyId, relation: 'co_lessee' });
+  const lessees = new Set(input.lesseePartyIds);
+  for (const partyId of lessees) members.push({ partyId, relation: 'lessee' });
+  // 同一人同時在兩份清單時，只留承租人身分
+  for (const partyId of new Set(input.coLesseePartyIds)) {
+    if (!lessees.has(partyId)) members.push({ partyId, relation: 'co_lessee' });
+  }
 
   return {
     ok: true,
@@ -293,7 +297,7 @@ function decideSuccessor(input: SuccessorCaseInput, now: Date): CaseCreationResu
       handoverId: input.handoverId,
     },
     members,
-    event: event('succeeded', now, {
+    event: buildCaseEvent('succeeded', now, {
       kind: 'lease',
       businessType,
       rentalUnitId: input.rentalUnitId,

@@ -147,8 +147,15 @@ export function decideCaseTransition(
   input: CaseInput,
   now: Date,
 ): CaseTransitionDecision | null {
-  if ('contractId' in input && input.contractId !== snapshot.currentContractId) return null;
+  if (isContractInput(input) && input.contractId !== snapshot.currentContractId) return null;
   return snapshot.kind === 'lease' ? decideLease(snapshot, input, now) : decideManagement(snapshot, input, now);
+}
+
+type ContractInput = Extract<CaseInput, { type: `contract_${string}` }>;
+
+// 案件只認 current_contract_id 的合約事件（ADR-0016 決議 11）。用 type 判斷，不靠欄位名稱。
+function isContractInput(input: CaseInput): input is ContractInput {
+  return input.type.startsWith('contract_');
 }
 
 // 合約訂閱的四種輸入，兩種案件的轉移相同（ADR-0016 決議 3、9）。
@@ -210,7 +217,7 @@ function decideLease(
       const payload = { handoverId: input.handoverId, effectiveDate: input.effectiveDate };
       return {
         state: 'closed',
-        event: event('handed_over', now, { ...payload, unsettledReason: input.handoverId }),
+        event: buildCaseEvent('handed_over', now, { ...payload, unsettledReason: input.handoverId }),
         outbox: [{ type: 'audit_unsettled_close', caseId: snapshot.id, reason: input.handoverId }],
       };
     }
@@ -240,7 +247,7 @@ function decideClose(
   if (reason === '') return null;
   return {
     state: 'closed',
-    event: event('closed', now, { ...items, unsettledReason: reason }),
+    event: buildCaseEvent('closed', now, { ...items, unsettledReason: reason }),
     outbox: [{ type: 'audit_unsettled_close', caseId: snapshot.id, reason }],
   };
 }
@@ -264,7 +271,7 @@ function decideManagement(
       if (state !== 'draft') return null;
       return {
         state: 'active',
-        event: event('paper_contract_registered', now, { documentId: input.documentId }),
+        event: buildCaseEvent('paper_contract_registered', now, { documentId: input.documentId }),
         outbox: [{ type: 'link_managed_lease_cases', mandateCaseId: id }],
       };
     case 'abandon':
@@ -274,7 +281,7 @@ function decideManagement(
       if (state !== 'active' || reason === '') return null;
       return {
         state: 'terminated',
-        event: event('terminated', now, { reason }),
+        event: buildCaseEvent('terminated', now, { reason }),
         outbox: endMandateTasks(id, { notifyMandator: true }),
       };
     }
@@ -284,7 +291,7 @@ function decideManagement(
       if (taiwanDate(now) <= snapshot.validUntil) return null;
       return {
         state: 'expired',
-        event: event('expired', now, { validUntil: snapshot.validUntil }),
+        event: buildCaseEvent('expired', now, { validUntil: snapshot.validUntil }),
         outbox: endMandateTasks(id, { notifyMandator: true }),
       };
     case 'handover_effective':
@@ -292,7 +299,7 @@ function decideManagement(
       if (state !== 'active' || !isOnOrAfter(now, input.effectiveDate)) return null;
       return {
         state: 'terminated',
-        event: event('handed_over', now, { handoverId: input.handoverId, effectiveDate: input.effectiveDate }),
+        event: buildCaseEvent('handed_over', now, { handoverId: input.handoverId, effectiveDate: input.effectiveDate }),
         outbox: endMandateTasks(id, { notifyMandator: false }),
       };
     case 'start_move_out':
@@ -316,10 +323,10 @@ function decision<S extends CaseState>(
   now: Date,
   payload: CaseEvent['payload'] = {},
 ): CaseTransitionDecision<S> {
-  return { state, event: event(type, now, payload), outbox: [] };
+  return { state, event: buildCaseEvent(type, now, payload), outbox: [] };
 }
 
-export function event(type: CaseEventType, now: Date, payload: CaseEvent['payload'] = {}): CaseEvent {
+export function buildCaseEvent(type: CaseEventType, now: Date, payload: CaseEvent['payload'] = {}): CaseEvent {
   return { type, occurredAt: now.toISOString(), payload };
 }
 
