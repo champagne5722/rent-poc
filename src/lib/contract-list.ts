@@ -15,6 +15,14 @@ export function countByStatus(items: Contract[]): Record<ContractStatus, number>
   return counts;
 }
 
+// 清單的狀態分頁。畫面還無法建立三位簽署人的合約，所以待執業人員簽的分頁
+// 只在有這種合約、或正在看這個分頁時出現，兩方合約的分頁維持原樣。
+export function statusTabs(counts: Record<ContractStatus, number>, selected: ContractStatus | 'all'): ContractStatus[] {
+  return CONTRACT_STATUSES.filter(
+    (s) => s !== 'awaiting_practitioner' || counts[s] > 0 || selected === s
+  );
+}
+
 // 物件下拉的選項來源：合約帶入的物件名稱快照，去重後排序。
 export function propertyNameOptions(items: Contract[]): string[] {
   const names = new Set<string>();
@@ -84,12 +92,21 @@ export function selectContracts(items: Contract[], filter: ContractListFilter): 
 // 已完成回 3（三點全亮）；簽署流程外的狀態回 null，UI 顯示「—」。
 export const SIGNING_PROGRESS_LABELS = ['乙方簽', '甲方簽', '完成'] as const;
 
+// 待執業人員簽（第七態）時多一點。清單只有合約狀態，不知道簽署序列，
+// 所以假設執業人員排在乙方與甲方之間。依簽署進度畫三位的步驟屬 MIL-72。
+const PRACTITIONER_PROGRESS_LABELS = ['乙方簽', '執業人員簽', '甲方簽', '完成'] as const;
+
 const PROGRESS_STEP: Partial<Record<ContractStatus, number>> = {
   awaiting_tenant: 0,
+  awaiting_practitioner: 1,
   awaiting_landlord: 1,
   completed: SIGNING_PROGRESS_LABELS.length,
 };
 
 export function signingProgressStep(status: ContractStatus): number | null {
   return PROGRESS_STEP[status] ?? null;
+}
+
+export function signingProgressLabels(status: ContractStatus): readonly string[] {
+  return status === 'awaiting_practitioner' ? PRACTITIONER_PROGRESS_LABELS : SIGNING_PROGRESS_LABELS;
 }

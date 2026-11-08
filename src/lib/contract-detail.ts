@@ -20,8 +20,12 @@ import {
   CONTRACT_FILE_KINDS,
   CONTRACT_FILE_LABELS,
   REPAIR_RESPONSIBILITY_LABELS,
+  SIGNER_ROLE_LABELS,
 } from './types';
 import { contractEquipmentAnnex, formatEquipmentItem } from './equipment';
+import { currentSigner } from './signing';
+import type { CurrentSigner } from './signing-module/provider';
+import type { SigningProgress } from './signing-module/sign-task-store';
 
 // ── 頁首操作 ─────────────────────────────────────────────────
 
@@ -63,6 +67,57 @@ export function detailActions(status: ContractStatus, opts: { mock: boolean }): 
     case 'voided':
       return [COPY];
   }
+}
+
+// ── 簽署狀態列 ───────────────────────────────────────────────
+
+/**
+ * 目前待簽：姓名與 email 讀簽署進度的當前簽署人（ADR-0010）。
+ * 簽署進度是 null 代表舊合約沒有回填簽署任務，退回由合約狀態與欄位推導。
+ */
+export function detailCurrentSigner(
+  contract: Contract,
+  progress: Pick<SigningProgress, 'currentSigner'> | null
+): CurrentSigner | null {
+  return progress ? progress.currentSigner : currentSigner(contract);
+}
+
+export interface DetailSigningSteps {
+  titles: string[];
+  current: number;
+}
+
+const STEP_TENANT = '待乙方（租客）簽署';
+const STEP_PRACTITIONER = '待執業人員簽署';
+const STEP_LANDLORD = '待甲方（房東）簽署';
+const STEP_DONE = '完成';
+
+const STEP_INDEX: Partial<Record<ContractStatus, number>> = {
+  awaiting_tenant: 0,
+  awaiting_practitioner: 1,
+  awaiting_landlord: 1,
+  completed: 2,
+};
+
+/**
+ * 狀態列的簽署步驟。兩方合約三步；待執業人員簽時在乙方與甲方之間多一步。
+ * 依簽署進度畫出三位簽署人的完整步驟屬 MIL-72。
+ */
+export function detailSigningSteps(status: ContractStatus): DetailSigningSteps {
+  const titles =
+    status === 'awaiting_practitioner'
+      ? [STEP_TENANT, STEP_PRACTITIONER, STEP_LANDLORD, STEP_DONE]
+      : [STEP_TENANT, STEP_LANDLORD, STEP_DONE];
+  return { titles, current: STEP_INDEX[status] ?? 0 };
+}
+
+/**
+ * 已拒簽合約的提示標題：寫出拒簽的簽署人角色。
+ * 舊合約沒有簽署進度，兩方合約只有乙方會拒簽（甲方後簽，乙方拒簽即結束），維持原文案。
+ */
+export function detailDeclinedTitle(progress: Pick<SigningProgress, 'signers'> | null): string {
+  const role = progress?.signers.find((s) => s.status === 'declined')?.role ?? 'party_b';
+  return `${SIGNER_ROLE_LABELS[role]}已拒簽`;
 }
 
 // ── 歷程事件 ─────────────────────────────────────────────────

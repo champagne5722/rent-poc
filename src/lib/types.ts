@@ -68,14 +68,22 @@ export interface Property {
 export const CONTRACT_STATUSES = [
   'draft',
   'awaiting_tenant',
+  'awaiting_practitioner',
   'awaiting_landlord',
   'completed',
   'declined',
   'voided',
 ] as const;
-// 第七態 awaiting_practitioner 先進型別：三位簽署人的簽署進度要能投影。
-// 畫面還無法建立這種合約，所以分頁與統計仍用上面六態，由 MIL-59 併入 CONTRACT_STATUSES。
-export type ContractStatus = (typeof CONTRACT_STATUSES)[number] | 'awaiting_practitioner';
+export type ContractStatus = (typeof CONTRACT_STATUSES)[number];
+
+// 簽署中：合約狀態由當前簽署人的角色投影（ADR-0010），三種待簽狀態都算。
+// 各畫面判斷簽署中一律用 isSigningStatus，不自行列舉狀態。
+export const SIGNING_STATUSES = ['awaiting_tenant', 'awaiting_practitioner', 'awaiting_landlord'] as const;
+export type SigningStatus = (typeof SIGNING_STATUSES)[number];
+
+export function isSigningStatus(status: ContractStatus): status is SigningStatus {
+  return (SIGNING_STATUSES as readonly ContractStatus[]).includes(status);
+}
 
 export const CONTRACT_STATUS_LABELS: Record<ContractStatus, string> = {
   draft: '草稿',

@@ -2,7 +2,7 @@ import type Database from 'better-sqlite3';
 import { commitTransition, type ContractEventInput } from './db';
 import type { ProgressOutcome } from './signing-module/progress';
 import type { CurrentSigner } from './signing-module/provider';
-import { SIGNER_ROLE_LABELS, type Contract, type ContractStatus, type SignerRole } from './types';
+import { isSigningStatus, SIGNER_ROLE_LABELS, type Contract, type ContractStatus, type SignerRole } from './types';
 
 // 簽署結果 → 合約狀態轉移（ADR-0010 決議 7）。合約狀態是簽署進度的投影，
 // 由當前簽署人的角色決定，順序改變時對照表不變。
@@ -21,8 +21,6 @@ const STATUS_BY_ROLE: Record<SignerRole, ContractStatus> = {
   practitioner: 'awaiting_practitioner',
 };
 
-const SIGNING_STATUSES: readonly ContractStatus[] = Object.values(STATUS_BY_ROLE);
-
 // 純函式 seam：由合約狀態與簽署結果決定「下一狀態」與「要記的歷程事件」。
 // 回 null 表示合約不轉移也不寫歷程。沒有任何 I/O，可獨立測試（ADR-0007 要求兩者一致）。
 export function decideTransition(status: ContractStatus, result: ContractSigningResult): TransitionDecision | null {
@@ -34,7 +32,7 @@ export function decideTransition(status: ContractStatus, result: ContractSigning
       event: { type: 'sent', actor: 'landlord', note: `寄送給${SIGNER_ROLE_LABELS[role]} ${email}` },
     };
   }
-  if (!SIGNING_STATUSES.includes(status)) return null;
+  if (!isSigningStatus(status)) return null;
 
   switch (result.type) {
     case 'signer_signed':

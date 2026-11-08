@@ -8,7 +8,9 @@ import {
   overlapsLeaseRange,
   propertyNameOptions,
   selectContracts,
+  signingProgressLabels,
   signingProgressStep,
+  statusTabs,
   EMPTY_CONTRACT_LIST_FILTER,
 } from './contract-list';
 
@@ -67,7 +69,7 @@ describe('lastActionAt（最後動作時間）', () => {
 });
 
 describe('countByStatus（狀態計數）', () => {
-  it('六個狀態都有值，沒有的合約算 0', () => {
+  it('七個狀態都有值，沒有的合約算 0', () => {
     const counts = countByStatus([
       makeContract({ id: 1, status: 'draft' }),
       makeContract({ id: 2, status: 'draft' }),
@@ -77,6 +79,7 @@ describe('countByStatus（狀態計數）', () => {
     expect(counts).toEqual({
       draft: 2,
       awaiting_tenant: 1,
+      awaiting_practitioner: 0,
       awaiting_landlord: 0,
       completed: 1,
       declined: 0,
@@ -88,6 +91,7 @@ describe('countByStatus（狀態計數）', () => {
     expect(countByStatus([])).toEqual({
       draft: 0,
       awaiting_tenant: 0,
+      awaiting_practitioner: 0,
       awaiting_landlord: 0,
       completed: 0,
       declined: 0,
@@ -245,5 +249,55 @@ describe('signingProgressStep（簽署進度三點）', () => {
     expect(signingProgressStep('draft')).toBeNull();
     expect(signingProgressStep('declined')).toBeNull();
     expect(signingProgressStep('voided')).toBeNull();
+  });
+});
+
+describe('第七態待執業人員簽的簽署進度', () => {
+  it('兩方合約的進度維持三點', () => {
+    expect(signingProgressLabels('awaiting_tenant')).toEqual(['乙方簽', '甲方簽', '完成']);
+    expect(signingProgressLabels('awaiting_landlord')).toEqual(['乙方簽', '甲方簽', '完成']);
+    expect(signingProgressLabels('completed')).toEqual(['乙方簽', '甲方簽', '完成']);
+  });
+
+  it('待執業人員簽時多一點執業人員簽，停在第 2 點', () => {
+    expect(signingProgressLabels('awaiting_practitioner')).toEqual(['乙方簽', '執業人員簽', '甲方簽', '完成']);
+    expect(signingProgressStep('awaiting_practitioner')).toBe(1);
+  });
+
+  it('待執業人員簽與其他簽署中的合約同組排在最前', () => {
+    const items = [
+      makeContract({ id: 1, status: 'draft', updated_at: '2026-09-01 00:00:00' }),
+      makeContract({ id: 2, status: 'awaiting_practitioner', updated_at: '2026-01-01 00:00:00' }),
+    ];
+    expect(selectContracts(items, EMPTY_CONTRACT_LIST_FILTER).map((c) => c.id)).toEqual([2, 1]);
+  });
+});
+
+describe('statusTabs（清單的狀態分頁）', () => {
+  it('沒有待執業人員簽的合約時，分頁維持兩方合約的六個', () => {
+    expect(statusTabs(countByStatus([makeContract({ status: 'awaiting_tenant' })]), 'all')).toEqual([
+      'draft',
+      'awaiting_tenant',
+      'awaiting_landlord',
+      'completed',
+      'declined',
+      'voided',
+    ]);
+  });
+
+  it('有待執業人員簽的合約時，分頁排在待乙方簽之後', () => {
+    expect(statusTabs(countByStatus([makeContract({ status: 'awaiting_practitioner' })]), 'all')).toEqual([
+      'draft',
+      'awaiting_tenant',
+      'awaiting_practitioner',
+      'awaiting_landlord',
+      'completed',
+      'declined',
+      'voided',
+    ]);
+  });
+
+  it('正在看待執業人員簽的分頁時，筆數歸零也不收起', () => {
+    expect(statusTabs(countByStatus([]), 'awaiting_practitioner')).toContain('awaiting_practitioner');
   });
 });
