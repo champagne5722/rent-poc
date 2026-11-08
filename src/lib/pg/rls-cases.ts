@@ -89,6 +89,19 @@ export const ORG_TABLE_CASES: Record<string, OrgTableCase> = {
       return id;
     },
   },
+  // 收款帳戶（MIL-118）：可改（停用、改名），不可刪（觸發器擋下自己組織的列，別的組織的列 RLS 讓它刪不到）。
+  // 持有人是 other，不需要 party。現金收取帳戶的唯一鍵含 org_id，兩個組織用同一個持有人各寫一列都成功。
+  'org.payment_accounts': {
+    async seed(tx, orgId) {
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.payment_accounts (id, org_id, name, holder_kind, holder_name, account_kind)
+         VALUES ($1, $2, '滲透測試現金收取', 'other', '滲透測試持有人', 'cash')`,
+        [id, orgId],
+      );
+      return id;
+    },
+  },
   // 鏡像帳（MIL-117）：只增不改。直接 INSERT 而不用 ledger 模組，因為探測 4 要在 A 的脈絡寫入 B 的 org_id。
   // 業務鍵（案件、事件類型、事件 ID）固定：兩個組織寫同一組業務鍵都要成功。
   'org.ledger_journals': {
@@ -123,3 +136,29 @@ async function seedLedgerJournal(tx: OrgTx, orgId: string): Promise<{ journalId:
 export function tablesWithoutCase(tables: readonly string[]): string[] {
   return tables.filter((t) => !(t in ORG_TABLE_CASES));
 }
+
+// control schema 的表不掛組織 RLS（ADR-0012 決議 3），所以不進 ORG_TABLE_CASES。
+// 規則：control 的每張表必須在這裡登記「為什麼不掛 RLS」與「app_rw 拿到哪些權限」，
+// rls-penetration.test.ts 從系統目錄列出 control 的所有表，缺登記就讓測試失敗。
+// 這些表的資料不屬於任何一個組織，權限逐表授予，不靠 RLS。
+// 形狀與 integration/line-c（MIL-103）相同，兩條線合併時各自的登記列併在一起。
+export interface ControlTableException {
+  reason: string;
+  /** app_rw 在這張表上的權限，測試會比對系統目錄。空陣列代表 app_rw 沒有任何權限。 */
+  appRwPrivileges: readonly ('SELECT' | 'INSERT' | 'UPDATE' | 'DELETE')[];
+}
+
+export const CONTROL_TABLE_EXCEPTIONS: Record<string, ControlTableException> = {
+  'control.schema_migrations': {
+    reason: 'migration runner 的紀錄表，只給 app_owner（0001）',
+    appRwPrivileges: [],
+  },
+  'control.orgs': {
+    reason: '組織目錄，所有組織的名稱與種類。MIL-79',
+    appRwPrivileges: ['SELECT'],
+  },
+  'control.deposit_holder_rules': {
+    reason: '押金帳戶規則，平台層級，組織不得覆寫，只由 migration 改列。MIL-118，ADR-0014 決議 13',
+    appRwPrivileges: ['SELECT'],
+  },
+};

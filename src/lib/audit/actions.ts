@@ -51,6 +51,11 @@ export const AUDIT_ACTIONS = [
   // 敏感文件（含讀取）
   'vault.read',
 
+  // 收款帳戶（MIL-118）：payload 只放 ID、持有人種類與帳戶性質，不放姓名與銀行識別
+  'payment_account.register',
+  'payment_account.update',
+  'payment_account.deactivate',
+
   // 帳務（鏡像帳與押金分錄、報表產生、手動繳租提醒）
   'ledger.entry',
   'ledger.reverse',

@@ -1,7 +1,7 @@
 import type { PGliteInterface } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pgliteDriver } from './drivers';
-import { ORG_TABLE_CASES, tablesWithoutCase } from './rls-cases';
+import { CONTROL_TABLE_EXCEPTIONS, ORG_TABLE_CASES, tablesWithoutCase } from './rls-cases';
 import { asRole, createTestDb, type TestDb } from './test-harness';
 import { newUlid } from './ulid';
 import { createWithTx, type Tx, type WithTx } from './with-tx';
@@ -67,6 +67,41 @@ describe('每張 org 表的 RLS 設定', () => {
         policies: expect.not.stringMatching(/^0$/),
         org_id_not_null: true,
       });
+    }
+  });
+});
+
+// control 的表不掛組織 RLS（ADR-0012 決議 3）。這裡確認「不掛」是登記過的決定，而且權限逐表授予、沒有多給。
+describe('control schema 的表（不掛組織 RLS，登記為例外）', () => {
+  const CONTROL_TABLES_SQL = `SELECT n.nspname || '.' || c.relname AS name, c.relrowsecurity AS rls
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'control' AND c.relkind IN ('r', 'p') ORDER BY 1`;
+
+  it('control 的每張表都登記了例外與理由（沒登記就失敗）', async () => {
+    const { rows } = await testDb.base.query<{ name: string }>(CONTROL_TABLES_SQL);
+    const missing = rows.map((r) => r.name).filter((t) => !(t in CONTROL_TABLE_EXCEPTIONS));
+    expect(missing, `這些 control 表沒有登記，請到 src/lib/pg/rls-cases.ts 的 CONTROL_TABLE_EXCEPTIONS 登記：${missing.join('、')}`).toEqual([]);
+  });
+
+  it('登記的表都存在（表改名或刪除時要同步清單）', async () => {
+    const { rows } = await testDb.base.query<{ name: string }>(CONTROL_TABLES_SQL);
+    const tables = new Set(rows.map((r) => r.name));
+    expect(Object.keys(CONTROL_TABLE_EXCEPTIONS).filter((t) => !tables.has(t))).toEqual([]);
+  });
+
+  it('沒有任何 control 表掛了 RLS：掛了就不是例外，要改進 ORG_TABLE_CASES', async () => {
+    const { rows } = await testDb.base.query<{ name: string; rls: boolean }>(CONTROL_TABLES_SQL);
+    expect(rows.filter((r) => r.rls).map((r) => r.name)).toEqual([]);
+  });
+
+  it('app_rw 的權限和登記的一模一樣，不多給（登入表尤其不得有 TRUNCATE 與 REFERENCES）', async () => {
+    for (const [table, exception] of Object.entries(CONTROL_TABLE_EXCEPTIONS)) {
+      const { rows } = await testDb.base.query<{ p: string }>(
+        `SELECT p FROM unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) AS p
+          WHERE has_table_privilege('app_rw', $1, p) ORDER BY 1`,
+        [table],
+      );
+      expect({ table, privileges: rows.map((r) => r.p) }).toEqual({ table, privileges: [...exception.appRwPrivileges].sort() });
     }
   });
 });
