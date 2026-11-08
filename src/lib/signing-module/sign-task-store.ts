@@ -83,7 +83,7 @@ export function findSignTask(db: Database.Database, subject: SigningSubject): Si
       `SELECT id, provider_task_ref, status FROM sign_tasks
         WHERE subject_type = ? AND subject_id = ?`
     )
-    .get(subject.type, String(subject.id)) as
+    .get(subject.type, subject.id) as
     | { id: number; provider_task_ref: string; status: SignTaskStatus }
     | undefined;
   if (!row) return null;
@@ -111,7 +111,7 @@ export function findSubjectByTaskRef(
   const row = db
     .prepare('SELECT subject_type, subject_id FROM sign_tasks WHERE provider = ? AND provider_task_ref = ?')
     .get(provider, taskRef) as { subject_type: SigningSubject['type']; subject_id: string } | undefined;
-  return row ? { type: row.subject_type, id: Number(row.subject_id) } : null;
+  return row ? { type: row.subject_type, id: row.subject_id } : null;
 }
 
 export function currentSignerOf(task: SignTaskRecord): CurrentSigner | null {
@@ -148,7 +148,7 @@ export function insertSignTask(db: Database.Database, task: NewSignTask): boolea
       task.provider,
       task.taskRef,
       task.subject.type,
-      String(task.subject.id),
+      task.subject.id,
       task.status ?? 'in_progress',
       task.createdAt ?? null,
       task.updatedAt ?? null

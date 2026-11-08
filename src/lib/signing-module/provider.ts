@@ -5,7 +5,8 @@ import type { ContractFileKind, SignatureField, SignerRole } from '../types';
 // 簽署標的：送簽文件所屬的業務實體。type 對到一個訂閱者，目前只有合約。
 export interface SigningSubject {
   type: string;
-  id: number;
+  // 業務實體的 ULID（合約）。簽署任務表的 subject_id 本來就是文字
+  id: string;
 }
 
 export type SigningEventType = 'signed' | 'completed' | 'declined' | 'voided';

@@ -24,6 +24,7 @@ import {
 import Link from 'next/link';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { Contract, ContractStatus } from '@/lib/types';
+import { shortUlid } from '@/lib/pg/ulid';
 import { CONTRACT_STATUS_LABELS, isSigningStatus } from '@/lib/types';
 import {
   countByStatus,
@@ -89,7 +90,7 @@ function ContractList() {
   const { message } = AntApp.useApp();
   const [items, setItems] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<number | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [status, setStatus] = useState<ContractStatus | 'all'>('all');
   const [propertyName, setPropertyName] = useState<string | null>(null);
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null);
@@ -151,7 +152,7 @@ function ContractList() {
             title="撤回後需複製為新草稿重新送簽，確定？"
             okText="確定撤回"
             cancelText="取消"
-            onConfirm={() => act(c, `/api/contracts/${c.id}/void`, `合約 #${c.id} 已撤回`)}
+            onConfirm={() => act(c, `/api/contracts/${c.id}/void`, `合約 #${shortUlid(c.id)} 已撤回`)}
           >
             <Button size="small" danger icon={<RollbackOutlined />} loading={busy}>
               撤回
@@ -168,7 +169,7 @@ function ContractList() {
             size="small"
             icon={<CopyOutlined />}
             loading={busy}
-            onClick={() => act(c, `/api/contracts/${c.id}/copy`, `已複製合約 #${c.id} 為新草稿`)}
+            onClick={() => act(c, `/api/contracts/${c.id}/copy`, `已複製合約 #${shortUlid(c.id)} 為新草稿`)}
           >
             複製為新草稿
           </Button>
@@ -226,7 +227,17 @@ function ContractList() {
         pagination={false}
         scroll={{ x: 'max-content' }}
         columns={[
-          { title: '#', dataIndex: 'id', width: 56 },
+          {
+            // 合約 ID（ULID）的末 6 碼，口頭溝通與客服對照用，不保證唯一；系統內與網址一律用完整 ULID。
+            title: 'ID 末碼',
+            dataIndex: 'id',
+            width: 110,
+            render: (id: string) => (
+              <Typography.Text type="secondary" code title={id} style={{ whiteSpace: 'nowrap' }}>
+                {shortUlid(id)}
+              </Typography.Text>
+            ),
+          },
           { title: '物件', render: (_, r) => r.fields.propertyName || '—' },
           { title: '乙方（租客）', render: (_, r) => r.fields.tenantName || '—' },
           {

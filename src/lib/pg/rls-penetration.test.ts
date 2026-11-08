@@ -1,7 +1,7 @@
 import type { PGliteInterface } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pgliteDriver } from './drivers';
-import { ORG_TABLE_CASES, tablesWithoutCase } from './rls-cases';
+import { CONTROL_TABLE_EXCEPTIONS, ORG_TABLE_CASES, tablesWithoutCase } from './rls-cases';
 import { asRole, createTestDb, type TestDb } from './test-harness';
 import { newUlid } from './ulid';
 import { createWithTx, type Tx, type WithTx } from './with-tx';
@@ -71,6 +71,41 @@ describe('每張 org 表的 RLS 設定', () => {
   });
 });
 
+// control 的表不掛組織 RLS（ADR-0012 決議 3）。這裡確認「不掛」是登記過的決定，而且權限逐表授予、沒有多給。
+describe('control schema 的表（不掛組織 RLS，登記為例外）', () => {
+  const CONTROL_TABLES_SQL = `SELECT n.nspname || '.' || c.relname AS name, c.relrowsecurity AS rls
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'control' AND c.relkind IN ('r', 'p') ORDER BY 1`;
+
+  it('control 的每張表都登記了例外與理由（沒登記就失敗）', async () => {
+    const { rows } = await testDb.base.query<{ name: string }>(CONTROL_TABLES_SQL);
+    const missing = rows.map((r) => r.name).filter((t) => !(t in CONTROL_TABLE_EXCEPTIONS));
+    expect(missing, `這些 control 表沒有登記，請到 src/lib/pg/rls-cases.ts 的 CONTROL_TABLE_EXCEPTIONS 登記：${missing.join('、')}`).toEqual([]);
+  });
+
+  it('登記的表都存在（表改名或刪除時要同步清單）', async () => {
+    const { rows } = await testDb.base.query<{ name: string }>(CONTROL_TABLES_SQL);
+    const tables = new Set(rows.map((r) => r.name));
+    expect(Object.keys(CONTROL_TABLE_EXCEPTIONS).filter((t) => !tables.has(t))).toEqual([]);
+  });
+
+  it('沒有任何 control 表掛了 RLS：掛了就不是例外，要改進 ORG_TABLE_CASES', async () => {
+    const { rows } = await testDb.base.query<{ name: string; rls: boolean }>(CONTROL_TABLES_SQL);
+    expect(rows.filter((r) => r.rls).map((r) => r.name)).toEqual([]);
+  });
+
+  it('app_rw 的權限和登記的一模一樣，不多給（登入表尤其不得有 TRUNCATE 與 REFERENCES）', async () => {
+    for (const [table, exception] of Object.entries(CONTROL_TABLE_EXCEPTIONS)) {
+      const { rows } = await testDb.base.query<{ p: string }>(
+        `SELECT p FROM unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) AS p
+          WHERE has_table_privilege('app_rw', $1, p) ORDER BY 1`,
+        [table],
+      );
+      expect({ table, privileges: rows.map((r) => r.p) }).toEqual({ table, privileges: [...exception.appRwPrivileges].sort() });
+    }
+  });
+});
+
 describe.each(Object.entries(ORG_TABLE_CASES))('%s 的跨組織探測', (table, testCase) => {
   let db: PGliteInterface;
   let withTx: WithTx;
@@ -98,8 +133,14 @@ describe.each(Object.entries(ORG_TABLE_CASES))('%s 的跨組織探測', (table, 
     const id = await seedA();
     expect((await asB((tx) => tx.query(`SELECT id FROM ${table} WHERE id = $1`, [id]))).rows).toEqual([]);
     expect((await asB((tx) => tx.query(`SELECT count(*)::int AS n FROM ${table}`))).rows).toEqual([{ n: 0 }]);
-    expect((await asB((tx) => tx.query(`UPDATE ${table} SET org_id = org_id WHERE id = $1 RETURNING id`, [id]))).rows).toEqual([]);
-    expect((await asB((tx) => tx.query(`DELETE FROM ${table} WHERE id = $1 RETURNING id`, [id]))).rows).toEqual([]);
+    if (testCase.appendOnly) {
+      // 只增不改的表：app_rw 沒有 UPDATE 與 DELETE 權限，連別的組織的列也不必碰就被擋
+      await expect(asB((tx) => tx.query(`UPDATE ${table} SET org_id = org_id WHERE id = $1 RETURNING id`, [id]))).rejects.toThrow(/permission denied/);
+      await expect(asB((tx) => tx.query(`DELETE FROM ${table} WHERE id = $1 RETURNING id`, [id]))).rejects.toThrow(/permission denied/);
+    } else {
+      expect((await asB((tx) => tx.query(`UPDATE ${table} SET org_id = org_id WHERE id = $1 RETURNING id`, [id]))).rows).toEqual([]);
+      expect((await asB((tx) => tx.query(`DELETE FROM ${table} WHERE id = $1 RETURNING id`, [id]))).rows).toEqual([]);
+    }
     const stillThere = await withTx({ kind: 'org', orgId: orgA }, (tx) => tx.query(`SELECT id FROM ${table} WHERE id = $1`, [id]));
     expect(stillThere.rows).toHaveLength(1);
   });
@@ -108,7 +149,7 @@ describe.each(Object.entries(ORG_TABLE_CASES))('%s 的跨組織探測', (table, 
     const id = await seedA();
     await expect(
       withTx({ kind: 'org', orgId: orgA }, (tx) => tx.query(`UPDATE ${table} SET org_id = $2 WHERE id = $1`, [id, orgB])),
-    ).rejects.toThrow(/row-level security/);
+    ).rejects.toThrow(testCase.appendOnly ? /permission denied/ : /row-level security/);
   });
 
   it('在自己的脈絡寫入別的組織的 org_id，被 RLS 擋下', async () => {

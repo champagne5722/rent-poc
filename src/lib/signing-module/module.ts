@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { getDb } from '../db';
 import { jsonError } from '../http';
+import { OrgContextRequired, Unauthenticated } from '../request-context';
 import { CONTRACT_FILE_KINDS, CONTRACT_FILE_LABELS } from '../types';
 import type { ContractFileKind } from '../types';
 import { advanceProgress, normalizeEmail, type ProgressOutcome } from './progress';
@@ -82,32 +83,51 @@ const FILES_DIR = 'sign-task-files';
 const FILE_SUFFIX: Record<ContractFileKind, string> = { signed_pdf: 'signed', audit_trail: 'audit-trail' };
 
 export function createSigningModule({ provider, subscribers, dataDir, now = () => new Date() }: SigningModuleDeps) {
-  function requireSubscriber(subject: SigningSubject): SigningSubscriber {
+  async function requireSubscriber(subject: SigningSubject): Promise<SigningSubscriber> {
     const subscriber = subscribers[subject.type];
     if (!subscriber) throw new SigningRefusal(404, '不支援的簽署標的');
-    if (!subscriber.exists(subject)) throw new SigningRefusal(404, `${subscriber.label}不存在`);
+    if (!(await subscriber.exists(subject))) throw new SigningRefusal(404, `${subscriber.label}不存在`);
     return subscriber;
   }
 
+  // 同一個簽署標的的寫入排成一列。簽署任務還在 SQLite、業務實體在 PostgreSQL（MIL-83 到 MIL-85 的過渡期），
+  // 「讀進度、改業務實體、寫進度」不再是同一個同步交易，兩個同時抵達的事件（webhook 重送）
+  // 若交錯執行，會雙重套用。MIL-85 把簽署任務搬進 PostgreSQL 後，這個佇列由列鎖取代。
+  const queues = new Map<string, Promise<unknown>>();
+  function serialized<T>(subject: SigningSubject, run: () => Promise<T>): Promise<T> {
+    const key = `${subject.type}:${subject.id}`;
+    const result = (queues.get(key) ?? Promise.resolve()).catch(() => undefined).then(run);
+    queues.set(key, result);
+    const cleanup = () => {
+      if (queues.get(key) === result) queues.delete(key);
+    };
+    result.then(cleanup, cleanup);
+    return result;
+  }
+
   // webhook、撤回與 mock advance 共用這條路徑，確保模擬與真接行為一致。
-  // 簽署進度、狀態與歷程同交易寫入（ADR-0007、ADR-0010 決議 8）。
+  // 順序：讀簽署進度（SQLite）、推進、先在 PostgreSQL 套用合約狀態與歷程（訂閱者自己的交易，提交後才往下）、
+  // 最後寫簽署進度。業務實體先動：它失敗時簽署進度原封不動，webhook 重送可以重來。
+  // 反過來（簽署進度已寫、業務實體失敗）會讓重送被當成重複事件略過，合約卡在舊狀態。
+  // 兩步之間若程序中斷，重送時簽署進度仍會接受事件。completed、declined、voided 已套用過的轉移會被略過，
+  // 只有 signer_signed 可能多記一筆歷程。MIL-85 把簽署任務搬進 PostgreSQL 後合成同一個交易。
   // 不接受的事件回 null 並記 log。保存文件與訂閱者的完成後處理都是外部 IO，
-  // 放在交易提交之後，失敗不回滾狀態。
+  // 放在套用之後，失敗不回滾狀態。
   async function applyEvent(
     subject: SigningSubject,
     subscriber: SigningSubscriber,
     event: SigningEvent
   ): Promise<ProgressOutcome | null> {
-    const db = getDb();
-    const outcome = db.transaction(() => {
+    const outcome = await serialized(subject, async () => {
+      const db = getDb();
       const task = findSignTask(db, subject);
       if (!task) return logIgnored(subject, event, 'no_task');
       const advance = advanceProgress(task, event);
       if (!advance.accepted) return logIgnored(subject, event, advance.reason);
+      await subscriber.onOutcome(subject, advance.outcome);
       saveProgress(db, task, advance);
-      subscriber.onOutcome(subject, advance.outcome);
       return advance.outcome;
-    })();
+    });
     if (outcome?.type === 'completed') {
       await saveFilesOnCompleted(subject, subscriber);
       await runAfterCompleted(subject, subscriber);
@@ -191,21 +211,29 @@ export function createSigningModule({ provider, subscribers, dataDir, now = () =
   return {
     mode: async () => provider.mode,
 
-    async send(subject: SigningSubject, document: SignableDocument, signers: Signer[]): Promise<SignTask> {
-      const subscriber = requireSubscriber(subject);
-      refuseInvalidSequence(signers);
-      const db = getDb();
-      // 先擋下來，才不會在服務商多建一個用不到的任務
-      if (findSignTask(db, subject)) throw new SigningRefusal(409, '這個簽署標的已有簽署任務');
-      const { taskRef } = await provider.createTask({ subject, document, signers });
-      db.transaction(() => {
+    // 同一個簽署標的的兩個送簽排成一列：第二個看到已有簽署任務，直接 409，不會在服務商多建任務。
+    // 先建服務商任務（外部呼叫），再讓訂閱者在自己的交易套用「已送簽」（不是草稿就拒絕，不會寫入），
+    // 最後記簽署任務。業務實體先動的理由同 applyEvent：中斷時合約停在簽署中、沒有簽署任務，
+    // 這種合約本來就能撤回（voidWithoutTask）。
+    send(subject: SigningSubject, document: SignableDocument, signers: Signer[]): Promise<SignTask> {
+      return serialized(subject, async () => {
+        const subscriber = await requireSubscriber(subject);
+        refuseInvalidSequence(signers);
+        const db = getDb();
+        // 先擋下來，才不會在服務商多建一個用不到的任務
+        if (findSignTask(db, subject)) throw new SigningRefusal(409, '這個簽署標的已有簽署任務');
+        const { taskRef } = await provider.createTask({ subject, document, signers });
+        // 服務商任務編號已被別的簽署標的用掉時，在合約進入簽署中之前就擋下
+        if (findSubjectByTaskRef(db, provider.id, taskRef)) {
+          throw new SigningRefusal(409, '簽署標的或服務商任務編號已有簽署任務');
+        }
+        await subscriber.onSent(subject, { signers });
         // 訊息會回給呼叫端，所以不帶服務商任務編號
         if (!insertSignTask(db, { provider: provider.id, taskRef, subject, signers })) {
           throw new SigningRefusal(409, '簽署標的或服務商任務編號已有簽署任務');
         }
-        subscriber.onSent(subject, { signers });
-      })();
-      return { subject, mode: provider.mode };
+        return { subject, mode: provider.mode };
+      });
     },
 
     async getProgress(subject: SigningSubject): Promise<SigningProgress | null> {
@@ -214,14 +242,14 @@ export function createSigningModule({ provider, subscribers, dataDir, now = () =
     },
 
     async getSignLink(subject: SigningSubject, redirectUrl?: string): Promise<{ signer: CurrentSigner; url: string }> {
-      const subscriber = requireSubscriber(subject);
+      const subscriber = await requireSubscriber(subject);
       refuseIfUnsupported(provider.unsupported.signLink, 409);
       const { signer, taskRef } = requireCurrentSigner(subject, subscriber);
       return { signer, url: await provider.getSignLink(taskRef, signer.email, redirectUrl) };
     },
 
     async resend(subject: SigningSubject): Promise<{ signer: CurrentSigner }> {
-      const subscriber = requireSubscriber(subject);
+      const subscriber = await requireSubscriber(subject);
       refuseIfUnsupported(provider.unsupported.resend, 409);
       const { signer, taskRef } = requireCurrentSigner(subject, subscriber);
       await provider.resend(taskRef);
@@ -231,9 +259,9 @@ export function createSigningModule({ provider, subscribers, dataDir, now = () =
     // 呼叫服務商期間可能收到全員完成事件。applyEvent 會在交易內重讀進度，
     // 所以這時撤回不接受並回 409，已完成的簽署標的不會被改成已撤回。
     async voidTask(subject: SigningSubject): Promise<void> {
-      const subscriber = requireSubscriber(subject);
+      const subscriber = await requireSubscriber(subject);
       const task = findSignTask(getDb(), subject);
-      if (!task) return subscriber.voidWithoutTask(subject);
+      if (!task) return serialized(subject, () => subscriber.voidWithoutTask(subject));
       if (task.status !== 'in_progress') throw new SigningRefusal(409, `僅簽署中的${subscriber.label}可撤回`);
       await provider.voidTask(task.taskRef);
       const outcome = await applyEvent(subject, subscriber, { type: 'voided' });
@@ -253,7 +281,7 @@ export function createSigningModule({ provider, subscribers, dataDir, now = () =
         case 'event': {
           const subject = findSubjectByTaskRef(getDb(), provider.id, parsed.taskRef);
           const subscriber = subject && subscribers[subject.type];
-          if (!subject || !subscriber?.exists(subject)) {
+          if (!subject || !subscriber || !(await subscriber.exists(subject))) {
             console.info(`[signing] 忽略簽署事件 ${parsed.event.type}：對不到簽署任務 ${parsed.taskRef}`);
             return ignored;
           }
@@ -268,7 +296,7 @@ export function createSigningModule({ provider, subscribers, dataDir, now = () =
     // 模擬的簽署人已簽一律是當前簽署人。模擬事件沒有服務商，事件時間取現在。
     async simulateEvent(subject: SigningSubject, event: unknown, reason?: unknown): Promise<{ status: string }> {
       refuseIfUnsupported(provider.unsupported.simulate, 403);
-      const subscriber = requireSubscriber(subject);
+      const subscriber = await requireSubscriber(subject);
       if (!SIMULATABLE_EVENTS.includes(event as SigningEventType)) {
         throw new SigningRefusal(400, '不支援的事件');
       }
@@ -279,8 +307,8 @@ export function createSigningModule({ provider, subscribers, dataDir, now = () =
         reason: typeof reason === 'string' ? reason : undefined,
         occurredAt: now().toISOString(),
       });
-      if (!outcome) throw new SigningRefusal(409, `目前狀態（${subscriber.currentStatus(subject)}）不接受此事件`);
-      return { status: subscriber.currentStatus(subject) };
+      if (!outcome) throw new SigningRefusal(409, `目前狀態（${await subscriber.currentStatus(subject)}）不接受此事件`);
+      return { status: await subscriber.currentStatus(subject) };
     },
 
     // 補抓文件。完成當下保存失敗（服務商暫時性錯誤、連結過期等）時的補救手段。
@@ -288,8 +316,8 @@ export function createSigningModule({ provider, subscribers, dataDir, now = () =
       subject: SigningSubject,
       options: SaveFilesOptions = {}
     ): Promise<SaveFileResult[]> {
-      const subscriber = requireSubscriber(subject);
-      if (!subscriber.isCompleted(subject)) {
+      const subscriber = await requireSubscriber(subject);
+      if (!(await subscriber.isCompleted(subject))) {
         throw new SigningRefusal(409, `${subscriber.label}尚未完成簽署，沒有可保存的文件`);
       }
       return saveTaskFiles(subject, subscriber, options);
@@ -303,9 +331,9 @@ export function createSigningModule({ provider, subscribers, dataDir, now = () =
 
     // 兩份文件都只在完成後存在。沒保存到就當場補抓一次再回檔案。
     async downloadFile(subject: SigningSubject, kind: ContractFileKind): Promise<DownloadedFile> {
-      const subscriber = requireSubscriber(subject);
+      const subscriber = await requireSubscriber(subject);
       const label = CONTRACT_FILE_LABELS[kind];
-      if (!subscriber.isCompleted(subject)) {
+      if (!(await subscriber.isCompleted(subject))) {
         throw new SigningRefusal(409, `${subscriber.label}尚未完成簽署，${label}尚未產生`);
       }
       refuseIfUnsupported(provider.unsupported.files?.[kind], 409);
@@ -353,6 +381,9 @@ export type SigningModule = ReturnType<typeof createSigningModule>;
 // route handler 共用的錯誤回應：模組拒絕時用它給的狀態碼，其他失敗視為服務商錯誤
 export function signingErrorResponse(e: unknown, fallbackMessage: string): Response {
   if (e instanceof SigningRefusal) return jsonError(e.status, e.message);
+  // 訂閱者讀合約要組織脈絡。沒登入或不是組織身分時，和其他組織 route 的回應一致
+  if (e instanceof Unauthenticated) return jsonError(401, e.message);
+  if (e instanceof OrgContextRequired) return jsonError(403, e.message);
   return jsonError(502, e instanceof Error ? e.message : fallbackMessage);
 }
 

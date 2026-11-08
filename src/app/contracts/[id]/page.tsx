@@ -58,6 +58,7 @@ import {
   type DetailAction,
 } from '@/lib/contract-detail';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
+import { shortUlid } from '@/lib/pg/ulid';
 import { evaluateRouting } from '@/lib/signature-routing';
 
 const STATUS_COLORS: Record<ContractStatus, string> = {
@@ -196,7 +197,7 @@ function ContractDetail({ id }: { id: string }) {
   };
 
   const mockAdvance = async (event: string, label: string) => {
-    const data = await act('/api/mock/advance', { contract_id: Number(id), event });
+    const data = await act('/api/mock/advance', { contract_id: id, event });
     if (data) {
       message.success(label);
       load();
@@ -372,7 +373,7 @@ function ContractDetail({ id }: { id: string }) {
       <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 8 }}>
         <Space wrap>
           <Typography.Title level={4} style={{ margin: 0 }}>
-            合約 #{contract.id}
+            <span title={contract.id}>合約 #{shortUlid(contract.id)}</span>
           </Typography.Title>
           <Tag color={STATUS_COLORS[contract.status]}>{CONTRACT_STATUS_LABELS[contract.status]}</Tag>
           {mockMode && <Tag color="purple">mock 模式</Tag>}
@@ -578,9 +579,13 @@ function ContractDetail({ id }: { id: string }) {
                         style={{ width: 220, borderColor: node.role === 'self' ? '#1677ff' : undefined }}
                       >
                         {node.href ? (
-                          <Link href={node.href}>合約 #{node.id}</Link>
+                          <Link href={node.href} title={node.id}>
+                            合約 #{shortUlid(node.id)}
+                          </Link>
                         ) : (
-                          <Typography.Text strong>合約 #{node.id}</Typography.Text>
+                          <Typography.Text strong title={node.id}>
+                            合約 #{shortUlid(node.id)}
+                          </Typography.Text>
                         )}{' '}
                         <Tag color={STATUS_COLORS[node.status]}>{CONTRACT_STATUS_LABELS[node.status]}</Tag>
                         <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>

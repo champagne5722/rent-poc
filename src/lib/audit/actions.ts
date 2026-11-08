@@ -17,6 +17,9 @@ export const AUDIT_ACTIONS = [
   'member.revoke',
   'member.role_change',
   'tenant.login',
+  'auth.login', // MIL-103：屋主、經理人、營運者登入。有組織身分時寫該組織的鏈，其餘寫平台鏈。payload 放 actor_identity_level
+  'auth.logout',
+  'auth.membership_rejected', // MIL-103：每個請求重查成員資格，失效時拒絕並留紀錄（P0-02 AC6）
   'handover.take_effect',
 
   // 判定（出租權源判定、重複審核判定、執業主體與執業人員驗證）
@@ -37,6 +40,9 @@ export const AUDIT_ACTIONS = [
   'property.create', // MIL-81：物件建立、修改、刪除，payload 只放租賃單位 ID 與被改的欄位名稱
   'property.update',
   'property.delete',
+  'contract.create', // MIL-83：合約的建立、複製、刪除。payload 只放 ID 與類型，不放姓名、地址、租金
+  'contract.copy',
+  'contract.delete',
   'anchor.merge',
   'handover.seal',
   'handover.accept',

@@ -1,8 +1,8 @@
-import type Database from 'better-sqlite3';
-import { commitTransition, type ContractEventInput } from './db';
+import { commitTransition, getContract, type ContractEventInput } from './contracts';
+import type { OrgTx } from './pg/with-tx';
 import type { ProgressOutcome } from './signing-module/progress';
 import type { CurrentSigner } from './signing-module/provider';
-import { isSigningStatus, SIGNER_ROLE_LABELS, type Contract, type ContractStatus, type SignerRole } from './types';
+import { isSigningStatus, SIGNER_ROLE_LABELS, type ContractStatus, type SignerRole } from './types';
 
 // 簽署結果 → 合約狀態轉移（ADR-0010 決議 7）。合約狀態是簽署進度的投影，
 // 由當前簽署人的角色決定，順序改變時對照表不變。
@@ -54,24 +54,22 @@ export function decideTransition(status: ContractStatus, result: ContractSigning
   }
 }
 
-// 套用轉移：狀態與歷程事件在同一次交易寫入（任一失敗一起回滾）。
-// db 參數只給測試注入 in-memory DB 用，正式路徑走預設的檔案 DB。
-export function applySigningResult(
-  contract: Pick<Contract, 'id' | 'status'>,
-  result: ContractSigningResult,
-  db?: Database.Database
-): ContractStatus | null {
+// 套用轉移：先鎖住合約再讀目前狀態，狀態與歷程事件在同一個交易寫入（任一失敗一起回滾）。
+// 合約不存在（含別的組織的合約）或不接受這個結果時回 null，不寫任何東西。
+export async function applySigningResult(
+  tx: OrgTx,
+  contractId: string,
+  result: ContractSigningResult
+): Promise<ContractStatus | null> {
+  const contract = await getContract(tx, contractId, 'update');
+  if (!contract) return null;
   const decision = decideTransition(contract.status, result);
   if (!decision) return null;
 
-  commitTransition(
-    contract.id,
-    {
-      status: decision.status,
-      event: decision.event,
-      declinedReason: result.type === 'declined' ? (result.reason ?? null) : null,
-    },
-    db
-  );
+  await commitTransition(tx, contractId, {
+    status: decision.status,
+    event: decision.event,
+    declinedReason: result.type === 'declined' ? (result.reason ?? null) : null,
+  });
   return decision.status;
 }

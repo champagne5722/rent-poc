@@ -78,4 +78,16 @@ describe('jsonError', () => {
     expect(() => jsonError(200, 'x')).toThrow(RangeError);
     expect(() => jsonError(302, 'x')).toThrow(RangeError);
   });
+
+  it('extra 併進本文，headers 帶上標頭', async () => {
+    const res = jsonError(429, '太頻繁', { extra: { retryAfterSec: 7 }, headers: { 'Retry-After': '7' } });
+    expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('7');
+    expect(await res.json()).toEqual({ error: '太頻繁', retryAfterSec: 7 });
+  });
+
+  it('extra 蓋不掉 error 欄位：error 一律是訊息', async () => {
+    const res = jsonError(400, '訊息', { extra: { error: '偽造' } });
+    expect((await res.json()).error).toBe('訊息');
+  });
 });

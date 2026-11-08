@@ -52,7 +52,7 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
     expect(updated).toMatchObject({ name: '改名', equipment: [], rental_unit_id: created!.rental_unit_id });
     expect(updated!.updated_at).toMatch(/^\d{4}-/);
 
-    expect(await withTx({ kind: 'org', orgId: orgA }, (tx) => deleteProperty(tx, id))).toBe(true);
+    expect(await withTx({ kind: 'org', orgId: orgA }, (tx) => deleteProperty(tx, id))).toBe('deleted');
     expect(await withTx({ kind: 'org', orgId: orgA }, (tx) => getProperty(tx, id))).toBeNull();
   });
 
@@ -79,7 +79,7 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
     const id = await withTx({ kind: 'org', orgId: orgA }, (tx) => createProperty(tx, input({ name: 'A 的' })));
     expect(await withTx({ kind: 'org', orgId: orgB }, (tx) => getProperty(tx, id))).toBeNull();
     expect(await withTx({ kind: 'org', orgId: orgB }, (tx) => updateProperty(tx, id, input()))).toBeNull();
-    expect(await withTx({ kind: 'org', orgId: orgB }, (tx) => deleteProperty(tx, id))).toBe(false);
+    expect(await withTx({ kind: 'org', orgId: orgB }, (tx) => deleteProperty(tx, id))).toBe('not_found');
     expect((await withTx({ kind: 'org', orgId: orgB }, (tx) => listProperties(tx))).map((p) => p.name)).not.toContain('A 的');
     await expect(dbh.pool.query('SELECT * FROM registry.anchors')).rejects.toThrow(/permission denied/);
   });

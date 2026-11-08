@@ -1,11 +1,14 @@
-import Database from 'better-sqlite3';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ensureSchema, getContract, setDb } from './db';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createContract, getContract } from './contracts';
+import { convertSignatureFieldsJson } from './legacy-signer-roles';
+import { withTx } from './pg/database';
+import { setupRouteDb, type RouteDb } from './pg/route-test-kit';
+import type { OrgTx } from './pg/with-tx';
 import { defaultFieldRect } from './signature-layout';
 import { prepareContractSigners } from './signing';
 import { loadContractRoutingFacts } from './signature-routing/repository';
 import { createDottedSignProvider, type DottedSignRequest } from './signing-module/dottedsign-adapter';
-import type { SignatureField } from './types';
+import type { ContractFields, SignatureField } from './types';
 
 // 簽署角色資料轉換（MIL-55、ADR-0010 決議 6）。
 // 下列座標是改名前的程式碼實際算出的快照，用來證明既有合約的簽名框位置不變。
@@ -30,130 +33,81 @@ const LEGACY_TENANT_FIELD = {
   h: 0.052263359821354334,
 };
 
-const LEGACY_FIELDS = JSON.stringify({
+const LEGACY_FIELDS = {
   landlordName: '林房東',
   landlordEmail: 'landlord@example.com',
   tenantName: '王租客',
   tenantEmail: 'tenant@example.com',
   // 修繕責任也用 landlord、tenant，屬於另一個值域，轉換不得碰
   equipmentAnnex: [{ name: '冷氣', quantity: 1, repair: 'landlord', note: 'tenant 自購' }],
-});
+};
 
-let db: Database.Database;
+// 合約搬到 PostgreSQL 後，舊 SQLite 資料的轉換由搬資料腳本（MIL-90）呼叫 convertSignatureFieldsJson。
+describe('既有合約的簽署角色轉換（convertSignatureFieldsJson）', () => {
+  const convert = (fields: unknown[]) => {
+    const out = convertSignatureFieldsJson(JSON.stringify(fields));
+    return out === null ? null : JSON.parse(out);
+  };
 
-beforeEach(() => {
-  db = new Database(':memory:');
-  ensureSchema(db);
-  setDb(db);
-});
-
-afterEach(() => {
-  setDb(null);
-  db.close();
-});
-
-function insertContract(signatureFields: string, updatedAt: string | null = '2026-01-02 03:04:05'): number {
-  const result = db
-    .prepare(
-      `INSERT INTO contracts (status, fields, signature_fields, updated_at)
-       VALUES ('draft', ?, ?, ?)`
-    )
-    .run(LEGACY_FIELDS, signatureFields, updatedAt);
-  return Number(result.lastInsertRowid);
-}
-
-function storedRow(id: number) {
-  return db.prepare('SELECT * FROM contracts WHERE id = ?').get(id);
-}
-
-describe('既有合約的簽署角色轉換', () => {
   it('landlord 改成 party_a、tenant 改成 party_b，頁碼與座標不變', () => {
-    const id = insertContract(JSON.stringify([LEGACY_LANDLORD_FIELD, LEGACY_TENANT_FIELD]));
-
-    ensureSchema(db);
-
-    expect(getContract(id)?.signature_fields).toEqual([
+    expect(convert([LEGACY_LANDLORD_FIELD, LEGACY_TENANT_FIELD])).toEqual([
       { ...LEGACY_LANDLORD_FIELD, signer: 'party_a' },
       { ...LEGACY_TENANT_FIELD, signer: 'party_b' },
     ]);
   });
 
-  it('第二次執行不改任何資料', () => {
-    const id = insertContract(JSON.stringify([LEGACY_LANDLORD_FIELD, LEGACY_TENANT_FIELD]));
-    ensureSchema(db);
-    const afterFirst = storedRow(id);
-    const changesAfterFirst = db.prepare('SELECT total_changes() AS n').get();
-
-    ensureSchema(db);
-
-    expect(storedRow(id)).toEqual(afterFirst);
-    expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(changesAfterFirst);
-  });
-
-  it('只動 signer：合約欄位、修繕責任與更新時間都不變', () => {
-    const id = insertContract(JSON.stringify([LEGACY_TENANT_FIELD]));
-    const before = storedRow(id) as { fields: string; updated_at: string };
-
-    ensureSchema(db);
-
-    expect(storedRow(id)).toMatchObject({ fields: before.fields, updated_at: before.updated_at });
-  });
-
-  it('合約歷程的行為者不轉換', () => {
-    const id = insertContract(JSON.stringify([LEGACY_LANDLORD_FIELD]));
-    db.prepare("INSERT INTO contract_events (contract_id, type, actor) VALUES (?, 'created', 'landlord')").run(id);
-
-    ensureSchema(db);
-
-    expect(db.prepare('SELECT actor FROM contract_events WHERE contract_id = ?').get(id)).toEqual({
-      actor: 'landlord',
-    });
+  it('轉換後再轉一次不改任何東西（回 null）', () => {
+    const once = convertSignatureFieldsJson(JSON.stringify([LEGACY_LANDLORD_FIELD, LEGACY_TENANT_FIELD]))!;
+    expect(convertSignatureFieldsJson(once)).toBeNull();
   });
 
   it('新舊值混在同一份合約時，只改舊值', () => {
-    const id = insertContract(
-      JSON.stringify([{ ...LEGACY_LANDLORD_FIELD, signer: 'party_a' }, LEGACY_TENANT_FIELD])
-    );
-
-    ensureSchema(db);
-
-    expect(getContract(id)?.signature_fields.map((f) => f.signer)).toEqual(['party_a', 'party_b']);
+    const converted = convert([{ ...LEGACY_LANDLORD_FIELD, signer: 'party_a' }, LEGACY_TENANT_FIELD]);
+    expect(converted.map((f: SignatureField) => f.signer)).toEqual(['party_a', 'party_b']);
   });
 
-  it('沒有舊值的合約，文字內容一個字元都不改', () => {
-    const empty = insertContract('[]');
-    const spaced = insertContract('[ {"id":"p1", "signer":"party_a", "page":0, "x":0, "y":0, "w":1, "h":1} ]');
-    const before = [storedRow(empty), storedRow(spaced)];
-
-    ensureSchema(db);
-
-    expect([storedRow(empty), storedRow(spaced)]).toEqual(before);
+  it('沒有舊值的內容回 null，呼叫端就不寫回', () => {
+    expect(convertSignatureFieldsJson('[]')).toBeNull();
+    expect(convertSignatureFieldsJson('[ {"id":"p1", "signer":"party_a", "page":0} ]')).toBeNull();
   });
 
-  it('內容不是合法 JSON 陣列的列維持原樣，也不擋住開檔', () => {
-    const broken = insertContract('{not json');
-    const notArray = insertContract('{"signer":"landlord"}');
+  it('內容不是合法 JSON 陣列時回 null，不丟錯', () => {
+    expect(convertSignatureFieldsJson('{not json')).toBeNull();
+    expect(convertSignatureFieldsJson('{"signer":"landlord"}')).toBeNull();
+  });
 
-    expect(() => ensureSchema(db)).not.toThrow();
-
-    expect(storedRow(broken)).toMatchObject({ signature_fields: '{not json' });
-    expect(storedRow(notArray)).toMatchObject({ signature_fields: '{"signer":"landlord"}' });
+  it('修繕責任也用 landlord、tenant，屬於另一個值域，只轉 signer 欄位', () => {
+    // 這個函式只收 signature_fields，不會碰合約欄位的 equipmentAnnex.repair
+    expect(LEGACY_FIELDS.equipmentAnnex[0].repair).toBe('landlord');
+    expect(convert([LEGACY_TENANT_FIELD])).toEqual([{ ...LEGACY_TENANT_FIELD, signer: 'party_b' }]);
   });
 });
 
+let kit: RouteDb;
+beforeAll(async () => {
+  kit = await setupRouteDb();
+});
+afterAll(() => kit.close());
+beforeEach(() => kit.reset());
+
+const inA = <T,>(fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId: kit.orgA }, fn);
+
 describe('轉換後的簽名框位置快照', () => {
   it('送給點點簽的 PDF 座標與轉換前相同', async () => {
-    const id = insertContract(JSON.stringify([LEGACY_LANDLORD_FIELD, LEGACY_TENANT_FIELD]));
-    ensureSchema(db);
+    // 舊資料經 convertSignatureFieldsJson 轉換後寫入 PostgreSQL（jsonb）
+    const converted = JSON.parse(convertSignatureFieldsJson(JSON.stringify([LEGACY_LANDLORD_FIELD, LEGACY_TENANT_FIELD]))!);
+    const id = await inA((tx) =>
+      createContract(tx, { property_id: null, fields: LEGACY_FIELDS as unknown as ContractFields, signature_fields: converted }),
+    );
 
     const calls: { body: { stages: { email: string; field_settings: { page: number; coord: number[] }[] }[] } }[] = [];
     const request: DottedSignRequest = async (_path, init) => {
       calls.push({ body: JSON.parse(String(init?.body)) });
       return { data: { task_id: 1 } };
     };
-    const routing = await loadContractRoutingFacts(id);
+    const routing = await inA((tx) => loadContractRoutingFacts(tx, id));
     if (!routing.ok) throw new Error(routing.reason);
-    const prepared = prepareContractSigners(getContract(id)!, routing.facts);
+    const prepared = prepareContractSigners((await inA((tx) => getContract(tx, id)))!, routing.facts);
     if (!prepared.ok) throw new Error(prepared.error);
     await createDottedSignProvider({ request, clientSecret: 's' }).createTask({
       subject: { type: 'contract', id },

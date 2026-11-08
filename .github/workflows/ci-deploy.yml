@@ -145,6 +145,7 @@ jobs:
           env_vars: |-
             APP_ORIGIN=${{ env.APP_ORIGIN }}
             DEMO_BASIC_AUTH_USER=demo
+            MAILER_ADAPTER=log
             LITESTREAM_GCS_BUCKET=${{ vars.LITESTREAM_BUCKET }}
           secrets: ${{ steps.runtime-secrets.outputs.value }}
           # DOTTEDSIGN_ENABLED 改回 false 時，要真的卸除點點簽 secrets

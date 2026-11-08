@@ -19,7 +19,7 @@ export function isWorkbenchTodo(status: ContractStatus): status is WorkbenchTodo
 export function selectWorkbenchTodos(items: Contract[]): Contract[] {
   return items
     .filter((c) => isWorkbenchTodo(c.status))
-    .sort((a, b) => lastActionAt(b).localeCompare(lastActionAt(a)) || b.id - a.id);
+    .sort((a, b) => lastActionAt(b).localeCompare(lastActionAt(a)) || b.id.localeCompare(a.id));
 }
 
 /** 待辦列的行動：一個狀態一個明確動作，非待辦狀態沒有行動。 */

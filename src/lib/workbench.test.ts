@@ -10,6 +10,7 @@ import {
   WORKBENCH_QUICK_LINKS,
   WORKBENCH_TODO_STATUSES,
 } from './workbench';
+import { ulidOf } from './test-ids';
 
 interface MakeOptions {
   id?: number;
@@ -20,7 +21,7 @@ interface MakeOptions {
 
 function makeContract(o: MakeOptions = {}): Contract {
   return {
-    id: o.id ?? 1,
+    id: ulidOf(o.id ?? 1),
     property_id: null,
     contract_type: 'lease',
     derived_from: null,
@@ -91,7 +92,7 @@ describe('selectWorkbenchTodos', () => {
       makeContract({ id: 2, status: 'awaiting_landlord', created_at: '2026-03-01T00:00:00.000Z' }),
       makeContract({ id: 3, status: 'draft', created_at: '2026-02-01T00:00:00.000Z' }),
     ];
-    expect(selectWorkbenchTodos(items).map((c) => c.id)).toEqual([2, 3, 1]);
+    expect(selectWorkbenchTodos(items).map((c) => Number(c.id))).toEqual([2, 3, 1]);
   });
 
   it('有更新時間就用更新時間，不用建立時間', () => {
@@ -104,7 +105,7 @@ describe('selectWorkbenchTodos', () => {
       }),
       makeContract({ id: 2, status: 'awaiting_landlord', created_at: '2026-03-01T00:00:00.000Z' }),
     ];
-    expect(selectWorkbenchTodos(items).map((c) => c.id)).toEqual([1, 2]);
+    expect(selectWorkbenchTodos(items).map((c) => Number(c.id))).toEqual([1, 2]);
   });
 
   it('狀態不影響排序：時間新的排前面', () => {
@@ -112,7 +113,7 @@ describe('selectWorkbenchTodos', () => {
       makeContract({ id: 1, status: 'awaiting_landlord', created_at: '2026-01-01T00:00:00.000Z' }),
       makeContract({ id: 2, status: 'draft', created_at: '2026-02-01T00:00:00.000Z' }),
     ];
-    expect(selectWorkbenchTodos(items).map((c) => c.id)).toEqual([2, 1]);
+    expect(selectWorkbenchTodos(items).map((c) => Number(c.id))).toEqual([2, 1]);
   });
 
   it('時間相同時以 id 新到舊收尾，排序穩定', () => {
@@ -120,7 +121,7 @@ describe('selectWorkbenchTodos', () => {
       makeContract({ id: 5, status: 'draft', created_at: '2026-01-01T00:00:00.000Z' }),
       makeContract({ id: 9, status: 'draft', created_at: '2026-01-01T00:00:00.000Z' }),
     ];
-    expect(selectWorkbenchTodos(items).map((c) => c.id)).toEqual([9, 5]);
+    expect(selectWorkbenchTodos(items).map((c) => Number(c.id))).toEqual([9, 5]);
   });
 
   it('不改動傳入的陣列', () => {
@@ -129,7 +130,7 @@ describe('selectWorkbenchTodos', () => {
       makeContract({ id: 2, status: 'draft', created_at: '2026-02-01T00:00:00.000Z' }),
     ];
     selectWorkbenchTodos(items);
-    expect(items.map((c) => c.id)).toEqual([1, 2]);
+    expect(items.map((c) => Number(c.id))).toEqual([1, 2]);
   });
 
   it('沒有待辦時回空陣列', () => {
@@ -141,14 +142,14 @@ describe('todoActionFor', () => {
   it('待甲方簽的行動是去簽署，連到合約詳情頁', () => {
     expect(todoActionFor(makeContract({ id: 42, status: 'awaiting_landlord' }))).toEqual({
       label: '去簽署',
-      href: '/contracts/42',
+      href: `/contracts/${ulidOf(42)}`,
     });
   });
 
   it('草稿的行動是繼續編輯，連到建約 wizard', () => {
     expect(todoActionFor(makeContract({ id: 7, status: 'draft' }))).toEqual({
       label: '繼續編輯',
-      href: '/contracts/7/edit',
+      href: `/contracts/${ulidOf(7)}/edit`,
     });
   });
 
