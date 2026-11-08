@@ -3,10 +3,11 @@ import { currentOwnerSession } from '@/lib/current-owner-session';
 import { handoverStore } from '@/lib/handover/demo-store';
 import { exportHandoverPackage } from '@/lib/handover/org-service';
 import { handoverPackageResponse } from '@/lib/handover/package-response';
+import { jsonError } from '@/lib/http';
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await currentOwnerSession();
-  if (!session) return Response.json({ error: '目前的帳號沒有屋主身分。' }, { status: 403 });
+  if (!session) return jsonError(403, '目前的帳號沒有屋主身分。');
   const { id } = await params;
   const result = await exportHandoverPackage(handoverStore(), { kind: 'owner', partyId: session.partyId }, id);
   return handoverPackageResponse(result);

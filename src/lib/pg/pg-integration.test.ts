@@ -3,6 +3,7 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fromPgClient } from './executor';
 import { migrate } from './migrate';
+import { withClusterLock } from './pg-test-support';
 import { MIGRATIONS_DIR } from './test-harness';
 
 // 真實 PostgreSQL 的整合測試（ADR-0012 決議 13：CI 另開真實容器跑角色檢查）。
@@ -35,7 +36,8 @@ describe.skipIf(!adminUrl)('真實 PostgreSQL', () => {
     await admin.end();
     owner = new Client({ connectionString: urlFor(new URL(adminUrl!).username, new URL(adminUrl!).password, dbName) });
     await owner.connect();
-    applied = await migrate(fromPgClient(owner), { dir: MIGRATIONS_DIR, runAs: 'app_owner' });
+    // 角色是叢集共用的，與其他測試檔並行時要排隊（見 pg-test-support.ts）
+    applied = await withClusterLock(adminUrl!, () => migrate(fromPgClient(owner), { dir: MIGRATIONS_DIR, runAs: 'app_owner' }));
   });
   afterAll(async () => {
     await owner.end();
@@ -62,7 +64,7 @@ describe.skipIf(!adminUrl)('真實 PostgreSQL', () => {
   });
 
   it('以 app_rw 真實登入後：current_user 正確、讀得到 control.orgs、直接查其他區的表被拒', async () => {
-    await owner.query(`ALTER ROLE app_rw PASSWORD 'rw-test'`);
+    await withClusterLock(adminUrl!, () => owner.query(`ALTER ROLE app_rw PASSWORD 'rw-test'`));
     // 其他區的表由各自的擁有者建立
     await owner.query(`SET ROLE app_owner; CREATE TABLE registry.probe (id int); RESET ROLE;`);
     await owner.query(`SET ROLE audit_owner; CREATE TABLE audit.probe (id int); RESET ROLE;`);
@@ -88,7 +90,7 @@ describe.skipIf(!adminUrl)('真實 PostgreSQL', () => {
   });
 
   it('以 app_owner 真實登入後可以跑 migration（CI 的執行方式）', async () => {
-    await owner.query(`ALTER ROLE app_owner PASSWORD 'owner-test'`);
+    await withClusterLock(adminUrl!, () => owner.query(`ALTER ROLE app_owner PASSWORD 'owner-test'`));
     const client = new Client({ connectionString: urlFor('app_owner', 'owner-test', dbName) });
     await client.connect();
     try {

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getContract } from '@/lib/db';
 import { contractSubject, signing, signingErrorResponse } from '@/lib/signing-module';
+import { jsonOk, jsonError } from '@/lib/http';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -14,8 +15,8 @@ async function contractFiles(contractId: number) {
 export async function GET(_request: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const contract = getContract(Number(id));
-  if (!contract) return Response.json({ error: '合約不存在' }, { status: 404 });
-  return Response.json({ data: await contractFiles(contract.id) });
+  if (!contract) return jsonError(404, '合約不存在');
+  return jsonOk({ data: await contractFiles(contract.id) });
 }
 
 // POST：手動補抓，一律強制重抓。完成當下保存失敗時的補救手段。全成功回 200，有失敗回 207。
@@ -25,7 +26,7 @@ export async function POST(_request: NextRequest, { params }: Ctx) {
   try {
     const results = await signing.saveFiles(subject, { force: true });
     const failed = results.filter((r) => !r.ok);
-    return Response.json(
+    return jsonOk(
       { data: { results, files: await contractFiles(subject.id) } },
       { status: failed.length ? 207 : 200 }
     );

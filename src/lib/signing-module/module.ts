@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getDb } from '../db';
+import { jsonError } from '../http';
 import { CONTRACT_FILE_KINDS, CONTRACT_FILE_LABELS } from '../types';
 import type { ContractFileKind } from '../types';
 import { advanceProgress, normalizeEmail, type ProgressOutcome } from './progress';
@@ -351,8 +352,8 @@ export type SigningModule = ReturnType<typeof createSigningModule>;
 
 // route handler 共用的錯誤回應：模組拒絕時用它給的狀態碼，其他失敗視為服務商錯誤
 export function signingErrorResponse(e: unknown, fallbackMessage: string): Response {
-  if (e instanceof SigningRefusal) return Response.json({ error: e.message }, { status: e.status });
-  return Response.json({ error: e instanceof Error ? e.message : fallbackMessage }, { status: 502 });
+  if (e instanceof SigningRefusal) return jsonError(e.status, e.message);
+  return jsonError(502, e instanceof Error ? e.message : fallbackMessage);
 }
 
 function refuseIfUnsupported(reason: string | undefined, status: number): void {

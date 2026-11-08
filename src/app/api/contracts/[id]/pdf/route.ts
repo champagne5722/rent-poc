@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getContract } from '@/lib/db';
 import { generateContractPdf } from '@/lib/pdf';
+import { jsonError } from '@/lib/http';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -8,7 +9,7 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function GET(_request: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const contract = getContract(Number(id));
-  if (!contract) return Response.json({ error: '合約不存在' }, { status: 404 });
+  if (!contract) return jsonError(404, '合約不存在');
 
   const pdf = await generateContractPdf(contract.fields);
   return new Response(Buffer.from(pdf), {

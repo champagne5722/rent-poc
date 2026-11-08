@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { copyContractAsDraft, getContract } from '@/lib/db';
+import { jsonOk, jsonError } from '@/lib/http';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -8,8 +9,8 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function POST(_request: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const contract = getContract(Number(id));
-  if (!contract) return Response.json({ error: '合約不存在' }, { status: 404 });
+  if (!contract) return jsonError(404, '合約不存在');
 
   const newId = copyContractAsDraft(contract);
-  return Response.json({ data: { id: newId } }, { status: 201 });
+  return jsonOk({ data: { id: newId } }, { status: 201 });
 }
