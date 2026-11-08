@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Alert, Button, Checkbox, Flex, Form, Input, Radio, Typography } from 'antd';
+import { Alert, Button, Checkbox, Flex, Form, Input, Radio, Typography, theme } from 'antd';
 import { statutoryTitle, type LicenseKind } from '@/lib/labels';
 import { ORG_NAME_MAX } from '@/lib/orgs/onboarding-rules';
 import LogoutButton from './LogoutButton';
@@ -29,6 +29,24 @@ const KIND_OPTIONS: Array<{ value: LicenseKind; companyOnly: boolean }> = [
   { value: 'brokerage', companyOnly: false },
 ];
 
+// Form.Item 注入 value 與 onChange。用 Flex 排列，不寫死間距
+function KindCheckboxes({ value = [], onChange, firmSelected }: { value?: LicenseKind[]; onChange?: (next: LicenseKind[]) => void; firmSelected: boolean }) {
+  return (
+    <Flex vertical gap="small">
+      {KIND_OPTIONS.map((option) => (
+        <Checkbox
+          key={option.value}
+          checked={value.includes(option.value)}
+          disabled={option.companyOnly && firmSelected}
+          onChange={(e) => onChange?.(e.target.checked ? [...value, option.value] : value.filter((k) => k !== option.value))}
+        >
+          {statutoryTitle(option.value)}
+        </Checkbox>
+      ))}
+    </Flex>
+  );
+}
+
 const FIELD_NAMES = new Set(['name', 'taxId', 'entityType', 'kinds']);
 
 export default function OnboardingForm() {
@@ -36,6 +54,7 @@ export default function OnboardingForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [redirectTo, setRedirectTo] = useState('/');
+  const { token } = theme.useToken();
   const [form] = Form.useForm();
   const entityType = Form.useWatch('entityType', form) as 'company' | 'firm' | undefined;
 
@@ -84,13 +103,13 @@ export default function OnboardingForm() {
       <Flex vertical gap="middle">
         <Typography.Text>這個帳號還沒有加入任何組織。請選擇你的身分，我們會建立第一個組織。</Typography.Text>
         <Flex vertical gap="small">
-          <Button size="large" block style={{ height: 'auto', padding: '12px 16px', justifyContent: 'flex-start', textAlign: 'start' }} onClick={() => setStep('owner')}>
+          <Button size="large" block style={{ height: 'auto', padding: `${token.paddingSM}px ${token.padding}px`, justifyContent: 'flex-start', textAlign: 'start' }} onClick={() => setStep('owner')}>
             <Flex vertical align="flex-start">
               <Typography.Text strong>我是屋主</Typography.Text>
               <Typography.Text type="secondary">管理自己的物件與出租合約</Typography.Text>
             </Flex>
           </Button>
-          <Button size="large" block style={{ height: 'auto', padding: '12px 16px', justifyContent: 'flex-start', textAlign: 'start' }} onClick={() => setStep('practice')}>
+          <Button size="large" block style={{ height: 'auto', padding: `${token.paddingSM}px ${token.padding}px`, justifyContent: 'flex-start', textAlign: 'start' }} onClick={() => setStep('practice')}>
             <Flex vertical align="flex-start">
               <Typography.Text strong>我是經理人</Typography.Text>
               <Typography.Text type="secondary">以代管、包租或經紀業者的名義執業</Typography.Text>
@@ -171,14 +190,7 @@ export default function OnboardingForm() {
               extra={entityType === 'firm' ? '租賃住宅代管與包租限公司登錄，商號只能登錄不動產經紀業。' : undefined}
               rules={[{ required: true, type: 'array', min: 1, message: '請至少選一種業別' }]}
             >
-              <Checkbox.Group
-                style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
-                options={KIND_OPTIONS.map((o) => ({
-                  value: o.value,
-                  label: statutoryTitle(o.value),
-                  disabled: o.companyOnly && entityType === 'firm',
-                }))}
-              />
+              <KindCheckboxes firmSelected={entityType === 'firm'} />
             </Form.Item>
           </>
         )}

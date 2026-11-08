@@ -169,10 +169,10 @@ function MembersPanelInner() {
               dataIndex: 'displayName',
               render: (_value, member) => (
                 <Flex vertical>
-                  <Typography.Text>
-                    {member.displayName}
-                    {member.userId === data.me.userId && <Tag style={{ marginInlineStart: 8 }}>你</Tag>}
-                  </Typography.Text>
+                  <Flex align="center" gap="small">
+                    <Typography.Text>{member.displayName}</Typography.Text>
+                    {member.userId === data.me.userId && <Tag>你</Tag>}
+                  </Flex>
                   <Typography.Text type="secondary">{member.email}</Typography.Text>
                 </Flex>
               ),

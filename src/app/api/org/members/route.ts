@@ -29,7 +29,7 @@ export async function POST(request: Request): Promise<Response> {
     case 'invalid_email':
       return jsonError(400, '請輸入正確的 email');
     case 'invalid_role':
-      return jsonError(400, '角色必須是 admin、staff 或 viewer');
+      return jsonError(400, '角色必須是管理員、業務人員或唯讀');
     case 'already_member':
       return jsonError(409, '這個 email 已經是組織成員');
     case 'already_invited':

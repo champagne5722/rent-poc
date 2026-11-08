@@ -24,13 +24,13 @@ describe('registry 的執業主體表', () => {
   it('claim_practice_entity：一般成員脈絡的 app_rw 可以呼叫，PUBLIC 沒有預設權限', async () => {
     const { rows } = await kit.asOwner(async (db) =>
       db.query<{ ok: boolean }>(
-        `SELECT has_function_privilege('app_rw', 'registry.claim_practice_entity(text,text,text,text,text,text[],text,text[],text[])', 'EXECUTE') AS ok`,
+        `SELECT has_function_privilege('app_rw', 'registry.claim_practice_entity(text,text,text,text,text[],text,text[],text[])', 'EXECUTE') AS ok`,
       ),
     );
     expect(rows[0].ok).toBe(true);
     const pub = await kit.asOwner(async (db) =>
       db.query<{ ok: boolean }>(
-        `SELECT has_function_privilege('public', 'registry.claim_practice_entity(text,text,text,text,text,text[],text,text[],text[])', 'EXECUTE') AS ok`,
+        `SELECT has_function_privilege('public', 'registry.claim_practice_entity(text,text,text,text,text[],text,text[],text[])', 'EXECUTE') AS ok`,
       ),
     );
     expect(pub.rows[0].ok).toBe(false);
@@ -39,8 +39,8 @@ describe('registry 的執業主體表', () => {
   it('函式拒絕業別數量與 ID 數量不一致的呼叫', async () => {
     await expect(
       withTx({ kind: 'org', orgId: kit.orgA }, (tx) =>
-        tx.query(`SELECT registry.claim_practice_entity($1, $2, '11111111', 'x', 'company', ARRAY['management'], $3, ARRAY[]::text[], ARRAY[$4])`, [
-          kit.orgA, newUlid(), newUlid(), newUlid(),
+        tx.query(`SELECT registry.claim_practice_entity($1, '11111111', 'x', 'company', ARRAY['management'], $2, ARRAY[]::text[], ARRAY[$3])`, [
+          kit.orgA, newUlid(), newUlid(),
         ]),
       ),
     ).rejects.toThrow(/數量不一致/);

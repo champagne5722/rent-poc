@@ -25,7 +25,7 @@ export async function PATCH(request: NextRequest, { params }: Ctx): Promise<Resp
       case 'forbidden':
         return forbidden();
       case 'invalid_role':
-        return jsonError(400, '角色必須是 admin、staff 或 viewer');
+        return jsonError(400, '角色必須是管理員、業務人員或唯讀');
       case 'not_found':
         return notFound();
       case 'last_admin':

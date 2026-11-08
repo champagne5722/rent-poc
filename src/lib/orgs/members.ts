@@ -161,7 +161,7 @@ export async function changeRole(tx: OrgTx, actor: Actor, input: { userId: strin
   if (row.role === input.role) return { status: 'unchanged' };
   if (row.role === 'admin' && admins.length <= 1) return { status: 'last_admin' };
 
-  await tx.query('UPDATE control.org_memberships SET role = $1 WHERE id = $2', [input.role, row.id]);
+  await tx.query('UPDATE control.org_memberships SET role = $1 WHERE id = $2 AND org_id = $3', [input.role, row.id, actor.orgId]);
   await appendAudit(tx, {
     action: 'member.role_change',
     object: { type: 'membership', id: row.id },
@@ -192,7 +192,7 @@ export async function removeMember(tx: OrgTx, actor: Actor, input: { userId: str
   if (!row) return { status: 'not_found' };
   if (row.role === 'admin' && admins.length <= 1) return { status: 'last_admin' };
 
-  await tx.query('DELETE FROM control.org_memberships WHERE id = $1', [row.id]);
+  await tx.query('DELETE FROM control.org_memberships WHERE id = $1 AND org_id = $2', [row.id, actor.orgId]);
   const revoked = await tx.query(
     `DELETE FROM control.sessions WHERE user_id = $1 AND identity_kind = 'org' AND identity_org_id = $2 RETURNING id`,
     [input.userId, actor.orgId],

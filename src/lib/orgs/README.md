@@ -17,7 +17,7 @@ ADR-0022 決議 4 到 6。登入與 session 在 `src/lib/auth/`，這裡只管�
 
 ## 不變條件
 
-- 回應不透露別的組織：統編已被登錄時，認領方的回應、畫面與稽核事件和第一個登錄者完全相同。`registry.claim_practice_entity` 只回傳結果代碼。
+- 回應不透露別的組織：統編已被登錄時，認領方的回應、畫面與稽核事件（`practice_entity.register`）和第一個登錄者完全相同。`registry.claim_practice_entity` 只回傳結果代碼。
 - `control` 的表不掛 RLS，所以 `members.ts` 每個查詢都明確帶 `org_id`。
 - 移除成員與刪除該組織身分的 session 在同一個交易。其他身分的 session 不動。
 - 成員異動的稽核事件寫在該組織自己的鏈，payload 不放 email 與姓名。

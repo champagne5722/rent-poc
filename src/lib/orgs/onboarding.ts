@@ -23,11 +23,8 @@ export type OnboardingResult =
   | { status: 'unauthenticated' }
   /** 帳號已經有身分，不能再用這條路建組織。 */
   | { status: 'has_identity' }
-  | { status: 'invalid'; field: FormField; message: string; code?: 'company_required' }
-  /** 這個統編已經是你自己的組織登錄的。其他情況不會有這個結果。 */
-  | { status: 'own_entity' };
+  | { status: 'invalid'; field: FormField; message: string; code?: 'company_required' };
 
-class OwnEntity extends Error {}
 class IdentityTaken extends Error {}
 
 async function requireNoIdentity(token: string | undefined, deps: OnboardingDeps): Promise<SessionRow | 'unauthenticated' | 'has_identity'> {
@@ -77,7 +74,7 @@ export async function createOwnerOrg(token: string | undefined, rawForm: { name?
 
 /**
  * 經理人登錄。統編沒人登錄時建執業主體與待驗證的業別；已被別的組織登錄時，不建新列，排一筆審核台項目。
- * 兩種情況的回傳值完全相同，呼叫端與畫面都不得區分（不透露別的組織是否存在）。
+ * 兩種情況的回傳值與稽核事件完全相同，呼叫端與畫面都不得區分（不透露別的組織是否存在）。
  */
 export async function createPracticeOrg(token: string | undefined, rawForm: Record<string, unknown>, deps: OnboardingDeps): Promise<OnboardingResult> {
   const gate = await requireNoIdentity(token, deps);
@@ -90,32 +87,30 @@ export async function createPracticeOrg(token: string | undefined, rawForm: Reco
   try {
     await withTx({ kind: 'org', orgId, partyId: gate.partyId }, async (tx) => {
       await createOrgAndAdmin(tx, gate, { orgId, name, kind: 'practice', now: deps.now });
-      const outcome = await tx.query<{ outcome: 'registered' | 'claim_queued' | 'own_entity' }>(
-        'SELECT registry.claim_practice_entity($1, $2, $3, $4, $5, $6, $7, $8, $9) AS outcome',
+      await tx.query(
+        'SELECT registry.claim_practice_entity($1, $2, $3, $4, $5, $6, $7, $8)',
         [
           orgId,
-          gate.userId,
           taxId,
           name,
           entityType,
           kinds,
           newUlid(),
           kinds.map(() => newUlid()),
-          [...kinds, 'claim'].map(() => newUlid()),
+          // 每個業別一筆 license 項目，另加一筆備用給 entity_claim（函式只用到其中需要的）
+          Array.from({ length: kinds.length + 1 }, () => newUlid()),
         ],
       );
-      const result = outcome.rows[0].outcome;
-      if (result === 'own_entity') throw new OwnEntity();
+      // 不論統編是第一次登錄還是已被別的組織登錄，事件都一樣：稽核匯出不得讓認領方推出別的組織存在（ADR-0012 決議 8）。
+      // 資料只有認領方自己填的欄位
       await appendAudit(tx, {
-        action: result === 'registered' ? 'practice_entity.register' : 'practice_entity.claim',
+        action: 'practice_entity.register',
         object: { type: 'org', id: orgId },
-        // 認領方自己填的資料，不含對方的任何資料
         payload: { tax_id: taxId, entity_type: entityType, kinds },
       });
     });
   } catch (error) {
     if (error instanceof IdentityTaken) return { status: 'has_identity' };
-    if (error instanceof OwnEntity) return { status: 'own_entity' };
     throw error;
   }
   return { status: 'ok', landing: '/' };

@@ -31,8 +31,7 @@ export const AUDIT_ACTIONS = [
   'rental_right.revoke',
   'duplicate_review.judge',
   'practice_entity.verify',
-  'practice_entity.register', // MIL-106：經理人登錄統編，建立執業主體與待驗證的業別
-  'practice_entity.claim', // MIL-106：統編已被登錄，改排審核台項目。事件寫在認領方的組織鏈，不含對方的資料
+  'practice_entity.register', // MIL-106：經理人送出統編登錄。統編已被別人登錄時（改排審核台）事件也一樣，不讓匯出稽核的人推出別的組織存在
   'practitioner.verify',
 
   // 規則（專任阻擋與提示、簽章人員指派、狀態改為已失效）

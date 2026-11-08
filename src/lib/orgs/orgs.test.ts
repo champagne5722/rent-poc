@@ -192,7 +192,10 @@ describe('「我是經理人」：建執業主體組織與待驗證的業別', (
 
     // 認領方的組織存在，帳號是 admin，但沒有登錄執業主體；稽核事件只寫認領方自己的鏈
     expect(secondRc).toMatchObject({ orgKind: 'practice', role: 'admin' });
-    expect(await auditActions((secondRc as { orgId: string }).orgId)).toEqual(['org.create', 'member.grant', 'practice_entity.claim']);
+    // 稽核匯出看不出統編已被登錄：兩個組織的事件完全一樣
+    const firstRc = (await resolveRequestContext(first.token, now(), 'r')) as { orgId: string };
+    expect(await auditActions((secondRc as { orgId: string }).orgId)).toEqual(['org.create', 'member.grant', 'practice_entity.register']);
+    expect(await auditActions(firstRc.orgId)).toEqual(await auditActions((secondRc as { orgId: string }).orgId));
   });
 
   it('認領方的回應、稽核事件與錯誤都不含別的組織的名稱與 ID', async () => {
@@ -207,27 +210,11 @@ describe('「我是經理人」：建執業主體組織與待驗證的業別', (
     expect(leaked).not.toContain(firstOrg);
   });
 
-  it('統編已經是自己的組織登錄的：回滾，不再多建組織', async () => {
-    // 同一個帳號先登錄，之後（例如被移出所有身分前）不可能再走這條路；這裡直接驗證函式的 own_entity 結果
-    const { token } = await login('mgr@example.com');
-    await createPracticeOrg(token, practiceForm(), { now: now() });
-    const rc = (await resolveRequestContext(token, now(), 'r')) as { orgId: string; userId: string };
-    // 讓這個帳號「又沒有身分」：直接把 session 的身分清空，成員資格仍在，模擬並行的第二個請求
-    const outcome = await withTx({ kind: 'org', orgId: rc.orgId, partyId: (await loadLiveSession(token, now()))!.partyId }, async (tx) =>
-      (await tx.query<{ outcome: string }>(`SELECT registry.claim_practice_entity($1, $2, '12345678', 'x', 'company', ARRAY['management'], $3, ARRAY[$4], ARRAY[$5, $6]) AS outcome`, [
-        rc.orgId, rc.userId, newUlid(), newUlid(), newUlid(), newUlid(),
-      ])).rows[0].outcome,
-    );
-    expect(outcome).toBe('own_entity');
-  });
-
   it('registry 函式必須在 p_org_id 的組織脈絡內呼叫', async () => {
-    const { token } = await login('mgr@example.com');
-    const session = (await loadLiveSession(token, now()))!;
     await expect(
       withTx({ kind: 'control' }, (tx) =>
-        tx.query(`SELECT registry.claim_practice_entity($1, $2, '99999999', 'x', 'company', ARRAY['management'], $3, ARRAY[$4], ARRAY[$5, $6])`, [
-          newUlid(), session.userId, newUlid(), newUlid(), newUlid(), newUlid(),
+        tx.query(`SELECT registry.claim_practice_entity($1, '99999999', 'x', 'company', ARRAY['management'], $2, ARRAY[$3], ARRAY[$4, $5])`, [
+          newUlid(), newUlid(), newUlid(), newUlid(), newUlid(),
         ]),
       ),
     ).rejects.toThrow(/組織脈絡/);

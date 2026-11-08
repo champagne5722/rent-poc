@@ -11,8 +11,6 @@ export function onboardingResponse(result: OnboardingResult): Response {
       return jsonError(401, '尚未登入或沒有存取權');
     case 'has_identity':
       return jsonError(409, '這個帳號已經有身分，不能再建立第一個組織');
-    case 'own_entity':
-      return jsonError(409, '這個統一編號已經是你的組織登錄過的');
     case 'invalid':
       return jsonError(400, result.message, { extra: { field: result.field, ...(result.code ? { code: result.code } : {}) } });
   }

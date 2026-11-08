@@ -3,7 +3,8 @@
 -- （ADR-0012 決議 8），所以回傳值不會帶出別的組織的資料。
 --
 -- 這張票只建「經理人第一次登入時登錄」需要的欄位。MIL-109 補營業項目、登記狀態、核對紀錄與審核動作，
--- MIL-111 補執業人員與任職。不要在這裡預建那些欄位。
+-- MIL-111 補執業人員與任職。那些欄位由各自的票補，這裡不預建。review_items.type 例外：審核台一個佇列列七種項目，
+-- 先列齊種類，之後各票產生項目時不必改約束。
 
 -- 1. practice_entities：執業主體 -----------------------------------------------
 -- 一個執業主體對應一個組織（P0-02）。統編全域唯一：第二個組織認領同一統編時不建新列（見 claim_practice_entity）。
@@ -59,11 +60,9 @@ REVOKE ALL ON registry.practice_entities, registry.practice_licenses, registry.r
 -- 回傳值只有結果代碼，不含任何別的組織的資料：
 --   registered  統編沒人登錄：建 practice_entities 與 pending 的 practice_licenses，每個業別排一筆 license 項目。
 --   claim_queued 統編已被別的組織登錄：不建新列，排一筆 entity_claim 項目。
---   own_entity  統編已被 p_user_id 自己所屬的組織登錄：不建任何東西，呼叫端應回滾。
 -- 呼叫端對外必須讓 registered 與 claim_queued 的回應一致（不透露統編是否已被登錄）。
 CREATE FUNCTION registry.claim_practice_entity(
   p_org_id      text,
-  p_user_id     text,
   p_tax_id      text,
   p_name        text,
   p_entity_type text,
@@ -79,7 +78,6 @@ SET search_path = registry, pg_temp
 AS $$
 DECLARE
   v_inserted text;
-  v_existing_org text;
   i int;
 BEGIN
   IF coalesce(current_setting('app.org_id', true), '') = '' OR current_setting('app.org_id', true) <> p_org_id THEN
@@ -105,11 +103,6 @@ BEGIN
     RETURN 'registered';
   END IF;
 
-  SELECT e.org_id INTO v_existing_org FROM registry.practice_entities e WHERE e.tax_id = p_tax_id;
-  IF EXISTS (SELECT 1 FROM control.org_memberships m WHERE m.org_id = v_existing_org AND m.user_id = p_user_id) THEN
-    RETURN 'own_entity';
-  END IF;
-
   INSERT INTO registry.review_items (id, type, subject_type, subject_id, payload)
   SELECT p_item_ids[array_length(p_item_ids, 1)], 'entity_claim', 'entity', e.id,
          jsonb_build_object('tax_id', p_tax_id, 'name', p_name, 'entity_type', p_entity_type,
@@ -119,5 +112,5 @@ BEGIN
 END
 $$;
 
-REVOKE ALL ON FUNCTION registry.claim_practice_entity(text, text, text, text, text, text[], text, text[], text[]) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION registry.claim_practice_entity(text, text, text, text, text, text[], text, text[], text[]) TO app_rw;
+REVOKE ALL ON FUNCTION registry.claim_practice_entity(text, text, text, text, text[], text, text[], text[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION registry.claim_practice_entity(text, text, text, text, text[], text, text[], text[]) TO app_rw;
