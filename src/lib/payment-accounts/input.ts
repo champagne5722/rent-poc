@@ -16,6 +16,11 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 export const MAX_TEXT_LENGTH = 60;
 
+/** 3 碼銀行代碼，或含分行的 7 碼。畫面與伺服器共用。 */
+export const BANK_CODE_PATTERN = /^\d{3}(\d{4})?$/;
+/** 帳號末四碼。 */
+export const ACCOUNT_LAST4_PATTERN = /^\d{4}$/;
+
 export interface PaymentAccountInput {
   /** 使用者看得懂的名稱。 */
   name: string;
@@ -64,8 +69,8 @@ export function parsePaymentAccountInput(body: unknown): PaymentAccountInputResu
   }
 
   const bankCode = text(raw.bankCode);
-  if (!bankCode || !/^\d{3}(\d{4})?$/.test(bankCode)) return fail('銀行代碼需為 3 碼，或含分行的 7 碼數字');
+  if (!bankCode || !BANK_CODE_PATTERN.test(bankCode)) return fail('銀行代碼需為 3 碼，或含分行的 7 碼數字');
   const accountLast4 = text(raw.accountLast4);
-  if (!accountLast4 || !/^\d{4}$/.test(accountLast4)) return fail('帳號末四碼需為 4 碼數字，不要填完整帳號');
+  if (!accountLast4 || !ACCOUNT_LAST4_PATTERN.test(accountLast4)) return fail('帳號末四碼需為 4 碼數字，不要填完整帳號');
   return { ok: true, value: { name, holderKind, holderName, method, bankCode, accountLast4 } };
 }

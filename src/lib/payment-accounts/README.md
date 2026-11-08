@@ -24,11 +24,11 @@
 | 函式 | 用途 |
 |---|---|
 | `registerPaymentAccount(tx, input, holderPartyId)` | 登錄。銀行帳戶會補持有人的現金收取帳戶。寫 `payment_account.register` |
-| `updatePaymentAccount(tx, id, input, holderPartyId?)` | 修改。有分錄引用後只能改名稱。寫 `payment_account.update` |
+| `updatePaymentAccount(tx, id, input, fallbackPartyId?)` | 修改。有分錄引用後只能改名稱。持有人的 party 沿用原值，只有原本沒有 party 時才用 `fallbackPartyId`。寫 `payment_account.update` |
 | `deactivatePaymentAccount(tx, id)` | 停用。寫 `payment_account.deactivate` |
 | `listPaymentAccounts(tx)`、`getPaymentAccount(tx, id)` | 讀取。含 `locked`、`isCash`、`active` |
-| `assertPaymentAccountsInOrg(tx, ids, { allowInactive })` | 檢查 `asset.bank.{id}` 的帳戶屬於本組織且啟用。MIL-125 的業務函式寫分錄前呼叫 |
+| `assertPaymentAccountsInOrg(tx, ids, { allowInactive })` | 檢查 `asset.bank.{id}` 的帳戶屬於本組織且啟用，並對帳戶列加共享鎖。MIL-125 的業務函式必須在寫分錄的同一個交易內呼叫，持有人鎖定才不會被競態繞過 |
 | `loadHolderRules(tx)`、`getHolderRule(tx, ruleId, version)` | 讀規則表，同一個 `rule_id` 取最新版本。傳給 `evaluateHolderRule` |
-| `listAffectedCases(tx, ruleId, version)` | 列出受影響案件。現階段以已完成的合約代替案件，忽略社宅與委託範圍條件。MIL-125 有持有人確認紀錄後改成依確認紀錄列出 |
+| `listAffectedCases(tx, ruleId, version)` | 列出受影響案件。現階段以已完成的合約代替案件，忽略社宅與委託範圍條件。MIL-125 有持有人確認紀錄後改成依確認紀錄列出。規則版本目前只用來取規則列，不另做版本區分 |
 
 稽核 payload 只放 ID、持有人種類與收款方式，不放姓名與銀行識別。

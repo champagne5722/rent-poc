@@ -5,7 +5,7 @@
 -- 修法時新增新版本的列取代舊列：同一個 rule_id 取版本最大的一列（見 src/lib/payment-accounts 的 loadHolderRules）。
 -- 舊版本的列保留，持有人確認紀錄的 (rule_id, version) 才找得到當時的規則。
 -- 條件欄位為 NULL 表示不限。內容與 src/lib/deposit-rules 的 DEPOSIT_HOLDER_RULES 一致，
--- deposit-holder-rules-table.test.ts 逐欄比對。缺列時 DHR-05 不在，evaluateHolderRule 會回 warn，
+-- src/lib/payment-accounts/holder-rules-store.test.ts 逐欄比對。缺列時 DHR-05 不在，evaluateHolderRule 會回 warn，
 -- 但萬用列消失代表 migration 壞了，所以測試檢查 5 列都在。
 
 CREATE TABLE control.deposit_holder_rules (

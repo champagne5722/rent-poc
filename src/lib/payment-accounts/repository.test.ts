@@ -136,6 +136,14 @@ describe('收款帳戶 repository', () => {
       expect((await inA((tx) => listPaymentAccounts(tx))).filter((a) => a.isCash)).toHaveLength(1);
     });
 
+    it('持有人的現金收取帳戶停用後，再登錄銀行帳戶會補一個新的', async () => {
+      const first = await register();
+      await inA((tx) => deactivatePaymentAccount(tx, first.cashAccountId!));
+      const second = await register({ name: '第二個帳戶', accountLast4: '9999' });
+      expect(second.cashAccountId).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+      expect((await inA((tx) => listPaymentAccounts(tx))).filter((a) => a.isCash && a.active)).toHaveLength(1);
+    });
+
     it('不同持有人各有一個現金收取帳戶：同一個 party 的出租人與代管業者各算各的', async () => {
       await register();
       await register({ holderKind: 'manager', holderName: '好管家公司', name: '好管家帳戶' });
@@ -246,6 +254,24 @@ describe('收款帳戶 repository', () => {
       await referenceInLedger(id);
       expect(await inA((tx) => updatePaymentAccount(tx, id, input({ name: '只改名稱' })))).toEqual({ ok: true });
       expect(await inA((tx) => getPaymentAccount(tx, id))).toMatchObject({ name: '只改名稱', locked: true });
+    });
+
+    it('別的登入者只改名稱時，持有人的 party 不會被蓋成他自己：有分錄引用的帳戶也不會誤判 locked', async () => {
+      const { id } = await register();
+      await referenceInLedger(id);
+      const other = newUlid();
+      expect(await inA((tx) => updatePaymentAccount(tx, id, input({ name: '同事改名' }), other))).toEqual({ ok: true });
+      expect(await inA((tx) => getPaymentAccount(tx, id))).toMatchObject({ name: '同事改名', holderPartyId: PARTY, locked: true });
+    });
+
+    it('原本是其他人、改成出租人時，用傳入的 party 當持有人', async () => {
+      const { id } = await register({ holderKind: 'other', holderName: '李小華' }, null);
+      expect(await inA((tx) => updatePaymentAccount(tx, id, input({ holderKind: 'lessor', holderName: '李小華' })))).toEqual({
+        ok: false,
+        error: 'holder_party_required',
+      });
+      expect(await inA((tx) => updatePaymentAccount(tx, id, input({ holderKind: 'lessor', holderName: '李小華' }), PARTY))).toEqual({ ok: true });
+      expect(await inA((tx) => getPaymentAccount(tx, id))).toMatchObject({ holderKind: 'lessor', holderPartyId: PARTY });
     });
 
     it('資料庫的觸發器也擋：繞過 repository 直接改持有人會丟錯', async () => {

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, App as AntApp, Button, Flex, Form, Input, Modal, Popconfirm, Radio, Select, Switch, Table, Tag, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import { HOLDER_KIND_LABELS } from '@/lib/payment-accounts/input';
+import { ACCOUNT_LAST4_PATTERN, BANK_CODE_PATTERN, HOLDER_KIND_LABELS } from '@/lib/payment-accounts/input';
 import type { PaymentAccount } from '@/lib/payment-accounts/repository';
 
 // 收款帳戶（MIL-118）：登錄、修改、停用，並看到每位持有人的現金收取帳戶。
@@ -140,7 +140,7 @@ function AccountEditor({ target, onClose, onSaved, onDeactivateAndAdd }: EditorP
                 name="bankCode"
                 label="銀行代碼"
                 style={{ flex: 1 }}
-                rules={[{ required: true, pattern: /^\d{3}(\d{4})?$/, message: '請輸入 3 碼銀行代碼，或含分行的 7 碼' }]}
+                rules={[{ required: true, pattern: BANK_CODE_PATTERN, message: '請輸入 3 碼銀行代碼，或含分行的 7 碼' }]}
               >
                 <Input inputMode="numeric" maxLength={7} placeholder="例：812" disabled={locked} />
               </Form.Item>
@@ -148,7 +148,7 @@ function AccountEditor({ target, onClose, onSaved, onDeactivateAndAdd }: EditorP
                 name="accountLast4"
                 label="帳號末四碼"
                 style={{ flex: 1 }}
-                rules={[{ required: true, pattern: /^\d{4}$/, message: '請輸入帳號末 4 碼' }]}
+                rules={[{ required: true, pattern: ACCOUNT_LAST4_PATTERN, message: '請輸入帳號末 4 碼' }]}
                 extra="只填末四碼，請勿輸入完整帳號。"
               >
                 <Input inputMode="numeric" maxLength={4} placeholder="例：0123" disabled={locked} />

@@ -1,6 +1,6 @@
 import { appendAudit } from '../audit';
 import type { HolderKind } from '../deposit-rules';
-import { newUlid } from '../pg/ulid';
+import { isUlid, newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
 import type { PaymentAccountInput } from './input';
 
@@ -78,19 +78,32 @@ export async function getPaymentAccount(tx: OrgTx, id: string): Promise<PaymentA
   return rows[0] ? toAccount(rows[0]) : null;
 }
 
+/** 持有人。以種類加 party 識別，other 沒有 party，改以姓名識別。 */
+interface Holder {
+  kind: HolderKind;
+  partyId: string | null;
+  name: string;
+}
+
 /** 持有人 party：other 一律沒有，其餘必須有。 */
 function resolveParty(kind: HolderKind, partyId: string | null | undefined): string | null | 'missing' {
   if (kind === 'other') return null;
   return partyId ? partyId : 'missing';
 }
 
-/** 同一位持有人（種類加 party，other 以姓名）現有的啟用中現金收取帳戶。 */
-async function activeCashAccountId(tx: OrgTx, kind: HolderKind, partyId: string | null, name: string): Promise<string | null> {
+/** 稽核 payload 與介面用的收款方式，與 account_kind 的對應只在這裡。 */
+const methodOf = (accountKind: 'general' | 'cash'): 'bank' | 'cash' => (accountKind === 'cash' ? 'cash' : 'bank');
+
+/**
+ * 同一位持有人現有的啟用中現金收取帳戶。
+ * 持有人鍵的運算式要與 0052 的 payment_accounts_one_cash_per_holder 唯一索引相同，改一邊要改另一邊。
+ */
+async function activeCashAccountId(tx: OrgTx, holder: Holder): Promise<string | null> {
   const { rows } = await tx.query<{ id: string }>(
     `SELECT id FROM org.payment_accounts
       WHERE account_kind = 'cash' AND deactivated_at IS NULL AND holder_kind = $1
         AND COALESCE(holder_party_id, 'name:' || holder_name) = COALESCE($2::text, 'name:' || $3::text)`,
-    [kind, partyId, name],
+    [holder.kind, holder.partyId, holder.name],
   );
   return rows[0]?.id ?? null;
 }
@@ -110,20 +123,20 @@ async function insertAccount(
     action: 'payment_account.register',
     object: { type: 'payment_account', id },
     // 不放姓名與銀行識別：canonical 寫入後刪不掉（ADR-0019 決議 5）
-    payload: { holder_kind: fields.holderKind, method: fields.cash ? 'cash' : 'bank' },
+    payload: { holder_kind: fields.holderKind, method: methodOf(fields.cash ? 'cash' : 'general') },
   });
   return id;
 }
 
 /** 持有人沒有啟用中的現金收取帳戶時補一個。回傳新帳戶 ID，已經有則回 null。 */
-async function ensureCashAccount(tx: OrgTx, kind: HolderKind, partyId: string | null, holderName: string): Promise<string | null> {
-  if (await activeCashAccountId(tx, kind, partyId, holderName)) return null;
+async function ensureCashAccount(tx: OrgTx, holder: Holder): Promise<string | null> {
+  if (await activeCashAccountId(tx, holder)) return null;
   return insertAccount(tx, {
     // 名稱上限 60 字，持有人名稱最長 60 字，所以截短再加後綴
-    name: `${holderName.slice(0, 50)} 現金收取`,
-    holderKind: kind,
-    holderPartyId: partyId,
-    holderName,
+    name: `${holder.name.slice(0, 50)} 現金收取`,
+    holderKind: holder.kind,
+    holderPartyId: holder.partyId,
+    holderName: holder.name,
     cash: true,
     bankCode: null,
     accountLast4: null,
@@ -147,7 +160,8 @@ export async function registerPaymentAccount(
   if (party === 'missing') return { ok: false, error: 'holder_party_required' };
 
   const cash = input.method === 'cash';
-  if (cash && (await activeCashAccountId(tx, input.holderKind, party, input.holderName))) {
+  const holder: Holder = { kind: input.holderKind, partyId: party, name: input.holderName };
+  if (cash && (await activeCashAccountId(tx, holder))) {
     return { ok: false, error: 'cash_exists' };
   }
   const id = await insertAccount(tx, {
@@ -159,7 +173,7 @@ export async function registerPaymentAccount(
     bankCode: input.bankCode,
     accountLast4: input.accountLast4,
   });
-  const cashAccountId = cash ? null : await ensureCashAccount(tx, input.holderKind, party, input.holderName);
+  const cashAccountId = cash ? null : await ensureCashAccount(tx, holder);
   return { ok: true, id, cashAccountId };
 }
 
@@ -167,23 +181,16 @@ export type UpdateResult =
   | { ok: true }
   | { ok: false; error: 'not_found' | 'inactive' | 'locked' | 'method_change' | 'cash_exists' | 'holder_party_required' };
 
-const AUDITED_FIELDS = [
-  ['name', 'name'],
-  ['holder_kind', 'holder_kind'],
-  ['holder_name', 'holder_name'],
-  ['bank_code', 'bank_code'],
-  ['account_last4', 'account_last4'],
-] as const;
-
 /**
  * 修改收款帳戶。有分錄引用後，持有人與遮罩識別不得改，只能改名稱，回 locked。
- * holderPartyId 沒給時沿用原值（原本是 other、改成其他種類時必須給）。
+ * 持有人的 party 沿用原值，不被目前登入者蓋掉：非建立者只改名稱時，持有人不能變。
+ * fallbackPartyId 只在原本沒有 party（other）、改成其他種類時使用。
  */
 export async function updatePaymentAccount(
   tx: OrgTx,
   id: string,
   input: PaymentAccountInput,
-  holderPartyId?: string | null,
+  fallbackPartyId: string | null = null,
 ): Promise<UpdateResult> {
   // 鎖住這一列再讀：兩個修改重疊時，後到的看到的是前一個提交後的值
   const { rows } = await tx.query<Row>(`${SELECT_ACCOUNTS} WHERE a.id = $1 FOR UPDATE OF a`, [id]);
@@ -192,7 +199,7 @@ export async function updatePaymentAccount(
   if (before.deactivated_at !== null) return { ok: false, error: 'inactive' };
   if ((input.method === 'cash') !== (before.account_kind === 'cash')) return { ok: false, error: 'method_change' };
 
-  const party = resolveParty(input.holderKind, holderPartyId === undefined ? before.holder_party_id : holderPartyId);
+  const party = resolveParty(input.holderKind, before.holder_party_id ?? fallbackPartyId);
   if (party === 'missing') return { ok: false, error: 'holder_party_required' };
 
   const holderChanged =
@@ -200,21 +207,24 @@ export async function updatePaymentAccount(
   const maskChanged = input.bankCode !== before.bank_code || input.accountLast4 !== before.account_last4;
   if ((holderChanged || maskChanged) && before.locked) return { ok: false, error: 'locked' };
 
+  const holder: Holder = { kind: input.holderKind, partyId: party, name: input.holderName };
   if (holderChanged && before.account_kind === 'cash') {
-    const existing = await activeCashAccountId(tx, input.holderKind, party, input.holderName);
+    const existing = await activeCashAccountId(tx, holder);
     if (existing && existing !== id) return { ok: false, error: 'cash_exists' };
   }
 
-  const changed = AUDITED_FIELDS.filter(([field]) => {
-    const next: Record<string, string | null> = {
-      name: input.name,
-      holder_kind: input.holderKind,
-      holder_name: input.holderName,
-      bank_code: input.bankCode,
-      account_last4: input.accountLast4,
-    };
-    return next[field] !== (before as unknown as Record<string, string | null>)[field];
-  }).map(([, label]) => label);
+  // 只列被改的欄位名稱，不含值
+  const changed = (
+    [
+      ['name', input.name, before.name],
+      ['holder_kind', input.holderKind, before.holder_kind],
+      ['holder_name', input.holderName, before.holder_name],
+      ['bank_code', input.bankCode, before.bank_code],
+      ['account_last4', input.accountLast4, before.account_last4],
+    ] as const
+  )
+    .filter(([, next, current]) => next !== current)
+    .map(([field]) => field);
 
   if (changed.length === 0 && !holderChanged) return { ok: true };
 
@@ -224,8 +234,7 @@ export async function updatePaymentAccount(
       WHERE id = $1`,
     [id, input.name, input.holderKind, party, input.holderName, input.bankCode, input.accountLast4],
   );
-  if (holderChanged && before.account_kind !== 'cash') await ensureCashAccount(tx, input.holderKind, party, input.holderName);
-  // 只列被改的欄位名稱，不含值
+  if (holderChanged && before.account_kind !== 'cash') await ensureCashAccount(tx, holder);
   await appendAudit(tx, { action: 'payment_account.update', object: { type: 'payment_account', id }, payload: { changed } });
   return { ok: true };
 }
@@ -234,7 +243,7 @@ export type DeactivateResult = { ok: true } | { ok: false; error: 'not_found' | 
 
 /** 停用。有分錄引用的帳戶也能停用。停用是單向的，不能重新啟用。 */
 export async function deactivatePaymentAccount(tx: OrgTx, id: string): Promise<DeactivateResult> {
-  const { rows } = await tx.query<{ deactivated_at: Date | null; holder_kind: HolderKind; account_kind: string }>(
+  const { rows } = await tx.query<{ deactivated_at: Date | null; holder_kind: HolderKind; account_kind: 'general' | 'cash' }>(
     'SELECT deactivated_at, holder_kind, account_kind FROM org.payment_accounts WHERE id = $1 FOR UPDATE',
     [id],
   );
@@ -244,7 +253,7 @@ export async function deactivatePaymentAccount(tx: OrgTx, id: string): Promise<D
   await appendAudit(tx, {
     action: 'payment_account.deactivate',
     object: { type: 'payment_account', id },
-    payload: { holder_kind: rows[0].holder_kind, method: rows[0].account_kind === 'cash' ? 'cash' : 'bank' },
+    payload: { holder_kind: rows[0].holder_kind, method: methodOf(rows[0].account_kind) },
   });
   return { ok: true };
 }
@@ -256,6 +265,8 @@ export type AssertAccountsResult = { ok: true } | { ok: false; notFound: string[
  * 鏡像帳的科目編碼只檢查格式，業務函式（MIL-125 的 confirmReceipt）寫分錄前呼叫這個。
  * 別的組織的帳戶與不存在的帳戶一律算 notFound，不洩漏它屬於誰。
  * 已停用的帳戶預設不通過：停用後不得再收款。沖銷舊分錄時帳戶可能已停用，傳 allowInactive。
+ * 帳戶列加共享鎖（FOR SHARE）直到交易結束：同時要改持有人或停用的交易（FOR UPDATE）會等這筆分錄提交，
+ * 等到時觸發器才看得到新的分錄，持有人鎖定不會因為競態失效。所以呼叫端必須在寫分錄的同一個交易內呼叫。
  */
 export async function assertPaymentAccountsInOrg(
   tx: OrgTx,
@@ -264,11 +275,11 @@ export async function assertPaymentAccountsInOrg(
 ): Promise<AssertAccountsResult> {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return { ok: true };
-  const valid = unique.filter((id) => /^[0-9A-HJKMNP-TV-Z]{26}$/.test(id));
+  const valid = unique.filter(isUlid);
   const found = new Map<string, boolean>();
   if (valid.length > 0) {
     const { rows } = await tx.query<{ id: string; deactivated_at: Date | null }>(
-      'SELECT id, deactivated_at FROM org.payment_accounts WHERE id = ANY($1::text[])',
+      'SELECT id, deactivated_at FROM org.payment_accounts WHERE id = ANY($1::text[]) FOR SHARE',
       [valid],
     );
     for (const row of rows) found.set(row.id, row.deactivated_at === null);
