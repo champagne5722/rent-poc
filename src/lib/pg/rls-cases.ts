@@ -17,6 +17,11 @@ import type { OrgTx } from './with-tx';
 
 export interface OrgTableCase {
   /**
+   * 只增不改的表（同意紀錄）。app_rw 沒有 UPDATE 與 DELETE 權限，
+   * 探測 2、3 改成預期「permission denied」，而不是 0 列。其餘探測不變。
+   */
+  appendOnly?: boolean;
+  /**
    * 在 tx 的脈絡內寫入一列，org_id 欄位用傳入的 orgId，回傳主鍵（欄位名一律是 id）。
    * 業務鍵必須固定，不得每次隨機：探測 5 靠兩個組織寫入同一組業務鍵，驗證唯一鍵含 org_id。
    * 需要父列（例如 registry 的租賃單位）時，在這裡一併建立。
@@ -45,6 +50,21 @@ export const ORG_TABLE_CASES: Record<string, OrgTableCase> = {
         orgId,
         '滲透測試設備',
       ]);
+      return id;
+    },
+  },
+  'org.consent_records': {
+    appendOnly: true,
+    // 直接 INSERT 而不用 recordConsent：探測 4 要在 A 的脈絡寫入 B 的 org_id，recordConsent 沒有這個參數。
+    // 業務鍵（告知類型、對象 email）固定。稽核位置只是欄位值，探測不需要真的稽核事件。
+    async seed(tx, orgId) {
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.consent_records
+           (id, org_id, notice_type, notice_version, text_sha256, subject_email, decision, source, audit_chain_id, audit_seq)
+         VALUES ($1, $2, 'esign', 1, repeat('a', 64), 'penetration@example.com', 'agree', 'in_app', $2, 1)`,
+        [id, orgId],
+      );
       return id;
     },
   },
