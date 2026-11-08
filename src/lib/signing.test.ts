@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Contract, ContractStatus } from './types';
-import { contractDocumentFileName, contractSignerSequence, currentSigner } from './signing';
+import { contractDocumentFileName, contractSignerSequence } from './signing';
 
 function makeContract(status: ContractStatus): Contract {
   return {
@@ -25,35 +25,12 @@ function makeContract(status: ContractStatus): Contract {
       extra: '',
     },
     signature_fields: [],
-    dottedsign_task_id: '123',
     declined_reason: null,
     derived_from: null,
     created_at: '2026-08-01 00:00:00',
     updated_at: null,
   };
 }
-
-describe('currentSigner（當前待簽方）', () => {
-  it('待乙方簽時，當前待簽方是租客', () => {
-    expect(currentSigner(makeContract('awaiting_tenant'))).toEqual({
-      role: 'party_b',
-      name: '王租客',
-      email: 'tenant@example.com',
-    });
-  });
-
-  it('待甲方簽時，當前待簽方是房東', () => {
-    expect(currentSigner(makeContract('awaiting_landlord'))).toEqual({
-      role: 'party_a',
-      name: '林房東',
-      email: 'landlord@example.com',
-    });
-  });
-
-  it.each(['draft', 'completed', 'declined', 'voided'] as const)('%s 沒有當前待簽方', (status) => {
-    expect(currentSigner(makeContract(status))).toBeNull();
-  });
-});
 
 describe('contractSignerSequence（租賃合約的簽署序列）', () => {
   it('乙方在前、甲方在後，各自帶自己的簽署區域', () => {

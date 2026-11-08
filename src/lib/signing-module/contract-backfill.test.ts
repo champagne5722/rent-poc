@@ -9,10 +9,12 @@ import type { ContractStatus } from '../types';
 import { createDottedSignProvider } from './dottedsign-adapter';
 import { createContractSubscriber } from '../contract-signing';
 import { createMockProvider } from './mock-adapter';
+import { restoreLegacySigningSchema } from './legacy-schema.fixture';
 import { createSigningModule } from './module';
 import type { SigningProvider } from './provider';
 
-// 既有合約的回填（MIL-56）：先寫入升級前的資料，再執行 ensureSchema()，之後一律經簽署模組介面檢查。
+// 既有合約的回填（MIL-56、MIL-58）與舊形式移除（MIL-60）：
+// 先把資料庫退回升級前的形式並寫入資料，再執行 ensureSchema()，之後一律經簽署模組介面檢查。
 
 let db: Database.Database;
 // 文件本體寫在暫存目錄，不碰 data/
@@ -21,6 +23,7 @@ let dataDir: string;
 beforeEach(() => {
   db = new Database(':memory:');
   ensureSchema(db);
+  restoreLegacySigningSchema(db);
   setDb(db);
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'contract-backfill-'));
 });
@@ -84,6 +87,47 @@ const liveProvider = (overrides: Partial<SigningProvider> = {}): SigningProvider
 
 const webhook = (taskRef: string, action: string, email?: string) =>
   JSON.stringify({ resource_id: taskRef, resource_type: 'task', action_name: action, event_email: email });
+
+const columnsOf = (target: Database.Database, table: string) =>
+  (target.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+const tableExists = (target: Database.Database, table: string) =>
+  Boolean(target.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
+
+describe('回填後移除舊形式', () => {
+  it('回填後移除合約的任務編號欄位與舊的合約文件表，舊合約仍能下載文件', async () => {
+    const subject = legacyContract('completed', '470');
+    legacyFile(subject.id, 'signed_pdf', { status: 'saved', content: 'old-signed' });
+    upgrade();
+
+    expect(columnsOf(db, 'contracts')).not.toContain('dottedsign_task_id');
+    expect(tableExists(db, 'contract_files')).toBe(false);
+    const live = moduleOf(liveProvider());
+    await expect(live.getProgress(subject)).resolves.toMatchObject({ status: 'completed' });
+    expect(new TextDecoder().decode((await live.downloadFile(subject, 'signed_pdf')).bytes)).toBe('old-signed');
+  });
+
+  it('有合約無法回填時保留舊形式，任務編號不會遺失', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    legacyContract('awaiting_tenant', 'mock-1-a', '{not json');
+    const good = legacyContract('completed', '470');
+    legacyFile(good.id, 'signed_pdf', { status: 'saved' });
+
+    upgrade();
+
+    expect(columnsOf(db, 'contracts')).toContain('dottedsign_task_id');
+    expect(tableExists(db, 'contract_files')).toBe(true);
+  });
+
+  it('全新資料庫沒有舊形式，ensureSchema 能重複執行', () => {
+    const fresh = new Database(':memory:');
+    ensureSchema(fresh);
+
+    expect(() => ensureSchema(fresh)).not.toThrow();
+    expect(columnsOf(fresh, 'contracts')).not.toContain('dottedsign_task_id');
+    expect(tableExists(fresh, 'contract_files')).toBe(false);
+    fresh.close();
+  });
+});
 
 describe('回填的簽署進度', () => {
   it('待乙方簽：兩位都待簽，當前簽署人是乙方', async () => {
