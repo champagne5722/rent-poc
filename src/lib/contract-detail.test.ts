@@ -63,7 +63,7 @@ function makeFile(o: Partial<ContractFile> & { kind: ContractFile['kind'] }): Co
     contract_id: ulidOf(1),
     status: 'saved',
     file_name: 'contract-1-signed.pdf',
-    rel_path: 'contract-files/1/contract-1-signed.pdf',
+    sha256: 'a'.repeat(64),
     byte_size: 1024,
     content_type: 'application/pdf',
     error: null,
@@ -142,8 +142,8 @@ describe('contractEventEntries', () => {
       makeEvent({ id: 2, type: 'declined', actor: 'tenant', note: '租金太高', created_at: '2026-01-02 15:30:00' }),
     ]);
     expect(entries).toHaveLength(2);
-    expect(entries[0]).toMatchObject({ key: ulidOf(1), label: '建立合約', actorLabel: '房東', note: null });
-    expect(entries[1]).toMatchObject({ label: '拒簽', actorLabel: '租客', note: '租金太高', color: 'red' });
+    expect(entries[0]).toMatchObject({ key: ulidOf(1), label: '建立合約', actorLabel: '出租人', note: null });
+    expect(entries[1]).toMatchObject({ label: '拒簽', actorLabel: '承租人', note: '租金太高', color: 'red' });
     expect(entries[1].time).toBe('2026-01-02 15:30');
   });
 
@@ -182,7 +182,7 @@ describe('contractFileRows', () => {
   it('保存失敗帶出錯誤訊息供補抓', () => {
     const rows = contractFileRows(
       makeContract({ status: 'completed' }),
-      [makeFile({ kind: 'audit_trail', status: 'failed', rel_path: null, error: '下載連結回應 500' })],
+      [makeFile({ kind: 'audit_trail', status: 'failed', sha256: null, error: '下載連結回應 500' })],
       { mock: false }
     );
     expect(rows[1]).toMatchObject({ state: 'failed', error: '下載連結回應 500' });
@@ -243,7 +243,7 @@ describe('equipmentAnnexSummary（詳情頁的設備附件摘要）', () => {
           { name: '洗衣機', quantity: 1, repair: 'tenant', note: '' },
         ],
       })
-    ).toEqual(['冷氣 ×2｜修繕：出租方｜客廳與主臥各一台', '洗衣機｜修繕：承租方']);
+    ).toEqual(['冷氣 ×2｜修繕：出租人｜客廳與主臥各一台', '洗衣機｜修繕：承租人']);
   });
 
   it('沒有設備附件列時是空陣列（UI 顯示「無」）', () => {
@@ -251,10 +251,10 @@ describe('equipmentAnnexSummary（詳情頁的設備附件摘要）', () => {
   });
 
   // MIL-29 之前的合約只有壓平成字串的 equipment
-  it('舊合約的字串設備欄位一樣讀得出摘要，修繕責任顯示預設的出租方', () => {
+  it('舊合約的字串設備欄位一樣讀得出摘要，修繕責任顯示預設的出租人', () => {
     expect(equipmentAnnexSummary({ equipment: ['冷氣 ×2', '洗衣機'] })).toEqual([
-      '冷氣 ×2｜修繕：出租方',
-      '洗衣機｜修繕：出租方',
+      '冷氣 ×2｜修繕：出租人',
+      '洗衣機｜修繕：出租人',
     ]);
   });
 });
@@ -277,7 +277,7 @@ describe('detailCurrentSigner（目前待簽）', () => {
 });
 
 describe('detailSigningSteps（詳情頁簽署進度）', () => {
-  const TWO_PARTY = ['待乙方（租客）簽署', '待甲方（房東）簽署', '完成'];
+  const TWO_PARTY = ['待乙方（承租人）簽署', '待甲方（出租人）簽署', '完成'];
 
   it('兩方合約維持三步，依狀態停在對應的步驟', () => {
     expect(detailSigningSteps('awaiting_tenant')).toEqual({ titles: TWO_PARTY, current: 0 });
@@ -285,9 +285,17 @@ describe('detailSigningSteps（詳情頁簽署進度）', () => {
     expect(detailSigningSteps('completed')).toEqual({ titles: TWO_PARTY, current: 2 });
   });
 
+  it('委託管理合約的甲乙方稱謂是委託人、受託人', () => {
+    expect(detailSigningSteps('awaiting_tenant', null, 'management').titles).toEqual([
+      '待乙方（受託人）簽署',
+      '待甲方（委託人）簽署',
+      '完成',
+    ]);
+  });
+
   it('待執業人員簽時多一步，停在執業人員', () => {
     expect(detailSigningSteps('awaiting_practitioner')).toEqual({
-      titles: ['待乙方（租客）簽署', '待執業人員簽署', '待甲方（房東）簽署', '完成'],
+      titles: ['待乙方（承租人）簽署', '待執業人員簽署', '待甲方（出租人）簽署', '完成'],
       current: 1,
     });
   });

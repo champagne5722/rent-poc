@@ -1,12 +1,11 @@
 import nodeCrypto from 'crypto';
-import Database from 'better-sqlite3';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createLocalFileStore } from '../file-store/local-file-store';
 import { createContractSubscriber } from '../contract-signing';
 import { getContract, listContractEvents } from '../contracts';
-import { ensureSchema, setDb } from '../db';
 import { withTx } from '../pg/database';
 import { newUlid } from '../pg/ulid';
 import { setupRouteDb, type RouteDb } from '../pg/route-test-kit';
@@ -17,14 +16,14 @@ import { createMockProvider } from './mock-adapter';
 import { createSigningModule, signingErrorResponse, SigningRefusal } from './module';
 import { ulidOf } from '../test-ids';
 import type { SignableDocument, Signer, SigningProvider } from './provider';
-import { ensureSignTaskTables, findSignTask, insertSignTask, type SignerStatus, type SignTaskStatus } from './sign-task-store';
+import { insertSignTask, type SignerStatus, type SignTaskStatus } from './sign-task-store';
+import type { SigningDb } from './db';
 import type { SigningSubscriber } from './subscriber';
 
-// 合約與合約歷程在 PostgreSQL（PGlite，app_rw），簽署任務與簽署人還在 SQLite（MIL-85 搬走）。
-// 兩邊不同交易：合約先動、簽署進度後寫，見 module.ts 的 applyEvent。
+// 合約、合約歷程、簽署任務與簽署人都在 PostgreSQL（PGlite，app_rw，MIL-85）。
+// 簽署進度、合約狀態與歷程在同一個交易：任一步失敗整筆回滾，見 module.ts 的 applyEventTx。
 
 let kit: RouteDb;
-let db: Database.Database;
 // 文件本體寫在暫存目錄，不碰 data/
 let dataDir: string;
 
@@ -35,15 +34,10 @@ afterAll(() => kit.close());
 
 beforeEach(async () => {
   await kit.reset();
-  db = new Database(':memory:');
-  ensureSchema(db);
-  setDb(db);
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'signing-module-'));
 });
 
 afterEach(() => {
-  setDb(null);
-  db.close();
   fs.rmSync(dataDir, { recursive: true, force: true });
   vi.restoreAllMocks();
 });
@@ -79,22 +73,31 @@ async function seed(status: ContractStatus, taskRef: string | null = null) {
   const subject = { type: 'contract', id } as const;
   const progress = taskRef !== null ? PROGRESS_OF[status] : undefined;
   if (taskRef !== null && progress) {
-    insertSignTask(db, {
-      provider: taskRef.startsWith('mock-') ? 'mock' : 'dottedsign',
-      taskRef,
-      subject,
-      status: progress[0],
-      signers: [
-        { role: 'party_b', name: '王租客', email: 'tenant@example.com', status: progress[1] },
-        { role: 'party_a', name: '林房東', email: 'landlord@example.com', status: progress[2] },
-      ],
-    });
+    await inA((tx) =>
+      insertSignTask(tx, {
+        provider: taskRef.startsWith('mock-') ? 'mock' : 'dottedsign',
+        taskRef,
+        subject,
+        status: progress[0],
+        signers: [
+          { role: 'party_b', name: '王租客', email: 'tenant@example.com', status: progress[1] },
+          { role: 'party_a', name: '林房東', email: 'landlord@example.com', status: progress[2] },
+        ],
+      }),
+    );
   }
   return subject;
 }
 
+// 模組用固定的 A 組織開交易（測試不經 requestContext）
+const dbA = (): SigningDb => ({
+  requestOrg: async () => ({ kind: 'org', orgId: kit.orgA }),
+  inOrg: (ctx, fn) => withTx(ctx, fn),
+  inControl: (fn) => withTx({ kind: 'control' }, fn),
+});
+
 const moduleWith = (provider: SigningProvider = createMockProvider()) =>
-  createSigningModule({ provider, subscribers: { contract: createContractSubscriber(inA) }, dataDir });
+  createSigningModule({ provider, subscribers: { contract: createContractSubscriber() }, files: createLocalFileStore(dataDir), db: dbA() });
 
 // 保存文件經 adapter 下載。監看下載次數，就能知道完成後保存了幾次。
 const watchedMock = () => {
@@ -327,23 +330,25 @@ describe('查簽署進度', () => {
     expect(progress?.signers.map((s) => s.status)).toEqual(['pending', 'pending']);
   });
 
-  // 過渡期的已知缺口（MIL-85 搬進 PostgreSQL 後合成同一個交易）：合約先在 PostgreSQL 提交，
-  // 簽署進度再寫 SQLite。後者失敗時合約已前進，簽署進度原封不動，webhook 重送可以補寫。
-  it('簽署進度寫入失敗時，錯誤往外拋，簽署進度不變；合約已前進，重送同一事件補上進度', async () => {
+  // MIL-85：簽署進度與合約狀態、歷程是同一個交易。進度寫入失敗時合約也不前進，重送同一事件從頭處理，
+  // 歷程不會多記（過渡期曾有 signer_signed 多一筆的缺口）。
+  it('簽署進度寫入失敗時，合約狀態與歷程一起回滾，重送同一事件乾淨地補上', async () => {
     const { subject, signing } = await sent();
-    db.exec(`CREATE TRIGGER fail_signers BEFORE UPDATE ON signers
-             BEGIN SELECT RAISE(ABORT, '進度寫入失敗'); END`);
+    await kit.asOwner((pg) =>
+      pg.exec(`CREATE FUNCTION org.fail_signers() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION '進度寫入失敗'; END $$;
+               CREATE TRIGGER fail_signers BEFORE UPDATE ON org.signers FOR EACH ROW EXECUTE FUNCTION org.fail_signers();`),
+    );
 
     await expect(signing.simulateEvent(subject, 'signed')).rejects.toThrow('進度寫入失敗');
 
     expect((await signing.getProgress(subject))?.signers.map((s) => s.status)).toEqual(['pending', 'pending']);
-    expect(await statusOf(subject.id)).toBe('awaiting_landlord');
+    expect(await statusOf(subject.id)).toBe('awaiting_tenant');
+    expect(await eventTypes(subject.id)).toEqual(['sent']);
 
-    db.exec('DROP TRIGGER fail_signers');
+    await kit.asOwner((pg) => pg.exec('DROP TRIGGER fail_signers ON org.signers'));
     await signing.simulateEvent(subject, 'signed');
     expect((await signing.getProgress(subject))?.signers.map((s) => s.status)).toEqual(['signed', 'pending']);
-    // 唯一的代價：簽署事件在歷程多記一筆
-    expect(await eventTypes(subject.id)).toEqual(['sent', 'signer_signed', 'signer_signed']);
+    expect(await eventTypes(subject.id)).toEqual(['sent', 'signer_signed']);
   });
 });
 
@@ -395,9 +400,10 @@ describe('任務比對與當前簽署人讀簽署任務', () => {
     });
     const { subject, signing } = await sentThenLegacyColumnsChanged(liveProvider({ parseWebhook }));
 
+    // 對不到路由列的事件留在 inbox（MIL-86），回 2xx
     await expect(signing.ingestWebhook('stale-ref', new Headers())).resolves.toEqual({
       status: 200,
-      body: { ok: true, ignored: true },
+      body: { ok: true, queued: true },
     });
     expect((await statusOf(subject.id))).toBe('awaiting_tenant');
 
@@ -447,10 +453,10 @@ describe('接收 webhook', () => {
     expect((await statusOf(subject.id))).toBe('awaiting_tenant');
   });
 
-  it('找不到對應合約時回 200 ignored', async () => {
+  it('找不到對應合約時回 200 並留在 inbox 等重試', async () => {
     await expect(moduleWith().ingestWebhook(webhook('no-such-task', 'signed'), new Headers())).resolves.toEqual({
       status: 200,
-      body: { ok: true, ignored: true },
+      body: { ok: true, queued: true },
     });
   });
 
@@ -544,16 +550,17 @@ describe('模擬簽署事件（mock advance）', () => {
     const instants = [new Date('2026-11-08T02:03:04.000Z'), new Date('2026-11-08T05:06:07.000Z')];
     const signing = createSigningModule({
       provider: createMockProvider(),
-      subscribers: { contract: createContractSubscriber(inA) },
-      dataDir,
+      subscribers: { contract: createContractSubscriber() },
+      files: createLocalFileStore(dataDir),
       now: () => instants.shift()!,
+      db: dbA(),
     });
 
     await signing.simulateEvent(subject, 'signed');
     await signing.simulateEvent(subject, 'completed');
 
     const progress = await signing.getProgress(subject);
-    const signedAt = progress!.signers.map((s) => new Date(s.signedAt!.replace(' ', 'T')).toISOString());
+    const signedAt = progress!.signers.map((s) => s.signedAt);
     expect(signedAt).toEqual(['2026-11-08T02:03:04.000Z', '2026-11-08T05:06:07.000Z']);
   });
 });
@@ -601,35 +608,17 @@ describe('兼任角色與驗證設定', () => {
   });
 
   it('簽署人表只有簽署進度需要的欄位，沒有電話與身分證字號', async () => {
-    const columns = (db.prepare('PRAGMA table_info(signers)').all() as { name: string }[]).map((c) => c.name);
-    expect(columns.sort()).toEqual(
-      ['concurrent_roles', 'email', 'id', 'name', 'position', 'role', 'sign_task_id', 'signed_at', 'status'].sort()
+    const { rows } = await kit.asOwner((pg) =>
+      pg.query<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns WHERE table_schema = 'org' AND table_name = 'signers'`,
+      ),
     );
-  });
-
-  it('升級前建立的簽署人表會補上兼任角色欄位，舊資料不受影響', async () => {
-    const old = new Database(':memory:');
-    old.exec(`CREATE TABLE sign_tasks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, provider TEXT NOT NULL, provider_task_ref TEXT NOT NULL,
-        subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'in_progress',
-        created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT);
-      CREATE TABLE signers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, sign_task_id INTEGER NOT NULL, position INTEGER NOT NULL,
-        role TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
-        signed_at TEXT);
-      INSERT INTO sign_tasks (provider, provider_task_ref, subject_type, subject_id) VALUES ('mock', 'm-1', 'contract', '1');
-      INSERT INTO signers (sign_task_id, position, role, name, email) VALUES (1, 0, 'party_b', '王租客', 'tenant@example.com');`);
-
-    ensureSignTaskTables(old);
-    ensureSignTaskTables(old);
-
-    old.prepare('UPDATE signers SET concurrent_roles = ? WHERE id = 1').run(JSON.stringify(['party_a']));
-    expect(findSignTask(old, { type: 'contract', id: '1' })?.signers[0].concurrentRoles).toEqual(['party_a']);
-    old.prepare('UPDATE signers SET concurrent_roles = NULL WHERE id = 1').run();
-    expect(findSignTask(old, { type: 'contract', id: '1' })?.signers).toEqual([
-      { role: 'party_b', name: '王租客', email: 'tenant@example.com', status: 'pending', signedAt: null },
-    ]);
-    old.close();
+    expect(rows.map((r) => r.column_name).sort()).toEqual(
+      [
+        'concurrent_roles', 'email', 'id', 'legacy_id', 'name', 'org_id', 'position',
+        'role', 'sign_task_id', 'signed_at', 'status',
+      ].sort(),
+    );
   });
 });
 
@@ -990,7 +979,6 @@ describe('N 位簽署人經 seam 走完', () => {
 
     const progress = await signing.getProgress(subject);
     expect(new Date(progress!.signers[0].signedAt!).toISOString()).toBe('2026-11-08T02:03:04.000Z');
-    expect(progress?.signers[0].signedAt).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
   });
 });
 
@@ -1074,7 +1062,7 @@ describe('點點簽 sandbox 實測的 webhook 回放（MIL-54，任務 346、348
 
 describe('簽署模組不依賴合約', () => {
   // 假的簽署標的：沒有對應的合約列，只記錄訂閱者收到什麼
-  const FAKE = { type: 'disbursement_instruction', id: '77' };
+  const FAKE = { type: 'disbursement_instruction', id: ulidOf(77) };
   const signerA: Signer = { role: 'party_a', name: '財務甲', email: 'a@example.com', signatureFields: [] };
   const signerB: Signer = { role: 'party_b', name: '財務乙', email: 'b@example.com', signatureFields: [] };
 
@@ -1082,13 +1070,13 @@ describe('簽署模組不依賴合約', () => {
     const log: unknown[] = [];
     const subscriber: SigningSubscriber = {
       label: '撥款指示',
-      exists: async (subject) => subject.id === FAKE.id,
+      exists: async (_tx, subject) => subject.id === FAKE.id,
       currentStatus: async () => 'fake-status',
       isCompleted: async () => log.includes('completed'),
-      onSent: async (_subject, sent) => {
+      onSent: async (_tx, _subject, sent) => {
         log.push(['sent', sent.signers.length]);
       },
-      onOutcome: async (_subject, outcome) => {
+      onOutcome: async (_tx, _subject, outcome) => {
         log.push(outcome.type);
       },
       afterCompleted: async () => {
@@ -1106,7 +1094,8 @@ describe('簽署模組不依賴合約', () => {
     createSigningModule({
       provider: { ...createMockProvider(), ...provider },
       subscribers: { [FAKE.type]: subscriber },
-      dataDir,
+      files: createLocalFileStore(dataDir),
+      db: dbA(),
     });
 
   it('假的簽署標的沒有對應的合約，也能走完送簽、簽署、全員完成', async () => {
@@ -1174,7 +1163,7 @@ describe('簽署模組不依賴合約', () => {
 
     await expect(signing.ingestWebhook('{}', new Headers())).resolves.toEqual({
       status: 200,
-      body: { ok: true, ignored: true },
+      body: { ok: true, queued: true },
     });
     expect(info).toHaveBeenCalledWith(expect.stringContaining('no-such-task'));
     info.mockRestore();
@@ -1289,7 +1278,10 @@ describe('文件保存', () => {
     const subject = (await seed('draft'));
     const signing = moduleWith(provider);
     await signing.send(subject, document, signers);
-    db.exec(`CREATE TRIGGER fail_files BEFORE INSERT ON sign_task_files BEGIN SELECT RAISE(ABORT, '寫入失敗'); END`);
+    await kit.asOwner((pg) =>
+      pg.exec(`CREATE FUNCTION org.fail_files() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION '寫入失敗'; END $$;
+               CREATE TRIGGER fail_files BEFORE INSERT ON org.sign_task_files FOR EACH ROW EXECUTE FUNCTION org.fail_files();`),
+    );
 
     await expect(signing.ingestWebhook('{}', new Headers())).resolves.toEqual({ status: 200, body: { ok: true } });
     expect((await statusOf(subject.id))).toBe('completed');
@@ -1409,7 +1401,7 @@ describe('文件保存', () => {
     it('檔案被刪掉時當場補抓一次', async () => {
       const downloadFile = vi.fn(async (_ref: string, kind: string) => new TextEncoder().encode(kind));
       const { subject, signing } = await completeLive(liveProvider({ parseWebhook: completedWebhook(), downloadFile }));
-      fs.rmSync(path.join(dataDir, 'sign-task-files'), { recursive: true, force: true });
+      fs.rmSync(path.join(dataDir, 'org'), { recursive: true, force: true });
 
       expect(text((await signing.downloadFile(subject, 'signed_pdf')).bytes)).toBe('signed_pdf');
       expect(downloadFile).toHaveBeenCalledTimes(3);

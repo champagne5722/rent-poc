@@ -1,11 +1,10 @@
-import Database from 'better-sqlite3';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createLocalFileStore } from '../file-store/local-file-store';
 import { createContractSubscriber } from '../contract-signing';
 import { createContract, getContract, listContractEvents } from '../contracts';
-import { ensureSchema, setDb } from '../db';
 import { withTx } from '../pg/database';
 import { setupRouteDb, type RouteDb } from '../pg/route-test-kit';
 import type { OrgTx } from '../pg/with-tx';
@@ -16,10 +15,9 @@ import type { ContractFields, SignatureField } from '../types';
 import { loadContractRoutingFacts } from './repository';
 
 // 送簽經規則表，用 Mock adapter 走完一份自管租賃合約：狀態與歷程與規則表接上之前相同。
-// 合約在 PostgreSQL（PGlite），簽署任務還在 SQLite（MIL-85 搬走）。
+// 合約與簽署任務都在 PostgreSQL（PGlite，MIL-85）。
 
 let kit: RouteDb;
-let db: Database.Database;
 let dataDir: string;
 
 beforeAll(async () => {
@@ -28,15 +26,10 @@ beforeAll(async () => {
 afterAll(() => kit.close());
 beforeEach(async () => {
   await kit.reset();
-  db = new Database(':memory:');
-  ensureSchema(db);
-  setDb(db);
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'routing-send-'));
 });
 
 afterEach(() => {
-  setDb(null);
-  db.close();
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
@@ -69,8 +62,13 @@ async function sendNewContract(fields: object = FIELDS) {
 
   const signing = createSigningModule({
     provider: createMockProvider(),
-    subscribers: { contract: createContractSubscriber(inA) },
-    dataDir,
+    subscribers: { contract: createContractSubscriber() },
+    files: createLocalFileStore(dataDir),
+    db: {
+      requestOrg: async () => ({ kind: 'org', orgId: kit.orgA }),
+      inOrg: (ctx, fn) => withTx(ctx, fn),
+      inControl: (fn) => withTx({ kind: 'control' }, fn),
+    },
   });
   const subject = { type: 'contract', id } as const;
   await signing.send(subject, document, prepared.signers);

@@ -44,8 +44,11 @@ interface TextItem {
   y: number;
 }
 
-async function readPages(f: ContractFields): Promise<TextItem[][]> {
-  const bytes = await generateContractPdf(f);
+async function readPages(
+  f: ContractFields,
+  practitioners: Parameters<typeof generateContractPdf>[1] = {}
+): Promise<TextItem[][]> {
+  const bytes = await generateContractPdf(f, practitioners);
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const doc = await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise;
   const pages: TextItem[][] = [];
@@ -65,8 +68,11 @@ async function readPages(f: ContractFields): Promise<TextItem[][]> {
 }
 
 /** 簽署欄所在頁：有「立契約書人」的那一頁。 */
-async function signaturePage(f: ContractFields): Promise<TextItem[]> {
-  const page = (await readPages(f)).find((items) => items.some((item) => item.str === '立契約書人'));
+async function signaturePage(
+  f: ContractFields,
+  practitioners: Parameters<typeof generateContractPdf>[1] = {}
+): Promise<TextItem[]> {
+  const page = (await readPages(f, practitioners)).find((items) => items.some((item) => item.str === '立契約書人'));
   if (!page) throw new Error('找不到簽署欄');
   return page;
 }
@@ -148,5 +154,35 @@ describe('簽署欄依簽署序列印 N 列', () => {
       withRouting({ businessType: 'self_managed', lesseeIsMasterLessor: true, brokerMediated: false }),
     );
     expect(headingsOf(items)).toEqual(['甲方', '乙方', '執業人員']);
+  });
+
+  describe('已指派的執業人員（MIL-69）', () => {
+    const printed = {
+      'lease.master_lease.practitioner': {
+        name: '陳怡君',
+        title: '租賃住宅管理人員',
+        entityName: '北辰租賃住宅管理股份有限公司',
+      },
+    };
+
+    it('印姓名、法定稱謂與執業主體，不印證號', async () => {
+      const texts = (await signaturePage(MASTER_LEASE, printed)).map((item) => item.str);
+      expect(texts).toContain('執業人員：陳怡君（租賃住宅管理人員）');
+      expect(texts).toContain('執業主體：北辰租賃住宅管理股份有限公司');
+      expect(texts.some((t) => t.includes('證號') || t.includes('證書'))).toBe(false);
+    });
+
+    it('只指派了其中一個席位時，另一個席位仍留底線', async () => {
+      const texts = (await signaturePage(MASTER_LEASE_BROKER, printed)).map((item) => item.str);
+      expect(texts).toContain('執業人員：陳怡君（租賃住宅管理人員）');
+      expect(texts).toContain('執業人員：＿＿＿＿＿＿（不動產經紀人）');
+    });
+
+    it('有姓名時簽署欄的落點與留底線時相同', async () => {
+      const filled = await signaturePage(MASTER_LEASE, printed);
+      const blank = await signaturePage(MASTER_LEASE);
+      const stamps = (items: TextItem[]) => items.filter((item) => item.str.startsWith('簽章：')).map((item) => item.y);
+      expect(stamps(filled)).toEqual(stamps(blank));
+    });
   });
 });

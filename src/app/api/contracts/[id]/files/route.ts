@@ -4,11 +4,18 @@ import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/con
 import { readInOrgTx } from '@/lib/org-route';
 import { contractSubject, signing, signingErrorResponse } from '@/lib/signing-module';
 import { jsonOk } from '@/lib/http';
+import type { SignTaskFile } from '@/lib/signing-module/sign-task-files';
+
+function omitObjectKey({ object_key, ...rest }: SignTaskFile) {
+  void object_key;
+  return rest;
+}
 
 // 文件紀錄改以簽署任務為鍵。回應仍帶 contract_id（現在是 ULID），形狀與改版前相同。
+// 物件 key 是儲存層的位置，不對外；SHA-256 對外給（MIL-87 取代 rel_path）。
 async function contractFiles(contractId: string) {
   const files = await signing.listFiles(contractSubject(contractId));
-  return files.map((file) => ({ ...file, contract_id: contractId }));
+  return files.map((file) => ({ ...omitObjectKey(file), contract_id: contractId }));
 }
 
 // GET：列出已保存的合約文件與其狀態（含保存失敗的原因）

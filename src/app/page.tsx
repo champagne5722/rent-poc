@@ -18,6 +18,7 @@ import type { Contract, ContractStatus, Property } from '@/lib/types';
 import { CONTRACT_STATUS_LABELS } from '@/lib/types';
 import { lastActionAt } from '@/lib/contract-list';
 import { shortUlid } from '@/lib/pg/ulid';
+import { TERMS } from '@/lib/labels';
 import {
   selectWorkbenchTodos,
   todoActionFor,
@@ -49,7 +50,7 @@ function TodoRow({ contract }: { contract: Contract }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 500 }}>
           {contract.fields.propertyName || '（未選物件）'} —{' '}
-          {contract.fields.tenantName || '（未填租客）'}
+          {contract.fields.tenantName || `（未填${TERMS.lessee}）`}
         </div>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           合約 #{shortUlid(contract.id)}・{dayjs(lastActionAt(contract)).format('MM-DD HH:mm')}
