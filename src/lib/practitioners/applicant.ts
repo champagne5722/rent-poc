@@ -6,22 +6,24 @@ import type { OrgTx } from '../pg/with-tx';
 import {
   checkValidUntilConsistency,
   decideCredentialTransition,
-  decideEmploymentCreation,
+  BLOCKED_MESSAGE,
+  CONSENT_NOTICE,
+  presentCreationVerdict,
   type CertificateKind,
+  type CreationVerdict,
   type CredentialState,
-  type OtherEmployment,
 } from '../registry-rules';
-import { taiwanDate } from './dates';
-import { certificateKey, formatCertificateNumber, type CertificateForm, type CertificateNumber } from './rules';
+import { formatCertificateNumber, type CertificateForm, type CertificateNumber } from './rules';
 
 // 執業人員端（MIL-111，ADR-0022 決議 9）：本人登錄證書、建立任職、補同意書、結束任職。組織成員脈絡。
 //
 // 規則：
 // - 成員只能登錄自己的證書。party 來自交易脈絡（app.party_id），資料庫函式再查成員資格，組織不能替別人登錄。
 // - 登錄前必須對「證書資料個資告知」目前版本表態同意（P0-24 AC3）。
-// - 專任判定呼叫 registry-rules 的 decideEmploymentCreation，阻擋與提示都寫稽核事件（P0-05 AC6）。
-//   阻擋時回傳結果而不是丟錯，讓稽核事件跟著交易提交。
-// - 回應與稽核事件都不透露別的組織（ADR-0012 決議 8）：別家的任職只以 'other' 標記進入判定，沒有 ID 與名稱。
+// - 專任判定在資料庫內，與寫入同一個函式呼叫（MIL-186）：submit_practitioner 與 create_employment 回傳結論，
+//   別家的任職事實不離開資料庫。規則的參考實作是 registry-rules 的 classifyEmploymentCreation。
+//   阻擋與提示都寫稽核事件（P0-05 AC6）。阻擋時資料庫回傳結果而不是丟錯，讓稽核事件跟著交易提交。
+// - 回應與稽核事件都不透露別的組織（ADR-0012 決議 8）：只有結論，沒有別家的 ID、名稱、狀態與日期。
 
 /** 證書（或任職）在執業人員端看到的進度。 */
 export type Phase = 'awaiting_review' | 'needs_resubmission' | 'verified' | 'lapsed';
@@ -185,13 +187,6 @@ async function hasAgreed(tx: OrgTx, partyId: string): Promise<boolean> {
 // ---------------------------------------------------------------------------
 // 專任判定與建立任職
 
-interface ExclusivityRow {
-  whose: 'self' | 'other';
-  state: CredentialState;
-  started_on: string;
-  ended_on: string | null;
-}
-
 export type EmploymentCreated = {
   status: 'created';
   employmentId: string;
@@ -201,56 +196,50 @@ export type EmploymentCreated = {
 };
 export type EmploymentBlocked = { status: 'blocked'; message: string };
 
-type CreationDecision = ReturnType<typeof decideEmploymentCreation>;
+/** 阻擋與提示都寫稽核事件，含證號、時間與原因（P0-05 AC6）。事件在宣稱方自己的鏈。 */
+async function auditVerdict(
+  tx: OrgTx,
+  input: { practitionerId: string; verdict: CreationVerdict; number: CertificateNumber; now: Date },
+): Promise<void> {
+  const decision = presentCreationVerdict(input.verdict, { certificateNumber: formatCertificateNumber(input.number), at: input.now.toISOString() });
+  const audit = decision.audit;
+  if (audit) {
+    await appendAudit(tx, {
+      action: decision.outcome === 'blocked' ? 'rule.full_time_block' : 'rule.full_time_notice',
+      object: { type: 'practitioner', id: input.practitionerId },
+      payload: { event: audit.event, reason: audit.reason, certificate_number: audit.certificateNumber, at: audit.at },
+    });
+  }
+}
 
 /**
- * 判定點 1：建立任職（ADR-0017 決議 7）。別家的任職只以 'other' 標記進入判定，沒有 ID 與名稱。
- * 管理人員在別家已有已驗證在職時阻擋，經紀人員提示並要求同意書。
+ * 判定點 1 與寫入：建立任職（ADR-0017 決議 7）。create_employment 在資料庫內判定並寫入。
+ * 管理人員在別家已有已驗證在職時阻擋，不建列。經紀人員提示並要求同意書，仍建待驗證。
  */
-async function evaluateCreation(
+async function createEmploymentRow(
   tx: OrgTx,
-  input: { kind: CertificateKind; number: CertificateNumber; now: Date },
-): Promise<CreationDecision> {
-  const { rows } = await tx.query<ExclusivityRow>('SELECT * FROM registry.employment_exclusivity_facts($1)', [certificateKey(input.kind, input.number)]);
-  return decideEmploymentCreation({
-    certificateKind: input.kind,
-    certificateNumber: formatCertificateNumber(input.number),
-    entityId: 'self',
-    today: taiwanDate(input.now),
-    at: input.now.toISOString(),
-    otherEmployments: rows.map((r): OtherEmployment => ({ entityId: r.whose, state: r.state, periodStart: r.started_on, periodEnd: r.ended_on })),
-  });
-}
+  input: { practitionerId: string; kind: CertificateKind; number: CertificateNumber; startedOn: string; now: Date },
+): Promise<EmploymentCreated | EmploymentBlocked> {
+  const { rows } = await tx.query<{ employment_id: string | null; outcome: 'created' | 'blocked'; consent_required: boolean }>(
+    'SELECT * FROM registry.create_employment($1, $2, $3::date, $4)',
+    [newUlid(), input.practitionerId, input.startedOn, newUlid()],
+  );
+  const row = rows[0];
+  const verdict: CreationVerdict = row.outcome === 'blocked' ? 'blocked' : row.consent_required ? 'consent_required' : 'clear';
+  const audited = { practitionerId: input.practitionerId, verdict, number: input.number, now: input.now };
+  if (row.outcome === 'blocked') {
+    await auditVerdict(tx, audited);
+    return { status: 'blocked', message: BLOCKED_MESSAGE };
+  }
 
-/** 阻擋與提示都寫稽核事件，含證號、時間與原因（P0-05 AC6）。事件在宣稱方自己的鏈。 */
-async function auditDecision(tx: OrgTx, practitionerId: string, decision: CreationDecision): Promise<void> {
-  const audit = decision.audit;
-  if (!audit) return;
-  await appendAudit(tx, {
-    action: decision.outcome === 'blocked' ? 'rule.full_time_block' : 'rule.full_time_notice',
-    object: { type: 'practitioner', id: practitionerId },
-    payload: { event: audit.event, reason: audit.reason, certificate_number: audit.certificateNumber, at: audit.at },
-  });
-}
-
-async function insertEmployment(
-  tx: OrgTx,
-  input: { practitionerId: string; kind: CertificateKind; startedOn: string; decision: Extract<CreationDecision, { outcome: 'created' }> },
-): Promise<EmploymentCreated> {
-  const employmentId = newUlid();
-  await tx.query('SELECT * FROM registry.create_employment($1, $2, $3::date, $4, $5)', [
-    employmentId,
-    input.practitionerId,
-    input.startedOn,
-    input.decision.consentRequired,
-    newUlid(),
-  ]);
+  const employmentId = row.employment_id!;
   await appendAudit(tx, {
     action: 'employment.create',
     object: { type: 'employment', id: employmentId },
-    payload: { certificate_kind: input.kind, consent_required: input.decision.consentRequired },
+    payload: { certificate_kind: input.kind, consent_required: row.consent_required },
   });
-  return { status: 'created', employmentId, consentRequired: input.decision.consentRequired, notice: input.decision.notice };
+  await auditVerdict(tx, audited);
+  return { status: 'created', employmentId, consentRequired: row.consent_required, notice: row.consent_required ? CONSENT_NOTICE : null };
 }
 
 // ---------------------------------------------------------------------------
@@ -283,7 +272,7 @@ export type RegisterCertificateResult =
 /**
  * 登錄或補件證書，並在目前執業主體建立待驗證任職（ADR-0022 決議 9 第 3 點）。
  * 證書已驗證（例如換公司）時走 createEmployment，不重送證書。
- * 阻擋時什麼都不寫，只留稽核事件。
+ * 阻擋時什麼都不寫，只留稽核事件（MIL-186：判定在 submit_practitioner 與 create_employment 內）。
  */
 export async function registerCertificate(tx: OrgTx, input: RegisterCertificateInput): Promise<RegisterCertificateResult> {
   if (!(await hasAgreed(tx, input.partyId))) return { status: 'consent_required' };
@@ -298,16 +287,11 @@ export async function registerCertificate(tx: OrgTx, input: RegisterCertificateI
   });
   if (!transition) return { status: 'already_verified' };
 
-  // 專任判定在寫任何東西之前。補件時任職早就存在，不再判定
+  // 專任判定在 submit_practitioner 內，寫任何東西之前。補件時任職早就存在，不再判定
   const hasLiveEmployment = existing !== null && mine.employments.some((e) => e.practitionerId === existing.id && e.state !== 'lapsed');
   const practitionerId = existing?.id ?? newUlid();
-  const decision = hasLiveEmployment ? null : await evaluateCreation(tx, { kind: input.form.kind, number: input.form.number, now: input.now });
-  if (decision?.outcome === 'blocked') {
-    await auditDecision(tx, practitionerId, decision);
-    return { status: 'blocked', message: decision.message };
-  }
 
-  const { rows } = await tx.query<{ practitioner_id: string }>(
+  const { rows } = await tx.query<{ practitioner_id: string | null; outcome: 'registered' | 'blocked' }>(
     'SELECT * FROM registry.submit_practitioner($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10)',
     [
       practitionerId,
@@ -322,7 +306,11 @@ export async function registerCertificate(tx: OrgTx, input: RegisterCertificateI
       newUlid(),
     ],
   );
-  const certificateId = rows[0].practitioner_id;
+  if (rows[0].outcome === 'blocked') {
+    await auditVerdict(tx, { practitionerId, verdict: 'blocked', number: input.form.number, now: input.now });
+    return { status: 'blocked', message: BLOCKED_MESSAGE };
+  }
+  const certificateId = rows[0].practitioner_id!;
   await registerEvidence(tx, { subjectType: 'practitioner', subjectId: certificateId, kind: input.form.kind, uploadedBy: input.userId, files: input.files });
   await appendAudit(tx, {
     action: 'practitioner.submit',
@@ -331,9 +319,17 @@ export async function registerCertificate(tx: OrgTx, input: RegisterCertificateI
   });
 
   let employment: EmploymentCreated | null = null;
-  if (decision?.outcome === 'created') {
-    employment = await insertEmployment(tx, { practitionerId: certificateId, kind: input.form.kind, startedOn: input.form.startedOn, decision });
-    await auditDecision(tx, certificateId, decision);
+  if (!hasLiveEmployment) {
+    const created = await createEmploymentRow(tx, {
+      practitionerId: certificateId,
+      kind: input.form.kind,
+      number: input.form.number,
+      startedOn: input.form.startedOn,
+      now: input.now,
+    });
+    // 兩次呼叫之間別的請求剛好把別家任職核對成已驗證時才會到這裡。證書已登錄，任職沒建，稽核事件已寫
+    if (created.status === 'blocked') return created;
+    employment = created;
   }
 
   const hint = checkValidUntilConsistency(input.form.issuedOn, input.form.validUntil);
@@ -363,14 +359,9 @@ export async function createEmployment(
   // 同意是記在登錄時所在的組織。換到新組織要在新組織重新表態
   if (!(await hasAgreed(tx, input.partyId))) return { status: 'consent_required' };
 
-  const decision = await evaluateCreation(tx, { kind: cert.kind, number: cert.number, now: input.now });
-  if (decision.outcome === 'blocked') {
-    await auditDecision(tx, cert.id, decision);
-    return { status: 'blocked', message: decision.message };
-  }
-  const employment = await insertEmployment(tx, { practitionerId: cert.id, kind: cert.kind, startedOn: input.startedOn, decision });
-  await auditDecision(tx, cert.id, decision);
-  return { status: 'created', employment };
+  const created = await createEmploymentRow(tx, { practitionerId: cert.id, kind: cert.kind, number: cert.number, startedOn: input.startedOn, now: input.now });
+  if (created.status === 'blocked') return created;
+  return { status: 'created', employment: created };
 }
 
 // ---------------------------------------------------------------------------
