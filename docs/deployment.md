@@ -479,6 +479,10 @@ gcloud logging read 'jsonPayload.component="audit-anchor" AND severity>=ERROR' -
 - 錨定之後才寫的事件，要等下一次 `anchor-audit` 才有回執。竄改這段事件，回執抓不到。
 - 超級使用者也能刪除 `audit.anchor_*` 的列。刪除之後，回執就沒有可比對的對象。資料庫備份是唯一的保險。
 - `app_rw` 能呼叫 `audit.record_anchor()`。函式檢查葉對得上目前的事件，但不檢查回執。偽造的批次會讓 `verify-audit` 回報 `anchor_receipt_invalid`，但也會佔掉該鏈那段序號。MIL-89 評估是否改用專用角色。
+- `audit.unanchored_heads()` 不檢查呼叫脈絡。任何 `app_rw` 連線都讀得到所有組織的鏈編號、序號與鏈頭雜湊。函式只回傳雜湊，不回傳事件內容。
+- `audit.record_anchor_failure()` 同樣不檢查呼叫脈絡。偽造的失敗紀錄只會讓連續失敗的告警提早或誤報，不影響稽核鏈。
+- 兩個排程同時執行時，只要有一條鏈已被前一批涵蓋，後到的整批被拒絕（`superseded`）。其他新鏈等下一次排程。
+- 拿到回執後保存失敗（資料庫錯誤）時，job 回 500，不計入連續失敗次數。回執沒有存下來，下一次排程重做。
 - 回執只證明「這個雜湊在這個時間之前存在」。法律上的舉證力待法務確認（MIL-62）。
 
 **重跑 FreeTSA 實測**

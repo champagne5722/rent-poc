@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { ROOT_PATTERN as HEX64 } from './provider';
 
 // 稽核鏈錨定用的 Merkle 計算（ADR-0019 決議 8，MIL-88）。純函式，不讀時鐘、不碰資料庫。
 //
@@ -34,8 +35,6 @@ export interface MerkleTree {
   /** 依鏈排序後的葉，每片附證明。 */
   leaves: MerkleLeaf[];
 }
-
-const HEX64 = /^[0-9a-f]{64}$/;
 
 const sha256 = (...parts: Buffer[]) => createHash('sha256').update(Buffer.concat(parts)).digest();
 const LEAF_PREFIX = Buffer.from([0x00]);

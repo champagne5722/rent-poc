@@ -1,4 +1,5 @@
 import { createHash, verify as cryptoVerify, X509Certificate } from 'node:crypto';
+import { ROOT_PATTERN as HEX64 } from './provider';
 import { decodeOid, derBoolean, derInteger, derNull, derOctetString, derOid, derSequence, parseDer, readDerInteger, type DerNode } from './der';
 
 // RFC 3161 時戳：請求編碼、回執解析、簽章與信任鏈驗證（ADR-0019 決議 9，MIL-88）。
@@ -41,8 +42,6 @@ const SIGNATURE_DIGEST: Record<string, string | null> = {
   [OID.ecdsaSha384]: 'sha384',
   [OID.ecdsaSha512]: 'sha512',
 };
-
-const HEX64 = /^[0-9a-f]{64}$/;
 
 /** TimeStampReq。雜湊固定 SHA-256，要求回執內嵌憑證（certReq）。 */
 export function buildTimestampRequest(rootHex: string, nonce?: Uint8Array): Buffer {

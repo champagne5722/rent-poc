@@ -67,9 +67,10 @@ ALTER TABLE audit.anchor_leaves  FORCE  ROW LEVEL SECURITY;
 ALTER TABLE audit.anchor_runs    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit.anchor_runs    FORCE  ROW LEVEL SECURITY;
 -- 只有擁有者的政策。app_rw 沒有政策也沒有權限，兩層都擋。
-CREATE POLICY owner_all ON audit.anchor_batches FOR ALL TO audit_owner USING (true) WITH CHECK (true);
-CREATE POLICY owner_all ON audit.anchor_leaves  FOR ALL TO audit_owner USING (true) WITH CHECK (true);
-CREATE POLICY owner_all ON audit.anchor_runs    FOR ALL TO audit_owner USING (true) WITH CHECK (true);
+-- 政策名不用 owner_all：0010 的測試以這個名稱斷言事件表與鏈頭表各有一條，新表用別的名稱。
+CREATE POLICY anchor_owner_all ON audit.anchor_batches FOR ALL TO audit_owner USING (true) WITH CHECK (true);
+CREATE POLICY anchor_owner_all ON audit.anchor_leaves  FOR ALL TO audit_owner USING (true) WITH CHECK (true);
+CREATE POLICY anchor_owner_all ON audit.anchor_runs    FOR ALL TO audit_owner USING (true) WITH CHECK (true);
 
 -- 4. 函式（定義者權限，owner 是 audit_owner）---------------------------------
 

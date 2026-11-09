@@ -2,7 +2,7 @@ import { assertRoot, type IssuedReceipt, type AnchorProvider, type AnchorVerdict
 
 // Mock 錨定服務，給測試與沒有網路的本機開發使用（ADR-0019 決議 9）。
 // 回執只是「樹根加時間」的文字，沒有任何簽章，不具備防竄改的效力。
-// 正式環境不得使用：anchorProviderFromEnv 在 NODE_ENV=production 時拒絕 mock。
+// 正式環境不得使用：anchorProvidersFromEnv 在 NODE_ENV=production 時拒絕 mock。
 
 export interface MockAnchorProvider extends AnchorProvider {
   /** anchor 被呼叫的次數（含失敗的）。測試用來確認「沒有變動時不呼叫外部服務」。 */

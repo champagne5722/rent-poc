@@ -1,7 +1,8 @@
 import type { ControlTx, OrgTx } from '../../pg/with-tx';
 import type { MerkleLeaf, MerkleProofStep } from './merkle';
 
-// 錨定的資料庫存取（MIL-88，ADR-0019 決議 8、13）。每個函式只呼叫一個定義者函式，不直接碰 audit 的表。
+// 錨定的資料庫存取（MIL-88，ADR-0019 決議 8、13）。讀鏈頭與寫錨定的函式各只呼叫一個定義者函式，不直接碰 audit 的表。
+// 例外是 listChainIds，它讀組織目錄 control.orgs（app_rw 有 SELECT）。
 // 函式只回傳雜湊、證明與回執，不回傳事件內容。
 //
 // 介面的規則：
@@ -38,8 +39,6 @@ export interface ChainAnchor {
 
 /** record_anchor 發現這片葉的序號已被較新的錨定涵蓋時的 SQLSTATE。兩個排程同時執行時，後到的拿到它。 */
 export const SQLSTATE_SUPERSEDED = 'AU001';
-/** record_anchor 發現葉對不上任何事件時的 SQLSTATE。 */
-export const SQLSTATE_LEAF_MISMATCH = 'AU002';
 
 export const isSupersededError = (e: unknown): boolean =>
   typeof e === 'object' && e !== null && (e as { code?: unknown }).code === SQLSTATE_SUPERSEDED;
