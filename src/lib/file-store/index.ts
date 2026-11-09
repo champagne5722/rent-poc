@@ -77,7 +77,11 @@ export function createFileStores(
 // SDK 在第一次用到時才載入與建立，之後共用同一個連線
 function lazyBucket(open: () => Promise<ObjectBucket>): ObjectBucket {
   let opened: Promise<ObjectBucket> | undefined;
-  const bucket = () => (opened ??= open());
+  const bucket = () =>
+    (opened ??= open().catch((e) => {
+      opened = undefined; // 載入或連線失敗不快取，下一次呼叫重試
+      throw e;
+    }));
   return {
     save: async (name, bytes, meta) => (await bucket()).save(name, bytes, meta),
     download: async (name) => (await bucket()).download(name),
@@ -87,8 +91,7 @@ function lazyBucket(open: () => Promise<ObjectBucket>): ObjectBucket {
 
 let defaultFactory: ((purpose: FilePurpose) => FileStore) | undefined;
 
-/** 目前環境的 FileStore。第一次呼叫時讀環境變數。 */
-export function getFileStore(purpose: FilePurpose): FileStore {
+function defaultStore(purpose: FilePurpose): FileStore {
   if (!defaultFactory) {
     if (process.env.K_SERVICE && !process.env.FILE_STORE) {
       console.warn('[file-store] 在 Cloud Run 上沒有設定 FILE_STORE，檔案存在實例的本機磁碟，換實例就會遺失');
@@ -96,4 +99,16 @@ export function getFileStore(purpose: FilePurpose): FileStore {
     defaultFactory = createFileStores(readFileStoreConfig());
   }
   return defaultFactory(purpose);
+}
+
+/**
+ * 目前環境的 FileStore。環境變數到第一次讀寫檔案時才讀取，所以匯入模組（例如 build 階段）不會因為設定不全而失敗。
+ * 設定有誤時，第一次讀寫會丟錯並寫明缺哪個變數。
+ */
+export function getFileStore(purpose: FilePurpose): FileStore {
+  return {
+    write: async (key, bytes, meta) => defaultStore(purpose).write(key, bytes, meta),
+    read: async (key) => defaultStore(purpose).read(key),
+    exists: async (key) => defaultStore(purpose).exists(key),
+  };
 }

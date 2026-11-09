@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildObjectKey, InvalidObjectKey, orgIdOfKey, parseObjectKey } from './object-key';
+import { buildObjectKey, InvalidObjectKey, parseObjectKey } from './object-key';
 
 describe('buildObjectKey', () => {
   it('組出 org/<org_id>/<area>/<檔名>', () => {
@@ -10,10 +10,6 @@ describe('buildObjectKey', () => {
 
   it('org_id 在最前面：不同組織的同名檔案 key 不同', () => {
     expect(buildObjectKey('01ORGA', 'uploads', 'a.pdf')).not.toBe(buildObjectKey('01ORGB', 'uploads', 'a.pdf'));
-  });
-
-  it('orgIdOfKey 取回組織 id', () => {
-    expect(orgIdOfKey(buildObjectKey('01ORG', 'uploads', 'a.pdf'))).toBe('01ORG');
   });
 
   it.each([

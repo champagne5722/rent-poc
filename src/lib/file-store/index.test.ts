@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
-import { buildObjectKey, createFileStores, readFileStoreConfig } from './index';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { buildObjectKey, createFileStores, getFileStore, readFileStoreConfig } from './index';
 import type { ObjectBucket } from './gcs-file-store';
 
 const roots: string[] = [];
@@ -69,5 +69,32 @@ describe('createFileStores', () => {
     expect(opened).toEqual(['b-signed', 'b-gen']);
     expect(await get('signed-document').exists(key)).toBe(true);
     expect([...objects.keys()].sort()).toEqual(['b-gen/org/01ORG/x/a.pdf', 'b-signed/org/01ORG/x/a.pdf']);
+  });
+});
+
+describe('getFileStore', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('取得 store 時不讀環境變數：設定有誤也不會讓匯入模組失敗，第一次讀寫才丟錯', async () => {
+    vi.stubEnv('FILE_STORE', 'gcs');
+    vi.stubEnv('GCS_BUCKET_SIGNED', '');
+    vi.stubEnv('GCS_BUCKET_GENERAL', '');
+    const store = getFileStore('general');
+    await expect(store.exists(buildObjectKey('01ORG', 'x', 'a.pdf'))).rejects.toThrow('GCS_BUCKET_SIGNED');
+  });
+});
+
+describe('Cloud Storage 連線', () => {
+  it('第一次開 bucket 失敗不快取，下一次呼叫重試', async () => {
+    let attempts = 0;
+    const openBucket = async (): Promise<ObjectBucket> => {
+      if (++attempts === 1) throw new Error('SDK 載入失敗');
+      return { save: async () => {}, download: async () => new Uint8Array(), exists: async () => true };
+    };
+    const get = createFileStores({ mode: 'gcs', buckets: { 'signed-document': 'b1', general: 'b2' } }, { openBucket });
+    const key = buildObjectKey('01ORG', 'x', 'a.pdf');
+    await expect(get('general').exists(key)).rejects.toThrow('SDK 載入失敗');
+    expect(await get('general').exists(key)).toBe(true);
+    expect(attempts).toBe(2);
   });
 });

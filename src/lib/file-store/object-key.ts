@@ -57,8 +57,3 @@ export function parseObjectKey(key: string): ObjectKey {
   for (const segment of segments) checkSegment(segment, '路徑段');
   return key as ObjectKey;
 }
-
-/** key 屬於哪個組織。資料庫的 CHECK 用同一個規則：key 必須以 org/<org_id>/ 開頭。 */
-export function orgIdOfKey(key: ObjectKey): string {
-  return key.split('/')[1];
-}
