@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { buildObjectKey, parseObjectKey, sha256Hex, type FileStore } from '../file-store';
 import { jsonError } from '../http';
 import type { OrgContext, OrgTx } from '../pg/with-tx';
@@ -5,6 +6,15 @@ import { OrgContextRequired, Unauthenticated } from '../request-context';
 import { CONTRACT_FILE_KINDS, CONTRACT_FILE_LABELS } from '../types';
 import type { ContractFileKind } from '../types';
 import { defaultSigningDb, type SigningDb } from './db';
+import {
+  claimInbox,
+  failInbox,
+  finishInbox,
+  insertInbox,
+  listPendingInbox,
+  recoverStaleInbox,
+  type InboxStatus,
+} from './inbox';
 import {
   claimOutbox,
   completeOutbox,
@@ -60,7 +70,7 @@ export interface SignTask {
 // webhook 的回應碼與回應內容
 export interface WebhookAck {
   status: number;
-  body: { ok: true; ping?: true; ignored?: true } | { error: string };
+  body: { ok: true; ping?: true; ignored?: true; queued?: true } | { error: string };
 }
 
 // mock advance 可模擬的簽署事件。撤回有自己的操作。
@@ -104,6 +114,14 @@ export interface DownloadedFile {
   contentType: string;
   bytes: Uint8Array;
 }
+
+// 處理一列 inbox 的結果。webhook 請求內的第一次處理與排程（drain-inbox）共用。
+export type InboxResult =
+  | { kind: 'done' }
+  | { kind: 'ignored'; reason: string }
+  | { kind: 'deferred'; reason: string; status: InboxStatus }
+  | { kind: 'failed'; error: string; status: InboxStatus }
+  | { kind: 'not_claimed' };
 
 // 派送一列 outbox 的結果。排程（MIL-86）與請求內派送共用。
 export type DispatchResult =
@@ -485,8 +503,10 @@ export function createSigningModule({
       return results;
     },
 
-    // webhook 沒有組織脈絡：用服務商任務編號查路由列取得組織，再開組織交易處理（ADR-0012 決議 5）。
-    // 路由列還沒寫入（建立任務的交易尚未提交）時視同找不到，回 2xx。MIL-86 的 inbox 會把這種事件留待重試。
+    // webhook 驗簽後先把標準化的事件寫進 inbox，同一個請求內處理一次（ADR-0020 決議 5）。
+    // 寫入成功就回 2xx：處理失敗或路由列還沒寫入的事件留在 inbox，由 drain-inbox 重試。
+    // 寫不進 inbox 才回非 2xx（例外往外拋），讓服務商重送。
+    // 非 2xx 在服務商端會重試，單日累積 10 次投遞失敗會停掉整個 application 的 webhook，所以寫入之後一律 2xx。
     async ingestWebhook(rawBody: string, headers: WebhookHeaders): Promise<WebhookAck> {
       const parsed = provider.parseWebhook(rawBody, headers);
       const ignored: WebhookAck = { status: 200, body: { ok: true, ignored: true } };
@@ -498,28 +518,31 @@ export function createSigningModule({
         case 'invalid':
           return { status: parsed.status, body: { error: parsed.reason } };
         case 'event': {
-          const route = await db.inControl((tx) => findSignTaskRoute(tx, provider.id, parsed.taskRef));
-          if (!route) {
-            console.info(`[signing] 忽略簽署事件 ${parsed.event.type}：對不到簽署任務 ${parsed.taskRef}`);
-            return ignored;
-          }
-          const ctx: OrgContext = { kind: 'org', orgId: route.orgId };
-          const applied = await db.inOrg(ctx, async (tx) => {
-            const task = await findSignTaskByRef(tx, provider.id, parsed.taskRef);
-            const subscriber = task && subscribers[task.subject.type];
-            if (!task || !subscriber || !(await subscriber.exists(tx, task.subject))) {
-              console.info(`[signing] 忽略簽署事件 ${parsed.event.type}：對不到簽署任務 ${parsed.taskRef}`);
-              return null;
-            }
-            const outcome = await applyEventTx(tx, task.subject, subscriber, parsed.event);
-            return { subject: task.subject, subscriber, outcome };
-          });
-          if (!applied) return ignored;
-          await finishAfterCommit(ctx, applied.subject, applied.subscriber, applied.outcome);
-          // 不接受的事件也回 2xx：非 2xx 會被重試，累積後整個 application 的 webhook 會被暫停
-          return applied.outcome ? { status: 200, body: { ok: true } } : ignored;
+          // 只存雜湊，不存原始 body
+          const bodySha256 = createHash('sha256').update(rawBody).digest('hex');
+          const stored = await db.inControl((tx) =>
+            insertInbox(tx, { provider: provider.id, bodySha256, taskRef: parsed.taskRef, event: parsed.event }),
+          );
+          // 服務商重送的 body 一字不差：已收過就不再處理
+          if (!stored.created) return ignored;
+          const result = await processInboxSafely(stored.id);
+          if (result.kind === 'done') return { status: 200, body: { ok: true } };
+          if (result.kind === 'ignored') return ignored;
+          return { status: 200, body: { ok: true, queued: true } };
         }
       }
+    },
+
+    // 排程（drain-inbox）用：重試還沒處理完的列，一次最多 limit 列。一列失敗不影響其他列。
+    // inbox 在 control，沒有組織脈絡，所以不用逐組織。每列的組織由路由列查出。
+    async drainInbox(limit: number): Promise<InboxResult[]> {
+      const due = await db.inControl(async (tx) => {
+        await recoverStaleInbox(tx);
+        return listPendingInbox(tx, provider.id, limit);
+      });
+      const results: InboxResult[] = [];
+      for (const row of due) results.push(await processInboxSafely(row.id));
+      return results;
     },
 
     // 不經 webhook 模擬簽署事件。event 與 reason 來自未驗證的請求 body，這裡才檢查。
@@ -592,6 +615,67 @@ export function createSigningModule({
       throw new SigningRefusal(502, `取得${label}失敗：${failure}`);
     },
   };
+
+  // 處理一列 inbox：認領（control 交易）、套用事件與標記完成（組織交易）、提交後的收尾。
+  // 認領時依路由列查出組織。路由列還不存在（建立任務的交易尚未提交）時，這一列留到下次重試。
+  // 事件的效果與「已處理」同一個組織交易提交，不會只做一半。
+  async function processInbox(inboxId: string): Promise<InboxResult> {
+    const claim = await db.inControl(async (tx) => {
+      const row = await claimInbox(tx, inboxId);
+      if (!row) return null;
+      const route = await findSignTaskRoute(tx, row.provider, row.taskRef);
+      if (route) return { kind: 'routed' as const, row, orgId: route.orgId };
+      const reason = '找不到路由列，建立簽署任務的交易可能還沒提交';
+      return { kind: 'deferred' as const, row, reason, status: await failInbox(tx, row, reason) };
+    });
+    if (!claim) return { kind: 'not_claimed' };
+    if (claim.kind === 'deferred') {
+      console.info(`[signing] 簽署事件 ${claim.row.event.type} 暫存：對不到簽署任務 ${claim.row.taskRef}（${claim.status}）`);
+      return { kind: 'deferred', reason: claim.reason, status: claim.status };
+    }
+
+    const { row } = claim;
+    const ctx: OrgContext = { kind: 'org', orgId: claim.orgId };
+    try {
+      const applied = await db.inOrg(ctx, async (tx) => {
+        const task = await findSignTaskByRef(tx, row.provider, row.taskRef);
+        const subscriber = task && subscribers[task.subject.type];
+        if (!task || !subscriber || !(await subscriber.exists(tx, task.subject))) {
+          console.info(`[signing] 忽略簽署事件 ${row.event.type}：對不到簽署任務 ${row.taskRef}`);
+          await finishInbox(tx, row.id, { status: 'ignored', note: '對不到簽署任務' });
+          return null;
+        }
+        const outcome = await applyEventTx(tx, task.subject, subscriber, row.event);
+        // 不接受的事件（重複、亂序、email 不符）也標為已處理：重試不會讓它變得可接受
+        await finishInbox(tx, row.id, outcome ? { status: 'done' } : { status: 'ignored', note: '事件不需要套用' });
+        return { subject: task.subject, subscriber, outcome };
+      });
+      if (!applied) return { kind: 'ignored', reason: '對不到簽署任務' };
+      // 提交後的收尾是外部 IO，失敗不回滾也不重試事件。文件之後可補抓
+      try {
+        await finishAfterCommit(ctx, applied.subject, applied.subscriber, applied.outcome);
+      } catch (e) {
+        console.error(`[signing] 簽署事件已套用，但收尾失敗：${errorMessage(e)}`);
+      }
+      return applied.outcome ? { kind: 'done' } : { kind: 'ignored', reason: '事件不需要套用' };
+    } catch (e) {
+      const error = errorMessage(e);
+      console.error(`[signing] 處理簽署事件 ${row.id} 失敗：${error}`);
+      const status = await db.inControl((tx) => failInbox(tx, row, error));
+      return { kind: 'failed', error, status };
+    }
+  }
+
+  // 處理失敗不往外拋：webhook 已經寫入 inbox，該回 2xx。連失敗都記不下來時，列停在 processing，期限到了由排程接手
+  async function processInboxSafely(inboxId: string): Promise<InboxResult> {
+    try {
+      return await processInbox(inboxId);
+    } catch (e) {
+      const error = errorMessage(e);
+      console.error(`[signing] 處理 inbox ${inboxId} 時發生非預期錯誤：${error}`);
+      return { kind: 'failed', error, status: 'processing' };
+    }
+  }
 
   // 建立簽署任務失敗的記錄。寫不進去時只記 log，不蓋掉原本的錯誤
   async function markCreateFailed(

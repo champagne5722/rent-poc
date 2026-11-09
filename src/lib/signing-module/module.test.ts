@@ -400,9 +400,10 @@ describe('任務比對與當前簽署人讀簽署任務', () => {
     });
     const { subject, signing } = await sentThenLegacyColumnsChanged(liveProvider({ parseWebhook }));
 
+    // 對不到路由列的事件留在 inbox（MIL-86），回 2xx
     await expect(signing.ingestWebhook('stale-ref', new Headers())).resolves.toEqual({
       status: 200,
-      body: { ok: true, ignored: true },
+      body: { ok: true, queued: true },
     });
     expect((await statusOf(subject.id))).toBe('awaiting_tenant');
 
@@ -452,10 +453,10 @@ describe('接收 webhook', () => {
     expect((await statusOf(subject.id))).toBe('awaiting_tenant');
   });
 
-  it('找不到對應合約時回 200 ignored', async () => {
+  it('找不到對應合約時回 200 並留在 inbox 等重試', async () => {
     await expect(moduleWith().ingestWebhook(webhook('no-such-task', 'signed'), new Headers())).resolves.toEqual({
       status: 200,
-      body: { ok: true, ignored: true },
+      body: { ok: true, queued: true },
     });
   });
 
@@ -1162,7 +1163,7 @@ describe('簽署模組不依賴合約', () => {
 
     await expect(signing.ingestWebhook('{}', new Headers())).resolves.toEqual({
       status: 200,
-      body: { ok: true, ignored: true },
+      body: { ok: true, queued: true },
     });
     expect(info).toHaveBeenCalledWith(expect.stringContaining('no-such-task'));
     info.mockRestore();
