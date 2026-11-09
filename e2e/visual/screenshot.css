@@ -1,0 +1,4 @@
+/* 截圖時隱藏 Next.js dev server 的開發工具浮動按鈕（左下角的「N」與 Issue 數）。它不是產品畫面，而且數字會隨 dev 警告變動。 */
+nextjs-portal {
+  display: none !important;
+}
