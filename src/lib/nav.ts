@@ -56,6 +56,33 @@ export function resolveIdentityNavKey(pathname: string): IdentityNavKey | null {
   return IDENTITY_NAV_ITEMS.find((item) => matches(pathname, item.href))?.key ?? null;
 }
 
+// 我的證書（MIL-111）：執業主體組織的成員登錄自己的證書與任職。入口跟著身分出現，與「執業主體」分開放，
+// 因為執業主體頁屬於組織，證書頁屬於成員本人。不併進 IDENTITY_NAV_ITEMS，以免改動既有身分入口的清單。
+export const PRACTITIONER_HREF = '/practitioner';
+
+export type PersonalNavKey = 'practitioner';
+
+export type PersonalNavItem = {
+  key: PersonalNavKey;
+  label: string;
+  href: string;
+  identity: 'practice';
+};
+
+export const PERSONAL_NAV_ITEMS: readonly PersonalNavItem[] = [
+  { key: 'practitioner', label: '我的證書', href: PRACTITIONER_HREF, identity: 'practice' },
+];
+
+/** 目前身分該多看到哪些個人入口。身分還沒載入（null）或沒有時是空陣列。 */
+export function personalNavItems(identityKind: string | null): readonly PersonalNavItem[] {
+  return PERSONAL_NAV_ITEMS.filter((item) => item.identity === identityKind);
+}
+
+/** 個人入口頁面的選單高亮。 */
+export function resolvePersonalNavKey(pathname: string): PersonalNavKey | null {
+  return PERSONAL_NAV_ITEMS.find((item) => matches(pathname, item.href))?.key ?? null;
+}
+
 // 常駐建約 CTA 的目的地＝建約 wizard 的第①步（選物件與範本，規格 §7）
 export const CREATE_CONTRACT_HREF = '/contracts/new';
 
@@ -100,6 +127,8 @@ export function resolvePageTitle(pathname: string): string {
   if (matches(pathname, MEMBERS_HREF)) return MEMBERS_TITLE;
   const identityKey = resolveIdentityNavKey(pathname);
   if (identityKey) return IDENTITY_NAV_ITEMS.find((item) => item.key === identityKey)?.label ?? '';
+  const personalKey = resolvePersonalNavKey(pathname);
+  if (personalKey) return PERSONAL_NAV_ITEMS.find((item) => item.key === personalKey)?.label ?? '';
   const key = resolveNavKey(pathname);
   return NAV_ITEMS.find((item) => item.key === key)?.label ?? '';
 }

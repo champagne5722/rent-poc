@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Empty, Flex, Segmented, Table, Tag, Typography } from 'antd';
 import Link from 'next/link';
-import { statutoryTitle, type LicenseKind } from '@/lib/labels';
+import { practitionerTitle, statutoryTitle, type LicenseKind } from '@/lib/labels';
 import { formatWaiting, isBacklogged, queueTypeLabel, resolutionLabel } from '@/lib/practice-entities/display';
 import type { QueueItem } from '@/lib/practice-entities/desk';
 
@@ -14,6 +14,7 @@ import type { QueueItem } from '@/lib/practice-entities/desk';
 type Status = 'open' | 'resolved';
 
 function describeKinds(item: QueueItem): string {
+  if (item.summary.certificateKind) return practitionerTitle(item.summary.certificateKind);
   const kinds: LicenseKind[] = item.summary.kind ? [item.summary.kind] : (item.summary.kinds ?? []);
   return kinds.map((k) => statutoryTitle(k)).join('、') || '—';
 }
@@ -81,16 +82,23 @@ export default function DeskQueue() {
         columns={[
           { title: '類型', dataIndex: 'type', width: 110, render: queueTypeLabel },
           {
-            title: '執業主體',
+            title: '執業主體或人員',
             key: 'entity',
-            render: (_v, item) => (
-              <Flex vertical>
-                <Typography.Text>{item.summary.entityName ?? '—'}</Typography.Text>
-                <Typography.Text type="secondary">{item.summary.taxId ?? ''}</Typography.Text>
-              </Flex>
-            ),
+            render: (_v, item) =>
+              item.summary.partyName ? (
+                // 證書、任職、同意書項目：主要是人員，任職與同意書另列執業主體
+                <Flex vertical>
+                  <Typography.Text>{item.summary.partyName}</Typography.Text>
+                  <Typography.Text type="secondary">{item.summary.entityName ?? ''}</Typography.Text>
+                </Flex>
+              ) : (
+                <Flex vertical>
+                  <Typography.Text>{item.summary.entityName ?? '—'}</Typography.Text>
+                  <Typography.Text type="secondary">{item.summary.taxId ?? ''}</Typography.Text>
+                </Flex>
+              ),
           },
-          { title: '業別', key: 'kind', render: (_v, item) => describeKinds(item) },
+          { title: '業別或證書', key: 'kind', render: (_v, item) => describeKinds(item) },
           { title: '許可或登記證字號', key: 'permit', render: (_v, item) => item.summary.permitNo ?? '—' },
           status === 'open'
             ? {

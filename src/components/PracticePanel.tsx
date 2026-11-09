@@ -7,6 +7,7 @@ import { statutoryTitle, type LicenseKind } from '@/lib/labels';
 import { phaseView, stateLabel } from '@/lib/practice-entities/display';
 import { EVIDENCE_MAX_BYTES, EVIDENCE_MAX_FILES, PERMIT_NO_MAX } from '@/lib/practice-entities/rules';
 import type { MyLicense, MyRegistration } from '@/lib/practice-entities/applicant';
+import EmploymentList from './EmploymentList';
 
 // 執業主體的登錄進度與送件（MIL-109，ADR-0017）。每個業別一列：驗證狀態、進度、營運者的補件原因。
 // 送件寫成待驗證，平台營運者在審核台核對。相符後業別轉已驗證，證明文件刪除。
@@ -152,6 +153,8 @@ function PracticePanelInner() {
           ]}
         />
       </Flex>
+
+      <EmploymentList />
 
       {data.canSubmit ? (
         <Form<FormValues>

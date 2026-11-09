@@ -63,3 +63,17 @@ export function formatWaiting(ms: number): string {
 /** 待審超過 3 日。ADR-0017 決議 12 寫 3 個工作天，這裡用日曆天近似（假設）。 */
 export const BACKLOG_MS = 3 * DAY;
 export const isBacklogged = (waitingMs: number): boolean => waitingMs > BACKLOG_MS;
+
+// 證書、任職與同意書（MIL-111）。進度的標籤沿用業別的詞：待核對、待補件、已驗證、已失效。
+export type PractitionerPhase = 'awaiting_review' | 'needs_resubmission' | 'verified' | 'lapsed' | 'not_submitted' | 'ended';
+
+const PRACTITIONER_PHASES: Record<PractitionerPhase, { label: string; tone: Tone }> = {
+  not_submitted: { label: '尚未送出', tone: 'default' },
+  awaiting_review: { label: '待核對', tone: 'processing' },
+  needs_resubmission: { label: '待補件', tone: 'warning' },
+  verified: { label: '已驗證', tone: 'success' },
+  lapsed: { label: '已失效', tone: 'error' },
+  ended: { label: '已失效', tone: 'error' },
+};
+
+export const practitionerPhaseView = (phase: PractitionerPhase): { label: string; tone: Tone } => PRACTITIONER_PHASES[phase];

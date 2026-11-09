@@ -12,6 +12,7 @@ import {
   ProfileOutlined,
   SafetyCertificateOutlined,
   AuditOutlined,
+  IdcardOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -21,12 +22,15 @@ import {
   NAV_ITEMS,
   CREATE_CONTRACT_HREF,
   identityNavItems,
+  personalNavItems,
   resolveIdentityNavKey,
+  resolvePersonalNavKey,
   resolveNavKey,
   resolvePageTitle,
   shellFor,
   type IdentityNavKey,
   type NavKey,
+  type PersonalNavKey,
 } from '@/lib/nav';
 
 const NAV_ICONS: Record<NavKey, React.ReactNode> = {
@@ -36,6 +40,10 @@ const NAV_ICONS: Record<NavKey, React.ReactNode> = {
   contracts: <FileTextOutlined />,
   handovers: <SwapOutlined />,
   design: <BgColorsOutlined />,
+};
+
+const PERSONAL_NAV_ICONS: Record<PersonalNavKey, React.ReactNode> = {
+  practitioner: <IdcardOutlined />,
 };
 
 const IDENTITY_NAV_ICONS: Record<IdentityNavKey, React.ReactNode> = {
@@ -60,7 +68,7 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
   const [collapsed, setCollapsed] = useState(false);
   const { token } = theme.useToken();
 
-  const selected = resolveNavKey(pathname) ?? resolveIdentityNavKey(pathname);
+  const selected = resolveNavKey(pathname) ?? resolveIdentityNavKey(pathname) ?? resolvePersonalNavKey(pathname);
   const currentLabel = resolvePageTitle(pathname);
 
   // 執業主體與審核台的入口依目前身分顯示（MIL-109）。身分載入前不顯示，抓不到也不顯示
@@ -128,6 +136,11 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
             ...identityNavItems(identityKind).map((item) => ({
               key: item.key,
               icon: IDENTITY_NAV_ICONS[item.key],
+              label: <Link href={item.href}>{item.label}</Link>,
+            })),
+            ...personalNavItems(identityKind).map((item) => ({
+              key: item.key,
+              icon: PERSONAL_NAV_ICONS[item.key],
               label: <Link href={item.href}>{item.label}</Link>,
             })),
           ]}

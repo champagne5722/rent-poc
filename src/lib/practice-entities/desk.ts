@@ -6,6 +6,7 @@ import {
   decideCredentialTransition,
   decideRegistrationLoss,
   isRegistrationApproved,
+  type CertificateKind,
   type CredentialState,
   type EntityType,
   type LicenseKind,
@@ -38,6 +39,10 @@ export interface QueueItem {
     kinds?: LicenseKind[];
     permitNo?: string | null;
     state?: CredentialState;
+    /** 證書、任職、同意書項目（MIL-111）：執業人員姓名、證書種類與任職的執業主體名稱。 */
+    partyName?: string;
+    certificateKind?: CertificateKind;
+    consentRequired?: boolean;
   };
 }
 
@@ -50,7 +55,10 @@ interface QueueRow {
   created_at: Date | string;
   resolved_at: Date | string | null;
   resolution: string | null;
-  summary: { entity_name?: string; tax_id?: string; entity_type?: EntityType; kind?: LicenseKind; kinds?: LicenseKind[]; permit_no?: string | null; state?: CredentialState };
+  summary: {
+    entity_name?: string; tax_id?: string; entity_type?: EntityType; kind?: LicenseKind; kinds?: LicenseKind[]; permit_no?: string | null; state?: CredentialState;
+    party_name?: string; certificate_kind?: CertificateKind; consent_required?: boolean;
+  };
 }
 
 const iso = (value: Date | string): string => new Date(value).toISOString();
@@ -78,6 +86,9 @@ export async function listQueue(tx: OrgTx, status: QueueStatus, now: Date): Prom
         kinds: r.summary.kinds,
         permitNo: r.summary.permit_no,
         state: r.summary.state,
+        partyName: r.summary.party_name,
+        certificateKind: r.summary.certificate_kind,
+        consentRequired: r.summary.consent_required,
       },
     };
   });
