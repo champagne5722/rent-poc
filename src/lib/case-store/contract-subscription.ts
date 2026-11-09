@@ -82,11 +82,15 @@ async function openLedgerForCompletedLease(tx: OrgTx, caseId: string, contractId
   const contract = await getContract(tx, contractId);
   if (!contract || contract.contract_type !== 'lease') return;
   const { fields } = contract;
-  await openCaseLedger(tx, caseId, {
+  const opened = await openCaseLedger(tx, caseId, {
     deposit: fields.deposit,
     startDate: fields.startDate,
     endDate: fields.endDate,
     payDay: fields.payDay,
     rent: fields.rent,
   });
+  // 期別沒有建立時，原因只留在伺服器 log（稽核事件只記有沒有跳過，不放合約欄位的內容）
+  if (opened.opened && opened.periodsSkipped !== null) {
+    console.warn(`[case-ledger] 案件 ${caseId} 的應收期別沒有建立：${opened.periodsSkipped}`);
+  }
 }
