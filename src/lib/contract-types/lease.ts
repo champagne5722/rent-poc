@@ -73,10 +73,13 @@ export const leaseDefinition: ContractTypeDefinition<LeaseContractFields> = {
   missingFields: leaseMissingFields,
   missingFieldsForSend: leaseMissingFieldsForSend,
   partiesOnlyNotice: TENANT_FIRST_NOTICE,
+  sendSupported: true,
+  requiresProperty: true,
 
   // 從物件建立草稿：物件資料在此帶入成快照，之後與物件脫鉤（見 docs/domain-model.md）；
   // 範本版本也在此綁定，選用條款在 wizard 第①步勾選後才寫進快照（ADR-0005）
   initialFields({ property, routing }: InitialFieldsInput): LeaseContractFields {
+    if (!property) throw new Error('租賃合約需要物件');
     return {
       ...(routing ? { routing } : {}),
       landlordName: '',

@@ -9,6 +9,7 @@ import type { ContractFields, ContractPartyRole } from '../types';
 import { leaseDefinition } from './lease';
 import { managementDefinition } from './management';
 import type {
+  ContractAttachments,
   ContractListSummary,
   ContractTypeDefinition,
   InitialFieldsInput,
@@ -17,6 +18,7 @@ import type {
 } from './types';
 
 export type {
+  ContractAttachments,
   ContractListSummary,
   ContractTypeDefinition,
   InitialFieldsInput,
@@ -31,6 +33,7 @@ export {
   upgradeDraftFields,
   type EditableFieldValues,
 } from './lease';
+export { mergeManagementFields, type ManagementEditableValues } from './management';
 
 /** 沒有帶合約類型時的預設：舊資料與沒有類型欄位前建立的合約一律是租賃合約（ADR-0021 決議 2）。 */
 export const DEFAULT_CONTRACT_TYPE: ContractType = 'lease';
@@ -68,12 +71,12 @@ export function withParty(contract: TypedFields, role: ContractPartyRole, person
   return contractTypeDefinition(contract.contract_type).withParty(contract.fields, role, person);
 }
 
-export function missingFieldsOf(contract: TypedFields): string[] {
-  return contractTypeDefinition(contract.contract_type).missingFields(contract.fields);
+export function missingFieldsOf(contract: TypedFields, attachments?: ContractAttachments): string[] {
+  return contractTypeDefinition(contract.contract_type).missingFields(contract.fields, attachments);
 }
 
-export function missingFieldsForSendOf(contract: TypedFields): string[] {
-  return contractTypeDefinition(contract.contract_type).missingFieldsForSend(contract.fields);
+export function missingFieldsForSendOf(contract: TypedFields, attachments?: ContractAttachments): string[] {
+  return contractTypeDefinition(contract.contract_type).missingFieldsForSend(contract.fields, attachments);
 }
 
 export function initialFieldsFor(type: ContractType, input: InitialFieldsInput): ContractFields {

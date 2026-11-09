@@ -28,6 +28,14 @@ export interface OutcomeContext {
   prepared?: unknown;
 }
 
+// 模組交給 afterOutcome 的操作
+export interface AfterOutcomeTools {
+  voidTask(): Promise<void>;
+  // 在這個事件所屬的組織開一個交易，給需要讀寫資料庫的訂閱者。afterOutcome 沒有 tx，組織只有模組知道。
+  // 每次呼叫是獨立的交易，callback 內不得有外部 API 呼叫，也不得巢狀（withTx 的規則）。
+  inOrg<R>(fn: (tx: OrgTx) => Promise<R>): Promise<R>;
+}
+
 // 簽署標的的訂閱者：簽署模組透過它通知業務實體，所以模組不依賴合約（ADR-0010 決議 7）。
 // 新增一種簽署標的時，只提供一個訂閱者。
 //
@@ -73,4 +81,10 @@ export interface SigningSubscriber {
 
   // 交易提交後、模組保存文件之後呼叫，失敗不回滾狀態。需要寫資料庫時自己開交易。
   afterCompleted(subject: SigningSubject): Promise<void>;
+  // 選填。每個被接受的簽署事件在交易提交後呼叫（全員完成時在 afterCompleted 之後），沒有 tx，能呼叫外部 API。
+  // 需要寫資料庫時自己開交易，照 afterCompleted 的做法。
+  // 拋例外時模組記 log，不影響 webhook 的回應碼，也不回滾已提交的狀態。
+  // tools.voidTask 撤回這個簽署標的的簽署任務，與使用者手動撤回走同一條路徑。
+  // 例如簽署當下不可簽章時自動撤回（MIL-75，ADR-0018 決議 11）。
+  afterOutcome?(subject: SigningSubject, outcome: ProgressOutcome, tools: AfterOutcomeTools): Promise<void>;
 }

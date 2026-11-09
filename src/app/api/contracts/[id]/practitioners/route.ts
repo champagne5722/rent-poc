@@ -52,7 +52,13 @@ export async function GET(request: NextRequest, { params }: ContractRouteCtx) {
       options,
       assignments,
       printed,
-      evaluation: { ok: evaluation.ok, reasons: evaluation.reasons, notices: evaluation.notices },
+      evaluation: {
+        ok: evaluation.ok,
+        reasons: evaluation.reasons,
+        notices: evaluation.notices,
+        // 同一人兼任而合併的席位，附上姓名給畫面提示（MIL-76）
+        merges: evaluation.merges.map((m) => ({ ...m, name: printed[m.practitionerRuleId]?.name ?? '' })),
+      },
     },
   });
 }

@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { getContract } from '@/lib/contracts';
 import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/contracts/route';
 import { contractPdfRenderer } from '@/lib/contract-pdf';
-import { missingFieldsForSendOf } from '@/lib/contract-types';
+import { contractTypeDefinition, missingFieldsForSendOf } from '@/lib/contract-types';
 import { readInOrgTx } from '@/lib/org-route';
 import { getPracticeRegistry } from '@/lib/practice-registry';
 import { loadSendInputs, prepareContractSend } from '@/lib/practitioner-assignment/send';
@@ -26,9 +26,9 @@ export async function POST(_request: NextRequest, { params }: ContractRouteCtx) 
     return jsonError(409, '僅草稿可送簽');
   }
 
-  // PDF 與必填欄位都依合約類型。沒有 PDF 的類型（委託管理合約屬 MIL-74、MIL-77）尚未支援送簽。
+  // PDF 與必填欄位都依合約類型。委託管理合約有草稿與 PDF 預覽，送簽屬 MIL-77，在那之前不能送簽。
   const renderer = contractPdfRenderer(contract.contract_type);
-  if (!renderer) {
+  if (!renderer || !contractTypeDefinition(contract.contract_type).sendSupported) {
     return jsonError(400, '這個合約類型尚未支援送簽');
   }
   const missing = missingFieldsForSendOf(contract);

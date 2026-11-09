@@ -189,15 +189,30 @@ export interface LeaseContractFields extends ContractFieldsBase, EquipmentAnnexS
   payDay: number | null; // 每月付款日
 }
 
+// 報酬約定的形式（MIL-74）。保守版本只有兩種：每月固定金額、每月租金百分比。待法務確認（MIL-62）。
+export const MANAGEMENT_FEE_MODES = ['monthly_fixed', 'rent_percentage'] as const;
+export type ManagementFeeMode = (typeof MANAGEMENT_FEE_MODES)[number];
+
+export const MANAGEMENT_FEE_MODE_LABELS: Record<ManagementFeeMode, string> = {
+  monthly_fixed: '每月固定金額（元）',
+  rent_percentage: '每月租金百分比（%）',
+};
+
 /**
- * 委託管理合約欄位值。目前只有共用基底與兩方當事人的姓名與 email，
- * 讓共用送簽流程能取得簽署人。委託標的清單、委託範圍、期間與報酬由 MIL-74 加入。
+ * 委託管理合約欄位值（MIL-74）。委託人（甲方）與受託人（乙方）的姓名與 email、委託期間、報酬約定。
+ * 受託人的執業主體與專任管理人員存在指派表（contract_practitioner_assignments），
+ * 委託標的清單與委託範圍存在 contract_mandate_items（src/lib/mandate-schedule），不在欄位裡。
+ * 受託人是執業主體時，乙方姓名與 email 由當事人簽署人帶入（ADR-0018 決議 2）。
  */
 export interface ManagementContractFields extends ContractFieldsBase {
   mandatorName: string; // 委託人（甲方）
   mandatorEmail: string;
   mandataryName: string; // 受託人（乙方）
   mandataryEmail: string;
+  termStart: string; // 委託期間起日 YYYY-MM-DD
+  termEnd: string; // 委託期間迄日
+  feeMode: ManagementFeeMode | null; // 報酬約定的形式
+  feeValue: number | null; // 元，或租金的百分比
 }
 
 /** 合約欄位：以合約的 `contract_type` 判別（見 `Contract`）。 */
@@ -297,7 +312,7 @@ export interface ContractRelations {
 }
 
 // 合約歷程（見 GLOSSARY.md、ADR-0007）：附屬合約的 append-only 里程碑事件。
-// 只記這八種；草稿編輯流水與下載／查看等讀式操作不記。
+// 只記這十一種；草稿編輯流水與下載／查看等讀式操作不記。
 export const CONTRACT_EVENT_TYPES = [
   'created', // 建立（衍生自撤回合約時附註來源）
   'sent', // 送簽
@@ -307,6 +322,9 @@ export const CONTRACT_EVENT_TYPES = [
   'completed', // 簽署完成
   'voided', // 撤回
   'copied', // 被複製為新草稿
+  'credential_lapsed', // 執業人員簽署時不可簽章（MIL-75，ADR-0018 決議 11）
+  'auto_void_failed', // 簽署時不可簽章後，自動撤回失敗（MIL-75，ADR-0021 決議 7）
+  'signers_merged', // 同一人兼任當事人簽署人與執業人員，送簽時合併成一位簽署人（MIL-76，ADR-0018 決議 9）
 ] as const;
 export type ContractEventType = (typeof CONTRACT_EVENT_TYPES)[number];
 
@@ -319,6 +337,9 @@ export const CONTRACT_EVENT_TYPE_LABELS: Record<ContractEventType, string> = {
   completed: '簽署完成',
   voided: '撤回',
   copied: '被複製為新草稿',
+  credential_lapsed: '簽署時不可簽章',
+  auto_void_failed: '自動撤回失敗',
+  signers_merged: '同一人兼任，合併簽署人',
 };
 
 // 簽署人的行為者一律用簽署角色。landlord 是送簽與撤回的發動者，tenant 只有舊資料。

@@ -17,10 +17,11 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { Contract, ContractFields, ContractRoutingConditions, SignatureField } from '@/lib/types';
+import type { MandateItem } from '@/lib/mandate-schedule';
 import { SIGNER_ROLE_LABELS } from '@/lib/types';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
 import RoutingConditionsPanel from '@/components/RoutingConditionsPanel';
-import PractitionerAssignmentPanel, { type PartySignerPick } from '@/components/PractitionerAssignmentPanel';
+import PractitionerAssignmentPanel, { type MergedSeatNotice, type PartySignerPick } from '@/components/PractitionerAssignmentPanel';
 import { wizardUiFor } from '@/components/contract-wizard';
 import type { PractitionerAssignmentInput, PrintedPractitioner } from '@/lib/practitioner-assignment/seats';
 import { entityPartyRoles } from '@/lib/practitioner-assignment/seats';
@@ -31,11 +32,12 @@ import {
   countFieldsBySeat,
   evaluateRouting,
   seatOfField,
+  signerChainLabels,
   type SeatView,
 } from '@/lib/signature-routing';
 import { contractTypeDefinition } from '@/lib/contract-types';
 import { shortUlid } from '@/lib/pg/ulid';
-import type { PartyLabels } from '@/lib/labels';
+import type { ContractType, PartyLabels } from '@/lib/labels';
 import {
   STEP_CONFIRM,
   STEP_FIELDS,
@@ -97,14 +99,16 @@ function SignatureChecklist({
   fields,
   signatureFields,
   labels,
+  contractType,
   withDetail,
 }: {
   fields: ContractFields;
   signatureFields: SignatureField[];
   labels: PartyLabels;
+  contractType: ContractType;
   withDetail?: boolean;
 }) {
-  const evaluation = evaluateRouting(fields.routing);
+  const evaluation = evaluateRouting(fields.routing, contractType);
   if (evaluation.ok && !isPartiesOnly(evaluation.seats)) {
     return <SeatChecklist seats={evaluation.seats} signatureFields={signatureFields} withDetail={withDetail} />;
   }
@@ -159,7 +163,7 @@ interface PractitionerData {
   options: SeatOptions;
   assignments: PractitionerAssignmentInput[];
   printed: Record<string, PrintedPractitioner>;
-  evaluation: { ok: boolean; reasons: SendBlockReason[]; notices: SendNotice[] };
+  evaluation: { ok: boolean; reasons: SendBlockReason[]; notices: SendNotice[]; merges: MergedSeatNotice[] };
 }
 
 export default function ContractWizard({ id }: { id: string }) {
@@ -176,6 +180,8 @@ export default function ContractWizard({ id }: { id: string }) {
   // 執業人員的指派（MIL-69）。草稿中可能只選了一半，存檔時只送選完的
   const [assignments, setAssignments] = useState<PractitionerAssignmentInput[]>([]);
   const [practitionerData, setPractitionerData] = useState<PractitionerData | null>(null);
+  // 委託標的清單（MIL-74）。只有委託管理合約有，載入前是 null
+  const [mandateItems, setMandateItems] = useState<MandateItem[] | null>(null);
   const [form] = Form.useForm();
   const initialised = useRef(false);
   // 合約類型專屬的畫面（MIL-73）。沒有畫面的合約類型在載入後說明尚未支援
@@ -207,10 +213,18 @@ export default function ContractWizard({ id }: { id: string }) {
       setContract(data);
       setFields(data.fields);
       setSigFields(data.signature_fields);
-      // 中斷後續作：落在第一個還沒完成的步驟（規格 §7 草稿保全）
-      setStep(resumeStepIndex(data));
-      void loadPractitioners(true);
       const typeUi = wizardUiFor(data.contract_type);
+      // 委託標的清單存在子表，續作要落在哪一步取決於清單是否齊全，所以先讀清單
+      let loadedItems: MandateItem[] | null = null;
+      if (typeUi?.hasMandateItems) {
+        const itemsRes = await fetch(`/api/contracts/${id}/mandate-items`);
+        loadedItems = itemsRes.ok ? ((await itemsRes.json()) as { data: { items: MandateItem[] } }).data.items : [];
+        if (cancelled) return;
+        setMandateItems(loadedItems);
+      }
+      // 中斷後續作：落在第一個還沒完成的步驟（規格 §7 草稿保全）
+      setStep(resumeStepIndex(data, loadedItems ? { mandateItems: loadedItems } : undefined));
+      void loadPractitioners(true);
       if (typeUi) form.setFieldsValue(typeUi.formValuesOf(data.fields));
     })();
     return () => {
@@ -241,7 +255,9 @@ export default function ContractWizard({ id }: { id: string }) {
           return false;
         }
         // 指派在欄位之後存：分流條件已存好，伺服器才驗得到席位。沒選完的不存
-        const saved = pruneAssignments(next.routing, assignments).filter((a) => a.entityId && a.practitionerId);
+        const saved = pruneAssignments(next.routing, assignments, contract?.contract_type).filter(
+          (a) => a.entityId && a.practitionerId,
+        );
         const assignRes = await fetch(`/api/contracts/${id}/practitioners`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -251,14 +267,27 @@ export default function ContractWizard({ id }: { id: string }) {
           message.error((await assignRes.json()).error ?? '執業人員指派儲存失敗');
           return false;
         }
-        setPdfVersion((v) => v + 1); // 欄位與指派的改動要反映到 PDF 預覽
+        // 委託標的清單在欄位與指派之後存。請求只帶租賃單位與範圍，快照由伺服器取，回傳的清單換掉記憶體裡的
+        if (ui?.hasMandateItems && mandateItems) {
+          const itemsRes = await fetch(`/api/contracts/${id}/mandate-items`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: mandateItems.map(({ propertyId, scopes }) => ({ propertyId, scopes })) }),
+          });
+          if (!itemsRes.ok) {
+            message.error((await itemsRes.json()).error ?? '委託標的清單儲存失敗');
+            return false;
+          }
+          setMandateItems(((await itemsRes.json()) as { data: { items: MandateItem[] } }).data.items);
+        }
+        setPdfVersion((v) => v + 1); // 欄位、指派與清單的改動要反映到 PDF 預覽
         await loadPractitioners(false);
         return true;
       } finally {
         setSaving(false);
       }
     },
-    [id, message, assignments, loadPractitioners]
+    [id, message, assignments, loadPractitioners, contract, ui, mandateItems]
   );
 
   if (loadFailed) {
@@ -318,8 +347,10 @@ export default function ContractWizard({ id }: { id: string }) {
     fields,
     signatureFields: sigFields,
     assignments: practitionerData ? assignments : undefined,
+    mandateItems: mandateItems ?? undefined,
   };
-  const routingEvaluation = evaluateRouting(fields.routing);
+  const definition = contractTypeDefinition(contractType);
+  const routingEvaluation = evaluateRouting(fields.routing, contractType);
   const seats = routingEvaluation.ok ? routingEvaluation.seats : undefined;
   const partiesOnly = !seats || isPartiesOnly(seats);
   // 有執業人員的簽署序列才在確認頁列出擋下原因並停用送簽；兩方序列沿用原本的行為（送簽時才提示）
@@ -331,7 +362,13 @@ export default function ContractWizard({ id }: { id: string }) {
 
   const goNext = async () => {
     const nextFields = step === STEP_FIELDS ? readFields() : fields;
-    const blocked = nextStepBlockReason(step, { contractType, fields: nextFields, signatureFields: sigFields, assignments });
+    const blocked = nextStepBlockReason(step, {
+      contractType,
+      fields: nextFields,
+      signatureFields: sigFields,
+      assignments,
+      mandateItems: mandateItems ?? undefined,
+    });
     if (blocked) {
       message.error(blocked);
       // 第②步同時觸發表單的欄位錯誤提示
@@ -354,10 +391,10 @@ export default function ContractWizard({ id }: { id: string }) {
 
   // 第①步改分流條件：寫入 fields.routing，並依新的簽署序列整理簽署區域，按「下一步」時隨草稿存回
   const changeRouting = (routing: ContractRoutingConditions) => {
-    const next = applyRoutingChange(fields, sigFields, routing);
+    const next = applyRoutingChange(fields, sigFields, routing, contractType);
     setFields(next.fields);
     setSigFields(next.signatureFields);
-    setAssignments(pruneAssignments(routing, assignments));
+    setAssignments(pruneAssignments(routing, assignments, contractType));
     if (next.removed > 0) message.warning(`簽署序列已沒有對應的席位，已移除 ${next.removed} 個簽署區域`);
   };
 
@@ -384,6 +421,7 @@ export default function ContractWizard({ id }: { id: string }) {
                     assignments={assignments}
                     onChange={setAssignments}
                     onPartySigner={pickPartySigner}
+                    merges={practitionerData?.evaluation.merges}
                     disabled={saving}
                   />
                 </Flex>
@@ -416,7 +454,7 @@ export default function ContractWizard({ id }: { id: string }) {
   };
 
   const summaryItems = [
-    ...ui.summaryItems(fields, { labels }),
+    ...ui.summaryItems(fields, { labels, contractId: contract.id, mandateItems: mandateItems ?? [] }),
     ...(seats && !partiesOnly
       ? [
           {
@@ -440,7 +478,8 @@ export default function ContractWizard({ id }: { id: string }) {
             key: 'routing',
             label: '簽署序列',
             span: 2,
-            children: seats.map((seat) => seat.fullLabel).join(' → '),
+            // 同一人兼任時合併成一位簽署人，列出實際的簽署人（MIL-76）
+            children: signerChainLabels(seats, practitionerData?.evaluation.merges ?? []).join(' → '),
           },
         ]
       : []),
@@ -448,7 +487,9 @@ export default function ContractWizard({ id }: { id: string }) {
       key: 'signature',
       label: '簽署區',
       span: 2,
-      children: <SignatureChecklist fields={fields} signatureFields={sigFields} labels={labels} withDetail />,
+      children: (
+        <SignatureChecklist fields={fields} signatureFields={sigFields} labels={labels} contractType={contractType} withDetail />
+      ),
     },
   ];
 
@@ -490,6 +531,8 @@ export default function ContractWizard({ id }: { id: string }) {
             lockedPartyRoles={lockedPartyRoles}
             practitionerSlot={practitionerSlot}
             onFieldsChange={changeFields}
+            mandateItems={mandateItems ?? []}
+            onMandateItemsChange={setMandateItems}
           />
         </Card>
       )}
@@ -511,7 +554,13 @@ export default function ContractWizard({ id }: { id: string }) {
           </Col>
           <Col span={7}>
             <Card size="small" title="簽署區檢核">
-              <SignatureChecklist fields={fields} signatureFields={sigFields} labels={labels} withDetail />
+              <SignatureChecklist
+                fields={fields}
+                signatureFields={sigFields}
+                labels={labels}
+                contractType={contractType}
+                withDetail
+              />
             </Card>
           </Col>
         </Row>
@@ -524,7 +573,7 @@ export default function ContractWizard({ id }: { id: string }) {
             showIcon
             style={{ marginBottom: 12 }}
             message={partiesOnly ? '乙方先簽' : '依序簽署'}
-            description={signingSequenceNotice(fields, contractType)}
+            description={signingSequenceNotice(fields, contractType, practitionerData?.evaluation.merges)}
           />
           <ui.ConfirmNotices fields={fields} />
           {renewalNotices.map((notice) => (
@@ -565,7 +614,7 @@ export default function ContractWizard({ id }: { id: string }) {
             type="primary"
             icon={<SendOutlined />}
             loading={saving || sending}
-            disabled={sendReasons.length > 0}
+            disabled={sendReasons.length > 0 || !definition.sendSupported}
             onClick={send}
           >
             確認送簽

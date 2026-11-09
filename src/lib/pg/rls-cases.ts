@@ -165,6 +165,47 @@ export const ORG_TABLE_CASES: Record<string, OrgTableCase> = {
       return id;
     },
   },
+  'org.signing_lapses': {
+    async seed(tx, orgId) {
+      // 父列：合約、簽署任務、簽署人。業務鍵 (org_id, contract_id, rule_id) 的 contract_id 是新的 ULID，
+      // rule_id 固定。兩個組織各寫一列都要成功（陷阱 6）
+      const contractId = newUlid();
+      await tx.query('INSERT INTO org.contracts (id, org_id) VALUES ($1, $2)', [contractId, orgId]);
+      const signTaskId = newUlid();
+      await tx.query(
+        `INSERT INTO org.sign_tasks (id, org_id, provider, provider_task_ref, subject_type, subject_id)
+         VALUES ($1, $2, 'mock', 'penetration-ref', 'contract', $3)`,
+        [signTaskId, orgId, contractId],
+      );
+      const signerId = newUlid();
+      await tx.query(
+        `INSERT INTO org.signers (id, org_id, sign_task_id, position, role, name, email)
+         VALUES ($1, $2, $3, 0, 'practitioner', '滲透測試執業人員', 'penetration@example.com')`,
+        [signerId, orgId, signTaskId],
+      );
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.signing_lapses (id, org_id, contract_id, signer_id, rule_id, state, event_at)
+         VALUES ($1, $2, $3, $4, 'penetration.slot', 'void_pending', now())`,
+        [id, orgId, contractId, signerId],
+      );
+      return id;
+    },
+  },
+  'org.contract_mandate_items': {
+    async seed(tx, orgId) {
+      // 父列：合約。業務鍵 (org_id, contract_id, position) 的 contract_id 是新的 ULID，position 固定
+      const contractId = newUlid();
+      await tx.query('INSERT INTO org.contracts (id, org_id) VALUES ($1, $2)', [contractId, orgId]);
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.contract_mandate_items (id, org_id, contract_id, position, property_id, property_name, property_address)
+         VALUES ($1, $2, $3, 0, 'penetration-property', '滲透測試物件', '滲透測試地址')`,
+        [id, orgId, contractId],
+      );
+      return id;
+    },
+  },
   'org.consent_records': {
     appendOnly: true,
     // 直接 INSERT 而不用 recordConsent：探測 4 要在 A 的脈絡寫入 B 的 org_id，recordConsent 沒有這個參數。

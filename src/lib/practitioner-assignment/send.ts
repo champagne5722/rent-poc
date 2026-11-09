@@ -71,7 +71,7 @@ export async function prepareContractSend(
     return { ok: false, status: 400, error: `無法送簽：${reasons.map((r) => r.message).join('。')}`, reasons };
   }
 
-  const prepared = prepareContractSigners(contract, routing.facts, evaluation.assignees);
+  const prepared = prepareContractSigners(contract, routing.facts, evaluation.assignees, evaluation.identities);
   if (!prepared.ok) return { ok: false, status: prepared.status, error: prepared.error, reasons: [] };
 
   return {
