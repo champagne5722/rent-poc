@@ -130,7 +130,7 @@ describe('PostgreSQL 骨架', () => {
     });
 
     it('control：其他線的 migration 能自建表並自行 REVOKE 與 GRANT（F 線 control.handovers 的情境）', async () => {
-      const db = await testDb.base.clone();
+      const db = await testDb.raw();
       try {
         const combined = await copyWithExtra(
           '9000_handovers.sql',
@@ -212,7 +212,7 @@ describe('PostgreSQL 骨架', () => {
             AND is_nullable = 'NO' AND column_default IS NULL ORDER BY 1`,
       );
       expect(required.rows.map((r) => r.column_name)).toEqual(['id', 'kind', 'name']);
-      const db = await testDb.base.clone();
+      const db = await testDb.raw();
       try {
         await db.exec(`UPDATE control.orgs SET name = '某屋主' WHERE kind = 'owner'`);
         const renamed = await db.query<{ name: string }>(`SELECT name FROM control.orgs WHERE kind = 'owner'`);
@@ -223,7 +223,7 @@ describe('PostgreSQL 骨架', () => {
     });
 
     it('平台組織只能有一個', async () => {
-      const db = await testDb.base.clone();
+      const db = await testDb.raw();
       try {
         await expect(
           db.exec(`INSERT INTO control.orgs (id, name, kind) VALUES ('00000000000000000000000003', '第二個', 'platform')`),
@@ -234,7 +234,7 @@ describe('PostgreSQL 骨架', () => {
     });
 
     it('組織 ID 必須是 ULID 格式', async () => {
-      const db = await testDb.base.clone();
+      const db = await testDb.raw();
       try {
         await expect(
           db.exec(`INSERT INTO control.orgs (id, name, kind) VALUES ('12', '壞 ID', 'owner')`),
@@ -257,7 +257,7 @@ describe('PostgreSQL 骨架', () => {
 
   describe('migration 紀錄', () => {
     it('重跑同一個目錄不會再執行任何檔案', async () => {
-      const db = await testDb.base.clone();
+      const db = await testDb.raw();
       try {
         expect(await migrate(db, { dir: MIGRATIONS_DIR, runAs: 'app_owner' })).toEqual([]);
       } finally {

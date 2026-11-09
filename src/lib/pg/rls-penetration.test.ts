@@ -43,7 +43,7 @@ describe('案例清單機制', () => {
   });
 
   it('機制本身有效：加一張沒登記的 org 表，同一個檢查會抓到', async () => {
-    const db = await testDb.base.clone();
+    const db = await testDb.raw();
     try {
       await db.exec('SET ROLE app_owner');
       await db.exec('CREATE TABLE org.unregistered_probe (id text PRIMARY KEY, org_id text NOT NULL)');
@@ -90,7 +90,7 @@ describe('control 表的例外清單', () => {
   });
 
   it('機制本身有效：加一張沒登記的 control 表，同一個檢查會抓到', async () => {
-    const db = await testDb.base.clone();
+    const db = await testDb.raw();
     try {
       await db.exec('SET ROLE app_owner');
       await db.exec('CREATE TABLE control.unregistered_probe (id text PRIMARY KEY)');
