@@ -8,7 +8,7 @@ import {
   type CreationBlockReason,
   type OrgKind,
 } from '../cases';
-import { resolveSocialHousingDefault } from '../case-ledger/social-housing';
+import { resolveSocialHousingDefault } from '../case-ledger/social-housing-default';
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
 import {
