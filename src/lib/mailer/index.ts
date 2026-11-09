@@ -37,28 +37,31 @@ export function getMailer(env: Readonly<Record<string, string | undefined>> = pr
   return (g.__rentPocLogMailer ??= createLogMailer());
 }
 
+/** 目前是 Mock 模式（log adapter 且沒被測試換掉）時回傳它，其他情況 null。demo 頁與 demo 觸發入口共用這個判斷。 */
+function activeLogMailer(env: Readonly<Record<string, string | undefined>>): LogMailer | null {
+  if (g.__rentPocMailerOverride) return null;
+  if (mailerAdapterName(env) !== 'log') return null;
+  return (g.__rentPocLogMailer ??= createLogMailer());
+}
+
 /**
  * demo 的驗證碼頁用。只有目前的 adapter 是 log 時才回傳信件，否則回傳 null，頁面據此 404。
  * 測試用 setMailer 換成別的 adapter 時、正式環境沒明確設定時也是 null。
  */
 export function recentLoggedMail(env: Readonly<Record<string, string | undefined>> = process.env): readonly LoggedMail[] | null {
-  if (g.__rentPocMailerOverride) return null;
-  if (mailerAdapterName(env) !== 'log') return null;
-  return (g.__rentPocLogMailer ??= createLogMailer()).recent();
+  return activeLogMailer(env)?.recent() ?? null;
 }
 
 /**
  * demo 的寄件紀錄頁用（MIL-120）。Mock 模式＝目前的 adapter 是 log（信不離開程序，只留在記憶體）。
  * 其他情況回傳 null，頁面據此 404：真實寄信服務、正式環境沒明確設定、測試換了 adapter。
- * 與 recentLoggedMail 的差別：這個回傳 SentMail，包含寄件名義。
+ * 與 recentLoggedMail 的差別：這個走 Mailer 介面的 listSent。
  */
 export async function listMockMail(env: Readonly<Record<string, string | undefined>> = process.env): Promise<readonly SentMail[] | null> {
-  if (g.__rentPocMailerOverride) return null;
-  if (mailerAdapterName(env) !== 'log') return null;
-  return (g.__rentPocLogMailer ??= createLogMailer()).listSent();
+  return (await activeLogMailer(env)?.listSent()) ?? null;
 }
 
 /** 目前是不是 Mock 模式。demo 專用的觸發入口用它決定要不要 404。 */
 export function isMockMailerMode(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
-  return !g.__rentPocMailerOverride && mailerAdapterName(env) === 'log';
+  return activeLogMailer(env) !== null;
 }

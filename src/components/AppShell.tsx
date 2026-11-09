@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Badge, Button, Layout, Menu, Tooltip, Typography, theme } from 'antd';
+import { Badge, Button, Flex, Layout, Menu, Tooltip, Typography, theme } from 'antd';
 import {
   DashboardOutlined,
   HomeOutlined,
@@ -45,11 +45,12 @@ function useUnreadCount(pathname: string): number {
           if (!cancelled) setUnread(body?.data?.unread ?? 0);
         })
         .catch(() => undefined);
-    void load();
-    window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, load);
+    const reload = () => void load();
+    reload();
+    window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, reload);
     return () => {
       cancelled = true;
-      window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, load);
+      window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, reload);
     };
   }, [pathname]);
   return unread;
@@ -111,10 +112,10 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
               icon: badge > 0 && collapsed ? <Badge dot offset={[2, -2]}>{NAV_ICONS[item.key]}</Badge> : NAV_ICONS[item.key],
               label: (
                 <Link href={item.href}>
-                  {item.label}
-                  {badge > 0 && !collapsed && (
-                    <Badge count={badge} overflowCount={99} size="small" style={{ marginLeft: 8 }} aria-label={`${badge} 則未讀`} />
-                  )}
+                  <Flex gap={8 /* xs */} align="center" component="span">
+                    {item.label}
+                    {badge > 0 && !collapsed && <Badge count={badge} overflowCount={99} size="small" aria-label={`${badge} 則未讀`} />}
+                  </Flex>
                 </Link>
               ),
             };

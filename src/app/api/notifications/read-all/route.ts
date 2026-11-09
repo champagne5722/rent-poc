@@ -1,6 +1,6 @@
 import { jsonOk } from '@/lib/http';
 import { markAllRead } from '@/lib/notifications';
-import { inMemberTx } from '@/lib/notifications/route';
+import { inMemberTx } from '@/lib/notifications/member-route';
 
 // 全部標已讀：只動目前成員看得到的未讀（MIL-120）。
 export async function POST() {

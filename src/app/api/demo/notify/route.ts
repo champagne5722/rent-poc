@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { jsonError, jsonOk } from '@/lib/http';
 import { isMockMailerMode } from '@/lib/mailer';
 import { dispatchNotificationEmail, notify, NotifyInputError, type NotifyReceipt } from '@/lib/notifications';
-import { inMemberTx } from '@/lib/notifications/route';
+import { inMemberTx } from '@/lib/notifications/member-route';
 import { readJson } from '@/lib/org-route';
 
 // demo 專用：送一則測試通知（站內通知加 email），讓人在寄件紀錄頁看到結果（MIL-120）。

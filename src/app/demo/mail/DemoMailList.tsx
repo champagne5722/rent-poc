@@ -62,7 +62,7 @@ export default function DemoMailList({ rows }: { rows: DemoMailRow[] }) {
       <Alert
         type="info"
         showIcon
-        message="Mock 模式：信不會真的寄出"
+        title="Mock 模式：信不會真的寄出"
         description="紀錄只存在伺服器記憶體，服務重啟後清空。接上真實寄信服務後，這一頁不再提供。"
       />
       <Table<DemoMailRow>

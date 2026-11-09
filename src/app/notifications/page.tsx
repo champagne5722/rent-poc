@@ -1,43 +1,49 @@
 'use client';
 
 // 通知清單（MIL-120）：站內通知，新的在前。未讀的標題加粗並帶圓點，可逐則標已讀或全部標已讀。
-import { useCallback, useEffect, useState } from 'react';
-import { App as AntApp, Badge, Button, Empty, Flex, List, Result, Skeleton, Typography } from 'antd';
+import { useEffect, useState } from 'react';
+import { App as AntApp, Badge, Button, Empty, Flex, Result, Skeleton, Table, Typography } from 'antd';
 import Link from 'next/link';
 import { NOTIFICATIONS_CHANGED_EVENT } from '@/lib/notifications/client-events';
-import type { NotificationDto } from '@/lib/notifications/route';
+import type { NotificationDto } from '@/lib/notifications/member-route';
 
 type LoadState = { kind: 'loading' } | { kind: 'error' } | { kind: 'ready'; items: NotificationDto[]; unread: number };
 
 const formatTime = (iso: string) =>
   new Intl.DateTimeFormat('zh-TW', { dateStyle: 'medium', timeStyle: 'short', hour12: false }).format(new Date(iso));
 
+async function fetchState(): Promise<LoadState> {
+  try {
+    const res = await fetch('/api/notifications');
+    if (!res.ok) throw new Error(String(res.status));
+    const body = (await res.json()) as { data: { items: NotificationDto[]; unread: number } };
+    return { kind: 'ready', ...body.data };
+  } catch {
+    return { kind: 'error' };
+  }
+}
+
 export default function NotificationsPage() {
   const { message } = AntApp.useApp();
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch('/api/notifications');
-      if (!res.ok) throw new Error(String(res.status));
-      const body = (await res.json()) as { data: { items: NotificationDto[]; unread: number } };
-      setState({ kind: 'ready', ...body.data });
-    } catch {
-      setState({ kind: 'error' });
-    }
-  }, []);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    void fetchState().then((next) => {
+      if (!cancelled) setState(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function post(url: string, failure: string) {
     setBusy(true);
     try {
       const res = await fetch(url, { method: 'POST' });
       if (!res.ok) throw new Error(String(res.status));
-      await load();
+      setState(await fetchState());
       window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED_EVENT));
     } catch {
       message.error(failure);
@@ -53,7 +59,7 @@ export default function NotificationsPage() {
         status="warning"
         title="讀不到通知"
         subTitle="可能是連線問題，或目前的帳號不屬於任何組織。"
-        extra={<Button onClick={() => void load()}>重新讀取</Button>}
+        extra={<Button onClick={() => void fetchState().then(setState)}>重新讀取</Button>}
       />
     );
   }
@@ -73,33 +79,18 @@ export default function NotificationsPage() {
         </Button>
       </Flex>
 
-      <List
-        bordered
+      <Table<NotificationDto>
+        size="middle"
+        rowKey="id"
+        showHeader={false}
+        pagination={false}
         dataSource={items}
         locale={{ emptyText: <Empty description="目前沒有通知" /> }}
-        renderItem={(item) => (
-          <List.Item
-            key={item.id}
-            actions={[
-              item.read ? (
-                <Typography.Text key="read" type="secondary">
-                  已讀
-                </Typography.Text>
-              ) : (
-                <Button
-                  key="mark"
-                  type="link"
-                  size="small"
-                  disabled={busy}
-                  onClick={() => void post(`/api/notifications/${item.id}/read`, '標為已讀失敗，請再試一次')}
-                >
-                  標為已讀
-                </Button>
-              ),
-            ]}
-          >
-            <List.Item.Meta
-              title={
+        columns={[
+          {
+            key: 'content',
+            render: (_, item) => (
+              <Flex vertical gap={4 /* xxs */}>
                 <Flex gap={8 /* xs */} align="center">
                   {!item.read && <Badge status="processing" aria-label="未讀" />}
                   {item.linkPath ? (
@@ -110,16 +101,30 @@ export default function NotificationsPage() {
                     <Typography.Text strong={!item.read}>{item.title}</Typography.Text>
                   )}
                 </Flex>
-              }
-              description={
-                <Flex vertical gap={4 /* xxs */}>
-                  <Typography.Text>{item.body}</Typography.Text>
-                  <Typography.Text type="secondary">{formatTime(item.createdAt)}</Typography.Text>
-                </Flex>
-              }
-            />
-          </List.Item>
-        )}
+                <Typography.Text>{item.body}</Typography.Text>
+                <Typography.Text type="secondary">{formatTime(item.createdAt)}</Typography.Text>
+              </Flex>
+            ),
+          },
+          {
+            key: 'action',
+            align: 'right',
+            width: 120,
+            render: (_, item) =>
+              item.read ? (
+                <Typography.Text type="secondary">已讀</Typography.Text>
+              ) : (
+                <Button
+                  type="link"
+                  size="small"
+                  disabled={busy}
+                  onClick={() => void post(`/api/notifications/${item.id}/read`, '標為已讀失敗，請再試一次')}
+                >
+                  標為已讀
+                </Button>
+              ),
+          },
+        ]}
       />
     </Flex>
   );

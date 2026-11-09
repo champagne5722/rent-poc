@@ -17,6 +17,7 @@ import { EMAIL_OUTBOX_ACTION, EMAIL_SUBJECT_TYPE } from './notify';
 //   交易一：認領 outbox 列（pending 轉 sending），讀 email 列。
 //   寄信：  Mailer.send。
 //   交易二：成功＝email 列記寄出時間、outbox 轉 done。失敗＝依 A 線的重試規則回 pending，用完轉 dead。
+// 排程重試用 drainNotificationEmails。呼叫它的 worker route 屬 MIL-86，還沒建，在那之前失敗的列只能等手動重派。
 // 至少一次：寄出後交易二失敗時，列停在 sending，超過 OUTBOX_STALE_MS 被視為中斷、回 pending 後會再寄一次。
 
 export type DispatchResult =

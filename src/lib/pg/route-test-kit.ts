@@ -39,7 +39,7 @@ export function actAs(orgId: string): void {
   };
 }
 
-/** 登入了但不是組織身分（承租人），route 應回 403。 */
+/** 登入了但不是組織身分（承租人），route 必須回 403。 */
 export function actAsParty(): void {
   state.current = { kind: 'party', userId: newUlid(), partyId: newUlid(), requestId: 'test' };
 }

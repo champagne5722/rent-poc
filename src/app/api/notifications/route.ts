@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { jsonOk } from '@/lib/http';
 import { countUnread, listNotifications } from '@/lib/notifications';
-import { inMemberTx, toNotificationDto } from '@/lib/notifications/route';
+import { inMemberTx, toNotificationDto } from '@/lib/notifications/member-route';
 
 // 通知清單與未讀數（MIL-120）。?unread=1 只看未讀，?limit= 限制筆數（預設 50，上限 200）。
 export async function GET(request: NextRequest) {

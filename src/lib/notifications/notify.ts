@@ -1,5 +1,5 @@
-import { MAIL_FROM_MAX_LENGTH, MAIL_KIND_PATTERN } from '../mailer/types';
-import { newUlid } from '../pg/ulid';
+import { assertValidMessage } from '../mailer/types';
+import { isUlid, newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
 import { enqueueOutbox } from '../signing-module/outbox';
 
@@ -45,29 +45,28 @@ export class NotifyInputError extends Error {
 export const EMAIL_SUBJECT_TYPE = 'notification_email';
 export const EMAIL_OUTBOX_ACTION = 'send_email';
 
-const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
-
 function validate(input: NotifyInput): void {
   const inApp = input.inApp !== false;
   if (!inApp && !input.email) throw new NotifyInputError('至少要有一個通道：站內通知或 email');
-  if (!MAIL_KIND_PATTERN.test(input.kind)) throw new NotifyInputError('通知種類格式必須是「領域.動作」');
   if (input.title.trim() === '') throw new NotifyInputError('通知標題不得為空');
-  if (input.recipientPartyId !== undefined && !ULID.test(input.recipientPartyId)) {
+  if (input.recipientPartyId !== undefined && !isUlid(input.recipientPartyId)) {
     throw new NotifyInputError('收件成員必須是 ULID');
   }
   if (input.linkPath !== undefined && !(/^\/(?!\/)/.test(input.linkPath) && !/[\\\s]/.test(input.linkPath))) {
     throw new NotifyInputError('站內連結必須是以 / 開頭的站內路徑');
   }
+  // 通知種類、收件人、寄件名義、主旨、本文的規則與 Mailer 共用，只維護一份（mailer/types.ts）
   const email = input.email;
-  if (email) {
-    if (!/^[^@\s,;]+@[^@\s,;]+$/.test(email.to)) throw new NotifyInputError('收件人必須是單一個合法的 email');
-    if (email.from.trim() === '') throw new NotifyInputError('寄件名義不得為空');
-    if (/[\r\n]/.test(email.from)) throw new NotifyInputError('寄件名義不得含換行');
-    if (email.from.length > MAIL_FROM_MAX_LENGTH) throw new NotifyInputError(`寄件名義不得超過 ${MAIL_FROM_MAX_LENGTH} 字`);
-    const subject = email.subject ?? input.title;
-    if (subject.trim() === '') throw new NotifyInputError('email 主旨不得為空');
-    if (/[\r\n]/.test(subject)) throw new NotifyInputError('email 主旨不得含換行');
-    if ((email.text ?? input.body).trim() === '') throw new NotifyInputError('email 本文不得為空');
+  try {
+    assertValidMessage({
+      kind: input.kind,
+      to: email?.to ?? 'placeholder@example.com',
+      from: email?.from,
+      subject: email?.subject ?? input.title,
+      text: email?.text ?? input.body,
+    });
+  } catch (e) {
+    throw new NotifyInputError(e instanceof Error ? e.message : String(e));
   }
 }
 
