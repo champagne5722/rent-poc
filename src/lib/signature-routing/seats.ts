@@ -5,6 +5,7 @@ import { BUSINESS_TYPE_LABELS, partyLabels, practitionerTitle, type ContractType
 import { signatureBlockLayout } from '../pdf-layout';
 import { SIGNER_ROLE_LABELS, type ContractRoutingConditions, type SignerRole } from '../types';
 import { routingFactsOf } from './facts';
+import type { MergedSeats } from './sequence';
 import { routeSignatures } from './route';
 import type { SignaturePlan } from './types';
 
@@ -98,6 +99,26 @@ export function printOrder(seats: readonly SeatView[]): SeatView[] {
   return signatureBlockLayout(seats.map((seat) => ({ role: seat.role, slot: seat.ruleId }))).map(
     (spot) => seats.find((seat) => seat.ruleId === spot.slot)!,
   );
+}
+
+/**
+ * 合併後實際的簽署人，依簽署順序，一位簽署人一句。兼任的當事人席位併入執業人員，寫成「執業人員（…）兼甲方（出租人）」。
+ * 確認頁用它列出簽署序列。沒有合併時與席位順序相同。
+ */
+export function signerChainLabels(
+  seats: readonly SeatView[],
+  merges: ReadonlyArray<Pick<MergedSeats, 'practitionerRuleId' | 'partyRuleId'>>,
+): string[] {
+  const absorbed = new Set(merges.map((m) => m.partyRuleId));
+  return seats
+    .filter((seat) => !absorbed.has(seat.ruleId))
+    .map((seat) => {
+      const concurrent = merges
+        .filter((m) => m.practitionerRuleId === seat.ruleId)
+        .map((m) => seats.find((s) => s.ruleId === m.partyRuleId)?.fullLabel)
+        .filter((label): label is string => Boolean(label));
+      return [seat.fullLabel, ...concurrent].join('兼');
+    });
 }
 
 export function hasPractitionerSeat(seats: readonly SeatView[]): boolean {

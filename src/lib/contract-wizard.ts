@@ -18,6 +18,8 @@ import {
   evaluateRouting,
   hasPractitionerSeat,
   reconcileSignatureFields,
+  signerChainLabels,
+  type MergedSeats,
   type SeatView,
 } from './signature-routing';
 import type {
@@ -232,14 +234,20 @@ export function resumeStepIndex(contract: Contract, attachments?: ContractAttach
 }
 
 /** 確認頁的簽署順序說明。乙方先簽、甲方後簽的序列沿用原文字，其他序列由席位產生。 */
-export function signingSequenceNotice(fields: ContractFields, contractType: ContractType = DEFAULT_CONTRACT_TYPE): string {
+export function signingSequenceNotice(
+  fields: ContractFields,
+  contractType: ContractType = DEFAULT_CONTRACT_TYPE,
+  /** 同一人兼任而合併的席位。合併後列出實際的簽署人（MIL-76）。 */
+  merges: ReadonlyArray<Pick<MergedSeats, 'practitionerRuleId' | 'partyRuleId'>> = [],
+): string {
   const evaluation = evaluateRouting(fields.routing, contractType);
   const partiesOnlyNotice = contractTypeDefinition(contractType).partiesOnlyNotice;
   // 分流條件無效時沒有序列可說明，沿用類型定義的兩方說明
   if (!evaluation.ok) return partiesOnlyNotice ?? '';
   if (partiesOnlyNotice && isPartiesOnly(evaluation.seats)) return partiesOnlyNotice;
-  const order = evaluation.seats.map((seat) => seat.fullLabel).join('、');
-  return `送簽後依序簽署：${order}。每位簽完才輪到下一位，全部簽完合約才成立。`;
+  const order = signerChainLabels(evaluation.seats, merges).join('、');
+  const onlyOnce = merges.length > 0 ? '兼任者只簽一次，' : '';
+  return `送簽後依序簽署：${order}。每位簽完才輪到下一位，${onlyOnce}全部簽完合約才成立。`;
 }
 
 export interface RoutingChange {

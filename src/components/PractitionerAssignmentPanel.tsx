@@ -7,8 +7,12 @@
 
 import { Alert, Col, Flex, Form, Input, Row, Select, Skeleton, Typography } from 'antd';
 import type { SeatOption, SeatOptions } from '@/lib/practitioner-assignment/service';
+import type { MergedSeats } from '@/lib/signature-routing';
 import type { PractitionerAssignmentInput } from '@/lib/practitioner-assignment/seats';
 import { SIGNER_ROLE_LABELS, type ContractPartyRole } from '@/lib/types';
+
+/** 同一人兼任而合併的席位（送簽前評估的 merges），附兼任者的姓名給畫面提示。 */
+export type MergedSeatNotice = MergedSeats & { name: string };
 
 export interface PartySignerPick {
   role: ContractPartyRole;
@@ -23,6 +27,8 @@ interface Props {
   onChange: (next: PractitionerAssignmentInput[]) => void;
   /** 選定或清空當事人簽署人時，呼叫端把姓名與 Email 帶入合約欄位。 */
   onPartySigner: (pick: PartySignerPick) => void;
+  /** 合併的席位。送簽時這位簽署人只簽一次。 */
+  merges?: readonly MergedSeatNotice[];
   disabled?: boolean;
 }
 
@@ -39,12 +45,14 @@ function SeatAssignment({
   current,
   onAssign,
   onPartySigner,
+  merged,
   disabled,
 }: {
   seat: SeatOption;
   current: PractitionerAssignmentInput | undefined;
   onAssign: (next: PractitionerAssignmentInput) => void;
   onPartySigner: (pick: PartySignerPick) => void;
+  merged?: MergedSeatNotice;
   disabled?: boolean;
 }) {
   const entity = seat.entities.find((e) => e.id === current?.entityId);
@@ -139,6 +147,15 @@ function SeatAssignment({
           }
         />
       )}
+      {seat.notice && <Typography.Text type="secondary">{seat.notice}</Typography.Text>}
+      {merged && (
+        <Alert
+          type="info"
+          showIcon
+          title={`${merged.name}同時是${SIGNER_ROLE_LABELS[merged.partyRole]}的當事人簽署人與${SIGNER_ROLE_LABELS.practitioner}`}
+          description="送簽時合併為一位簽署人，只簽一次，兩個角色的簽名框都由這位簽署。簽章紀錄會標示兼任角色，合約歷程也會記下。"
+        />
+      )}
       {practitioner?.renewalWindow && (
         <Alert
           type="warning"
@@ -159,7 +176,7 @@ function SeatAssignment({
   );
 }
 
-export default function PractitionerAssignmentPanel({ options, assignments, onChange, onPartySigner, disabled }: Props) {
+export default function PractitionerAssignmentPanel({ options, assignments, onChange, onPartySigner, merges = [], disabled }: Props) {
   if (!options) return <Skeleton active paragraph={{ rows: 3 }} title={false} />;
   if (!options.available) {
     return <Alert type="error" showIcon title="目前無法指派執業人員" description={options.reason} />;
@@ -187,6 +204,7 @@ export default function PractitionerAssignmentPanel({ options, assignments, onCh
           current={assignments.find((a) => a.slot === seat.ruleId)}
           onAssign={(next) => onChange(replaceSlot(assignments, seat.ruleId, next))}
           onPartySigner={onPartySigner}
+          merged={merges.find((m) => m.practitionerRuleId === seat.ruleId)}
           disabled={disabled}
         />
       ))}

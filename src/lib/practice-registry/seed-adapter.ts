@@ -34,15 +34,15 @@ export const SEED_ENTITIES: readonly PracticeEntity[] = [
 const UNVERIFIED_LICENSES: ReadonlySet<string> = new Set(['org-pe-xinghe:management']);
 
 export const SEED_PARTY_SIGNERS: readonly PartySignerCandidate[] = [
-  { id: 'ps-wang', entityId: 'org-pe-beichen', name: '王建國', email: 'wang.jianguo@beichen.example.com' },
-  { id: 'ps-li', entityId: 'org-pe-beichen', name: '李淑芬', email: 'li.shufen@beichen.example.com' },
-  // 與執業人員 pr-chen 是同一人（同 email）。兼任合併屬 MIL-76，在那之前 email 重複會被送簽前檢查擋下。
-  { id: 'ps-chen', entityId: 'org-pe-beichen', name: '陳怡君', email: 'chen.yijun@beichen.example.com' },
-  { id: 'ps-su', entityId: 'org-pe-suilin', name: '蘇志明', email: 'su.zhiming@suilin.example.com' },
-  { id: 'ps-yao', entityId: 'org-pe-yaoshi', name: '姚國棟', email: 'yao.guodong@yaoshi.example.com' },
-  { id: 'ps-qing', entityId: 'org-pe-qinghe', name: '秦玉蘭', email: 'qin.yulan@qinghe.example.com' },
-  { id: 'ps-yun', entityId: 'org-pe-yunding', name: '雲海濤', email: 'yun.haitao@yunding.example.com' },
-  { id: 'ps-xing', entityId: 'org-pe-xinghe', name: '邢志遠', email: 'xing.zhiyuan@xinghe.example.com' },
+  { id: 'ps-wang', partyId: 'party-ps-wang', entityId: 'org-pe-beichen', name: '王建國', email: 'wang.jianguo@beichen.example.com' },
+  { id: 'ps-li', partyId: 'party-ps-li', entityId: 'org-pe-beichen', name: '李淑芬', email: 'li.shufen@beichen.example.com' },
+  // 與執業人員 pr-chen 是同一人（同 email、同 partyId）。送簽時合併成一位簽署人（MIL-76）。
+  { id: 'ps-chen', partyId: 'party-chen', entityId: 'org-pe-beichen', name: '陳怡君', email: 'chen.yijun@beichen.example.com' },
+  { id: 'ps-su', partyId: 'party-ps-su', entityId: 'org-pe-suilin', name: '蘇志明', email: 'su.zhiming@suilin.example.com' },
+  { id: 'ps-yao', partyId: 'party-ps-yao', entityId: 'org-pe-yaoshi', name: '姚國棟', email: 'yao.guodong@yaoshi.example.com' },
+  { id: 'ps-qing', partyId: 'party-ps-qing', entityId: 'org-pe-qinghe', name: '秦玉蘭', email: 'qin.yulan@qinghe.example.com' },
+  { id: 'ps-yun', partyId: 'party-ps-yun', entityId: 'org-pe-yunding', name: '雲海濤', email: 'yun.haitao@yunding.example.com' },
+  { id: 'ps-xing', partyId: 'party-ps-xing', entityId: 'org-pe-xinghe', name: '邢志遠', email: 'xing.zhiyuan@xinghe.example.com' },
 ];
 
 interface SeedPractitioner {
@@ -184,6 +184,14 @@ const CERT_PREFIX: Record<CertificateKind, string> = {
   real_estate_sales_agent: 'SLS',
 };
 
+/**
+ * 自然人的 party ID。seed 裡只有陳怡君同時是當事人簽署人與執業人員，兩邊用同一個 partyId。
+ * 同姓的人（例如蘇志明與蘇雅婷）是不同人，partyId 不同。
+ */
+function seedPartyId(seed: SeedPractitioner): string {
+  return seed.id === 'pr-chen' ? 'party-chen' : `party-${seed.id}`;
+}
+
 function seedCertificateNo(seed: SeedPractitioner): string | null {
   if (!seed.certificateKind) return null;
   const index = SEED_PRACTITIONERS.findIndex((p) => p.id === seed.id);
@@ -227,6 +235,7 @@ export function createSeedPracticeRegistry({ today = todayInTaiwan }: SeedRegist
     };
     return {
       id: seed.id,
+      partyId: seedPartyId(seed),
       name: seed.name,
       accountEmail: seed.accountEmail,
       certificateKind: seed.certificateKind,

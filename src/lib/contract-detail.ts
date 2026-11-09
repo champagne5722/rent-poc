@@ -175,6 +175,7 @@ const EVENT_COLORS: Record<string, string> = {
   copied: 'gray',
   credential_lapsed: 'red',
   auto_void_failed: 'red',
+  signers_merged: 'gray',
 };
 
 /** 事件型別→中文標籤；未知型別原樣回傳，避免舊資料讓整條歷程消失。 */

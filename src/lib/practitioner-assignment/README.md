@@ -58,9 +58,19 @@ checkSendPreconditions(facts: SendPreconditionFacts): SendPreconditionResult
 `prepareContractSend` 回傳 `sendContext`，呼叫 `signing.send(subject, document, signers, sendContext)` 時由合約訂閱者在送簽交易內寫入。
 說明見 `src/lib/signature-records/README.md`。
 
-## 給 MIL-76（同一人兼任）
+## 同一人兼任與經紀人（MIL-76）已完成
 
-- 目前當事人簽署人與執業人員是同一人時，email 重複，送簽前檢查回 `duplicate_email`。MIL-76 做合併後，改成合併再檢查。seed 假資料的陳怡君同時是北辰的當事人簽署人與專任管理人員，可直接當測試案例。
+- `evaluateSend` 多回傳 `identities`（席位簽署人的 `partyId` 與執業主體）與 `merges`（要合併的席位）。`prepareContractSend` 把 `identities` 交給 `prepareContractSigners`，簽署序列合併成一位簽署人。
+- `checkSendPreconditions` 第 7 項在合併後檢查 email。同一人兼任不算重複，執業人員同時是相對人、兩人共用信箱仍擋下。
+- 簽章紀錄的 `signerIndex` 是合併後的位置。紀錄的 `concurrentRoles` 取自簽署人的 `concurrentRoles`。送簽時合約歷程多一筆 `signers_merged`。
+- 經紀人席位只能綁定不動產經紀人。`validateAssignments` 指派不動產經紀營業員時拒絕並說明，已存的指派原樣再存也拒絕。選單不列出營業員，席位帶說明（`SeatOption.notice`）。
+- 登錄資料的候選多一個必填欄位 `partyId`，見下節。
+
+## 給 C 線 MIL-113 與 116（MIL-76 之後）
+
+- `PartySignerCandidate` 與 `PractitionerCandidate` 多一個必填欄位 `partyId`：自然人的 party ID。同一個人以兩種身分出現時，兩邊相同。合併靠它判定，真實 adapter 要提供，契約測試已加一項。
+- 合併的另一個條件是兩者的 `entityId` 相同。當事人簽署人的 `entityId` 是 `PartySignerCandidate.entityId`，執業人員的是 `PractitionerCandidate.entityId`。
+- MIL-116 把指派搬到案件成員時，`evaluateSend` 回傳的 `identities` 與 `merges` 要照樣算。身分資料來源換成案件成員，`findMergedSeats` 不改。
 
 ## 正式金鑰的判定
 

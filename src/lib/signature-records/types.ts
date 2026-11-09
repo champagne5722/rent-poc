@@ -7,7 +7,7 @@ import type { CredentialSnapshot, SignatureSnapshot } from './snapshot';
 /**
  * 一個執業人員席位要寫入的簽章紀錄。`signerIndex` 是該席位的簽署人在送給簽署模組的簽署序列中的位置。
  * 送簽前算好的部分是 `ContractSendRecord`，兼任角色由訂閱者從簽署序列的 `Signer.concurrentRoles` 補上
- * （MIL-76 做合併後自動帶入）。
+ * （合併後自動帶入，MIL-76）。
  */
 export interface SignatureRecordInput {
   signerIndex: number;
