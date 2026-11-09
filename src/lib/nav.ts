@@ -26,6 +26,36 @@ export const NAV_ITEMS: readonly NavItem[] = [
 export const MEMBERS_HREF = '/settings/members';
 const MEMBERS_TITLE = '成員管理';
 
+// 執業主體與審核台（MIL-109）：依目前身分才出現的入口，不放進 NAV_ITEMS（它是所有身分共用的五項）。
+// 執業主體組織看得到「執業主體」，平台營運者看得到「審核台」。身分由殼層讀 /api/auth/identities 決定。
+export const PRACTICE_HREF = '/practice';
+export const DESK_HREF = '/desk';
+
+export type IdentityNavKey = 'practice' | 'desk';
+
+export type IdentityNavItem = {
+  key: IdentityNavKey;
+  label: string;
+  href: string;
+  /** 目前身分是這個種類時才顯示。 */
+  identity: 'practice' | 'operator';
+};
+
+export const IDENTITY_NAV_ITEMS: readonly IdentityNavItem[] = [
+  { key: 'practice', label: '執業主體', href: PRACTICE_HREF, identity: 'practice' },
+  { key: 'desk', label: '審核台', href: DESK_HREF, identity: 'operator' },
+];
+
+/** 目前身分該多看到哪些入口。身分還沒載入（null）或沒有專屬入口時是空陣列。 */
+export function identityNavItems(identityKind: string | null): readonly IdentityNavItem[] {
+  return IDENTITY_NAV_ITEMS.filter((item) => item.identity === identityKind);
+}
+
+/** 執業主體與審核台頁面的選單高亮。 */
+export function resolveIdentityNavKey(pathname: string): IdentityNavKey | null {
+  return IDENTITY_NAV_ITEMS.find((item) => matches(pathname, item.href))?.key ?? null;
+}
+
 // 常駐建約 CTA 的目的地＝建約 wizard 的第①步（選物件與範本，規格 §7）
 export const CREATE_CONTRACT_HREF = '/contracts/new';
 
@@ -68,6 +98,8 @@ export function resolveOwnerNavKey(pathname: string): OwnerNavKey | null {
 /** 後台 header 的頁面標題：一級頁面用選單標籤，成員管理不在選單內，另外給標題。 */
 export function resolvePageTitle(pathname: string): string {
   if (matches(pathname, MEMBERS_HREF)) return MEMBERS_TITLE;
+  const identityKey = resolveIdentityNavKey(pathname);
+  if (identityKey) return IDENTITY_NAV_ITEMS.find((item) => item.key === identityKey)?.label ?? '';
   const key = resolveNavKey(pathname);
   return NAV_ITEMS.find((item) => item.key === key)?.label ?? '';
 }

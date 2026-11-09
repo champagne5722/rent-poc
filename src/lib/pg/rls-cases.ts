@@ -344,3 +344,30 @@ export const CONTROL_TABLE_EXCEPTIONS: Record<string, ControlTableException> = {
 export function controlTablesWithoutException(tables: readonly string[]): string[] {
   return tables.filter((t) => !(t in CONTROL_TABLE_EXCEPTIONS));
 }
+
+// registry 與 vault 的表不掛組織 RLS，也不給 app_rw 任何直接權限，只經 SECURITY DEFINER 函式存取（ADR-0012 決議 3、8，MIL-109）。
+// 取而代之的是這份清單：每張 registry、vault 表必須登記「存放什麼、誰能經函式讀寫」。
+// 不在清單內的表讓 rls-penetration.test.ts 失敗；app_rw 或 PUBLIC 有任何表權限也會失敗。
+// 之後新增 registry 或 vault 表的人（B 線的段碼參照表、C 線的證書與任職表等）自己加進來。
+
+export interface DefinerOnlyTable {
+  /** 這張表放什麼，經哪些函式存取。 */
+  reason: string;
+}
+
+export const DEFINER_ONLY_TABLES: Record<string, DefinerOnlyTable> = {
+  'registry.anchors': { reason: '產權錨點，全域一份。經 registry.create_pending_anchor 等函式存取（MIL-81）' },
+  'registry.rental_units': { reason: '租賃單位，全域一份。經 registry.create_pending_anchor 等函式存取（MIL-81）' },
+  'registry.practice_entities': {
+    reason: '執業主體，統編全域唯一。經 claim_practice_entity、my_registration、submit_license、review_item_detail、lookup_practice_entities 存取（MIL-106、109）',
+  },
+  'registry.practice_licenses': { reason: '業別與驗證三態的業別層。經 submit_license、record_license_check、my_registration 存取（MIL-106、109）' },
+  'registry.review_items': { reason: '審核台佇列。經 review_queue、review_item_detail、record_license_check、resolve_entity_claim 存取（MIL-106、109）' },
+  'registry.credential_checks': { reason: '核對紀錄，只增不改（觸發器擋 UPDATE、DELETE、TRUNCATE）。只經 record_license_check 寫入（MIL-109）' },
+  'vault.credential_evidence': { reason: '證據檔的中繼資料，檔案本體在 FileStore。經 vault.*_credential_evidence 函式存取，開啟與刪除寫稽核事件（MIL-109）' },
+};
+
+/** 傳入系統目錄列出的 registry 與 vault 表名（schema.table），回傳沒有登記的表。 */
+export function definerOnlyTablesWithoutEntry(tables: readonly string[]): string[] {
+  return tables.filter((t) => !(t in DEFINER_ONLY_TABLES));
+}

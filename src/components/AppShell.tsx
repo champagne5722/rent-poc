@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Layout, Menu, Tooltip, Typography, theme } from 'antd';
 import {
   DashboardOutlined,
@@ -10,12 +10,24 @@ import {
   BgColorsOutlined,
   SwapOutlined,
   ProfileOutlined,
+  SafetyCertificateOutlined,
+  AuditOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import AccountBar from './AccountBar';
 import { isAuthScreen } from '@/lib/auth/auth-screens';
-import { NAV_ITEMS, CREATE_CONTRACT_HREF, resolveNavKey, resolvePageTitle, shellFor, type NavKey } from '@/lib/nav';
+import {
+  NAV_ITEMS,
+  CREATE_CONTRACT_HREF,
+  identityNavItems,
+  resolveIdentityNavKey,
+  resolveNavKey,
+  resolvePageTitle,
+  shellFor,
+  type IdentityNavKey,
+  type NavKey,
+} from '@/lib/nav';
 
 const NAV_ICONS: Record<NavKey, React.ReactNode> = {
   workbench: <DashboardOutlined />,
@@ -24,6 +36,11 @@ const NAV_ICONS: Record<NavKey, React.ReactNode> = {
   contracts: <FileTextOutlined />,
   handovers: <SwapOutlined />,
   design: <BgColorsOutlined />,
+};
+
+const IDENTITY_NAV_ICONS: Record<IdentityNavKey, React.ReactNode> = {
+  practice: <SafetyCertificateOutlined />,
+  desk: <AuditOutlined />,
 };
 
 // 殼層依路徑分派（MIL-94）：/owner 底下交給 src/app/owner/layout.tsx 掛 OwnerShell，
@@ -43,8 +60,27 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
   const [collapsed, setCollapsed] = useState(false);
   const { token } = theme.useToken();
 
-  const selected = resolveNavKey(pathname);
+  const selected = resolveNavKey(pathname) ?? resolveIdentityNavKey(pathname);
   const currentLabel = resolvePageTitle(pathname);
+
+  // 執業主體與審核台的入口依目前身分顯示（MIL-109）。身分載入前不顯示，抓不到也不顯示
+  const [identityKind, setIdentityKind] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch('/api/auth/identities');
+        if (!response.ok) return;
+        const body = (await response.json()) as { data?: { current?: { kind?: string } | null } };
+        if (!cancelled) setIdentityKind(body.data?.current?.kind ?? null);
+      } catch {
+        // 入口只是方便，抓不到就不顯示
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -83,11 +119,18 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
           theme="dark"
           mode="inline"
           selectedKeys={selected ? [selected] : []}
-          items={NAV_ITEMS.map((item) => ({
-            key: item.key,
-            icon: NAV_ICONS[item.key],
-            label: <Link href={item.href}>{item.label}</Link>,
-          }))}
+          items={[
+            ...NAV_ITEMS.map((item) => ({
+              key: item.key,
+              icon: NAV_ICONS[item.key],
+              label: <Link href={item.href}>{item.label}</Link>,
+            })),
+            ...identityNavItems(identityKind).map((item) => ({
+              key: item.key,
+              icon: IDENTITY_NAV_ICONS[item.key],
+              label: <Link href={item.href}>{item.label}</Link>,
+            })),
+          ]}
         />
       </Layout.Sider>
 

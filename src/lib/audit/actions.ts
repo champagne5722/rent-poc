@@ -32,6 +32,8 @@ export const AUDIT_ACTIONS = [
   'duplicate_review.judge',
   'practice_entity.verify',
   'practice_entity.register', // MIL-106：經理人送出統編登錄。統編已被別人登錄時（改排審核台）事件也一樣，不讓匯出稽核的人推出別的組織存在
+  'practice_entity.submit', // MIL-109：執業主體送出業別與證字號，寫在送件組織自己的鏈。payload 只放業別與狀態轉移，不放證字號
+  'practice_entity.claim_resolve', // MIL-109：營運者判定第二個組織認領同一統編的歸屬，寫在平台組織的鏈
   'practitioner.verify',
 
   // 規則（專任阻擋與提示、簽章人員指派、狀態改為已失效）
@@ -62,6 +64,8 @@ export const AUDIT_ACTIONS = [
 
   // 敏感文件（含讀取）
   'vault.read',
+  'vault.upload', // MIL-109：證據檔登記，payload 放檔案 ID、對象與大小，不放檔名
+  'vault.delete', // MIL-109：證據檔刪除，payload 放原因與刪除方式（ADR-0017 補充，P0-04 AC5）
 
   // 帳務（鏡像帳與押金分錄、報表產生、手動繳租提醒）
   'ledger.entry',

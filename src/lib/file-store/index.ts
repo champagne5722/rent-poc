@@ -86,6 +86,7 @@ function lazyBucket(open: () => Promise<ObjectBucket>): ObjectBucket {
     save: async (name, bytes, meta) => (await bucket()).save(name, bytes, meta),
     download: async (name) => (await bucket()).download(name),
     exists: async (name) => (await bucket()).exists(name),
+    delete: async (name) => (await bucket()).delete(name),
   };
 }
 
@@ -110,5 +111,6 @@ export function getFileStore(purpose: FilePurpose): FileStore {
     write: async (key, bytes, meta) => defaultStore(purpose).write(key, bytes, meta),
     read: async (key) => defaultStore(purpose).read(key),
     exists: async (key) => defaultStore(purpose).exists(key),
+    delete: async (key) => defaultStore(purpose).delete(key),
   };
 }
