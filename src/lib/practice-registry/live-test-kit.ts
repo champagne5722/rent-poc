@@ -65,6 +65,10 @@ export interface LiveKit {
   runnerFor(orgId: string, partyId?: string): RegistryRunner;
   registryAs(orgId: string, partyId?: string): PracticeRegistry;
   owner<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>;
+  /** 新的屋主組織，有一份草稿合約（selecting），沒有指派。給會改變關係的測試用。 */
+  newDraftOrg(name: string): Promise<{ orgId: string; contractId: string }>;
+  /** 在這個組織的草稿合約上存一筆指派。 */
+  assign(orgId: string, contractId: string, entityId: string, practitionerId: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -246,6 +250,16 @@ export async function setupLiveKit(): Promise<LiveKit> {
     runnerFor,
     registryAs: (orgId, partyId) => createLivePracticeRegistry({ run: runnerFor(orgId, partyId), now: LIVE_NOW }),
     owner,
+    async newDraftOrg(name) {
+      const orgId = newUlid();
+      await owner(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, $2, 'owner')`, [orgId, name]);
+      const contractId = await withTx({ kind: 'org', orgId }, (tx) => createContract(tx as OrgTx, { property_id: null, fields: {} as never }));
+      return { orgId, contractId };
+    },
+    assign: (orgId, contractId, entityId, practitionerId) =>
+      withTx({ kind: 'org', orgId }, (tx) =>
+        replaceAssignments(tx as OrgTx, contractId, [{ slot: 'a', entityId, practitionerId, partySignerId: null }]),
+      ),
     close: () => kit.close(),
   };
 }

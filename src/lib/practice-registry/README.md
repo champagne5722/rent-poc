@@ -41,10 +41,10 @@ vitest 的 `vitest.setup.ts` 設 `PRACTICE_REGISTRY=seed`，所以既有的 rout
 - `PracticeEntity.id`：`registry.practice_entities.id`。`licenseKinds` 是已登錄的業別，不論狀態。
 - `PartySignerCandidate.id`：成員關係 ID（`control.org_memberships.id`）。`partyId` 是自然人的 party。成員離開再加入會換 ID，舊指派因此失效。
 - `PractitionerCandidate.id` 與 `employmentId`：同一個，任職 ID。`getPractitioner(id)` 沒有執業主體參數，只有任職 ID 對得到唯一的執業主體與證書。`entityId` 與同一人的 `PartySignerCandidate.entityId` 相同，`partyId` 也相同，MIL-76 的合併靠這兩個欄位。
-- `certificateNo`：證號原文，格式 `112年內授營字第123456號`，只在 `own` 與 `bound` 關係下有值。簽章紀錄只存 `maskCertificateNo()` 遮罩後的值。
+- `certificateNo`：格式 `112年內授營字第123456號`。`own` 關係是原文，其他關係是資料庫遮罩後的值。簽章紀錄只存 `maskCertificateNo()` 遮罩後的值。
 - `fullTime`：管理人員且任職已驗證。專任由 `employments_exclusive_verified` 保證（同一證號最多一筆已驗證的管理人員任職）。經紀人員沒有專任要求，永遠是 `false`。
 - `isResponsiblePerson`：登錄沒有負責人資料，永遠是 `false`。「負責人沒有證書」（P0-12 AC5）的情境在真實 adapter 不會出現，契約測試對這項只跑 seed。
-- `credential`：業別層取查詢指定的業別，沒有登錄時 `state` 是 `null`。證書層 `validUntil` 是 `YYYY-MM-DD`。任職層是任職期間。三層的 `latestCheckId` 只在 `own` 與 `bound` 有值。
+- `credential`：業別層取查詢指定的業別，沒有登錄時 `state` 是 `null`。證書層 `validUntil` 是 `YYYY-MM-DD`。任職層是任職期間。三層的 `latestCheckId` 只在 `own` 與 `bound` 有值。`accountEmail` 在 `selecting` 是遮罩的。
 
 ## `listPractitioners` 的篩選
 
@@ -52,18 +52,24 @@ vitest 的 `vitest.setup.ts` 設 `PRACTICE_REGISTRY=seed`，所以既有的 rout
 
 ## 跨組織：呼叫者與執業主體的關係
 
-`registry.caller_relation(entity_id)`（內部函式）由資料庫依交易的組織脈絡算出，呼叫者不能指定：
+`registry.caller_relation(entity_id)`（內部函式）由資料庫依交易的組織脈絡算出，呼叫者不能指定。`bound` 與 `selecting` 都是呼叫者自己能建立的關係（存一筆指派，或建一份草稿合約），所以它們看不到證號原文，也看不到未驗證與已失效的任職。
 
-| 關係 | 條件 | 看得到什麼 |
-|---|---|---|
-| `own` | 呼叫者是該執業主體自己的組織，或平台營運者 | 全部：證號原文、三層核對紀錄 ID、全部任職 |
-| `bound` | 呼叫者組織的案件成員（`mandatary`、`practitioner`、`broker`）屬於該執業主體的組織；或呼叫者組織的合約指派指向該執業主體 | 同 `own` |
-| `selecting` | 呼叫者是屋主或執業主體組織，而且至少有一份草稿合約 | 證書與任職都已驗證的人員，沒有證號原文與核對紀錄 ID |
-| `none` | 其他 | 空，與執業主體不存在不可區分 |
+| 關係 | 條件 | 證號 | email | 核對紀錄 ID | 列出任職時 |
+|---|---|---|---|---|---|
+| `own` | 呼叫者是該執業主體自己的組織，或平台營運者 | 原文 | 真實 | 有 | 全部（含待驗證、失效） |
+| `bound` | 呼叫者組織的案件成員（`mandatary`、`practitioner`、`broker`）屬於該執業主體的組織；或呼叫者組織的合約指派指向該執業主體 | 遮罩 | 真實 | 有 | 只回證書與任職都已驗證的人。用任職 ID 查單筆時回完整狀態 |
+| `selecting` | 呼叫者是屋主或執業主體組織，而且至少有一份草稿合約 | 遮罩 | 遮罩 | 無 | 只回證書與任職都已驗證的人 |
+| `none` | 其他 | 空，與執業主體不存在不可區分 | | | |
+
+- 證號遮罩在 SQL 內做（`registry.mask_certificate_no`），原文不離開資料庫。規則與 `maskCertificateNo` 相同：`112年內授營字第1234567號` 只留最後 3 個字元。`maskCertificateNo` 對已遮罩的值結果不變，所以簽章紀錄的快照與以前相同。
+- email 遮罩保留第一個字元與網域：`c***@example.com`。姓名與 ID 照回。
+- `bound` 的真實 email 是送簽要寄信給簽署人所需。送簽前的 email 重複檢查發生在存指派之後，那時已是 `bound`。
 
 任何屋主或執業主體組織都能查（不分關係）：已驗證執業主體的名單（ID、名稱、已登錄業別），以及 `getEntity` 的名稱與業別。不回統編、組織 ID、人員。
 
-`selecting` 是過渡做法。委託管理合約現在不建案件（MIL-116），選人時沒有任何綁定，卻必須讀別的組織的候選人。MIL-116 把指派搬成案件成員後，可把 `selecting` 拿掉：只改 `caller_relation` 的最後一個判斷。待法務確認：選人階段揭露已驗證人員的姓名與 email 給有草稿合約的組織，是否符合個資告知（MIL-62）。
+**遮罩 email 卡住的步驟：** 建約 wizard 的 `PractitionerAssignmentPanel` 在選定當事人簽署人時，把簽署人的 email 寫進合約的甲方或乙方欄位（`onPartySigner`）。選人階段是 `selecting`，拿到的是遮罩 email，寫進欄位會讓送簽前檢查的「甲方的姓名與 email 必須與所選的當事人簽署人相同」不通過。沒有放寬遮罩。需要 D 線的畫面配合：遮罩的 email 不要寫進欄位，改由使用者輸入，或存指派後重新讀選項（那時是 `bound`，email 是真實的）。API 流程（欄位的 email 由呼叫端提供）不受影響。
+
+`selecting` 是過渡做法。委託管理合約現在不建案件（MIL-116），選人時沒有任何綁定，卻必須讀別的組織的候選人。MIL-116 把指派搬成案件成員後，可把 `selecting` 拿掉：只改 `caller_relation` 的最後一個判斷。待法務確認：選人階段揭露已驗證人員的姓名與遮罩 email 給有草稿合約的組織，是否符合個資告知（MIL-62）。
 
 `registry.signing_facts()`（0047）沒有放寬，仍只給自己的組織與營運者。跨組織走 `registry.signing_view()`。
 

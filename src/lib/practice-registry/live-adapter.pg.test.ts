@@ -70,7 +70,7 @@ describe.skipIf(!adminUrl)('registry.signing_view：真實 PostgreSQL', () => {
     await root.end();
   });
 
-  type View = { practitioners: Array<{ certificate_no: unknown; employment_id: string }> };
+  type View = { practitioners: Array<{ certificate_no: unknown; certificate_no_masked: string; account_email: string; employment_id: string }> };
   async function viewAs(orgId: string): Promise<View> {
     await admin.query('BEGIN');
     try {
@@ -83,18 +83,27 @@ describe.skipIf(!adminUrl)('registry.signing_view：真實 PostgreSQL', () => {
     }
   }
 
-  it('自己的組織與合約指派綁定看得到證號', async () => {
-    for (const org of [id.practiceOrg, id.bound]) {
-      const view = await viewAs(org);
-      expect(view.practitioners).toHaveLength(1);
-      expect(view.practitioners[0].certificate_no).toEqual({ year: '112', word: '內授營', serial: '123456' });
-    }
+  it('自己的組織看得到證號原文與真實 email', async () => {
+    const view = await viewAs(id.practiceOrg);
+    expect(view.practitioners).toHaveLength(1);
+    expect(view.practitioners[0].certificate_no).toEqual({ year: '112', word: '內授營', serial: '123456' });
+    expect(view.practitioners[0].account_email).toBe('x@example.com');
   });
 
-  it('只有草稿合約的組織看得到人員，但沒有證號', async () => {
+  it('合約指派綁定：證號是遮罩的，email 是真實的', async () => {
+    const view = await viewAs(id.bound);
+    expect(view.practitioners).toHaveLength(1);
+    expect(view.practitioners[0].certificate_no).toBeNull();
+    expect(view.practitioners[0].certificate_no_masked).toBe('*************56號');
+    expect(view.practitioners[0].account_email).toBe('x@example.com');
+  });
+
+  it('只有草稿合約的組織看得到人員，證號與 email 都是遮罩的', async () => {
     const view = await viewAs(id.selecting);
     expect(view.practitioners).toHaveLength(1);
     expect(view.practitioners[0].certificate_no).toBeNull();
+    expect(view.practitioners[0].certificate_no_masked).toBe('*************56號');
+    expect(view.practitioners[0].account_email).toBe('x***@example.com');
   });
 
   it('沒有合約的組織什麼都看不到', async () => {

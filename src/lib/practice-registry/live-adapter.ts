@@ -5,6 +5,7 @@
 // 查一次，查完就提交。route 與訂閱者的登錄查詢本來就在交易外（ADR-0012 決議 10），所以呼叫端不必改。
 // 已經持有 tx 的呼叫端（例如測試）用 `txRunner(tx)`。
 //
+// 揭露（db/migrations/0070）：證號原文與真實 email 不隨「綁定」或「選人中」的關係給出，那兩種關係是呼叫者自己能建立的。
 // 可簽章的判定不在這裡：adapter 只提供事實（三層狀態、valid_until、任職期間、三層最新核對紀錄 ID），
 // 由 D 線的 `credentialStatusAt()` 判定。`listPractitioners` 用它排除「人員本身」查詢時點不可簽章的人
 // （證書或任職未驗證、已期滿、任職已結束）。業別層不在這裡排除：業別未驗證是執業主體的問題，要留在候選上讓呼叫端說明原因。
@@ -48,7 +49,10 @@ interface RawPractitioner {
   name: string;
   account_email: string;
   certificate_kind: CertificateKind;
+  /** 證號原文，只有 own 關係有值。 */
   certificate_no: CertificateNumber | null;
+  /** 遮罩後的證號，資料庫內遮罩，規則與 maskCertificateNo 相同。 */
+  certificate_no_masked: string;
   practitioner_state: CredentialState;
   valid_until: string;
   practitioner_last_check_id: string | null;
@@ -96,7 +100,8 @@ export function createLivePracticeRegistry({ run, now = () => new Date() }: Live
       // 登錄沒有負責人資料
       isResponsiblePerson: false,
       entityId: view.entity_id!,
-      certificateNo: raw.certificate_no ? formatCertificateNumber(raw.certificate_no) : null,
+      // 只有自己的組織與營運者拿得到原文，其他關係拿到資料庫遮罩後的值。maskCertificateNo 對已遮罩的值結果不變
+      certificateNo: raw.certificate_no ? formatCertificateNumber(raw.certificate_no) : raw.certificate_no_masked,
       credential,
     };
   }

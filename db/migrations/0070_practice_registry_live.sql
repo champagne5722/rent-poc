@@ -11,11 +11,31 @@
 --   selecting  呼叫者的組織有至少一份草稿合約。過渡做法：委託管理合約尚未建案件，選人時還沒有任何綁定。
 --   none       其他。與「執業主體不存在」不可區分。
 --
+-- bound 與 selecting 都是呼叫者自己能建立的關係（存一筆指派，或建一份草稿合約）。所以未遮罩的資料不能只靠它們把關。
 -- 各關係看得到的資料：
---   own、bound  證號原文、三層最新核對紀錄 ID，以及全部任職（含失效的），讓判定能列出被拒的原因。
---   selecting   只看得到已驗證證書加已驗證任職的人員，沒有證號原文與核對紀錄 ID。
---   none        空。
+--   own        證號原文、真實 email、三層最新核對紀錄 ID、全部任職（含失效的）。
+--   bound      遮罩後的證號（在 SQL 內遮罩，原文不離開資料庫）、真實 email（送簽要寄信）、三層最新核對紀錄 ID。
+--              列出任職時只回證書與任職都已驗證的人。用任職 ID 查單筆時回那一筆的完整狀態，送簽前檢查才能說明被拒的原因。
+--   selecting  遮罩後的證號、遮罩後的 email，只回證書與任職都已驗證的人，沒有核對紀錄 ID。
+--   none       空。
+-- 證號遮罩規則與 src/lib/signature-records/snapshot.ts 的 maskCertificateNo 一致：格式 112年內授營字第1234567號，只留最後 3 個字元。
 -- 判定「可簽章」不在資料庫：這裡只提供事實，由 TypeScript 的 credentialStatusAt() 判定。
+
+-- 0. 內部函式：遮罩 ----------------------------------------------------------------
+-- email 保留第一個字元與網域。證號只留最後 3 個字元，與 maskCertificateNo 相同。
+CREATE FUNCTION registry.mask_email(p_email text) RETURNS text
+LANGUAGE sql IMMUTABLE
+SET search_path = registry, pg_temp
+AS $$ SELECT left(p_email, 1) || '***' || coalesce(substring(p_email from '@.*$'), '') $$;
+
+CREATE FUNCTION registry.mask_certificate_no(p_year text, p_word text, p_serial text) RETURNS text
+LANGUAGE sql IMMUTABLE
+SET search_path = registry, pg_temp
+AS $$
+  SELECT CASE WHEN char_length(s.v) <= 3 THEN repeat('*', char_length(s.v))
+              ELSE repeat('*', char_length(s.v) - 3) || right(s.v, 3) END
+    FROM (SELECT p_year || '年' || p_word || '字第' || p_serial || '號' AS v) s
+$$;
 
 -- 1. 內部函式：呼叫者與執業主體的關係 --------------------------------------------
 CREATE FUNCTION registry.caller_relation(p_entity_id text) RETURNS text
@@ -103,7 +123,7 @@ END
 $$;
 
 -- 3. 當事人簽署人候選：執業主體組織的成員 -------------------------------------------------
--- 關係為 none 時回空。p_membership_id 有值時只回那一位（getPartySigner 用），這時執業主體取自成員關係，p_entity_id 可為空。
+-- 關係為 none 時回空。selecting 的 email 遮罩，own 與 bound 回真實 email。p_membership_id 有值時只回那一位（getPartySigner 用），這時執業主體取自成員關係，p_entity_id 可為空。
 -- 候選的 ID 是成員關係的 ID：同一個人離開再加入會換 ID，舊的指派因此失效。
 CREATE FUNCTION registry.party_signer_candidates(p_entity_id text, p_membership_id text DEFAULT NULL)
 RETURNS TABLE (membership_id text, party_id text, entity_id text, name text, email text)
@@ -112,18 +132,25 @@ SET search_path = registry, pg_temp
 AS $$
 #variable_conflict use_column
 DECLARE
-  v_entity text := p_entity_id;
+  v_entity   text := p_entity_id;
+  v_relation text;
 BEGIN
   IF v_entity IS NULL AND p_membership_id IS NOT NULL THEN
     SELECT e.id INTO v_entity
       FROM registry.practice_entities e JOIN control.org_memberships om ON om.org_id = e.org_id
      WHERE om.id = p_membership_id;
   END IF;
-  IF v_entity IS NULL OR registry.caller_relation(v_entity) = 'none' THEN
+  IF v_entity IS NULL THEN
+    PERFORM registry.caller_relation('');   -- 沒有組織脈絡時照樣拒絕
+    RETURN;
+  END IF;
+  v_relation := registry.caller_relation(v_entity);
+  IF v_relation = 'none' THEN
     RETURN;
   END IF;
   RETURN QUERY
-  SELECT om.id, p.id, e.id, p.display_name, p.email
+  SELECT om.id, p.id, e.id, p.display_name,
+         CASE WHEN v_relation IN ('own', 'bound') THEN p.email ELSE registry.mask_email(p.email) END
     FROM registry.practice_entities e
     JOIN control.org_memberships om ON om.org_id = e.org_id
     JOIN control.users u ON u.id = om.user_id
@@ -137,9 +164,9 @@ $$;
 
 -- 4. 簽章事實：業別與人員 ---------------------------------------------------------------
 -- p_employment_id 有值時只回那一筆任職，執業主體取自任職（p_entity_id 忽略）。
--- 沒有值時，列出該執業主體的任職：own、bound 回全部，selecting 只回證書與任職都已驗證的人員。
+-- 沒有值時，列出該執業主體的任職：own 回全部，bound 與 selecting 只回證書與任職都已驗證的人員。
 -- 每筆任職一列事實（ID 是任職 ID），一個人在同一執業主體的每種證書各一列。
--- 證號原文與核對紀錄 ID 只給 own、bound。
+-- 證號原文只給 own，其他關係回遮罩後的證號。真實 email 與核對紀錄 ID 只給 own、bound。
 -- 關係為 none、執業主體不存在、任職不屬於呼叫者看得到的執業主體，都回同一個空結果。
 CREATE FUNCTION registry.signing_view(p_entity_id text DEFAULT NULL, p_employment_id text DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER
@@ -150,6 +177,7 @@ DECLARE
   v_entity   text := p_entity_id;
   v_relation text;
   v_full     boolean;
+  v_own      boolean;
   v_result   jsonb;
 BEGIN
   IF p_employment_id IS NOT NULL THEN
@@ -164,6 +192,7 @@ BEGIN
     RETURN v_empty;
   END IF;
   v_full := v_relation IN ('own', 'bound');
+  v_own := v_relation = 'own';
 
   SELECT jsonb_build_object(
     'entity_id', v_entity,
@@ -180,10 +209,11 @@ BEGIN
           'employment_id', m.id,
           'party_id', p.party_id,
           'name', pa.display_name,
-          'account_email', pa.email,
+          'account_email', CASE WHEN v_full THEN pa.email ELSE registry.mask_email(pa.email) END,
           'certificate_kind', p.certificate_kind,
-          'certificate_no', CASE WHEN v_full THEN
+          'certificate_no', CASE WHEN v_own THEN
             jsonb_build_object('year', p.cert_year, 'word', p.cert_word, 'serial', p.cert_serial) END,
+          'certificate_no_masked', registry.mask_certificate_no(p.cert_year, p.cert_word, p.cert_serial),
           'practitioner_state', p.state,
           'valid_until', p.valid_until,
           'practitioner_last_check_id', CASE WHEN v_full THEN
@@ -203,7 +233,9 @@ BEGIN
         JOIN control.parties pa ON pa.id = p.party_id
        WHERE m.entity_id = v_entity
          AND (p_employment_id IS NULL OR m.id = p_employment_id)
-         AND (v_full OR (p.state = 'verified' AND m.state = 'verified'))), '[]'::jsonb)
+         AND (v_own
+              OR (v_relation = 'bound' AND p_employment_id IS NOT NULL)
+              OR (p.state = 'verified' AND m.state = 'verified'))), '[]'::jsonb)
   ) INTO v_result;
   RETURN v_result;
 END
@@ -211,13 +243,15 @@ $$;
 
 -- 5. 權限 ---------------------------------------------------------------------------------
 REVOKE ALL ON FUNCTION
+  registry.mask_email(text),
+  registry.mask_certificate_no(text, text, text),
   registry.caller_relation(text),
   registry.list_practice_entities(text),
   registry.party_signer_candidates(text, text),
   registry.signing_view(text, text)
   FROM PUBLIC;
 
--- caller_relation 是內部函式，不授權給 app_rw
+-- mask_email、mask_certificate_no、caller_relation 是內部函式，不授權給 app_rw
 GRANT EXECUTE ON FUNCTION
   registry.list_practice_entities(text),
   registry.party_signer_candidates(text, text),
