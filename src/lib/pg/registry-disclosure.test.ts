@@ -1,5 +1,5 @@
 import { withTx } from './database';
-import type { OrgTx } from './with-tx';
+import type { DbContext, OrgTx } from './with-tx';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   REGISTRY_FUNCTION_CASES,
@@ -242,35 +242,32 @@ describe('無關的組織探測真實對象與不存在的對象，回應逐值�
   });
 });
 
-describe('用別人的證號自行登錄待審證書後呼叫專任事實，拿不到失效的任職', () => {
+describe('直接查詢某個證書鍵在別家有沒有在職（MIL-186）：一律被拒，真實與不存在的證書鍵回應相同', () => {
+  // 0072 移除 employment_exclusivity_facts，專任判定只在 submit_practitioner 與 create_employment 內讀別家的任職。
+  // 寫入路徑的探測測試在 exclusivity-disclosure.test.ts。殘餘風險（待法務確認）寫在 README 的「殘餘風險」。
   const key = (serial: string) => `rental_housing_manager:112:內授營:${serial}`;
-  const facts = (a: Attacker, certificateKey: string) =>
-    withTx(a.ctx, (tx) => (tx as OrgTx).query<Record<string, unknown>>('SELECT * FROM registry.employment_exclusivity_facts($1)', [certificateKey]).then((r) => r.rows));
+  const probe = async (ctx: DbContext, certificateKey: string) => {
+    try {
+      await withTx(ctx, (tx) => (tx as OrgTx).query('SELECT * FROM registry.employment_exclusivity_facts($1)', [certificateKey]));
+      return { rejected: false as const };
+    } catch (error) {
+      const e = error as { code?: string; message?: string };
+      return { rejected: true as const, code: e.code, message: e.message };
+    }
+  };
 
-  it('任職已結束與待驗證的證書鍵得到空結果，與不存在的證書鍵相同', async () => {
+  it.each(CALLER_RELATIONS.map((r) => [r.name, r.label] as const))('%s（%s）', async (relation) => {
+    const ctx = relationByName(relation).context(world);
+    const verified = await probe(ctx, key('1234567'));
+    expect(verified.rejected, '已驗證在職的證書鍵不得查得到').toBe(true);
+    expect(verified).toEqual(await probe(ctx, key('9999999')));
+  });
+
+  it('新開的執業主體組織，自行登錄待審證書之後也一樣', async () => {
     const attacker = await attackerPracticeOrg(world);
     await attackerRegisterCertificate(world, attacker, key('2000004'));
-    // 已結束（許文傑）與待驗證（吳家豪）的任職
-    expect(await facts(attacker, key('2000004'))).toEqual([]);
-    expect(await facts(attacker, key('2000002'))).toEqual([]);
-    expect(await facts(attacker, key('9999999'))).toEqual([]);
-  });
-
-  it('回傳的列只含判定需要的欄位，別家的列一律是已驗證', async () => {
-    const attacker = await attackerPracticeOrg(world);
-    await attackerRegisterCertificate(world, attacker, key('1234567'));
-    const rows = await facts(attacker, key('1234567'));
-    expect(rows.length).toBeGreaterThan(0);
-    for (const row of rows) {
-      expect(Object.keys(row).sort()).toEqual(['ended_on', 'started_on', 'state', 'whose']);
-      expect(row).toMatchObject({ whose: 'other', state: 'verified' });
-    }
-  });
-
-  // 殘餘風險（待法務確認）：登錄動作本身也會得到「此證號已有在職紀錄」的阻擋結果（ADR-0017 決議 7），
-  // 所以這裡揭露的資訊沒有比阻擋結果多。若之後改成不能直接呼叫此函式，這個案例要一併改。
-  it('殘餘風險：已驗證在職的證書鍵，仍可與不存在的證書鍵區分', async () => {
-    const attacker = await attackerPracticeOrg(world);
-    expect(await facts(attacker, key('1234567'))).not.toEqual(await facts(attacker, key('9999999')));
+    const verified = await probe(attacker.ctx, key('1234567'));
+    expect(verified.rejected).toBe(true);
+    for (const serial of ['2000004', '2000002', '9999999']) expect(await probe(attacker.ctx, key(serial))).toEqual(verified);
   });
 });

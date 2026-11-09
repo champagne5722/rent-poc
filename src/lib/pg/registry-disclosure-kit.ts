@@ -231,6 +231,24 @@ async function newAttacker(world: DisclosureWorld, kind: 'owner' | 'practice', n
 /** 新開一個執業主體組織，沒有任何綁定。 */
 export const attackerPracticeOrg = (world: DisclosureWorld) => newAttacker(world, 'practice', '攻擊者的執業主體組織');
 
+let attackerTaxId = 90_000_000;
+
+/**
+ * 新開一個執業主體組織，並登錄它的執業主體（MIL-186）。有執業主體才走得到專任判定的寫入路徑。
+ * 這是呼叫者自己能建立的關係：任何人都能送出執業主體登錄，審核之前業別是待驗證。
+ */
+export async function attackerPracticeOrgWithEntity(world: DisclosureWorld): Promise<Attacker> {
+  const a = await attackerPracticeOrg(world);
+  attackerTaxId += 1;
+  await world.live.owner(`INSERT INTO registry.practice_entities (id, tax_id, name, entity_type, org_id) VALUES ($1, $2, $3, 'company', $4)`, [
+    newUlid(),
+    String(attackerTaxId),
+    '攻擊者的執業主體',
+    a.orgId,
+  ]);
+  return a;
+}
+
 /** 新開一個屋主組織並建一份草稿合約：關係是 selecting。回傳可以再存指派的合約 ID。 */
 export async function attackerDraftOwner(world: DisclosureWorld): Promise<Attacker & { contractId: string }> {
   const a = await newAttacker(world, 'owner', '攻擊者的屋主組織');
