@@ -5,12 +5,13 @@ import { derContext, derInteger, derNull, derOctetString, derOid, derSequence, d
 // 離線的假 TSA，只給測試使用。用 fixtures/ 的測試根憑證簽出符合 RFC 3161 的回執，
 // 讓 FreeTSA adapter 的契約測試不必連網。真實格式由 fixtures/freetsa-sample.tsr 對照（rfc3161.test.ts）。
 // 測試根憑證與金鑰只用在這裡，沒有任何信任。
+// 憑證副檔名用 .crt：.gitignore 的 *.pem 會擋掉 .pem，之前的 MIL-88 commit 因此漏了憑證。產生方式見 fixtures/README.md。
 
 const FIXTURES = new URL('./fixtures/', import.meta.url);
 const read = (name: string) => fs.readFileSync(new URL(name, FIXTURES), 'utf8');
 
-export const TEST_ROOT_PEM = read('test-ca.pem');
-const TSA_PEM = read('test-tsa.pem');
+export const TEST_ROOT_PEM = read('test-ca.crt');
+const TSA_PEM = read('test-tsa.crt');
 const TSA_KEY = createPrivateKey(read('test-tsa.key'));
 const TSA_CERT = new X509Certificate(TSA_PEM);
 
