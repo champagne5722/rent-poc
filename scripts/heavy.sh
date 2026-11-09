@@ -11,6 +11,7 @@
 #   指定路徑的 vitest                        3   PGlite 測試檔每檔 1.1 到 1.5 GB，2 個 worker
 #   eslint                                   3   實測 2.5 GB
 #   next dev、next build、冒煙腳本           3   沒實測，保守估
+#   E2E（npm run e2e、e2e:visual）           6   實測尖峰 5.3 GB（MIL-168，dev server 加 PGlite 加 chromium）。成本寫在 package.json 的 HEAVY_COST
 #   tsc                                      1   實測 0.9 GB
 #   其他                                     3
 # 預算預設 8 GB。命令的成本由命令字串判斷，也能用 HEAVY_COST=<整數> 覆寫。
