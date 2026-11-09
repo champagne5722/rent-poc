@@ -3,7 +3,7 @@
 
 import type { Signer } from '../signing-module/provider';
 import type { ContractPartyRole, SignatureField } from '../types';
-import type { PlannedSeat, SignaturePlan } from './types';
+import type { PlannedSeat, PractitionerEntitySource, SignaturePlan } from './types';
 
 /**
  * 簽署人是誰。`partyId` 是自然人的 ID，`entityId` 是簽署人所屬的執業主體。
@@ -32,9 +32,16 @@ export interface MergedSeats {
 
 export type BuildSignerSequenceResult = { ok: true; signers: Signer[] } | { ok: false; missing: string[] };
 
-function entityPartyRole(seat: PlannedSeat): ContractPartyRole | null {
-  const source = seat.practitioner?.entitySource;
+/**
+ * 席位的執業主體是哪一方。甲方或乙方是執業主體時，當事人簽署人由該方指派（ADR-0018 決議 2）。
+ * 經紀業者與代管案件的受託人不是合約的甲乙方，回 null。
+ */
+export function partyRoleOfEntitySource(source: PractitionerEntitySource): ContractPartyRole | null {
   return source === 'party_a' || source === 'party_b' ? source : null;
+}
+
+function entityPartyRole(seat: PlannedSeat): ContractPartyRole | null {
+  return seat.practitioner ? partyRoleOfEntitySource(seat.practitioner.entitySource) : null;
 }
 
 /**

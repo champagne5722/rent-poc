@@ -1,8 +1,10 @@
 import { contractTypeDefinition, listSummaryOf, partyOf } from './contract-types';
+import { practitionerTitle } from './labels';
 import {
   buildSignerSequence,
   fieldsOfSeat,
   routeSignatures,
+  type PlannedSeat,
   type RoutingFacts,
   type SeatAssignee,
   type SeatIdentity,
@@ -52,8 +54,16 @@ export function prepareContractSigners(
 
   // 每個席位都要有簽署區域。合併後一位簽署人對應多個席位，所以逐席位檢查，不逐簽署人
   const missingSeat = route.plan.seats.find((seat) => fieldsOfSeat(route.plan, seat.ruleId, contract.signature_fields).length === 0);
-  if (missingSeat) return refuse(`請至少為${SIGNER_ROLE_LABELS[missingSeat.role]}設定一個簽署區域`);
+  if (missingSeat) return refuse(`請至少為${seatLabel(route.plan.seats, missingSeat)}設定一個簽署區域`);
   return { ok: true, signers: built.signers };
+}
+
+/** 席位的稱謂。有兩位執業人員時（居間加包租）加上法定稱謂，才分得出是哪一席。 */
+function seatLabel(seats: readonly PlannedSeat[], seat: PlannedSeat): string {
+  const label = SIGNER_ROLE_LABELS[seat.role];
+  const kind = seat.practitioner?.certificateKinds[0];
+  if (!kind || seats.filter((s) => s.role === seat.role).length < 2) return label;
+  return `${label}（${practitionerTitle(kind)}）`;
 }
 
 export function contractDocumentFileName(contract: Contract): string {

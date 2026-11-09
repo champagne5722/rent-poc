@@ -6,6 +6,7 @@ export {
   buildSignerSequence,
   fieldsOfSeat,
   findMergedSeats,
+  partyRoleOfEntitySource,
   seatSignerIndexes,
   type BuildSignerSequenceResult,
   type MergedSeats,

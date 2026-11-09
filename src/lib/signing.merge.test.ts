@@ -132,11 +132,16 @@ describe('prepareContractSigners：居間加包租的四位', () => {
     ]);
   });
 
-  it('經紀人沒有簽署區域：指名執業人員', () => {
+  it('經紀人沒有簽署區域：兩位執業人員時指名法定稱謂，分得出是哪一席', () => {
     expect(prepareContractSigners(contract([B, P, A]), BROKERED, practitioners)).toEqual({
       ok: false,
       status: 400,
-      error: '請至少為執業人員設定一個簽署區域',
+      error: '請至少為執業人員（不動產經紀人）設定一個簽署區域',
+    });
+    expect(prepareContractSigners(contract([B, A, K]), BROKERED, practitioners)).toEqual({
+      ok: false,
+      status: 400,
+      error: '請至少為執業人員（租賃住宅管理人員）設定一個簽署區域',
     });
   });
 });

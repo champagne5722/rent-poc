@@ -5,6 +5,7 @@ import { BUSINESS_TYPE_LABELS, partyLabels, practitionerTitle, type ContractType
 import { signatureBlockLayout } from '../pdf-layout';
 import { SIGNER_ROLE_LABELS, type ContractRoutingConditions, type SignerRole } from '../types';
 import { routingFactsOf } from './facts';
+import type { MergedSeats } from './sequence';
 import { routeSignatures } from './route';
 import type { SignaturePlan } from './types';
 
@@ -106,7 +107,7 @@ export function printOrder(seats: readonly SeatView[]): SeatView[] {
  */
 export function signerChainLabels(
   seats: readonly SeatView[],
-  merges: ReadonlyArray<{ practitionerRuleId: string; partyRuleId: string }>,
+  merges: ReadonlyArray<Pick<MergedSeats, 'practitionerRuleId' | 'partyRuleId'>>,
 ): string[] {
   const absorbed = new Set(merges.map((m) => m.partyRuleId));
   return seats

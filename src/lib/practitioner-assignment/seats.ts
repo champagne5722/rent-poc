@@ -2,16 +2,10 @@
 // 席位本身（證書種類、專任、執業主體來源）來自規則表，這裡只回答「這個席位要查哪一種業別」與「哪一方是執業主體」。
 
 import type { LicenseKind } from '../labels';
-import type { PlannedSeat, PractitionerEntitySource, RoutingFacts, SignaturePlan } from '../signature-routing';
+import { partyRoleOfEntitySource, type PlannedSeat, type RoutingFacts, type SignaturePlan } from '../signature-routing';
 import type { ContractPartyRole } from '../types';
 
-/**
- * 席位的執業主體是哪一方。甲方或乙方是執業主體時，當事人簽署人由該方指派（ADR-0018 決議 2）。
- * 經紀業者與代管案件的受託人不是合約的甲乙方，沒有當事人簽署人。
- */
-export function partyRoleOfEntitySource(source: PractitionerEntitySource): ContractPartyRole | null {
-  return source === 'party_a' || source === 'party_b' ? source : null;
-}
+export { partyRoleOfEntitySource };
 
 /**
  * 席位的執業主體要持有哪一種業別。判定事實的業別層用這一種。

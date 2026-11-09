@@ -7,18 +7,12 @@
 
 import { Alert, Col, Flex, Form, Input, Row, Select, Skeleton, Typography } from 'antd';
 import type { SeatOption, SeatOptions } from '@/lib/practitioner-assignment/service';
+import type { MergedSeats } from '@/lib/signature-routing';
 import type { PractitionerAssignmentInput } from '@/lib/practitioner-assignment/seats';
 import { SIGNER_ROLE_LABELS, type ContractPartyRole } from '@/lib/types';
 
-/** 同一人兼任而合併的席位（送簽前評估的 merges，附姓名）。 */
-export interface MergedSeatNotice {
-  practitionerRuleId: string;
-  /** 被併入的當事人席位。 */
-  partyRuleId: string;
-  partyRole: ContractPartyRole;
-  /** 兼任的人。 */
-  name: string;
-}
+/** 同一人兼任而合併的席位（送簽前評估的 merges），附兼任者的姓名給畫面提示。 */
+export type MergedSeatNotice = MergedSeats & { name: string };
 
 export interface PartySignerPick {
   role: ContractPartyRole;
