@@ -1,3 +1,5 @@
+import { withTx } from './database';
+import type { OrgTx } from './with-tx';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   REGISTRY_FUNCTION_CASES,
@@ -12,6 +14,7 @@ import {
   attackerCaseOwner,
   attackerDraftOwner,
   attackerPracticeOrg,
+  attackerRegisterCertificate,
   CALLER_RELATIONS,
   observe,
   setupDisclosureWorld,
@@ -138,6 +141,24 @@ describe('關係表與期望值表一致', () => {
   });
 });
 
+describe('已知缺口仍然成立（缺口消失時這裡會失敗，請刪掉 knownGaps 並調整 bound 的期望值）', () => {
+  // MIL-116：bound 回該執業主體全部成員（或全部已驗證人員）的真實 email，不限於被指派的人。
+  // 指派只指向陳怡君，王建國（一般成員）與林志豪（已驗證但沒被指派）的 email 也被讀到。
+  const assignedOnly = (fn: string) => {
+    const variant = (REGISTRY_FUNCTION_CASES[fn].disclosure as { variants: readonly DisclosureVariant[] }).variants[0];
+    return async (relation: string) => {
+      const outcome = await run(relation, variant);
+      return outcome.status === 'ok' ? outcome.text : '';
+    };
+  };
+  it.each(['bound', 'boundByCase'])('party_signer_candidates 對 %s 讀得到沒被指派的成員的 email', async (relation) => {
+    expect(await assignedOnly('registry.party_signer_candidates')(relation)).toContain(world.live.world.beichen.people.wang.email);
+  });
+  it.each(['bound', 'boundByCase'])('signing_view 對 %s 讀得到沒被指派的已驗證人員的 email', async (relation) => {
+    expect(await assignedOnly('registry.signing_view')(relation)).toContain(world.live.world.beichen.people.lin.email);
+  });
+});
+
 describe.each(MATRIX_PROBES.map((p) => [`${p.fn}：${p.variant.label}`, p] as const))('矩陣 %s', (_title, probe) => {
   it.each(CALLER_RELATIONS.map((r) => [r.name, r.label] as const))('%s（%s）', async (relation) => {
     const expected = expectedFor(probe.variant.expected, relation);
@@ -218,5 +239,38 @@ describe('無關的組織探測真實對象與不存在的對象，回應逐值�
       const call = (real: boolean) => observe(world, attacker.ctx, (tx) => variant.call(tx, world.fixture, subjectFor(world.fixture, variant.subject, real)));
       expect(await call(true), `${fn}（${variant.label}）`).toEqual(await call(false));
     }
+  });
+});
+
+describe('用別人的證號自行登錄待審證書後呼叫專任事實，拿不到失效的任職', () => {
+  const key = (serial: string) => `rental_housing_manager:112:內授營:${serial}`;
+  const facts = (a: Attacker, certificateKey: string) =>
+    withTx(a.ctx, (tx) => (tx as OrgTx).query<Record<string, unknown>>('SELECT * FROM registry.employment_exclusivity_facts($1)', [certificateKey]).then((r) => r.rows));
+
+  it('任職已結束與待驗證的證書鍵得到空結果，與不存在的證書鍵相同', async () => {
+    const attacker = await attackerPracticeOrg(world);
+    await attackerRegisterCertificate(world, attacker, key('2000004'));
+    // 已結束（許文傑）與待驗證（吳家豪）的任職
+    expect(await facts(attacker, key('2000004'))).toEqual([]);
+    expect(await facts(attacker, key('2000002'))).toEqual([]);
+    expect(await facts(attacker, key('9999999'))).toEqual([]);
+  });
+
+  it('回傳的列只含判定需要的欄位，別家的列一律是已驗證', async () => {
+    const attacker = await attackerPracticeOrg(world);
+    await attackerRegisterCertificate(world, attacker, key('1234567'));
+    const rows = await facts(attacker, key('1234567'));
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(Object.keys(row).sort()).toEqual(['ended_on', 'started_on', 'state', 'whose']);
+      expect(row).toMatchObject({ whose: 'other', state: 'verified' });
+    }
+  });
+
+  // 殘餘風險（待法務確認）：登錄動作本身也會得到「此證號已有在職紀錄」的阻擋結果（ADR-0017 決議 7），
+  // 所以這裡揭露的資訊沒有比阻擋結果多。若之後改成不能直接呼叫此函式，這個案例要一併改。
+  it('殘餘風險：已驗證在職的證書鍵，仍可與不存在的證書鍵區分', async () => {
+    const attacker = await attackerPracticeOrg(world);
+    expect(await facts(attacker, key('1234567'))).not.toEqual(await facts(attacker, key('9999999')));
   });
 });

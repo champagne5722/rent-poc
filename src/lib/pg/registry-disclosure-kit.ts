@@ -263,3 +263,16 @@ export async function attackerCaseOwner(world: DisclosureWorld): Promise<Attacke
   });
   return a;
 }
+
+/**
+ * 用別人的證號，替攻擊者自己登錄一筆待審證書。證書鍵與北辰人員的相同，序號取自證書鍵。
+ * 這是呼叫者自己能建立的關係：任何執業主體組織的成員都能送件，審核之前狀態是待驗證。
+ */
+export async function attackerRegisterCertificate(world: DisclosureWorld, a: Attacker, certificateKey: string): Promise<void> {
+  const [kind, year, word, serial] = certificateKey.split(':');
+  await world.live.owner(
+    `INSERT INTO registry.practitioners (id, party_id, certificate_kind, cert_year, cert_word, cert_serial, certificate_key, issued_on, valid_until, state)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, '2023-03-01', '2029-12-31', 'pending')`,
+    [newUlid(), a.partyId, kind, year, word, serial, certificateKey],
+  );
+}

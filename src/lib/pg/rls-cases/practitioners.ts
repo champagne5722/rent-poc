@@ -30,27 +30,22 @@ const registryFunctions: Record<string, RegistryFunctionCase> = {
   },
   'registry.employment_exclusivity_facts': {
     probe: null,
-    reason: '呼叫者必須是證號本人的成員脈絡，只回自己這家與別家的標記，不回別家的 ID 與名稱（MIL-111）',
+    reason: '呼叫者必須是執業主體組織的成員。自己這家回全部任職，別家只回已驗證的任職，標 self 或 other，不回別家的 ID 與名稱（MIL-111、MIL-165）',
     disclosure: {
       kind: 'matrix',
       reason:
-        '回傳同一證書鍵在各執業主體的任職狀態與期間，只標 self 或 other。只有目前執業主體自己的任職（self）屬於 own 的範圍，' +
-        '其他組織的成員不得藉此探測別人證書鍵的任職',
+        '回傳同一證書鍵的任職狀態與期間，只標 self 或 other。自己這家（self）全部回傳。' +
+        '別家（other）只回狀態是 verified 的，因為專任判定只用得到這些，已結束與待驗證的別家任職不回（0071）。' +
+        '殘餘風險：任何執業主體組織的成員仍能得知某個證書鍵在別家有已驗證在職，與登錄時的阻擋結果相同（ADR-0017 決議 7，README）',
       variants: [
         {
           label: '用已結束任職的證書鍵查',
           subject: 'certificateKey',
           call: (tx, _fx, key) => tx.query('SELECT * FROM registry.employment_exclusivity_facts($1)', [key]).then((r) => r.rows),
-          // unrelated 的正確期望是 []（與查不存在的證書鍵相同）。目前函式只檢查「呼叫者是某個執業主體組織的成員」，
-          // 沒有檢查證書鍵屬於呼叫者，所以任何執業主體組織的成員都能探測任意證書鍵。見 knownGaps。
-          expected: { default: 'denied', by: { own: ['inactiveEmployment'], unrelated: ['inactiveEmployment'] } },
+          // own 看得到自己這家已結束的任職（self）。unrelated 只會看到別家已驗證的任職，所以用已結束任職的鍵查得 []（0071）
+          expected: { default: 'denied', by: { own: ['inactiveEmployment'], unrelated: [] } },
         },
       ],
-      knownGaps: {
-        unrelated:
-          'MIL-165：任何執業主體組織的成員，用任意證書鍵都能查到別家任職的狀態與起訖日，與查不存在的證書鍵可區分。' +
-          '待主控決定修法與 migration 編號，修好後把 unrelated 的期望值改回 []，並刪掉這則缺口',
-      },
     },
   },
   'registry.end_employment': {

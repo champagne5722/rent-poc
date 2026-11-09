@@ -125,7 +125,7 @@ vitest 的 `vitest.setup.ts` 設 `PRACTICE_REGISTRY=seed`，所以既有的 rout
 | `org_employments` | 證號原文、失效任職 | 被拒 | 空 | 空 | 空 | 被拒 |
 | `my_practitioner` | 證號原文（本人的） | 被拒 | 空 | 空 | 空 | 被拒 |
 | `my_registration` | 統編 | 空 | 空 | 空 | 空 | 被拒 |
-| `employment_exclusivity_facts` | 失效任職 | 被拒 | 被拒 | 被拒 | `unrelated` 見已知缺口，`unrelatedOwner` 被拒 | 被拒 |
+| `employment_exclusivity_facts` | 空（自己這家的已結束任職例外：失效任職） | 被拒 | 被拒 | 被拒 | 空（執業主體組織成員，只回別家已驗證的任職，見殘餘風險）或被拒（屋主組織） | 被拒 |
 | `review_queue`、`review_item_detail` | 被拒 | 統編、證號原文、核對紀錄 ID、失效任職 | 被拒 | 被拒 | 被拒 | 被拒 |
 | `practitioner_party` | 被拒 | 空 | 被拒 | 被拒 | 被拒 | 被拒 |
 | `list_practice_entities`、`lookup_practice_entities`、`certificate_badges` | 空 | 空 | 空 | 空 | 空 | 被拒 |
@@ -141,12 +141,30 @@ vitest 的 `vitest.setup.ts` 設 `PRACTICE_REGISTRY=seed`，所以既有的 rout
 
 ### 已知缺口
 
-目前行為與原則不符，已有人負責，期望值先登記目前的行為。每則缺口必須指向一張票。
+目前行為與原則不符，已有人負責，期望值先登記目前的行為。每則缺口必須指向一張票。測試檔的「已知缺口仍然成立」會在缺口消失時失敗，提醒刪掉這一節與 `knownGaps`。
 
 | 函式 | 關係 | 缺口 | 負責 |
 |---|---|---|---|
 | `party_signer_candidates`、`signing_view` | `bound`、`boundByCase` | 回該執業主體全部成員（或全部已驗證人員）的真實 email，不限於被指派的人 | MIL-116 |
-| `employment_exclusivity_facts` | `unrelated` | 任何執業主體組織的成員，用任意證書鍵都能查到別家任職的狀態與起訖日，與查不存在的證書鍵可區分 | MIL-165，待主控決定修法 |
+
+### 殘餘風險：`employment_exclusivity_facts`（待法務確認）
+
+MIL-165 的矩陣測試發現，0047 的 `employment_exclusivity_facts` 對任何執業主體組織的成員回傳任意證書鍵在各家的任職，含已失效與待驗證的，連同起訖日。證書鍵可以枚舉。`0071_employment_exclusivity_minimal_facts.sql` 修正如下：
+
+- 別家（`other`）只回狀態是 `verified` 的任職。專任判定 `decideEmploymentCreation` 只用得到這些。已結束與待驗證的別家任職不再回傳。
+- 自己這家（`self`）照舊全部回傳。
+- 函式簽名與授權不變。
+
+沒有做「呼叫者必須持有這個證書鍵」的條件。`registerCertificate` 在寫任何東西之前就判定專任（P0-05 AC1、AC6），那時呼叫者還沒有這個證書鍵的證書列。加了條件，第一次登錄就不再被阻擋，既有測試 `practitioners.test.ts` 的 AC1 與 AC6 會失敗。
+
+殘餘風險：
+
+- 任何執業主體組織的成員，仍能從 `other` 的有無得知某個證書鍵在別家有已驗證在職，以及該任職的起訖日。
+- 這與登錄時的阻擋結果「此證號已有在職紀錄」揭露的資訊相同，是 ADR-0017 決議 7「建立任職時判定」本身帶來的。
+- 差別在於登錄動作有稽核紀錄與審核項目，直接呼叫函式沒有。
+- 測試「殘餘風險：已驗證在職的證書鍵，仍可與不存在的證書鍵區分」把這個行為固定下來。
+
+建議的後續（需要新票）：讓判定在 SQL 內與寫入同一個交易完成（併入 `submit_practitioner` 與 `create_employment`），再把 `employment_exclusivity_facts` 從 `app_rw` 的授權拿掉。這樣沒有可直接呼叫的探測入口。
 
 ### MIL-116 拿掉選人階段時
 
