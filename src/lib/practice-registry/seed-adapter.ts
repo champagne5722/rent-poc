@@ -11,7 +11,7 @@
 // - 雲頂不動產經紀：趙經紀（經紀人）、孫小美（經紀營業員，不得簽章）。
 
 import { addMonths, type CredentialState } from '../registry-rules';
-import type { CredentialFacts } from '../credential-status';
+import { credentialStatusAt, type CredentialFacts } from '../credential-status';
 import type { CertificateKind, LicenseKind } from '../labels';
 import type {
   PartySignerCandidate,
@@ -266,13 +266,21 @@ export function createSeedPracticeRegistry({ today = todayInTaiwan }: SeedRegist
       return signer ? { ...signer } : null;
     },
     async listPractitioners(entityId, query: PractitionerQuery) {
+      // 與真實 adapter 相同：只回傳人員本身在查詢時點可簽章的人（證書失效、任職結束的人不在清單內）。
+      // 業別層不在這裡排除，呼叫端要靠它說明原因
+      const at = `${today()}T12:00:00+08:00`;
       return SEED_PRACTITIONERS.filter(
         (p) =>
           p.entityId === entityId &&
           p.certificateKind !== null &&
           query.certificateKinds.includes(p.certificateKind) &&
           (!query.fullTime || p.fullTime),
-      ).map((p) => toCandidate(p, query.licenseKind));
+      )
+        .map((p) => toCandidate(p, query.licenseKind))
+        .filter(
+          (c) =>
+            credentialStatusAt({ ...c.credential, license: { state: 'verified', validUntil: null, latestCheckId: null } }, at).signable,
+        );
     },
     async getPractitioner(practitionerId, query) {
       const seed = SEED_PRACTITIONERS.find((p) => p.id === practitionerId);

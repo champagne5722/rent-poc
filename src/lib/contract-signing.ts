@@ -1,7 +1,7 @@
 import { onContractOutcomeForCase, onContractSentForCase } from './case-store/contract-subscription';
 import { appendContractEvent, getContract } from './contracts';
 import type { OrgTx } from './pg/with-tx';
-import { getPracticeRegistry, type PracticeRegistryResolution } from './practice-registry';
+import { getPracticeRegistry, type PracticeRegistryResolution, type RegistryRunner } from './practice-registry';
 import { completeSignSnapshot, insertSignatureRecords, listPendingSignRecords } from './signature-records/repository';
 import {
   buildCredentialSnapshot,
@@ -24,8 +24,8 @@ interface PreparedSignSnapshots {
 }
 
 export interface ContractSubscriberOptions {
-  // 簽署事件時查登錄資料用。預設依環境選 adapter。
-  registry?: () => PracticeRegistryResolution;
+  // 簽署事件時查登錄資料用。預設依環境選 adapter。webhook 沒有請求脈絡，查詢用簽署模組給的唯讀執行器（合約所在的組織）。
+  registry?: (run: RegistryRunner) => PracticeRegistryResolution;
 }
 
 const AUTO_VOID_NOTE = '執業人員簽署時不可簽章，系統自動撤回';
@@ -35,7 +35,7 @@ const AUTO_VOID_NOTE = '執業人員簽署時不可簽章，系統自動撤回';
 //
 // 每個方法用簽署模組給的 tx，與簽署進度同一個交易（MIL-85）。
 // 簽章紀錄（ADR-0018 決議 12）也在這裡寫：送簽交易內寫 snapshot_at_send，簽署事件交易內補 snapshot_at_sign。
-export function createContractSubscriber({ registry = () => getPracticeRegistry() }: ContractSubscriberOptions = {}): SigningSubscriber {
+export function createContractSubscriber({ registry = (run) => getPracticeRegistry(process.env, { run }) }: ContractSubscriberOptions = {}): SigningSubscriber {
   const contractOf = async (tx: OrgTx, subject: SigningSubject): Promise<Contract> => {
     const contract = await getContract(tx, subject.id);
     if (!contract) throw new SigningRefusal(404, '合約不存在');
@@ -94,7 +94,7 @@ export function createContractSubscriber({ registry = () => getPracticeRegistry(
       if (event.type !== 'signed' && event.type !== 'completed') return undefined;
       const pending = await read((tx) => listPendingSignRecords(tx, subject.id));
       if (pending.length === 0) return undefined;
-      const resolution = registry();
+      const resolution = registry(read);
       const entries = await Promise.all(
         pending.map(async (p): Promise<[string, SignatureSnapshot]> => {
           if (!resolution.available) return [p.ruleId, unavailableSnapshot(eventAt, resolution.reason)];
