@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { App as AntApp, Alert, Button, Descriptions, Flex, Form, Input, Modal, Popconfirm, Select, Spin, Table, Tag, Typography, theme } from 'antd';
+import { App as AntApp, Alert, Button, Col, Descriptions, Flex, Form, Input, Modal, Popconfirm, Row, Select, Spin, Table, Tag, Typography, theme } from 'antd';
 import type { DepositLedger, HolderConflict, PeriodRecord, RemitterId, SocialHousingChange } from '@/lib/case-ledger';
 import { formatTaipei } from '@/lib/case-display';
 import {
@@ -45,7 +45,6 @@ const money = (n: number) => `$${n.toLocaleString('zh-TW')}`;
 
 export default function CaseLedgerPanel({ caseId }: { caseId: string }) {
   const { message } = AntApp.useApp();
-  const { token } = theme.useToken();
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [accounts, setAccounts] = useState<AccountOption[]>([]);
 
@@ -71,7 +70,7 @@ export default function CaseLedgerPanel({ caseId }: { caseId: string }) {
 
   if (load.status === 'loading') {
     return (
-      <Flex justify="center" style={{ padding: token.paddingXL }}>
+      <Flex justify="center">
         <Spin />
       </Flex>
     );
@@ -99,9 +98,7 @@ export default function CaseLedgerPanel({ caseId }: { caseId: string }) {
 
 function SectionTitle({ children }: { children: string }) {
   return (
-    <Typography.Title level={5} style={{ margin: 0 }}>
-      {children}
-    </Typography.Title>
+    <Typography.Text strong>{children}</Typography.Text>
   );
 }
 
@@ -275,6 +272,7 @@ function PeriodsSection({ periods, hasLedger }: { periods: PeriodRecord[]; hasLe
 
 function RemitterSection({ caseId, setup, onChanged }: { caseId: string; setup: LedgerSetup; onChanged: (text: string) => Promise<void> }) {
   const { message } = AntApp.useApp();
+  const { token } = theme.useToken();
   const [form] = Form.useForm<{ kind: RemitterId['kind']; value: string }>();
   const [busy, setBusy] = useState(false);
   const kind = Form.useWatch('kind', form) ?? 'payer_name';
@@ -343,27 +341,29 @@ function RemitterSection({ caseId, setup, onChanged }: { caseId: string; setup: 
         ]}
       />
       {setup.canConfigure && (
-        <Form form={form} layout="inline" initialValues={{ kind: 'payer_name', value: '' }} onFinish={(values) => void add(values)}>
-          <Form.Item name="kind" label="種類">
-            <Select
-              style={{ width: 180 }}
-              options={Object.entries(REMITTER_KIND_LABELS).map(([value, label]) => ({ value, label }))}
-              onChange={() => form.setFieldsValue({ value: '' })}
-            />
-          </Form.Item>
-          <Form.Item name="value" label="內容" rules={[{ required: true, whitespace: true, message: '請填寫內容' }]}>
-            <Input
-              style={{ width: 220 }}
-              maxLength={kind === 'payer_name' ? 60 : 5}
-              placeholder={kind === 'payer_name' ? '例如：王大明' : '5 位數字'}
-              inputMode={kind === 'payer_name' ? 'text' : 'numeric'}
-            />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={busy}>
-              新增
-            </Button>
-          </Form.Item>
+        <Form form={form} layout="vertical" initialValues={{ kind: 'payer_name', value: '' }} onFinish={(values) => void add(values)}>
+          <Row gutter={token.margin}>
+            <Col xs={24} md={8}>
+              <Form.Item name="kind" label="種類">
+                <Select
+                  options={Object.entries(REMITTER_KIND_LABELS).map(([value, label]) => ({ value, label }))}
+                  onChange={() => form.setFieldsValue({ value: '' })}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={10}>
+              <Form.Item name="value" label="內容" rules={[{ required: true, whitespace: true, message: '請填寫內容' }]}>
+                <Input
+                  maxLength={kind === 'payer_name' ? 60 : 5}
+                  placeholder={kind === 'payer_name' ? '例如：王大明' : '5 位數字'}
+                  inputMode={kind === 'payer_name' ? 'text' : 'numeric'}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Button type="primary" htmlType="submit" loading={busy}>
+            新增
+          </Button>
         </Form>
       )}
     </Flex>
@@ -384,6 +384,7 @@ function DefaultAccountsSection({
   onChanged: (text: string) => Promise<void>;
 }) {
   const { message } = AntApp.useApp();
+  const { token } = theme.useToken();
   const current = setup.defaultAccounts ?? { rentAccountId: null, depositAccountId: null };
   const [form] = Form.useForm<{ rentAccountId: string | null; depositAccountId: string | null }>();
   const [busy, setBusy] = useState(false);
@@ -423,23 +424,27 @@ function DefaultAccountsSection({
       {setup.canConfigure ? (
         <Form
           form={form}
-          layout="inline"
+          layout="vertical"
           // key 讓載入完成或儲存後的最新值重新帶入表單
           key={`${current.rentAccountId}:${current.depositAccountId}`}
           initialValues={current}
           onFinish={(values) => void save(values)}
         >
-          <Form.Item name="rentAccountId" label="租金">
-            <Select allowClear style={{ width: 260 }} placeholder="未設定" options={options} />
-          </Form.Item>
-          <Form.Item name="depositAccountId" label="押金">
-            <Select allowClear style={{ width: 260 }} placeholder="未設定" options={options} />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={busy}>
-              儲存
-            </Button>
-          </Form.Item>
+          <Row gutter={token.margin}>
+            <Col xs={24} md={9}>
+              <Form.Item name="rentAccountId" label="租金">
+                <Select allowClear placeholder="未設定" options={options} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={9}>
+              <Form.Item name="depositAccountId" label="押金">
+                <Select allowClear placeholder="未設定" options={options} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Button type="primary" htmlType="submit" loading={busy}>
+            儲存
+          </Button>
         </Form>
       ) : (
         <Descriptions
