@@ -18,6 +18,7 @@ import type { ContractType } from './labels';
 import { parseStoredEquipment } from './equipment';
 import { ensurePractitionerAssignmentTables } from './practitioner-assignment/tables';
 import { ensureSignatureRecordTables } from './signature-records/tables';
+import { ensureSigningLapseTables } from './signing-lapse/tables';
 import { migrateLegacyContractSigning } from './signing-module/contract-backfill';
 import { ensureSignTaskFileTable } from './signing-module/sign-task-files';
 import { ensureSignTaskTables } from './signing-module/sign-task-store';
@@ -90,6 +91,7 @@ export function ensureSchema(db: Database.Database): void {
   ensureSignTaskFileTable(db);
   ensurePractitionerAssignmentTables(db);
   ensureSignatureRecordTables(db);
+  ensureSigningLapseTables(db);
 
   seedEquipmentVocabulary(db);
   normalizePropertyEquipment(db);

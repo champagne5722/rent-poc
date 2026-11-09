@@ -24,7 +24,7 @@ import {
   toSigningProgress,
   type SigningProgress,
 } from './sign-task-store';
-import { SigningRefusal, type SendContext, type SigningSubscriber } from './subscriber';
+import { SigningRefusal, type AfterOutcomeTools, type SendContext, type SigningSubscriber } from './subscriber';
 
 // 簽署模組（ADR-0010）：route handler 只呼叫這裡，服務商細節都在 adapter，
 // 業務實體的細節都在訂閱者。介面一律回傳 Promise，呼叫端看不到服務商任務編號。
@@ -114,7 +114,20 @@ export function createSigningModule({ provider, subscribers, dataDir, now = () =
       await saveFilesOnCompleted(subject, subscriber);
       await runAfterCompleted(subject, subscriber);
     }
+    if (outcome) await runAfterOutcome(subject, subscriber, outcome, { voidTask: () => voidTask(subject) });
     return outcome;
+  }
+
+  // 呼叫服務商期間可能收到全員完成事件。applyEvent 會在交易內重讀進度，
+  // 所以這時撤回不接受並回 409，已完成的簽署標的不會被改成已撤回。
+  async function voidTask(subject: SigningSubject): Promise<void> {
+    const subscriber = requireSubscriber(subject);
+    const task = findSignTask(getDb(), subject);
+    if (!task) return subscriber.voidWithoutTask(subject);
+    if (task.status !== 'in_progress') throw new SigningRefusal(409, `僅簽署中的${subscriber.label}可撤回`);
+    await provider.voidTask(task.taskRef);
+    const outcome = await applyEvent(subject, subscriber, { type: 'voided' });
+    if (!outcome) throw new SigningRefusal(409, `僅簽署中的${subscriber.label}可撤回`);
   }
 
   // 刻意不讓例外往外拋：webhook 回非 2xx 會被點點簽重試，
@@ -236,17 +249,7 @@ export function createSigningModule({ provider, subscribers, dataDir, now = () =
       return { signer };
     },
 
-    // 呼叫服務商期間可能收到全員完成事件。applyEvent 會在交易內重讀進度，
-    // 所以這時撤回不接受並回 409，已完成的簽署標的不會被改成已撤回。
-    async voidTask(subject: SigningSubject): Promise<void> {
-      const subscriber = requireSubscriber(subject);
-      const task = findSignTask(getDb(), subject);
-      if (!task) return subscriber.voidWithoutTask(subject);
-      if (task.status !== 'in_progress') throw new SigningRefusal(409, `僅簽署中的${subscriber.label}可撤回`);
-      await provider.voidTask(task.taskRef);
-      const outcome = await applyEvent(subject, subscriber, { type: 'voided' });
-      if (!outcome) throw new SigningRefusal(409, `僅簽署中的${subscriber.label}可撤回`);
-    },
+    voidTask,
 
     async ingestWebhook(rawBody: string, headers: WebhookHeaders): Promise<WebhookAck> {
       const parsed = provider.parseWebhook(rawBody, headers);
@@ -410,6 +413,21 @@ async function prepareOutcome(
   } catch (e) {
     console.error(`[signing] ${subject.type} ${subject.id} 簽署事件的準備失敗：${errorMessage(e)}`);
     return undefined;
+  }
+}
+
+// 事件提交後的處理（例如自動撤回）失敗不得讓 webhook 回非 2xx，否則點點簽重試會累積到暫停 webhook
+async function runAfterOutcome(
+  subject: SigningSubject,
+  subscriber: SigningSubscriber,
+  outcome: ProgressOutcome,
+  tools: AfterOutcomeTools
+): Promise<void> {
+  if (!subscriber.afterOutcome) return;
+  try {
+    await subscriber.afterOutcome(subject, outcome, tools);
+  } catch (e) {
+    console.error(`[signing] ${subject.type} ${subject.id} 簽署事件後的處理失敗：${errorMessage(e)}`);
   }
 }
 

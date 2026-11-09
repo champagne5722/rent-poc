@@ -64,6 +64,8 @@ import { evaluateRouting } from '@/lib/signature-routing';
 import type { PrintedPractitioner } from '@/lib/practitioner-assignment/seats';
 import type { SignatureRecordDetail } from '@/lib/signature-records/types';
 import { signatureRecordCards } from '@/lib/signature-records/view';
+import type { SigningLapseDetail } from '@/lib/signing-lapse/types';
+import { lapseAlerts } from '@/lib/signing-lapse/view';
 
 const STATUS_COLORS: Record<ContractStatus, string> = {
   draft: 'default',
@@ -97,6 +99,8 @@ function ContractDetail({ id }: { id: string }) {
   const [practitioners, setPractitioners] = useState<Record<string, PrintedPractitioner>>({});
   // 簽章紀錄（MIL-70）：唯讀。兩方合約沒有，整個分頁不顯示
   const [signatureRecords, setSignatureRecords] = useState<SignatureRecordDetail[]>([]);
+  // 簽署中失效紀錄（MIL-75）：執業人員簽署時不可簽章。沒有失效時是空陣列，不顯示警示
+  const [signingLapses, setSigningLapses] = useState<SigningLapseDetail[]>([]);
   const [mockMode, setMockMode] = useState(false);
   // 連同取得當下的狀態一起存：狀態轉移後舊連結不再屬於當前待簽方，直接失效
   const [signLinkState, setSignLinkState] = useState<{ forStatus: ContractStatus; link: string } | null>(null);
@@ -117,16 +121,18 @@ function ContractDetail({ id }: { id: string }) {
     setSigningProgress(json.signing_progress ?? null);
 
     // 歷程與文件跟著合約一起更新，webhook 推進狀態後三者才會一致
-    const [eventsJson, filesJson, practitionersJson, recordsJson] = await Promise.all([
+    const [eventsJson, filesJson, practitionersJson, recordsJson, lapsesJson] = await Promise.all([
       fetch(`/api/contracts/${id}/events`).then((r) => (r.ok ? r.json() : { data: [] })),
       fetch(`/api/contracts/${id}/files`).then((r) => (r.ok ? r.json() : { data: [] })),
       fetch(`/api/contracts/${id}/practitioners?only=printed`).then((r) => (r.ok ? r.json() : { data: null })),
       fetch(`/api/contracts/${id}/signature-records`).then((r) => (r.ok ? r.json() : { data: [] })),
+      fetch(`/api/contracts/${id}/signing-lapses`).then((r) => (r.ok ? r.json() : { data: [] })),
     ]);
     setEvents(eventsJson.data ?? []);
     setFiles(filesJson.data ?? []);
     setPractitioners(practitionersJson.data?.printed ?? {});
     setSignatureRecords(recordsJson.data ?? []);
+    setSigningLapses(lapsesJson.data ?? []);
   }, [id, message, router]);
 
   useEffect(() => {
@@ -174,6 +180,8 @@ function ContractDetail({ id }: { id: string }) {
   const annexSummary = equipmentAnnexSummary(contract.fields);
   const chain = contractChainNodes(contract, relations);
   const recordCards = signatureRecordCards(signatureRecords);
+  const lapseNotices = lapseAlerts(signingLapses, contract.status);
+  const voidConfirm = detailActions(contract.status, { mock: mockMode }).find((a) => a.key === 'void')?.confirm ?? null;
 
   const voidContract = async () => {
     const data = await act(`/api/contracts/${id}/void`);
@@ -415,6 +423,29 @@ function ContractDetail({ id }: { id: string }) {
         </Space>
         <Space>{detailActions(contract.status, { mock: mockMode }).map(renderAction)}</Space>
       </Space>
+
+      {lapseNotices.length > 0 && (
+        <Space orientation="vertical" size={8} style={{ width: '100%', marginBottom: 16 }}>
+          {lapseNotices.map((notice) => (
+            <Alert
+              key={notice.key}
+              type={notice.type}
+              showIcon
+              title={notice.title}
+              description={notice.description}
+              action={
+                notice.canVoid ? (
+                  <Popconfirm title={voidConfirm} onConfirm={voidContract}>
+                    <Button danger size="small" icon={<RollbackOutlined />}>
+                      撤回
+                    </Button>
+                  </Popconfirm>
+                ) : undefined
+              }
+            />
+          ))}
+        </Space>
+      )}
 
       {!isDraft && (
         <Card size="small" style={{ marginBottom: 16 }}>

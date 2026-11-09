@@ -173,6 +173,8 @@ const EVENT_COLORS: Record<string, string> = {
   completed: 'green',
   voided: 'orange',
   copied: 'gray',
+  credential_lapsed: 'red',
+  auto_void_failed: 'red',
 };
 
 /** 事件型別→中文標籤；未知型別原樣回傳，避免舊資料讓整條歷程消失。 */
