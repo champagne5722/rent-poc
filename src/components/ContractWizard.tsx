@@ -572,7 +572,7 @@ export default function ContractWizard({ id }: { id: string }) {
             showIcon
             style={{ marginBottom: 12 }}
             message={partiesOnly ? '乙方先簽' : '依序簽署'}
-            description={signingSequenceNotice(fields, contractType)}
+            description={signingSequenceNotice(fields, contractType, practitionerData?.evaluation.merges)}
           />
           <ui.ConfirmNotices fields={fields} />
           {renewalNotices.map((notice) => (

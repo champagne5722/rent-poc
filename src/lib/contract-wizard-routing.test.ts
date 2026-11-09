@@ -240,3 +240,17 @@ describe('applyRoutingChange（改分流條件時一併整理簽署區域）', (
     expect(original.routing).toBeUndefined();
   });
 });
+
+describe('signingSequenceNotice：同一人兼任合併後（MIL-76）', () => {
+  const merges = [{ practitionerRuleId: 'lease.master_lease.practitioner', partyRuleId: 'lease.master_lease.party_a' }];
+
+  it('列出合併後實際的簽署人，並說明兼任者只簽一次', () => {
+    expect(signingSequenceNotice(fields(MASTER), 'lease', merges)).toBe(
+      '送簽後依序簽署：乙方（承租人）、執業人員（租賃住宅管理人員）兼甲方（出租人）。每位簽完才輪到下一位，兼任者只簽一次，全部簽完合約才成立。',
+    );
+  });
+
+  it('沒有合併時文字不變', () => {
+    expect(signingSequenceNotice(fields(MASTER), 'lease', [])).toBe(signingSequenceNotice(fields(MASTER)));
+  });
+});
