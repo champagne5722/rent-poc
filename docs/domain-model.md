@@ -28,6 +28,7 @@ draft（草稿）
 - 簽署模組推進簽署進度，再呼叫合約訂閱者（`src/lib/contract-signing.ts`）。合約狀態的轉移規則在 `src/lib/transitions.ts`。
 - 簽署進度、合約狀態與合約歷程在同一交易寫入（ADR-0007、ADR-0010）。
 - 當前簽署人只由簽署進度推導，不由合約狀態推導。沒有簽署任務的合約沒有當前簽署人。
+- 清單、詳情頁、確認頁與工作台的簽署進度由簽署序列推導，純函式在 `src/lib/signing-steps.ts`。有簽署進度時步驟是實際的簽署人，同一人兼任的簽署人標示兼任角色。沒有簽署任務時（草稿、舊合約）用規則表算出的序列。工作台的待辦依當前簽署人，輪到甲方才算（MIL-72）。
 - `voided` / `declined` 的合約可「複製為新草稿」重走流程。修約（撤回後複製）會記錄衍生關聯。拒簽後的複製只為省時，不記關聯（ADR-0006）。續約機制與到期標示不在目前範圍。
 - 程式識別字：`draft` / `awaiting_tenant` / `awaiting_practitioner` / `awaiting_landlord` / `completed` / `declined` / `voided`。`isSigningStatus` 判斷三個簽署中狀態。
 

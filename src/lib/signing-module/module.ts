@@ -18,6 +18,7 @@ import { getSignTaskFile, listSignTaskFiles, upsertSignTaskFile, type SignTaskFi
 import {
   currentSignerOf,
   findSignTask,
+  findSignTasks,
   findSubjectByTaskRef,
   insertSignTask,
   saveProgress,
@@ -232,6 +233,12 @@ export function createSigningModule({ provider, subscribers, dataDir, now = () =
     async getProgress(subject: SigningSubject): Promise<SigningProgress | null> {
       const task = findSignTask(getDb(), subject);
       return task ? toSigningProgress(task) : null;
+    },
+
+    // 批次取簽署進度，清單用（MIL-72）。回傳以 signingSubjectKey 為鍵的 Map，沒有簽署任務的簽署標的不在裡面。
+    async getProgressBatch(subjects: readonly SigningSubject[]): Promise<Map<string, SigningProgress>> {
+      const tasks = findSignTasks(getDb(), subjects);
+      return new Map([...tasks].map(([key, task]) => [key, toSigningProgress(task)]));
     },
 
     async getSignLink(subject: SigningSubject, redirectUrl?: string): Promise<{ signer: CurrentSigner; url: string }> {

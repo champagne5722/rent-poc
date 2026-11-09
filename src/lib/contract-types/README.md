@@ -26,7 +26,6 @@ MIL-73 的成果。欄位、範本與檢核由合約類型決定，共用流程�
 | `missingFields(fields, attachments?)` | 建約 wizard 第②步的必填檢核。`attachments` 帶欄位以外、另存子表的內容（委託標的清單），沒帶就不檢查那一項 |
 | `missingFieldsForSend(fields, attachments?)` | 送簽 route 的必填檢核，回應文字沿用原本的 |
 | `sendSupported` | 這個類型能不能送簽。送簽 route 與 wizard 第④步都看它，不判斷具體類型 |
-| `partiesOnlyNotice` | 兩方序列的確認頁說明。沒有定義就用依簽署序列產生的通用說明 |
 | `initialFields({ property?, routing? })` | 建立草稿的欄位快照。租賃合約必須帶物件，委託管理合約不帶 |
 | `listSummary(fields)` | 清單與工作台一列的摘要：物件、租金、乙方、期間 |
 

@@ -86,11 +86,6 @@ export interface ContractTypeDefinition<F extends ContractFields = ContractField
   readonly requiresProperty: boolean;
   /** 不需要選物件的類型，在建約入口與第①步顯示的說明。 */
   readonly draftNotice?: { title: string; description: string };
-  /**
-   * 兩方簽署序列（沒有執業人員席位）在確認頁的說明。沒有定義就用依簽署序列產生的通用說明。
-   * 規則表沒有兩方的委託管理序列，所以委託管理合約不定義。
-   */
-  readonly partiesOnlyNotice?: string;
   /** 建立草稿時的欄位快照。 */
   initialFields(input: InitialFieldsInput): F;
   listSummary(fields: F): ContractListSummary;

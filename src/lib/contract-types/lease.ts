@@ -11,7 +11,8 @@ import type { ContractListSummary, ContractTypeDefinition, InitialFieldsInput, L
 const LABELS = partyLabels('lease');
 const EMAIL_PATTERN = /.+@.+\..+/;
 
-// 乙方先簽（ADR-0003）：確認頁對出租人說明送簽後的預期。
+// 乙方先簽（ADR-0003）：確認頁對出租人說明送簽後的預期。確認頁的說明現在由簽署序列產生（MIL-72），
+// 這個常數是原本寫死的文字，測試用它確認自管租賃合約產生的說明沒有改。
 export const TENANT_FIRST_NOTICE = `送簽後由${LABELS.partyBFull}先簽，${TERMS.partyB}完成後才輪到${LABELS.partyAFull}簽署，雙方都簽完合約才成立。`;
 
 const PARTY_FIELD_LABELS: Record<ContractPartyRole, readonly [string, string]> = {
@@ -72,7 +73,6 @@ export const leaseDefinition: ContractTypeDefinition<LeaseContractFields> = {
   partyFieldLabels: (role) => PARTY_FIELD_LABELS[role],
   missingFields: leaseMissingFields,
   missingFieldsForSend: leaseMissingFieldsForSend,
-  partiesOnlyNotice: TENANT_FIRST_NOTICE,
   sendSupported: true,
   requiresProperty: true,
 

@@ -10,8 +10,11 @@ import {
   detailCurrentSigner,
   detailDeclinedTitle,
   detailSigningSteps,
+  detailStepDescriptions,
   equipmentAnnexSummary,
 } from './contract-detail';
+import { evaluateRouting } from './signature-routing';
+import { buildSigningSteps } from './signing-steps';
 
 function makeContract(o: { id?: number; status?: ContractStatus; derived_from?: number | null } = {}): Contract {
   return {
@@ -291,11 +294,64 @@ describe('detailSigningSteps（詳情頁簽署進度）', () => {
     ]);
   });
 
-  it('待執業人員簽時多一步，停在執業人員', () => {
-    expect(detailSigningSteps('awaiting_practitioner')).toEqual({
-      titles: ['待乙方（承租人）簽署', '待執業人員簽署', '待甲方（出租人）簽署', '完成'],
+  // MIL-72：沒有簽署序列時不再寫死執業人員排在乙方與甲方之間。序列由規則表算出，呼叫端傳入。
+  it('待執業人員簽時，依規則表算出的序列多一步，停在執業人員', () => {
+    const evaluation = evaluateRouting({ businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: false });
+    const seats = evaluation.ok ? evaluation.seats : null;
+    expect(detailSigningSteps('awaiting_practitioner', null, 'lease', seats)).toEqual({
+      titles: ['待乙方（承租人）簽署', '待執業人員（租賃住宅管理人員）簽署', '待甲方（出租人）簽署', '完成'],
       current: 1,
     });
+  });
+
+  it('沒有簽署序列也沒有簽署進度時退回兩方，不報錯', () => {
+    expect(detailSigningSteps('awaiting_practitioner')).toEqual({ titles: TWO_PARTY, current: 0 });
+  });
+});
+
+describe('detailStepDescriptions（每位簽署人的姓名與狀態）', () => {
+  const evaluation = evaluateRouting({ businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: false });
+  const seats = evaluation.ok ? evaluation.seats : null;
+  const signer = (role: 'party_a' | 'party_b' | 'practitioner', name: string, status: 'pending' | 'signed' | 'declined', concurrentRoles?: ('party_a' | 'party_b')[]) => ({
+    role,
+    name,
+    status,
+    signedAt: null,
+    email: `${name}@example.com`,
+    ...(concurrentRoles ? { concurrentRoles } : {}),
+  });
+
+  it('兩方合約不列明細，畫面維持原樣', () => {
+    const progress = { signers: [signer('party_b', '王租客', 'signed'), signer('party_a', '林房東', 'pending')] };
+    expect(detailStepDescriptions(buildSigningSteps({ status: 'awaiting_landlord', progress, seats }))).toEqual([]);
+  });
+
+  it('三位簽署人：每步列姓名與狀態，最後的「完成」沒有說明', () => {
+    const progress = {
+      signers: [signer('party_b', '王租客', 'signed'), signer('practitioner', '陳怡君', 'pending'), signer('party_a', '林房東', 'pending')],
+    };
+    expect(detailStepDescriptions(buildSigningSteps({ status: 'awaiting_practitioner', progress, seats }))).toEqual([
+      '王租客・已簽署',
+      '陳怡君・待簽署',
+      '林房東・尚未輪到',
+      undefined,
+    ]);
+  });
+
+  it('兼任的簽署人兩位：兼任者的步驟標題標示兼任，說明列姓名與狀態', () => {
+    const progress = { signers: [signer('party_b', '王租客', 'signed'), signer('practitioner', '陳怡君', 'pending', ['party_a'])] };
+    const steps = buildSigningSteps({ status: 'awaiting_practitioner', progress, seats });
+    expect(detailStepDescriptions(steps)).toEqual(['王租客・已簽署', '陳怡君・待簽署', undefined]);
+    expect(detailSigningSteps('awaiting_practitioner', progress, 'lease', seats).titles).toEqual([
+      '待乙方（承租人）簽署',
+      '待執業人員（租賃住宅管理人員）兼甲方（出租人）簽署',
+      '完成',
+    ]);
+  });
+
+  it('拒簽的簽署人標示已拒簽', () => {
+    const progress = { signers: [signer('party_b', '王租客', 'signed'), signer('practitioner', '陳怡君', 'declined'), signer('party_a', '林房東', 'pending')] };
+    expect(detailStepDescriptions(buildSigningSteps({ status: 'declined', progress, seats }))[1]).toBe('陳怡君・已拒簽');
   });
 });
 
