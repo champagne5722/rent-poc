@@ -14,6 +14,7 @@ import {
   signingSequenceNotice,
   stepStatuses,
 } from './contract-wizard';
+import { ulidOf } from './test-ids';
 
 function fields(routing?: ContractRoutingConditions): ContractFields {
   return {
@@ -59,7 +60,7 @@ const masterFields = [sig('party_b', MASTER_B), sig('practitioner', MASTER_P), s
 
 function contract(patch: Partial<Contract> = {}): Contract {
   return {
-    id: 1,
+    id: ulidOf(1),
     property_id: '01HF7YAT00ABCDEFGHJKMNPQRS',
     contract_type: 'lease',
     status: 'draft',
@@ -188,6 +189,13 @@ describe('signingSequenceNotice（確認頁的簽署順序說明）', () => {
   it('乙方先簽、甲方後簽的序列沿用原文字', () => {
     expect(signingSequenceNotice(fields())).toBe(TENANT_FIRST_NOTICE);
     expect(signingSequenceNotice(fields(routing({ businessType: 'managed' })))).toBe(TENANT_FIRST_NOTICE);
+  });
+
+  it('說明用承租人、出租人的稱謂，不再寫租客與甲方（您）', () => {
+    expect(TENANT_FIRST_NOTICE).toBe(
+      '送簽後由乙方（承租人）先簽，乙方完成後才輪到甲方（出租人）簽署，雙方都簽完合約才成立。',
+    );
+    expect(TENANT_FIRST_NOTICE).not.toMatch(/租客|房東|您/);
   });
 
   it('其他序列由席位產生', () => {

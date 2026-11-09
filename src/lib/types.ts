@@ -1,7 +1,7 @@
 // 領域型別與詞彙，術語定義見 repo 根目錄 GLOSSARY.md
 
 import type { BusinessType } from './cases';
-import type { ContractType } from './labels';
+import { TERMS, type ContractType } from './labels';
 
 export const PROPERTY_TYPES = ['整層住家', '套房', '雅房'] as const;
 export type PropertyType = (typeof PROPERTY_TYPES)[number];
@@ -36,14 +36,14 @@ export interface EquipmentItem {
   quantity: number;
 }
 
-// 修繕責任（GLOSSARY.md）：設備附件每列的修繕歸屬，預設出租方（呼應內政部範本第八條精神）。
+// 修繕責任（GLOSSARY.md）：設備附件每列的修繕歸屬，預設出租人（呼應內政部範本第八條精神）。
 // 只存在合約層，物件的設備清單不記責任。
 export const REPAIR_RESPONSIBILITIES = ['landlord', 'tenant'] as const;
 export type RepairResponsibility = (typeof REPAIR_RESPONSIBILITIES)[number];
 
 export const REPAIR_RESPONSIBILITY_LABELS: Record<RepairResponsibility, string> = {
-  landlord: '出租方',
-  tenant: '承租方',
+  landlord: TERMS.lessor,
+  tenant: TERMS.lessee,
 };
 
 // 設備附件的一列（ADR-0008）：項目＋數量＋修繕責任＋備註。
@@ -278,7 +278,7 @@ export type ContractFileStatus = 'saved' | 'failed';
 // 保存結果一律入庫：成功記檔案資訊，失敗記錯誤訊息供補抓
 export interface ContractFile {
   id: number;
-  contract_id: number;
+  contract_id: string; // 合約的 ULID
   kind: ContractFileKind;
   status: ContractFileStatus;
   file_name: string;
@@ -290,8 +290,8 @@ export interface ContractFile {
 }
 
 export interface Contract {
-  id: number;
-  // 物件的 ULID。合約還在 SQLite 時只存文字，沒有外鍵；MIL-83 搬到 PostgreSQL 時改複合外鍵
+  id: string; // ULID（ADR-0012 決議 9）。畫面顯示末 6 碼，用 shortUlid
+  // 物件的 ULID，與合約同組織（複合外鍵 (org_id, property_id)）
   property_id: string | null;
   // 合約類型（ADR-0021 決議 2）：決定簽章分流的文件類型。既有合約一律是 lease。
   contract_type: ContractType;
@@ -300,14 +300,14 @@ export interface Contract {
   signature_fields: SignatureField[];
   declined_reason: string | null;
   // 衍生自哪份合約（ADR-0006）：只有「撤回後複製為新草稿」的修約路徑會記錄，拒簽後的複製為 null
-  derived_from: number | null;
+  derived_from: string | null;
   created_at: string;
   updated_at: string | null;
 }
 
 // 衍生鏈上的一份合約（詳情頁「關聯合約」分頁只需編號與狀態）
 export interface ContractRelationRef {
-  id: number;
+  id: string;
   status: ContractStatus;
 }
 
@@ -347,15 +347,15 @@ export const CONTRACT_EVENT_ACTORS = ['landlord', 'tenant', 'system', ...SIGNER_
 export type ContractEventActor = (typeof CONTRACT_EVENT_ACTORS)[number];
 
 export const CONTRACT_EVENT_ACTOR_LABELS: Record<ContractEventActor, string> = {
-  landlord: '房東',
-  tenant: '租客',
+  landlord: TERMS.lessor,
+  tenant: TERMS.lessee,
   system: '系統',
   ...SIGNER_ROLE_LABELS,
 };
 
 export interface ContractEvent {
-  id: number;
-  contract_id: number;
+  id: string; // ULID，同一份合約內依 id 排序就是發生順序
+  contract_id: string;
   type: ContractEventType;
   actor: ContractEventActor;
   note: string | null;

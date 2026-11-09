@@ -1,7 +1,5 @@
-import Database from 'better-sqlite3';
 import { NextRequest } from 'next/server';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureSchema, setDb } from '@/lib/db';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withTx } from '@/lib/pg/database';
 import { actAs, actAsError, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { isUlid, newUlid } from '@/lib/pg/ulid';
@@ -22,18 +20,9 @@ beforeAll(async () => {
   kit = await setupRouteDb();
 });
 afterAll(() => kit.close());
-// 刪除物件要問合約接縫（contract-links.ts），合約還在 SQLite
-let sqlite: Database.Database;
 beforeEach(async () => {
   await kit.reset();
   actAs(kit.orgA);
-  sqlite = new Database(':memory:');
-  ensureSchema(sqlite);
-  setDb(sqlite);
-});
-afterEach(() => {
-  setDb(null);
-  sqlite.close();
 });
 
 const NAME = '大安區溫馨兩房';

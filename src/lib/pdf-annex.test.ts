@@ -74,8 +74,8 @@ describe('設備附件頁', () => {
     expect(annex).toContain('客廳與主臥各一台');
     expect(annex).toContain('洗衣機');
     // 修繕責任印中文標籤而非 landlord／tenant
-    expect(annex).toContain('出租方');
-    expect(annex).toContain('承租方');
+    expect(annex).toContain('出租人');
+    expect(annex).toContain('承租人');
     expect(annex).not.toContain('landlord');
   }, 20000);
 
@@ -101,7 +101,7 @@ describe('設備附件頁', () => {
     const annex = pages[pages.length - 1];
     expect(annex).toContain('附屬設備清單');
     expect(annex).toContain('冷氣');
-    expect(annex).toContain('出租方');
+    expect(annex).toContain('出租人');
   }, 20000);
 
   it('附件頁不影響簽名框的預設落點', async () => {

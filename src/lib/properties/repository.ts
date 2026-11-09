@@ -313,7 +313,7 @@ export type RemovePropertyResult = 'deleted' | 'archived' | 'not_found';
  * - 沒有合約：刪除物件列，回 'deleted'。租賃單位與錨點留在 registry，沒有任何組織的物件指向的單位
  *   由觸發器轉 retired（0032）。
  * - 找不到（含別的組織的物件）：回 'not_found'。
- * 「有沒有合約」問 contract-links.ts 的接縫，合約搬進 PostgreSQL 時只換那裡。
+ * 「有沒有合約」問 contract-links.ts 的接縫，它在同一個交易內查 org.contracts（MIL-83）。
  */
 export async function removeProperty(tx: OrgTx, id: string): Promise<RemovePropertyResult> {
   const { rows } = await tx.query<{ rental_unit_id: string; archived_at: Date | null }>(

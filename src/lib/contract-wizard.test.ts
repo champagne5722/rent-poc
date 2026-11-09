@@ -17,6 +17,7 @@ import {
   upgradeDraftFields,
 } from './contract-wizard';
 import { DEFAULT_TEMPLATE, findClause, upgradeNotice } from './clause-library';
+import { ulidOf } from './test-ids';
 
 function fields(patch: Partial<ContractFields> = {}): ContractFields {
   return {
@@ -45,7 +46,7 @@ function sig(signer: SignatureField['signer'], id: string = signer): SignatureFi
 
 function contract(patch: Partial<Contract> = {}): Contract {
   return {
-    id: 1,
+    id: ulidOf(1),
     property_id: '01HF7YAT00ABCDEFGHJKMNPQRS',
     contract_type: 'lease',
     status: 'draft',

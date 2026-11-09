@@ -26,7 +26,7 @@ export const signing = createSigningModule({
   dataDir: DATA_DIR,
 });
 
-export function contractSubject(id: number): SigningSubject {
+export function contractSubject(id: string): SigningSubject {
   return { type: 'contract', id };
 }
 
