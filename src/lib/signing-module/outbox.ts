@@ -1,11 +1,30 @@
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
-import type { SigningSubject } from './provider';
+import type { SigningSubject, SigningSubjectType } from './provider';
 
 // outbox 的儲存（ADR-0020 決議 5、6，MIL-85）。表與狀態的意義見 db/migrations/0006_sign_tasks.sql。
 // 這裡只管資料列的狀態轉移，不呼叫服務商。派送在 module.ts，排程重試（drain-outbox）在 src/lib/jobs/jobs.ts（MIL-86）。
 
-export type OutboxAction = 'create_sign_task' | 'void_sign_task' | 'resend_sign_task' | 'save_sign_task_files';
+/**
+ * outbox 的全部動作。清單必須和資料庫的 outbox_action_check 一致：
+ * 新增動作時加在這裡，並用新的 migration 重設 CHECK，清單取所有已有動作的聯集（見 0054）。
+ */
+export const OUTBOX_ACTIONS = [
+  'create_sign_task',
+  'void_sign_task',
+  'resend_sign_task',
+  'save_sign_task_files',
+  'send_email',
+] as const;
+export type OutboxAction = (typeof OUTBOX_ACTIONS)[number];
+
+/** 簽署模組自己派送的動作。簽署模組的 drain 只處理這些，其他動作（例如通知 email）由各自的模組派送。 */
+export const SIGN_TASK_ACTIONS: readonly OutboxAction[] = [
+  'create_sign_task',
+  'void_sign_task',
+  'resend_sign_task',
+  'save_sign_task_files',
+];
 export type OutboxStatus = 'pending' | 'sending' | 'done' | 'failed' | 'dead' | 'skipped';
 
 /** 首次派送之外最多再重試的次數。用完轉 dead，進人工處理清單（ADR-0020 決議 6）。 */
@@ -21,7 +40,15 @@ const RETRYABLE: Record<OutboxAction, boolean> = {
   resend_sign_task: true,
   // 保存文件是向服務商下載再寫入 FileStore，重做不會有副作用（已保存的種類會略過）
   save_sign_task_files: true,
+  // 寄信失敗可以重試。寄出後平台沒記下來時可能重複寄（至少一次，MIL-120）
+  send_email: true,
 };
+
+/** 排進 outbox 的對象。簽署動作是簽署標的，其他動作（例如 send_email）由各自的模組決定 type。 */
+export interface OutboxSubject {
+  type: string;
+  id: string;
+}
 
 export interface OutboxRow {
   id: string;
@@ -36,7 +63,7 @@ export interface OutboxRow {
 interface Row {
   id: string;
   action: OutboxAction;
-  subject_type: string;
+  subject_type: SigningSubjectType;
   subject_id: string;
   status: OutboxStatus;
   attempts: number;
@@ -63,7 +90,7 @@ const toRow = (r: Row): OutboxRow => ({
  */
 export async function enqueueOutbox(
   tx: OrgTx,
-  input: { action: OutboxAction; subject: SigningSubject; sending?: boolean },
+  input: { action: OutboxAction; subject: OutboxSubject; sending?: boolean },
 ): Promise<{ row: OutboxRow; created: boolean }> {
   const sending = input.sending === true;
   const { rows } = await tx.query<Row>(
@@ -107,11 +134,15 @@ export async function findOpenOutbox(tx: OrgTx, subject: SigningSubject, action:
   return rows[0] ? toRow(rows[0]) : null;
 }
 
-/** 到期的 pending 列，最舊的先。drain-outbox 逐列認領處理，一次最多 limit 列。 */
-export async function listDueOutbox(tx: OrgTx, limit: number): Promise<OutboxRow[]> {
+/**
+ * 到期的 pending 列，最舊的先。drain-outbox 逐列認領處理，一次最多 limit 列。
+ * 各模組只取自己派送的動作（actions），不得搶別的模組的列。
+ */
+export async function listDueOutbox(tx: OrgTx, limit: number, actions: readonly OutboxAction[]): Promise<OutboxRow[]> {
   const { rows } = await tx.query<Row>(
-    `SELECT ${COLUMNS} FROM org.outbox WHERE status = 'pending' AND next_attempt_at <= now() ORDER BY id LIMIT $1`,
-    [limit],
+    `SELECT ${COLUMNS} FROM org.outbox
+      WHERE status = 'pending' AND next_attempt_at <= now() AND action = ANY($2::text[]) ORDER BY id LIMIT $1`,
+    [limit, [...actions]],
   );
   return rows.map(toRow);
 }

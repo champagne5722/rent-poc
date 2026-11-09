@@ -1,6 +1,6 @@
 import type { OrgTx } from '../pg/with-tx';
 import type { ProgressOutcome } from './progress';
-import type { Signer, SigningEvent, SigningSubject } from './provider';
+import type { Signer, SigningEvent, SigningSubject, SigningSubjectType } from './provider';
 
 // 模組拒絕操作。status 與 message 就是對外的回應碼與訊息。
 export class SigningRefusal extends Error {
@@ -88,3 +88,6 @@ export interface SigningSubscriber {
   // 例如簽署當下不可簽章時自動撤回（MIL-75，ADR-0018 決議 11）。
   afterOutcome?(subject: SigningSubject, outcome: ProgressOutcome, tools: AfterOutcomeTools): Promise<void>;
 }
+
+// 簽署模組的訂閱者註冊：依 subject.type 分派。還沒有訂閱者的種類不註冊，模組對它回 404。
+export type SigningSubscribers = Partial<Record<SigningSubjectType, SigningSubscriber>>;

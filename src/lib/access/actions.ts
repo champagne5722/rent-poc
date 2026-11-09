@@ -348,6 +348,15 @@ export const ACTIONS = {
   'practitioner.register': { scope: 'org', effect: 'write', orgRoles: WRITE_ROLES },
   // 結束任職：任職本人或執業主體的 admin。這張表放行 admin 與 staff，更細的「本人或 admin」由 registry.end_employment 檢查。
   'employment.end': { scope: 'org', effect: 'write', orgRoles: WRITE_ROLES },
+  // 收款帳戶（MIL-118，E 線）：組織層，沒有案件。看帳戶清單所有角色，登錄、改名與停用 admin 與 staff，viewer 被拒。
+  'payment_account.read': { scope: 'org', effect: 'read', orgRoles: ALL_ROLES },
+  'payment_account.manage': { scope: 'org', effect: 'write', orgRoles: WRITE_ROLES },
+  // 站內通知（MIL-120，E 線）：看自己的通知與標已讀，所有角色。標已讀只改自己的已讀狀態，
+  // 不改組織資料，所以 effect 是 read，viewer 也能標。可見範圍（個人通知、組織通知）由通知模組依 partyId 篩選。
+  'notification.read': { scope: 'org', effect: 'read', orgRoles: ALL_ROLES },
+  'notification.mark_read': { scope: 'org', effect: 'read', orgRoles: ALL_ROLES },
+  // demo 送測試通知（MIL-120）：寫入通知與 email 列，admin 與 staff。route 另外只在 Mock 寄信模式存在。
+  'notification.demo_send': { scope: 'org', effect: 'write', orgRoles: WRITE_ROLES },
 } as const satisfies Record<string, ActionRule>;
 
 export type ActionId = keyof typeof ACTIONS;

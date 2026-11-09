@@ -29,9 +29,32 @@ function contract(name: string, make: () => Mailer) {
       ['主旨含換行', { subject: '登入\r\nBcc: x@example.com' }],
       ['本文為空', { text: '' }],
       ['種類格式不合', { kind: 'OTP' }],
+      ['寄件名義為空', { from: '  ' }],
+      ['寄件名義含換行', { from: '管理公司\r\nBcc: x@example.com' }],
     ])('拒絕輸入不合格的信：%s', async (_label, patch) => {
       const mailer = make();
       await expect(mailer.send({ ...message, ...patch })).rejects.toThrow();
+      expect(await mailer.listSent()).toEqual([]);
+    });
+
+    // MIL-120：寄件紀錄。寄件名義由呼叫端傳入，紀錄看得到
+    it('查得到寄件紀錄：新的在前，帶寄件名義與寄出時間', async () => {
+      const mailer = make();
+      const first = await mailer.send({ ...message, from: '大安管理公司' });
+      const second = await mailer.send({ ...message, to: 'second@example.com' });
+      const sent = await mailer.listSent();
+      expect(sent.map((m) => m.id)).toEqual([second.id, first.id]);
+      expect(sent[1]).toMatchObject({ to: 'owner@example.com', from: '大安管理公司', kind: 'auth.otp', subject: '登入驗證碼' });
+      expect(sent[0].from).toBeUndefined();
+      expect(sent[0].sentAt).toBeInstanceOf(Date);
+    });
+
+    it('listSent 回傳複本，改它不影響內部', async () => {
+      const mailer = make();
+      await mailer.send(message);
+      const copy = [...(await mailer.listSent())];
+      copy.length = 0;
+      expect(await mailer.listSent()).toHaveLength(1);
     });
   });
 }

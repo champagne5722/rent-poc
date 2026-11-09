@@ -100,6 +100,8 @@
 | `org_member.read` | 組織成員列表，所有角色 |
 | `property.read`、`property.manage` | 物件（組織層，沒有案件）：讀取所有角色，寫入 `admin`、`staff` |
 | `uncased_contract.read`、`uncased_contract.write` | 還沒歸屬案件的合約。案件動作的 `uncased` 欄位指向這兩列，MIL-115 遷移後不再用到 |
+| `payment_account.read`、`payment_account.manage` | 收款帳戶（MIL-118）：組織層，讀取所有角色，寫入 `admin`、`staff` |
+| `notification.read`、`notification.mark_read`、`notification.demo_send` | 站內通知（MIL-120）：看與標已讀所有角色（標已讀只改自己的已讀狀態，effect 為 read），demo 送測試通知 `admin`、`staff` |
 | `audit.export` | 稽核紀錄匯出，只限 `admin`（P0-23 AC6） |
 
 P0-09 表與 ADR-0023 決議 7 衝突的地方以 ADR 為準：代管業者的確認點交是點交範圍的代操作。

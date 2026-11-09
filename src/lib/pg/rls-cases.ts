@@ -258,6 +258,57 @@ export const ORG_TABLE_CASES: Record<string, OrgTableCase> = {
       return id;
     },
   },
+  // 收款帳戶（MIL-118）：可改（停用、改名），不可刪（觸發器擋下自己組織的列，別的組織的列 RLS 讓它刪不到）。
+  // 持有人是 other，不需要 party。現金收取帳戶的唯一鍵含 org_id，兩個組織用同一個持有人各寫一列都成功。
+  'org.payment_accounts': {
+    async seed(tx, orgId) {
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.payment_accounts (id, org_id, name, holder_kind, holder_name, account_kind)
+         VALUES ($1, $2, '滲透測試現金收取', 'other', '滲透測試持有人', 'cash')`,
+        [id, orgId],
+      );
+      return id;
+    },
+  },
+  // 站內通知與通知 email（MIL-120）。業務鍵固定：兩個組織各寫一列都要成功。
+  // email 列掛在同組織的通知上（複合外鍵），所以 seed 一併建立父列。
+  'org.notifications': {
+    async seed(tx, orgId) {
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.notifications (id, org_id, kind, title, body) VALUES ($1, $2, 'penetration.test', '滲透測試通知', '內文')`,
+        [id, orgId],
+      );
+      return id;
+    },
+  },
+  'org.notification_emails': {
+    async seed(tx, orgId) {
+      const notificationId = newUlid();
+      await tx.query(
+        `INSERT INTO org.notifications (id, org_id, kind, title, body) VALUES ($1, $2, 'penetration.test', '滲透測試通知', '內文')`,
+        [notificationId, orgId],
+      );
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.notification_emails (id, org_id, notification_id, kind, to_email, from_name, subject, body_text)
+         VALUES ($1, $2, $3, 'penetration.test', 'penetration@example.com', '滲透測試', '主旨', '本文')`,
+        [id, orgId, notificationId],
+      );
+      return id;
+    },
+  },
+  // 鏡像帳（MIL-117）：只增不改。直接 INSERT 而不用 ledger 模組，因為探測 4 要在 A 的脈絡寫入 B 的 org_id。
+  // 業務鍵（案件、事件類型、事件 ID）固定：兩個組織寫同一組業務鍵都要成功。
+  'org.ledger_journals': {
+    appendOnly: true,
+    seed: (tx, orgId) => seedLedgerJournal(tx, orgId).then((seeded) => seeded.journalId),
+  },
+  'org.ledger_entries': {
+    appendOnly: true,
+    seed: (tx, orgId) => seedLedgerJournal(tx, orgId).then((seeded) => seeded.entryId),
+  },
 };
 
 async function seedCase(tx: OrgTx, orgId: string): Promise<string> {
@@ -268,6 +319,24 @@ async function seedCase(tx: OrgTx, orgId: string): Promise<string> {
     [id, orgId],
   );
   return id;
+}
+
+/** 寫一筆平衡的分錄（兩列明細）。分錄的檢查在提交時執行，所以兩個 INSERT 要在同一個交易內。 */
+async function seedLedgerJournal(tx: OrgTx, orgId: string): Promise<{ journalId: string; entryId: string }> {
+  const journalId = newUlid();
+  const entryId = newUlid();
+  await tx.query(
+    `INSERT INTO org.ledger_journals (id, org_id, case_id, business_event_type, business_event_id, effective_date)
+     VALUES ($1, $2, 'PENETRATION', 'receipt_confirmed', 'PENETRATION-1', '2026-11-08')`,
+    [journalId, orgId],
+  );
+  await tx.query(
+    `INSERT INTO org.ledger_entries (id, org_id, case_id, journal_id, line_no, account, debit, credit) VALUES
+       ($1, $2, 'PENETRATION', $3, 1, 'asset.bank.PENETRATION', 100, 0),
+       ($4, $2, 'PENETRATION', $3, 2, 'liability.deposit.PENETRATION', 0, 100)`,
+    [entryId, orgId, journalId, newUlid()],
+  );
+  return { journalId, entryId };
 }
 
 /**
@@ -287,6 +356,14 @@ export const CASE_SCOPED_READS: Record<string, { readableBy: readonly CaseMember
     note: '其他關係只讀自己的列（self_read，ADR-0012 決議 7）',
   },
   'org.case_events': { readableBy: ['lessor', 'mandator', 'mandatary'], note: '' },
+  'org.ledger_journals': {
+    readableBy: [],
+    note: '鏡像帳分錄（MIL-117）。case_id 是文字，還沒掛 cases 的外鍵，只有主辦組織讀取。成員讀取政策由 MIL-123 接上案件時補',
+  },
+  'org.ledger_entries': {
+    readableBy: [],
+    note: '鏡像帳明細（MIL-117）。同分錄，只有主辦組織讀取，MIL-123 接上案件時補成員讀取政策',
+  },
   'org.contracts': {
     readableBy: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker', 'mandator', 'mandatary'],
     note: '包租案件的 owner 讀不到合約（P0-09 AC5）',
@@ -340,6 +417,9 @@ export const REGISTRY_TABLE_CASES: Record<string, { purpose: string }> = {
   'registry.practice_licenses': { purpose: '業別與驗證三態的業別層' },
   'registry.review_items': { purpose: '審核台佇列' },
   'registry.credential_checks': { purpose: '核對紀錄，只增不改' },
+  // C 線（MIL-111）：執業人員證書與任職
+  'registry.practitioners': { purpose: '執業人員證書層，驗證狀態全域一份，證號未遮罩' },
+  'registry.practitioner_employments': { purpose: '執業人員任職層與專任排除約束' },
 };
 
 /** 一個 registry 函式的跨組織探測。被探測的 ID 由測試提供：A 組織建好的物件，與隨機產生的不存在 ID。 */
@@ -416,6 +496,60 @@ export const REGISTRY_FUNCTION_CASES: Record<string, RegistryFunctionCase> = {
     probe: null,
     reason: '營運者專用，先呼叫 assert_operator()（MIL-106、109）',
   },
+  // C 線（MIL-111）：執業人員證書與任職。隔離靠脈絡（app.org_id、app.party_id 加成員資格，或 assert_operator()），
+  // 不靠「別人的 ID 與不存在的 ID 同一回應」。案例在 practitioner 相關測試。
+  'registry.certificate_badges': {
+    probe: null,
+    reason: '只回 party_id、證書種類與核對日，不回證號與組織資料；任何組織脈絡都能呼叫（MIL-111）',
+  },
+  'registry.create_employment': {
+    probe: null,
+    reason: '呼叫者必須是目前執業主體的成員（assert_practice_member()），只為本人建立任職（MIL-111）',
+  },
+  'registry.employment_exclusivity_facts': {
+    probe: null,
+    reason: '呼叫者必須是證號本人的成員脈絡，只回自己這家與別家的標記，不回別家的 ID 與名稱（MIL-111）',
+  },
+  'registry.end_employment': {
+    probe: null,
+    reason: '呼叫者必須是目前執業主體的成員，且是任職本人或 admin（MIL-111）',
+  },
+  'registry.my_practitioner': {
+    probe: null,
+    reason: '沒有參數，只回呼叫者自己的證書與目前組織的任職（MIL-111）',
+  },
+  'registry.org_employments': {
+    probe: null,
+    reason: '沒有參數，只回目前組織的任職，證號序號由 TypeScript 遮罩（MIL-111）',
+  },
+  'registry.practitioner_party': {
+    probe: null,
+    reason: '營運者專用，先呼叫 assert_operator()（MIL-111）',
+  },
+  'registry.record_consent_check': {
+    probe: null,
+    reason: '營運者專用，先呼叫 assert_operator()（MIL-111）',
+  },
+  'registry.record_employment_check': {
+    probe: null,
+    reason: '營運者專用，先呼叫 assert_operator()（MIL-111）',
+  },
+  'registry.record_practitioner_check': {
+    probe: null,
+    reason: '營運者專用，先呼叫 assert_operator()（MIL-111）',
+  },
+  'registry.signing_facts': {
+    probe: null,
+    reason: '只允許該執業主體自己的組織與平台營運者呼叫，別的組織被拒（MIL-111）',
+  },
+  'registry.submit_consent': {
+    probe: null,
+    reason: '呼叫者必須是目前執業主體的成員，只為本人的任職送同意書（MIL-111）',
+  },
+  'registry.submit_practitioner': {
+    probe: null,
+    reason: '呼叫者必須是目前執業主體的成員，只登錄本人的證書（MIL-111）',
+  },
 };
 
 /** 傳入系統目錄列出的 registry 表名（schema.table），回傳沒有登記案例的表。 */
@@ -490,6 +624,10 @@ export const CONTROL_TABLE_EXCEPTIONS: Record<string, ControlTableException> = {
       '計時器的冪等紀錄，鍵是主體、事件、日期（ADR-0020 決議 7）。與計時器的效果同交易寫入，寫入後不變。' +
       '全域計時器沒有組織，所以 org_id 可為空',
     appRw: ['SELECT', 'INSERT'],
+  },
+  'control.deposit_holder_rules': {
+    reason: '押金帳戶規則，平台層級，組織不得覆寫，只由 migration 改列。MIL-118，ADR-0014 決議 13',
+    appRw: ['SELECT'],
   },
 };
 

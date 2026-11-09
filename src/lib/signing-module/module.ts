@@ -22,6 +22,7 @@ import {
   failOutbox,
   findOpenOutbox,
   listDueOutbox,
+  SIGN_TASK_ACTIONS,
   recoverStaleOutbox,
   type OutboxRow,
   type OutboxStatus,
@@ -56,6 +57,7 @@ import {
   type ReadInOrg,
   type SendContext,
   type SigningSubscriber,
+  type SigningSubscribers,
 } from './subscriber';
 
 // 簽署模組（ADR-0010）：route handler 只呼叫這裡，服務商細節都在 adapter，
@@ -86,7 +88,7 @@ const SIMULATABLE_EVENTS: readonly SigningEventType[] = ['signed', 'completed', 
 export interface SigningModuleDeps {
   provider: SigningProvider;
   // 以 subject.type 為鍵
-  subscribers: Record<string, SigningSubscriber>;
+  subscribers: SigningSubscribers;
   // 文件本體的儲存（signed-document 用途）。文件紀錄只記物件 key 與 SHA-256（MIL-87）。
   files: FileStore;
   // 模擬簽署事件（mock advance）的事件時間來源。真實 webhook 的事件時間由服務商提供。
@@ -545,7 +547,7 @@ export function createSigningModule({
       const ctx: OrgContext = { kind: 'org', orgId };
       const due = await db.inOrg(ctx, async (tx) => {
         await recoverStaleOutbox(tx);
-        return listDueOutbox(tx, limit);
+        return listDueOutbox(tx, limit, SIGN_TASK_ACTIONS);
       });
       const results: DispatchResult[] = [];
       for (const row of due) {

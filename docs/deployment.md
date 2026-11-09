@@ -46,7 +46,7 @@ Cloud Run 的環境變數：
 | `AUTH_SECRET` | Secret Manager（建議名稱 `auth-secret`） | 登入驗證碼雜湊用的 HMAC 金鑰（MIL-103）。正式環境沒設定時，登入功能拒絕啟動，驗證碼寄不出去也驗不了。換金鑰會讓尚未使用的驗證碼全部失效，已建立的 session 不受影響 |
 | `SEED_OWNER_EMAIL` | repo variable 或 Secret Manager | 預設組織（既有資料所在的屋主組織）的 `admin`。這個 email 第一次通過驗證碼時建帳號並加入預設組織，所以必須在該帳號第一次登入前設定，帳號建立後才設不會補成員資格（admin 移除成員的結果也因此不會被登入蓋回來）。沒設定時沒有人能進入既有資料 |
 | `PLATFORM_OPERATOR_EMAILS` | repo variable 或 Secret Manager | 平台營運者的 email，逗號分隔。第一次通過驗證碼時建帳號並加入平台組織，同樣必須在帳號第一次登入前設定。沒有自助註冊 |
-| `MAILER_ADAPTER` | workflow 寫死 `log` | 寄信 adapter。目前只有 `log`：驗證碼寫進 server log，並顯示在 `/demo/otp`（Basic Auth 之後，不需登入）。正式環境（`NODE_ENV=production`）沒設定時拒絕寄信，且 `/demo/otp` 回 404，避免忘了設定就把驗證碼公開。真實寄信服務在 pilot 前由使用者選定，選定前不得放真實個資 |
+| `MAILER_ADAPTER` | workflow 寫死 `log` | 寄信 adapter。目前只有 `log`：驗證碼寫進 server log，並顯示在 `/demo/otp`（Basic Auth 之後，不需登入）。正式環境（`NODE_ENV=production`）沒設定時拒絕寄信，且 `/demo/otp` 回 404，避免忘了設定就把驗證碼公開。真實寄信服務在 pilot 前由使用者選定，選定前不得放真實個資。通知 email 另有 `/demo/mail`（Mock 模式才存在，需要登入）：它列出所有組織的信，含登入驗證碼，**上線前必須收掉或加權限** |
 | `JOBS_OIDC_AUDIENCE` | MIL-92 切換時設定 | 內部 job route 驗證 OIDC token 的 `aud`，值是服務網址。見「內部 job 與 Cloud Scheduler」 |
 | `JOBS_OIDC_SERVICE_ACCOUNT` | MIL-92 切換時設定 | Cloud Scheduler 的 service account email。token 的 `email` 必須等於它 |
 | `AUDIT_ANCHOR_PROVIDER` | MIL-92 切換時設定 | 稽核鏈錨定用的服務。demo 設 `freetsa`。正式環境（`NODE_ENV=production`）沒有設定時，`anchor-audit` 與 `verify-audit` 回 500。設成 `mock` 也會被拒絕。見「稽核鏈錨定與每日驗證」 |
@@ -311,7 +311,7 @@ curl -s -o /dev/null -w '%{time_total}s\n' "https://rent-poc-demo-<專案編號>
 | job | 內容 | demo 週期 | pilot 週期 |
 |---|---|---|---|
 | `drain-inbox` | 重試還沒處理完的 webhook 事件 | 每 60 分鐘 | 每 5 分鐘 |
-| `drain-outbox` | 重試未完成的撤回與重寄 | 每 60 分鐘 | 每 5 分鐘 |
+| `drain-outbox` | 重試未完成的撤回、重寄、文件保存，以及到期的通知 email | 每 60 分鐘 | 每 5 分鐘 |
 | `scan-timers` | 執行各線註冊的計時器 | 每日 00:10（台灣時間） | 每日 00:10（台灣時間） |
 | `anchor-audit` | 把各組織稽核鏈的鏈頭送到外部時戳服務，保存回執 | 每日 00:30（台灣時間） | 每日 00:30（台灣時間） |
 | `verify-audit` | 逐組織重算稽核鏈，並比對已存的回執 | 每日 01:00（台灣時間） | 每日 01:00（台灣時間） |
@@ -321,7 +321,7 @@ curl -s -o /dev/null -w '%{time_total}s\n' "https://rent-poc-demo-<專案編號>
 
 `migrate-contracts-to-cases` 不建 Cloud Scheduler 排程。MIL-90 搬完資料後，用 Cloud Scheduler 的「強制執行」或帶 OIDC token 的 `curl` 呼叫一次。
 
-每次 job 的處理筆數有上限。`drain-inbox` 100 筆，`drain-outbox` 50 筆，`scan-timers` 500 項。回應的 `truncated` 為 `true` 時，剩下的留給下一次排程。
+每次 job 的處理筆數有上限。`drain-inbox` 100 筆，`drain-outbox` 50 筆（簽署動作與通知 email 各 50 筆），`scan-timers` 500 項。回應的 `truncated` 為 `true` 時，剩下的留給下一次排程。
 
 週期只是排程設定，不寫在程式碼。pilot 上線時改排程，不用部署。
 

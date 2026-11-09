@@ -22,12 +22,14 @@ beforeEach(() => kit.reset());
 
 const NOW = new Date('2026-11-10T03:00:00.000Z');
 const noSigning = { drainInbox: async () => [], drainOutbox: async () => [] };
+const noEmails = { drainEmails: async () => [] };
 
 function setup(options: { audit?: boolean } = { audit: true }) {
   const provider = createMockAnchorProvider({ now: () => NOW });
   const logger = memoryLogger();
   const jobs = createJobs({
     signing: noSigning,
+    notifications: noEmails,
     timers: createTimerRegistry(),
     ...(options.audit ? { audit: { providers: () => ({ primary: provider, byId: { mock: provider } }), logger } } : {}),
   });

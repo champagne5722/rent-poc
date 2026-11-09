@@ -1062,7 +1062,7 @@ describe('點點簽 sandbox 實測的 webhook 回放（MIL-54，任務 346、348
 
 describe('簽署模組不依賴合約', () => {
   // 假的簽署標的：沒有對應的合約列，只記錄訂閱者收到什麼
-  const FAKE = { type: 'disbursement_instruction', id: ulidOf(77) };
+  const FAKE = { type: 'handover_certificate', id: ulidOf(77) } as const;
   const signerA: Signer = { role: 'party_a', name: '財務甲', email: 'a@example.com', signatureFields: [] };
   const signerB: Signer = { role: 'party_b', name: '財務乙', email: 'b@example.com', signatureFields: [] };
 
@@ -1181,7 +1181,8 @@ describe('簽署模組不依賴合約', () => {
     });
     await signing.send(FAKE, document, [signerA]);
 
-    await expect(signing.send({ type: 'unknown', id: '1' }, document, [signerA])).rejects.toEqual(
+    // 資料庫或呼叫端帶來型別以外的種類時，模組也回 404
+    await expect(signing.send({ type: 'unknown' as never, id: '1' }, document, [signerA])).rejects.toEqual(
       refusal(404, '不支援的簽署標的')
     );
     const other = moduleFor({ ...fakeSubscriber().subscriber, exists: async () => false }, {

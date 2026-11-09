@@ -272,6 +272,13 @@ const ORG_EXPECTATIONS: Record<string, { roles: OrgRole[] }> = {
   // 執業人員證書與任職（MIL-111）：看所有角色，登錄與結束任職 viewer 被拒
   'practitioner.register': { roles: ['admin', 'staff'] },
   'employment.end': { roles: ['admin', 'staff'] },
+  // 收款帳戶（MIL-118）：看所有角色，登錄與停用 viewer 被拒
+  'payment_account.read': { roles: ['admin', 'staff', 'viewer'] },
+  'payment_account.manage': { roles: ['admin', 'staff'] },
+  // 站內通知（MIL-120）：看與標已讀所有角色（只改自己的已讀狀態），demo 送測試通知 viewer 被拒
+  'notification.read': { roles: ['admin', 'staff', 'viewer'] },
+  'notification.mark_read': { roles: ['admin', 'staff', 'viewer'] },
+  'notification.demo_send': { roles: ['admin', 'staff'] },
 };
 
 function persona(id: string): Persona {

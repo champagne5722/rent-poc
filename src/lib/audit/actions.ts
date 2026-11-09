@@ -75,6 +75,11 @@ export const AUDIT_ACTIONS = [
   'vault.upload', // MIL-109：證據檔登記，payload 放檔案 ID、對象與大小，不放檔名
   'vault.delete', // MIL-109：證據檔刪除，payload 放原因與刪除方式（ADR-0017 補充，P0-04 AC5）
 
+  // 收款帳戶（MIL-118）：payload 只放 ID、持有人種類與帳戶性質，不放姓名與銀行識別
+  'payment_account.register',
+  'payment_account.update',
+  'payment_account.deactivate',
+
   // 帳務（鏡像帳與押金分錄、報表產生、手動繳租提醒）
   'ledger.entry',
   'ledger.reverse',

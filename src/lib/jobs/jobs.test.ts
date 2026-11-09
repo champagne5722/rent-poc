@@ -14,7 +14,7 @@ import { listDeadOutbox, OUTBOX_MAX_RETRIES } from '../signing-module/outbox';
 import { createSigningModule } from '../signing-module/module';
 import type { SignableDocument, Signer, SigningProvider } from '../signing-module/provider';
 import type { ContractFields } from '../types';
-import { createJobs, type JobSigning } from './jobs';
+import { createJobs, type JobNotifications, type JobSigning } from './jobs';
 import { createTimerRegistry } from './timers/registry';
 
 // drain-inbox、drain-outbox、scan-timers 三個 job（ADR-0020 決議 3、7、8，MIL-86）。
@@ -92,7 +92,9 @@ async function sentThenVoidFailed(orgId: string, taskRef: string) {
 
 const statusOf = async (orgId: string, id: string) => (await inOrg(orgId, (tx) => getContract(tx, id)))?.status;
 const timers = createTimerRegistry();
-const jobsWith = (signing: JobSigning, limits?: { inbox?: number; outbox?: number }) => createJobs({ signing, timers, limits });
+const noEmails: JobNotifications = { drainEmails: async () => [] };
+const jobsWith = (signing: JobSigning, limits?: { inbox?: number; outbox?: number }) =>
+  createJobs({ signing, notifications: noEmails, timers, limits });
 
 describe('drain-outbox', () => {
   it('逐組織重試到期的撤回，彙整結果', async () => {
@@ -245,7 +247,7 @@ describe('scan-timers', () => {
       },
       fire: async () => {},
     });
-    const jobs = createJobs({ signing: moduleFor(kit.orgA), timers: registry });
+    const jobs = createJobs({ signing: moduleFor(kit.orgA), notifications: noEmails, timers: registry });
 
     // UTC 16:30 已是台灣的隔天
     const result = await jobs['scan-timers']({ now: new Date('2026-11-09T16:30:00Z') });

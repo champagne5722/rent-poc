@@ -40,13 +40,15 @@ describe('resolveNavKey（側邊選單高亮）', () => {
 });
 
 describe('殼層導覽定義', () => {
-  it('選單是工作台、物件、案件、合約、移交、設計六項', () => {
+  it('選單是工作台、物件、案件、合約、收款帳戶、移交、通知、設計八項', () => {
     expect(NAV_ITEMS.map((i) => i.key)).toEqual([
       'workbench',
       'properties',
       'cases',
       'contracts',
+      'payment-accounts',
       'handovers',
+      'notifications',
       'design',
     ]);
     expect(NAV_ITEMS.map((i) => i.href)).toEqual([
@@ -54,7 +56,9 @@ describe('殼層導覽定義', () => {
       '/properties',
       '/cases',
       '/contracts',
+      '/payment-accounts',
       '/handovers',
+      '/notifications',
       '/design',
     ]);
   });
