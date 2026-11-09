@@ -39,6 +39,9 @@ Cloud Run 的環境變數：
 | `DOTTEDSIGN_CLIENT_ID` | Secret Manager `dottedsign-client-id` | 點點簽 demo Application。只在 `DOTTEDSIGN_ENABLED=true` 時掛載 |
 | `DOTTEDSIGN_CLIENT_SECRET` | Secret Manager `dottedsign-client-secret` | 同上 |
 | `DOTTEDSIGN_VERIFY_SIGNERS` | 目前 workflow 不注入，正式環境上線前手動設定 | 設為 `1` 時，送簽替每位簽署人帶 `email` 驗證。未設定時不送。sandbox 停用驗證，帶了會回 400428，所以 demo 必須維持未設定。正式環境的 `email` 驗證尚未實測。這個變數同時是「正式環境」的判定：設為 `1` 且 C 線的 `practiceRegistry` 真實 adapter 尚未註冊時，要求執業人員簽章的合約（包租、承租人是包租業者、居間）一律無法送簽（ADR-0021）。未設定時用 seed 假資料 |
+| `FILE_STORE` | MIL-92 設定 | `gcs` 時文件存進 Cloud Storage。未設定時存實例的本機磁碟（`data/files/`），換實例就會遺失 |
+| `GCS_BUCKET_SIGNED` | MIL-92 設定 | 已簽 PDF 與 Audit Trail File 的 bucket。`FILE_STORE=gcs` 時必須設定 |
+| `GCS_BUCKET_GENERAL` | MIL-92 設定 | 其他檔案的 bucket，例如謄本上傳、帳單匯入。`FILE_STORE=gcs` 時必須設定 |
 | `K_SERVICE` | Cloud Run 自動注入 | `src/proxy.ts` 用來判斷是否必須要求密碼 |
 
 GitHub repo variables：
@@ -54,6 +57,74 @@ GitHub repo variables：
 | `DOTTEDSIGN_ENABLED` | `true` 時掛載點點簽 secrets，否則是 mock 模式 |
 
 GitHub 不存任何 secret。
+
+## 文件儲存（FileStore）
+
+已簽 PDF、Audit Trail File 與其他上傳檔案存在 Cloud Storage。程式碼在 `src/lib/file-store/`，設計見 [ADR-0012](adr/0012-postgresql-rls-organization-isolation.md)。
+
+兩個 bucket 對應兩種用途：
+
+| 用途 | bucket 環境變數 | 放什麼 |
+|---|---|---|
+| `signed-document` | `GCS_BUCKET_SIGNED` | 已簽 PDF、Audit Trail File |
+| `general` | `GCS_BUCKET_GENERAL` | 謄本上傳、帳單匯入等其他檔案 |
+
+物件 key 格式是 `org/<org_id>/<area>/<檔名>`。文件表只存 key 與 SHA-256，不存路徑。
+
+**警告：** 不得建立 service account 金鑰檔，也不得把金鑰放進 repo、映像或環境變數。Cloud Run 用執行身分（`RUNTIME_SA`）取得權限。
+
+### 設定步驟（MIL-92 執行）
+
+`$PROJECT` 是 GCP 專案 ID，`$RUNTIME_SA` 是 Cloud Run 的執行用 service account。bucket 名稱要全域唯一，下例用專案 ID 當前綴。
+
+1. 建立兩個 bucket：
+
+   ```bash
+   for name in signed general; do
+     gcloud storage buckets create "gs://$PROJECT-files-$name" \
+       --project "$PROJECT" --location asia-east1 \
+       --uniform-bucket-level-access --public-access-prevention
+   done
+   ```
+
+2. 已簽文件的 bucket 開啟版本控制，誤覆蓋時救得回來：
+
+   ```bash
+   gcloud storage buckets update "gs://$PROJECT-files-signed" --versioning
+   ```
+
+3. 只在這兩個 bucket 上授權執行身分。不得授權在專案層級：
+
+   ```bash
+   for name in signed general; do
+     gcloud storage buckets add-iam-policy-binding "gs://$PROJECT-files-$name" \
+       --member "serviceAccount:$RUNTIME_SA" --role roles/storage.objectUser
+   done
+   ```
+
+   `roles/storage.objectUser` 可讀、寫、列出物件，不能改 bucket 設定。
+
+4. 在 Cloud Run 服務設定環境變數：
+
+   ```bash
+   gcloud run services update rent-poc-demo --region asia-east1 --project "$PROJECT" \
+     --update-env-vars "FILE_STORE=gcs,GCS_BUCKET_SIGNED=$PROJECT-files-signed,GCS_BUCKET_GENERAL=$PROJECT-files-general"
+   ```
+
+5. 驗證（任一步失敗就停下來查）：
+
+   1. mock 模式送簽一份合約，模擬簽署到完成。
+   2. 開合約頁，下載已簽 PDF，確認能開。
+   3. 執行 `gcloud storage ls "gs://$PROJECT-files-signed/org/**"`，確認有 `org/<org_id>/sign-tasks/…` 的物件。
+   4. 重新部署一個 revision，再下載同一份 PDF，確認不需要向服務商補抓。
+
+### 本機開發
+
+不設 `FILE_STORE` 時，檔案存在 `data/files/<用途>/`。不需要 Google 帳號。
+
+### 後續可加
+
+- 已簽文件的 bucket 加保留期鎖（retention policy）。鎖定後無法縮短，上線前要先決定年限。
 
 ## 日常操作
 

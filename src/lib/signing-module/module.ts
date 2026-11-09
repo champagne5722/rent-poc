@@ -1,5 +1,4 @@
-import fs from 'fs';
-import path from 'path';
+import { buildObjectKey, parseObjectKey, sha256Hex, type FileStore } from '../file-store';
 import { jsonError } from '../http';
 import type { OrgContext, OrgTx } from '../pg/with-tx';
 import { OrgContextRequired, Unauthenticated } from '../request-context';
@@ -11,6 +10,7 @@ import {
   completeOutbox,
   enqueueOutbox,
   failOutbox,
+  findOpenOutbox,
   listDueOutbox,
   recoverStaleOutbox,
   type OutboxRow,
@@ -70,8 +70,8 @@ export interface SigningModuleDeps {
   provider: SigningProvider;
   // 以 subject.type 為鍵
   subscribers: Record<string, SigningSubscriber>;
-  // 文件本體的根目錄。文件紀錄的 rel_path 相對這裡，正式執行時是 data/。
-  dataDir: string;
+  // 文件本體的儲存（signed-document 用途）。文件紀錄只記物件 key 與 SHA-256（MIL-87）。
+  files: FileStore;
   // 模擬簽署事件（mock advance）的事件時間來源。真實 webhook 的事件時間由服務商提供。
   now?: () => Date;
   // 取得資料庫交易的方式。預設用目前請求的組織脈絡與 withTx，測試可以換成固定組織。
@@ -112,14 +112,14 @@ export type DispatchResult =
   | { kind: 'failed'; error: string; status: OutboxStatus }
   | { kind: 'not_claimed' };
 
-// 新保存的文件放在 sign-task-files/<簽署任務 id>/。回填前的文件留在 contract-files/<合約 id>/，不搬。
-const FILES_DIR = 'sign-task-files';
+// 物件 key：org/<org_id>/sign-tasks/<簽署任務 id>/<檔名>。org_id 在最前面，不同組織的檔案不會撞名。
+const FILES_AREA = 'sign-tasks';
 const FILE_SUFFIX: Record<ContractFileKind, string> = { signed_pdf: 'signed', audit_trail: 'audit-trail' };
 
 export function createSigningModule({
   provider,
   subscribers,
-  dataDir,
+  files,
   now = () => new Date(),
   db = defaultSigningDb,
 }: SigningModuleDeps) {
@@ -148,6 +148,8 @@ export function createSigningModule({
     if (!advance.accepted) return logIgnored(subject, resolved.type, advance.reason);
     await subscriber.onOutcome(tx, subject, advance.outcome);
     await saveProgress(tx, task, advance);
+    // 全員完成：保存文件的 outbox 列與完成狀態同交易寫入。提交後才派送，進程在這之間中斷也不會漏掉（MIL-87）
+    if (advance.outcome.type === 'completed') await enqueueOutbox(tx, { action: 'save_sign_task_files', subject });
     return advance.outcome;
   }
 
@@ -163,6 +165,8 @@ export function createSigningModule({
     await runAfterCompleted(subject, subscriber);
   }
 
+  // 派送完成時寫入的那一列 outbox（applyEventTx）。第一次派送在這裡，同一請求內做；
+  // 失敗的列留在 pending，由排程重試（MIL-86 的 drain-outbox），用完重試轉 dead 進人工處理清單。
   // 刻意不讓例外往外拋：webhook 回非 2xx 會被點點簽重試，
   // 單日累積 10 次投遞失敗會停掉整個 application 的 webhook。失敗的種類之後可補抓。
   async function saveFilesOnCompleted(
@@ -171,7 +175,8 @@ export function createSigningModule({
     subscriber: SigningSubscriber
   ): Promise<void> {
     try {
-      await saveTaskFiles(ctx, subject, subscriber, {});
+      const open = await db.inOrg(ctx, (tx) => findOpenOutbox(tx, subject, 'save_sign_task_files'));
+      if (open) await dispatchOutbox(ctx, open.id);
     } catch (e) {
       console.error(`[signing] ${describeSubject(subject, subscriber)}完成時保存文件失敗：${errorMessage(e)}`);
     }
@@ -200,17 +205,16 @@ export function createSigningModule({
       const fileName = fileNameOf(subject, kind);
       try {
         const bytes = await provider.downloadFile(task.taskRef, kind);
-        const relPath = path.posix.join(FILES_DIR, task.id, fileName);
-        const absPath = path.join(dataDir, relPath);
-        fs.mkdirSync(path.dirname(absPath), { recursive: true });
-        fs.writeFileSync(absPath, bytes);
+        const key = buildObjectKey(ctx.orgId, FILES_AREA, task.id, fileName);
+        const written = await files.write(key, bytes, { contentType: PDF });
         await db.inOrg(ctx, (tx) =>
           upsertSignTaskFile(tx, task.id, {
             kind,
             status: 'saved',
             file_name: fileName,
-            rel_path: relPath,
-            byte_size: bytes.length,
+            object_key: key,
+            sha256: written.sha256,
+            byte_size: written.byteSize,
             content_type: PDF,
             error: null,
           })
@@ -223,7 +227,8 @@ export function createSigningModule({
             kind,
             status: 'failed',
             file_name: fileName,
-            rel_path: null,
+            object_key: null,
+            sha256: null,
             byte_size: null,
             content_type: null,
             error,
@@ -235,16 +240,17 @@ export function createSigningModule({
     return results;
   }
 
-  // 檔案被刪掉時視為未保存，交給呼叫端補抓
-  function readSavedFile(file: SignTaskFile | null): DownloadedFile | null {
-    if (!file || file.status !== 'saved' || !file.rel_path) return null;
-    const absPath = path.join(dataDir, file.rel_path);
-    if (!fs.existsSync(absPath)) return null;
-    return {
-      fileName: file.file_name,
-      contentType: file.content_type ?? PDF,
-      bytes: new Uint8Array(fs.readFileSync(absPath)),
-    };
+  // 檔案不在 FileStore（被刪掉、舊版本機路徑）或內容的 SHA-256 與紀錄不符時，視為未保存，交給呼叫端補抓。
+  // 讀取本身失敗（權限、網路）往外丟，下載回 502，不當成不存在而覆蓋紀錄。
+  async function readSavedFile(file: SignTaskFile | null): Promise<DownloadedFile | null> {
+    if (!file || file.status !== 'saved' || !file.object_key) return null;
+    const bytes = await files.read(parseObjectKey(file.object_key));
+    if (!bytes) return null;
+    if (file.sha256 && sha256Hex(bytes) !== file.sha256) {
+      console.error(`[signing] ${file.object_key} 的內容與紀錄的 SHA-256 不符，視為未保存並重新取得`);
+      return null;
+    }
+    return { fileName: file.file_name, contentType: file.content_type ?? PDF, bytes };
   }
 
   // 派送一列撤回或重寄的 outbox。請求內的第一次派送與排程的重試共用。
@@ -264,6 +270,8 @@ export function createSigningModule({
     if (!claimed) return { kind: 'not_claimed' };
     const { row, task } = claimed;
     const subscriber = subscribers[row.subject.type];
+
+    if (row.action === 'save_sign_task_files') return dispatchSaveFiles(ctx, row, subscriber, task !== null);
 
     if (!subscriber || !task || task.status !== 'in_progress') {
       const reason = '簽署任務已不在簽署中';
@@ -306,6 +314,36 @@ export function createSigningModule({
       await db.inOrg(ctx, (tx) => failOutbox(tx, row, error)).catch(() => undefined);
       throw e;
     }
+  }
+
+  // 保存文件：向服務商下載、寫入 FileStore、記文件紀錄。已保存的種類略過，所以重試只補沒成功的。
+  // 每種文件的失敗都已記進文件紀錄（saveTaskFiles），這裡只決定 outbox 列的去向：全部成功算完成，
+  // 有失敗就記一次失敗（回 pending 等重試，用完轉 dead）。狀態不回滾，這一列與完成狀態無關。
+  async function dispatchSaveFiles(
+    ctx: OrgContext,
+    row: OutboxRow,
+    subscriber: SigningSubscriber | undefined,
+    hasTask: boolean
+  ): Promise<DispatchResult> {
+    if (!subscriber || !hasTask) {
+      const reason = '沒有對應的簽署任務';
+      await db.inOrg(ctx, (tx) => completeOutbox(tx, row.id, { status: 'skipped', note: reason }));
+      return { kind: 'skipped', reason };
+    }
+    let failures: string[];
+    try {
+      const results = await saveTaskFiles(ctx, row.subject, subscriber, {});
+      failures = results.filter((r) => !r.ok).map((r) => `${CONTRACT_FILE_LABELS[r.kind]}：${r.error ?? '未知原因'}`);
+    } catch (e) {
+      failures = [errorMessage(e)];
+    }
+    if (failures.length === 0) {
+      await db.inOrg(ctx, (tx) => completeOutbox(tx, row.id, { status: 'done' }));
+      return { kind: 'done' };
+    }
+    const error = failures.join('；');
+    const status = await db.inOrg(ctx, (tx) => failOutbox(tx, row, error));
+    return { kind: 'failed', error, status };
   }
 
   // 派送失敗回給使用者的訊息：寫明已排入重試，或重試用完需人工處理
@@ -545,10 +583,10 @@ export function createSigningModule({
         return { subscriber, task, file: await getSignTaskFile(tx, task.id, kind) };
       });
 
-      const saved = readSavedFile(file);
+      const saved = await readSavedFile(file);
       if (saved) return saved;
       const results = await saveTaskFiles(ctx, subject, subscriber, { kinds: [kind], force: true });
-      const refetched = readSavedFile(await db.inOrg(ctx, (tx) => getSignTaskFile(tx, task.id, kind)));
+      const refetched = await readSavedFile(await db.inOrg(ctx, (tx) => getSignTaskFile(tx, task.id, kind)));
       if (refetched) return refetched;
       const failure = results.find((r) => r.kind === kind)?.error ?? '未知原因';
       throw new SigningRefusal(502, `取得${label}失敗：${failure}`);

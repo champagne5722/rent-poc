@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createLocalFileStore } from '../file-store/local-file-store';
 import { createContractSubscriber } from '../contract-signing';
 import { createContract, getContract, listContractEvents } from '../contracts';
 import { withTx } from '../pg/database';
@@ -62,7 +63,7 @@ async function sendNewContract(fields: object = FIELDS) {
   const signing = createSigningModule({
     provider: createMockProvider(),
     subscribers: { contract: createContractSubscriber() },
-    dataDir,
+    files: createLocalFileStore(dataDir),
     db: {
       requestOrg: async () => ({ kind: 'org', orgId: kit.orgA }),
       inOrg: (ctx, fn) => withTx(ctx, fn),
