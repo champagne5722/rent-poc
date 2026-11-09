@@ -11,6 +11,14 @@ const registryTables: Record<string, RegistryTableCase> = {
 /** 寫入函式的共同理由：回傳值只有呼叫者剛送出的物件 ID 與審核項目 ID。 */
 const WRITES_IDS_ONLY = '回傳值只有物件 ID、審核項目 ID 或結果代碼';
 
+/**
+ * 專任判定在這兩個寫入函式內（0072，MIL-186）。別家的任職事實只在函式內部讀取，不回給呼叫者。
+ * 殘餘風險（待法務確認）：outcome 為 blocked 代表此證書鍵在別家有已驗證在職，與登錄時的阻擋訊息揭露的資訊相同（ADR-0017 決議 7）。
+ */
+const EXCLUSIVITY_WRITES_RESULT_ONLY =
+  '寫入函式，內含專任判定。回傳值只有物件 ID、審核項目 ID 與結果代碼（registered、created、blocked）。' +
+  '不回別家任職的起訖日、狀態、筆數或 ID。獨立的探測測試在 src/lib/pg/exclusivity-disclosure.test.ts';
+
 const registryFunctions: Record<string, RegistryFunctionCase> = {
   // C 線（MIL-111）：執業人員證書與任職。隔離靠脈絡（app.org_id、app.party_id 加成員資格，或 assert_operator()），
   // 不靠「別人的 ID 與不存在的 ID 同一回應」。案例在 practitioner 相關測試。
@@ -25,28 +33,8 @@ const registryFunctions: Record<string, RegistryFunctionCase> = {
   },
   'registry.create_employment': {
     probe: null,
-    reason: '呼叫者必須是目前執業主體的成員（assert_practice_member()），只為本人建立任職（MIL-111）',
-    disclosure: { kind: 'none', reason: `寫入函式。${WRITES_IDS_ONLY}` },
-  },
-  'registry.employment_exclusivity_facts': {
-    probe: null,
-    reason: '呼叫者必須是執業主體組織的成員。自己這家回全部任職，別家只回已驗證的任職，標 self 或 other，不回別家的 ID 與名稱（MIL-111、MIL-165）',
-    disclosure: {
-      kind: 'matrix',
-      reason:
-        '回傳同一證書鍵的任職狀態與期間，只標 self 或 other。自己這家（self）全部回傳。' +
-        '別家（other）只回狀態是 verified 的，因為專任判定只用得到這些，已結束與待驗證的別家任職不回（0071）。' +
-        '殘餘風險：任何執業主體組織的成員仍能得知某個證書鍵在別家有已驗證在職，與登錄時的阻擋結果相同（ADR-0017 決議 7，README）',
-      variants: [
-        {
-          label: '用已結束任職的證書鍵查',
-          subject: 'certificateKey',
-          call: (tx, _fx, key) => tx.query('SELECT * FROM registry.employment_exclusivity_facts($1)', [key]).then((r) => r.rows),
-          // own 看得到自己這家已結束的任職（self）。unrelated 只會看到別家已驗證的任職，所以用已結束任職的鍵查得 []（0071）
-          expected: { default: 'denied', by: { own: ['inactiveEmployment'], unrelated: [] } },
-        },
-      ],
-    },
+    reason: '呼叫者必須是目前執業主體的成員（assert_practice_member()），只為本人的證書建立任職，判定專任後才寫入（MIL-111、MIL-186）',
+    disclosure: { kind: 'none', reason: EXCLUSIVITY_WRITES_RESULT_ONLY },
   },
   'registry.end_employment': {
     probe: null,
@@ -146,8 +134,8 @@ const registryFunctions: Record<string, RegistryFunctionCase> = {
   },
   'registry.submit_practitioner': {
     probe: null,
-    reason: '呼叫者必須是目前執業主體的成員，只登錄本人的證書（MIL-111）',
-    disclosure: { kind: 'none', reason: `寫入函式。${WRITES_IDS_ONLY}` },
+    reason: '呼叫者必須是目前執業主體的成員，只登錄本人的證書，第一次登錄前判定專任（MIL-111、MIL-186）',
+    disclosure: { kind: 'none', reason: EXCLUSIVITY_WRITES_RESULT_ONLY },
   },
 };
 
@@ -156,7 +144,7 @@ const definerOnlyTables: Record<string, DefinerOnlyTable> = {
     reason: '執業人員證書層，驗證狀態全域一份，證號未遮罩。經 my_practitioner、submit_practitioner、record_practitioner_check、signing_facts、certificate_badges 等函式存取（MIL-111）',
   },
   'registry.practitioner_employments': {
-    reason: '執業人員任職層與專任排除約束（部分唯一索引）。經 create_employment、end_employment、record_employment_check、org_employments、employment_exclusivity_facts 存取，回應不透露別的組織（MIL-111）',
+    reason: '執業人員任職層與專任排除約束（部分唯一索引）。經 create_employment、end_employment、record_employment_check、org_employments 存取，回應不透露別的組織。專任判定在 create_employment 與 submit_practitioner 內，沒有單獨的查詢入口（MIL-111、MIL-186）',
   },
 };
 

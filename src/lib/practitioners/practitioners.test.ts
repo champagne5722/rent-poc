@@ -275,6 +275,27 @@ describe('專任規則（P0-05）', () => {
     expect((await auditOf(a.orgId)).filter((e) => e.action === 'rule.full_time_block')).toHaveLength(0);
   });
 
+  it('AC6（換公司）：被擋時稽核事件也留在宣稱方的鏈，什麼都不建，每次被擋各一筆（MIL-186）', async () => {
+    const a = await t.practiceAccount('a@example.com');
+    const b = await t.practiceAccount('b@example.com', { name: '乙公司', taxId: '22222222' });
+    await register(a);
+    await verifyBoth(a);
+    const bAsPerson = await joinOrg(a, b);
+    await agree(bAsPerson);
+    const cert = await certOf(a);
+
+    const blocked = { status: 'blocked', message: '此證號已有在職紀錄' };
+    expect(await createEmploymentFlow(bAsPerson, { certificateId: cert.id }, t.deps)).toEqual(blocked);
+    expect(await createEmploymentFlow(bAsPerson, { certificateId: cert.id }, t.deps)).toEqual(blocked);
+
+    expect(await employmentsOf(b.orgId)).toHaveLength(0);
+    const events = (await auditOf(b.orgId)).filter((e) => e.action === 'rule.full_time_block');
+    expect(events).toHaveLength(2);
+    expect(events[0].payload).toMatchObject({ event: 'employment_blocked', reason: 'exclusive_employment_elsewhere', certificate_number: '112年內授營字第123456號', at: expect.any(String) });
+    expect(JSON.stringify(events)).not.toContain(a.orgId);
+    expect((await auditOf(a.orgId)).filter((e) => e.action === 'rule.full_time_block')).toHaveLength(0);
+  });
+
   it('別家只有待驗證時允許並存；營運者核對第一家相符後，第二家被擋，直到第一家離職', async () => {
     const a = await t.practiceAccount('a@example.com');
     const b = await t.practiceAccount('b@example.com', { name: '乙公司', taxId: '22222222' });
@@ -389,6 +410,22 @@ describe('經紀人員掛第二家與同意書（P0-05 AC3、AC6）', () => {
     const notices = (await auditOf(b.orgId)).filter((e) => e.action === 'rule.full_time_notice');
     expect(notices).toHaveLength(1);
     expect(notices[0].payload).toMatchObject({ reason: 'second_employment_needs_consent', certificate_number: '112年北市經字第123456號' });
+  });
+
+  it('第一次登錄（不是換公司）：別家已有已驗證在職時也提示並要求同意書，仍建待驗證任職（MIL-186）', async () => {
+    const a = await t.practiceAccount('a@example.com', { name: '甲經紀', taxId: '11111111', kinds: ['brokerage'] });
+    const b = await t.practiceAccount('b@example.com', { name: '乙經紀', taxId: '22222222', kinds: ['brokerage'] });
+    const form = { certificateKind: 'real_estate_broker', certWord: '北市經' };
+    await register(a, form);
+    await verifyBoth(a);
+
+    const result = await register(b, form);
+    expect(result).toMatchObject({ status: 'registered', employment: { status: 'created', consentRequired: true, notice: expect.stringContaining('同意書') } });
+    expect((await employmentsOf(b.orgId))[0]).toMatchObject({ state: 'pending', consent_required: true });
+    const notices = (await auditOf(b.orgId)).filter((e) => e.action === 'rule.full_time_notice');
+    expect(notices).toHaveLength(1);
+    expect(notices[0].payload).toMatchObject({ reason: 'second_employment_needs_consent', certificate_number: '112年北市經字第123456號' });
+    expect(JSON.stringify(result)).not.toMatch(/甲經紀|11111111/);
   });
 
   it('上傳同意書、營運者核對相符：任職標示「經所屬業者同意」，同意書保留', async () => {

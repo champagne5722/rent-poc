@@ -77,7 +77,7 @@ interface ExclusivityBase {
 // ---------------------------------------------------------------- 判定點 1
 
 export const BLOCKED_MESSAGE = '此證號已有在職紀錄';
-const CONSENT_NOTICE = '此證號已有其他在職紀錄，請上傳所屬業者的同意書';
+export const CONSENT_NOTICE = '此證號已有其他在職紀錄，請上傳所屬業者的同意書';
 
 export type EmploymentCreationDecision =
   | { outcome: 'blocked'; message: typeof BLOCKED_MESSAGE; audit: ExclusivityAudit }
@@ -90,23 +90,30 @@ export type EmploymentCreationDecision =
       audit: ExclusivityAudit | null;
     };
 
-/**
- * 判定點 1：建立任職（ADR-0017 決議 7）。
- * 管理人員：別家已驗證在職時阻擋，不建列。別家只有待驗證時允許並存。
- * 經紀人員：別家已驗證在職時提示，要求所屬業者的同意書，仍建待驗證。
- */
-export function decideEmploymentCreation(input: ExclusivityBase): EmploymentCreationDecision {
-  const elsewhere = hasVerifiedElsewhere(input.entityId, input.today, input.otherEmployments);
-  const auditBase = { certificateNumber: input.certificateNumber, at: input.at };
+/** 判定點 1 的結論。blocked 不建列，consent_required 建列並要求同意書，clear 照常建列。 */
+export type CreationVerdict = 'blocked' | 'consent_required' | 'clear';
 
-  if (elsewhere && isExclusiveKind(input.certificateKind)) {
+/**
+ * 判定點 1 的規則本體：只看別家有沒有涵蓋今天的已驗證任職，以及證書種類。
+ * 資料庫的 registry.exclusivity_verdict()（0072）做同一件事，正式流程以它為準（MIL-186）。
+ * 這個函式是規則的參考實作，測試固定兩者對同一組輸入的結論相同。
+ */
+export function classifyEmploymentCreation(input: Pick<ExclusivityBase, 'certificateKind' | 'entityId' | 'today' | 'otherEmployments'>): CreationVerdict {
+  if (!hasVerifiedElsewhere(input.entityId, input.today, input.otherEmployments)) return 'clear';
+  return isExclusiveKind(input.certificateKind) ? 'blocked' : 'consent_required';
+}
+
+/** 把結論轉成訊息與稽核事件。訊息與稽核都不含別家的資訊。資料庫給結論時，應用程式用這個函式組出稽核內容。 */
+export function presentCreationVerdict(verdict: CreationVerdict, input: { certificateNumber: string; at: string }): EmploymentCreationDecision {
+  const auditBase = { certificateNumber: input.certificateNumber, at: input.at };
+  if (verdict === 'blocked') {
     return {
       outcome: 'blocked',
       message: BLOCKED_MESSAGE,
       audit: { event: 'employment_blocked', reason: 'exclusive_employment_elsewhere', ...auditBase },
     };
   }
-  if (elsewhere) {
+  if (verdict === 'consent_required') {
     return {
       outcome: 'created',
       initialState: 'pending',
@@ -116,6 +123,15 @@ export function decideEmploymentCreation(input: ExclusivityBase): EmploymentCrea
     };
   }
   return { outcome: 'created', initialState: 'pending', consentRequired: false, notice: null, audit: null };
+}
+
+/**
+ * 判定點 1：建立任職（ADR-0017 決議 7）。
+ * 管理人員：別家已驗證在職時阻擋，不建列。別家只有待驗證時允許並存。
+ * 經紀人員：別家已驗證在職時提示，要求所屬業者的同意書，仍建待驗證。
+ */
+export function decideEmploymentCreation(input: ExclusivityBase): EmploymentCreationDecision {
+  return presentCreationVerdict(classifyEmploymentCreation(input), { certificateNumber: input.certificateNumber, at: input.at });
 }
 
 // ---------------------------------------------------------------- 判定點 2
