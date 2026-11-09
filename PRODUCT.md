@@ -46,7 +46,8 @@ web
 
 - 合約條款由平台鎖定。主約條文經法務審閱，房東不能改寫，只能編輯欄位（租金、押金、租期等）。UI 不得提供修改主約條文的入口。
 - 法律舉證靠點點簽的 Audit Trail File。平台的合約歷程只是活動性質的時間軸（ADR-0007）。UI 文案不得暗示平台歷程具法律效力。
-- 元件一律用 antd。視覺客製走 DESIGN.md 的 token，不自訂元件（ADR-0009）。
+- 元件一律用 antd。視覺客製走 DESIGN.md 的 token，不自訂元件（ADR-0009）。允許只組合 antd 元件、不改外觀的組合元件（ADR-0090）。
+- 視覺目標是 Linear 的設計語言，至少達到 Linear 介面的等級（ADR-0090）。目前只做桌機與亮色介面，不做鍵盤操作、手機版與深色模式。
 - 所有 UI 文案與錯誤訊息用繁體中文與台灣用語。領域詞以 GLOSSARY.md 為準。
 - 技術棧：Next.js（App Router）、React、Ant Design、SQLite。
 
@@ -68,4 +69,4 @@ web
 
 ## Accessibility & Inclusion
 
-尚未建立產品專屬的無障礙標準。未決定項目：是否以 WCAG 2.2 AA 為目標。
+目前不設無障礙標準（2026-11-10 產品決定）。UI 重構不以 WCAG 為驗收條件。
