@@ -19,7 +19,7 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     # 真實 PostgreSQL，跑 pg 驅動、advisory lock 與角色檢查（ADR-0012 決議 13）。
     # 主版本必須與 PGlite 回報的一致，pg-integration.test.ts 會檢查。Cloud SQL 目前也支援 18（2026-11-08）。
     services:
@@ -49,6 +49,8 @@ jobs:
         run: npm test
         env:
           TEST_DATABASE_URL: postgres://postgres:ci-password@localhost:5432/postgres
+          # 標準 runner 有 4 核心 16 GB。vitest.config.ts 預設 2 個 worker（MIL-163），完整測試跑不完 15 分鐘。
+          VITEST_MAX_WORKERS: 4
 
   image:
     runs-on: ubuntu-latest
