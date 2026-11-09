@@ -40,7 +40,7 @@
 - 兩個 trigger 是 plpgsql，規則不變：除了 `snapshot_at_sign` 從空值補一次，任何欄位都不得改，也不得刪除。測試在 `repository.test.ts`，跑在 PGlite。
 - 快照欄位是 `jsonb`，讀出來就是物件。
 - 紀錄存在時，刪除合約由外鍵擋下。送簽後的合約不是草稿，本來就不能刪。
-- 滲透測試案例在 `src/lib/pg/rls-cases.ts`。`blockedUpdateMessage` 說明為什麼改 `org_id` 的錯誤是 trigger 的訊息。
+- 滲透測試案例在 `src/lib/pg/rls-cases/signing.ts`（彙總檔是 `src/lib/pg/rls-cases.ts`）。`blockedUpdateMessage` 說明為什麼改 `org_id` 的錯誤是 trigger 的訊息。
 
 ## 給 E 線 MIL-138、139
 

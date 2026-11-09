@@ -112,7 +112,7 @@
 - 案件拒絕某個輸入時，`dispatch()` 不丟錯，寫 `input_rejected` 事件並回 `{ ok: false }`。合約的轉移照常提交（ADR-0016 決議 11）。
 - `state_version` 衝突丟 `CaseVersionConflict`，呼叫端讓交易回滾，由 inbox 重試。
 - 純函式回傳的 outbox 任務：`audit_unsettled_close` 由 `dispatch()` 寫成稽核事件。委託管理案件的任務原樣放在回傳值，由 MIL-119 處理。
-- 成員讀取依關係過濾，矩陣在 `src/lib/pg/rls-cases.ts` 的 `CASE_SCOPED_READS`。新增案件範圍表時必須加一列，並在 migration 補政策。
+- 成員讀取依關係過濾，矩陣是 `src/lib/pg/rls-cases.ts` 匯出的 `CASE_SCOPED_READS`，內容登記在 `src/lib/pg/rls-cases/<模組>.ts` 的 `caseScopedReads`。新增案件範圍表時必須在自己模組的檔加一列，並在 migration 補政策。登記步驟見 `rls-cases.ts` 的檔頭。
 
 ### 給 E 線與 B 線：用 `withCaseMemberTx` 寫入別的組織的資料
 
@@ -142,7 +142,7 @@ try {
 ```
 
 - `rc` 是 `requestContext()` 的結果，`org` 或 `party` 脈絡都可以。屋主以自己的組織身分操作時也走這裡。
-- `action` 必須是動作表（`src/lib/access/actions.ts`）裡的動作。沒有就先加一列。
+- `action` 必須是動作表（`src/lib/access/actions.ts` 匯出的 `ACTIONS`）裡的動作。沒有就先在 `src/lib/access/actions/<模組>.ts` 加一列，步驟見 `src/lib/access/README.md`。
 - `tx.grant.onBehalf` 為真時，稽核事件的 payload 必須帶它。
 - 第 3 步之後，這個交易看得到整個組織的資料。callback 內不得直接寫 SQL，只呼叫收 `CaseMemberTx` 的 repository 方法。
 - 新的案件範圍表必須在 `CASE_SCOPED_READS` 登記可讀的關係。
