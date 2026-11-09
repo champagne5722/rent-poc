@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   NAV_ITEMS,
   CREATE_CONTRACT_HREF,
+  MEMBERS_HREF,
   OWNER_NAV_ITEMS,
   resolveNavKey,
+  resolvePageTitle,
   resolveOwnerNavKey,
   shellFor,
 } from './nav';
@@ -117,5 +119,22 @@ describe('resolveOwnerNavKey（屋主端選單高亮）', () => {
       expect(shellFor(item.href)).toBe('owner');
       expect(resolveOwnerNavKey(item.href)).toBe(item.key);
     }
+  });
+});
+
+describe('resolvePageTitle（後台 header 標題，MIL-106）', () => {
+  it('一級頁面用選單標籤', () => {
+    expect(resolvePageTitle('/')).toBe('工作台');
+    expect(resolvePageTitle('/contracts/new')).toBe('合約');
+  });
+
+  it('成員管理頁不在選單內，另有標題，且用後台殼層', () => {
+    expect(resolvePageTitle(MEMBERS_HREF)).toBe('成員管理');
+    expect(resolveNavKey(MEMBERS_HREF)).toBeNull();
+    expect(shellFor(MEMBERS_HREF)).toBe('admin');
+  });
+
+  it('不認得的路徑沒有標題', () => {
+    expect(resolvePageTitle('/nowhere')).toBe('');
   });
 });

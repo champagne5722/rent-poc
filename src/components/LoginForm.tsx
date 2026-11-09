@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Card, Col, Flex, Form, Input, Row, Typography, theme } from 'antd';
 import { AUTH_CONFIG } from '@/lib/auth/config';
-import LogoutButton from './LogoutButton';
+import OnboardingForm from './OnboardingForm';
 
 // 登入頁（MIL-103，ADR-0022）：兩步。第一步輸入 email 寄驗證碼，第二步輸入 6 碼驗證碼。
+// 通過驗證但還沒有身分的帳號，在同一張卡片內選屋主或經理人建第一個組織（MIL-106）。
 // 不論 email 有沒有帳號，第一步的回應與畫面都相同。驗證碼錯誤、過期、用過、錯太多次，畫面訊息也相同。
 
 // 數字取自 src/lib/auth/config.ts（假設值）
@@ -72,8 +73,8 @@ export default function LoginForm({ next, noIdentity }: { next: string; noIdenti
       const result = await postJson('/api/auth/verify', { email, code });
       if (result.ok) {
         const redirectTo = result.body.data?.redirectTo;
-        // 有身分的帳號回到原本要去的頁面；沒有身分的帳號停在登入頁顯示說明
-        window.location.assign(typeof redirectTo === 'string' && redirectTo !== '/' ? redirectTo : next);
+        // 網址有明確的 ?next= 時回到那裡；否則依身分落地（只有屋主身分到 /owner，MIL-106）。沒有身分的帳號留在登入頁建組織
+        window.location.assign(next !== '/' ? next : typeof redirectTo === 'string' ? redirectTo : '/');
         return;
       }
       setError(typeof result.body.error === 'string' ? result.body.error : '登入失敗，請重新輸入');
@@ -106,15 +107,7 @@ export default function LoginForm({ next, noIdentity }: { next: string; noIdenti
           {error && <Alert type="error" showIcon title={error} />}
 
           {noIdentity ? (
-            <Flex vertical gap="middle">
-              <Alert
-                type="info"
-                showIcon
-                title="這個帳號還沒有加入任何組織"
-                description="請洽組織管理員邀請你加入。自行建立屋主或經理人組織的功能還在準備中。"
-              />
-              <LogoutButton type="default" label="登出並改用其他 email" />
-            </Flex>
+            <OnboardingForm />
           ) : step === 'email' ? (
             <Form
               layout="vertical"

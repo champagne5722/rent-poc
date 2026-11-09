@@ -112,8 +112,8 @@ export const CONTROL_TABLE_EXCEPTIONS: Record<string, ControlTableException> = {
     appRwPrivileges: [],
   },
   'control.orgs': {
-    reason: '組織目錄，所有組織的名稱與種類。MIL-79',
-    appRwPrivileges: ['SELECT'],
+    reason: '組織目錄，所有組織的名稱與種類。MIL-79。MIL-106 起可新增（第一次登入建組織），不能改或刪',
+    appRwPrivileges: ['SELECT', 'INSERT'],
   },
   'control.parties': {
     reason: '自然人，以 email 為唯一鍵，不屬於任何組織（承租人跨組織）。MIL-103',
@@ -125,6 +125,10 @@ export const CONTROL_TABLE_EXCEPTIONS: Record<string, ControlTableException> = {
   },
   'control.org_memberships': {
     reason: '帳號與組織的成員關係，登入時要跨組織查，才能決定組織脈絡。MIL-103，成員管理由 MIL-106 接手',
+    appRwPrivileges: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
+  },
+  'control.org_invitations': {
+    reason: '以 email 邀請成員，被邀請者登入前沒有帳號也沒有組織脈絡，登入流程要依 email 跨組織查。查詢與寫入一律明確帶 org_id。MIL-106',
     appRwPrivileges: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
   },
   'control.sessions': {

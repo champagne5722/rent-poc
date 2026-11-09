@@ -13,9 +13,12 @@ export const AUDIT_ACTIONS = [
   'break_glass.end', // 結束
 
   // 權限（PRD P0-23：成員與權限變更、承租人登入、移交生效）
-  'member.grant',
-  'member.revoke',
+  'member.grant', // 成員加入組織。建組織時的第一位 admin、被邀請者登入後成為成員（MIL-106）
+  'member.revoke', // 成員被移除。同交易刪除該帳號以此組織為身分的 session（MIL-106）
   'member.role_change',
+  'member.invite', // MIL-106：admin 以 email 邀請，payload 放角色與邀請 ID，不放 email
+  'member.invite_cancel',
+  'org.create', // MIL-106：第一次登入時建立屋主或執業主體組織，寫進新組織自己的鏈
   'tenant.login',
   'auth.login', // MIL-103：屋主、經理人、營運者登入。有組織身分時寫該組織的鏈，其餘寫平台鏈。payload 放 actor_identity_level
   'auth.logout',
@@ -28,6 +31,7 @@ export const AUDIT_ACTIONS = [
   'rental_right.revoke',
   'duplicate_review.judge',
   'practice_entity.verify',
+  'practice_entity.register', // MIL-106：經理人送出統編登錄。統編已被別人登錄時（改排審核台）事件也一樣，不讓匯出稽核的人推出別的組織存在
   'practitioner.verify',
 
   // 規則（專任阻擋與提示、簽章人員指派、狀態改為已失效）

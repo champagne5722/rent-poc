@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Flex, Typography } from 'antd';
-import { UserOutlined } from '@ant-design/icons';
+import { Button, Flex, Typography } from 'antd';
+import { TeamOutlined, UserOutlined } from '@ant-design/icons';
+import { MEMBERS_HREF } from '@/lib/nav';
+import IdentitySwitcher from './IdentitySwitcher';
 import LogoutButton from './LogoutButton';
 
-// 後台殼層右上角：目前登入者的名稱與登出（MIL-103）。名稱來自 GET /api/auth/me，載入前只顯示登出。
+// 後台殼層右上角：目前登入者的名稱、身分切換器（MIL-106）、成員管理入口與登出（MIL-103）。名稱來自 GET /api/auth/me，載入前只顯示登出。
 export default function AccountBar() {
   const [name, setName] = useState<string | null>(null);
 
@@ -35,6 +37,10 @@ export default function AccountBar() {
           <Typography.Text>{name}</Typography.Text>
         </Flex>
       )}
+      <IdentitySwitcher />
+      <Button type="text" icon={<TeamOutlined />} href={MEMBERS_HREF}>
+        成員
+      </Button>
       <LogoutButton />
     </Flex>
   );

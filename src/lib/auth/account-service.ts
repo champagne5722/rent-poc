@@ -72,25 +72,60 @@ export const defaultIdentityFacts: IdentityFacts = {
   partyHasCaseMembership: async () => false,
 };
 
+/** 切換器的一個選項。identity 是寫進 session 的值，其餘是顯示用。 */
+export interface IdentityOption {
+  identity: NonNullable<SessionIdentity>;
+  /** 屋主組織、執業主體組織、承租人、平台營運者。 */
+  kind: 'owner' | 'practice' | 'party' | 'operator';
+  /** 組織名稱，或「承租人」「平台營運者」。 */
+  label: string;
+}
+
+export const PARTY_IDENTITY_LABEL = '承租人';
+export const OPERATOR_IDENTITY_LABEL = '平台營運者';
+
 /**
  * 帳號目前可用的身分，依序：屋主與執業主體組織（先加入的在前）、承租人、平台營運者。
  * 平台組織的成員是 operator，不是 org（ADR-0022 決議 6）。第一個就是登入後的預設身分。
+ * 切換器只列這裡回傳的選項，所以沒有的身分不會出現（MIL-106）。
  */
+export async function listIdentityOptions(
+  tx: ControlTx,
+  account: Pick<Account, 'userId' | 'partyId'>,
+  facts: IdentityFacts = defaultIdentityFacts,
+): Promise<IdentityOption[]> {
+  const { rows } = await tx.query<{ org_id: string; kind: string; name: string }>(
+    `SELECT m.org_id, o.kind, o.name
+       FROM control.org_memberships m JOIN control.orgs o ON o.id = m.org_id
+      WHERE m.user_id = $1 ORDER BY m.created_at, m.id`,
+    [account.userId],
+  );
+  const options: IdentityOption[] = rows
+    .filter((r) => r.kind !== 'platform')
+    .map((r) => ({
+      identity: { kind: 'org' as const, orgId: r.org_id },
+      kind: r.kind === 'owner' ? ('owner' as const) : ('practice' as const),
+      label: r.name,
+    }));
+  if (await facts.partyHasCaseMembership(tx, account.partyId)) {
+    options.push({ identity: { kind: 'party' }, kind: 'party', label: PARTY_IDENTITY_LABEL });
+  }
+  if (rows.some((r) => r.kind === 'platform')) {
+    options.push({ identity: { kind: 'operator' }, kind: 'operator', label: OPERATOR_IDENTITY_LABEL });
+  }
+  return options;
+}
+
 export async function listIdentities(
   tx: ControlTx,
   account: Pick<Account, 'userId' | 'partyId'>,
   facts: IdentityFacts = defaultIdentityFacts,
 ): Promise<NonNullable<SessionIdentity>[]> {
-  const { rows } = await tx.query<{ org_id: string; kind: string }>(
-    `SELECT m.org_id, o.kind
-       FROM control.org_memberships m JOIN control.orgs o ON o.id = m.org_id
-      WHERE m.user_id = $1 ORDER BY m.created_at, m.id`,
-    [account.userId],
-  );
-  const identities: NonNullable<SessionIdentity>[] = rows
-    .filter((r) => r.kind !== 'platform')
-    .map((r) => ({ kind: 'org', orgId: r.org_id }));
-  if (await facts.partyHasCaseMembership(tx, account.partyId)) identities.push({ kind: 'party' });
-  if (rows.some((r) => r.kind === 'platform')) identities.push({ kind: 'operator' });
-  return identities;
+  return (await listIdentityOptions(tx, account, facts)).map((o) => o.identity);
+}
+
+/** 兩個身分是不是同一個。 */
+export function sameIdentity(a: SessionIdentity, b: SessionIdentity): boolean {
+  if (!a || !b) return a === b;
+  return a.kind === b.kind && (a.kind !== 'org' || (b.kind === 'org' && a.orgId === b.orgId));
 }

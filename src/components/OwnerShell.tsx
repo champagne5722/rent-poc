@@ -1,11 +1,12 @@
 'use client';
 
 import { Button, Empty, Flex, Layout, Menu, Typography, theme } from 'antd';
-import { UserOutlined } from '@ant-design/icons';
+import { TeamOutlined, UserOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { OWNER_NAV_ITEMS, OWNER_ROOT_HREF, resolveOwnerNavKey } from '@/lib/nav';
+import { MEMBERS_HREF, OWNER_NAV_ITEMS, OWNER_ROOT_HREF, resolveOwnerNavKey } from '@/lib/nav';
 import type { OwnerSession } from '@/lib/owner-session';
+import IdentitySwitcher from './IdentitySwitcher';
 import LogoutButton from './LogoutButton';
 import styles from './OwnerShell.module.css';
 
@@ -53,6 +54,10 @@ export default function OwnerShell({
             <Typography.Text ellipsis={{ tooltip: session.displayName }}>
               {session.displayName}
             </Typography.Text>
+            <IdentitySwitcher />
+            <Button type="text" icon={<TeamOutlined />} href={MEMBERS_HREF}>
+              成員
+            </Button>
             <LogoutButton />
           </div>
         )}

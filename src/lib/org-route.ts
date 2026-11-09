@@ -2,7 +2,7 @@ import { requestContext } from './current-request-context';
 import { jsonError, jsonOk } from './http';
 import { withTx } from './pg/database';
 import type { OrgTx } from './pg/with-tx';
-import { OrgContextRequired, Unauthenticated, toDbContext } from './request-context';
+import { OrgContextRequired, Unauthenticated, toDbContext, type RequestContext } from './request-context';
 
 // 組織範圍的 route handler 骨架（MIL-81 定下的寫法，之後的實體 route 照用）。
 //
@@ -25,6 +25,24 @@ export async function inOrgTx(handler: (tx: OrgTx) => Promise<Response>): Promis
   }
   if (rc.kind !== 'org') return jsonError(403, new OrgContextRequired().message);
   return withTx(toDbContext(rc), handler);
+}
+
+/**
+ * 同 inOrgTx，但 handler 也拿到請求脈絡（組織角色、帳號 ID）。成員管理這類要看呼叫者是誰的 route 用（MIL-106）。
+ */
+export async function inOrgTxAs(
+  handler: (tx: OrgTx, rc: Extract<RequestContext, { kind: 'org' }>) => Promise<Response>,
+): Promise<Response> {
+  let rc;
+  try {
+    rc = await requestContext();
+  } catch (error) {
+    if (error instanceof Unauthenticated) return jsonError(401, error.message);
+    throw error;
+  }
+  if (rc.kind !== 'org') return jsonError(403, new OrgContextRequired().message);
+  const org = rc;
+  return withTx(toDbContext(org), (tx) => handler(tx, org));
 }
 
 /**
