@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { authorize } from '@/lib/authorize';
 import type { BusinessType } from '@/lib/labels';
 import { jsonError, jsonOk } from '@/lib/http';
 import { inOrgTx } from '@/lib/org-route';
@@ -20,7 +21,8 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (businessType !== null && !BUSINESS_TYPES.includes(businessType)) return jsonError(400, '業務類型不合法');
   // 格式不合的 ID 當作查無，不報錯，也不送進資料庫
   const valid = ids.filter(isUlid);
-  return inOrgTx(async (tx) =>
-    jsonOk({ data: { entities: await lookupPracticeEntities(tx, valid, businessType ? { businessType: businessType as BusinessType } : {}) } }),
-  );
+  return inOrgTx(async (tx) => {
+    await authorize(tx, 'practice_entity.lookup', { type: 'org' });
+    return jsonOk({ data: { entities: await lookupPracticeEntities(tx, valid, businessType ? { businessType: businessType as BusinessType } : {}) } });
+  });
 }

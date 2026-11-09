@@ -1,3 +1,4 @@
+import { authorize } from '@/lib/authorize';
 import { jsonError, jsonOk } from '@/lib/http';
 import { inOrgTxAs } from '@/lib/org-route';
 import { applicantMayRead, applicantMayWrite, getMyRegistration } from '@/lib/practice-entities';
@@ -7,6 +8,7 @@ import { applicantMayRead, applicantMayWrite, getMyRegistration } from '@/lib/pr
 
 export async function GET(): Promise<Response> {
   return inOrgTxAs(async (tx, rc) => {
+    await authorize(tx, 'practice_registry.read', { type: 'org' });
     if (!applicantMayRead(rc)) return jsonError(403, '只有執業主體組織能看登錄進度');
     return jsonOk({ data: { registration: await getMyRegistration(tx), canSubmit: applicantMayWrite(rc) } });
   });

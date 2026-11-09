@@ -257,6 +257,10 @@ const ORG_EXPECTATIONS: Record<string, { roles: OrgRole[] }> = {
   // 還沒歸屬案件的合約（MIL-115 遷移前）：依組織角色
   'uncased_contract.read': { roles: ['admin', 'staff', 'viewer'] },
   'uncased_contract.write': { roles: ['admin', 'staff'] },
+  // 執業主體端（MIL-109）：看進度與批次查詢所有角色，送件與補件 viewer 被拒
+  'practice_registry.read': { roles: ['admin', 'staff', 'viewer'] },
+  'practice_registry.submit': { roles: ['admin', 'staff'] },
+  'practice_entity.lookup': { roles: ['admin', 'staff', 'viewer'] },
 };
 
 function persona(id: string): Persona {

@@ -1,5 +1,6 @@
 import { requestContext } from '@/lib/current-request-context';
 import { jsonError, jsonOk } from '@/lib/http';
+import { authorizeOnly } from '@/lib/org-route';
 import { EVIDENCE_MAX_BYTES, EVIDENCE_MAX_FILES, submitLicenseFlow } from '@/lib/practice-entities';
 import { defaultFlowDeps } from '@/lib/practice-entities/deps';
 import type { EvidenceUpload } from '@/lib/practice-entities/rules';
@@ -17,6 +18,9 @@ export async function POST(request: Request): Promise<Response> {
     throw error;
   }
   if (rc.kind !== 'org') return jsonError(403, '此操作需要組織身分');
+  // 先過權限（組織角色），再把檔案讀進記憶體。submitLicenseFlow 之後還會檢查組織型態必須是 practice
+  const denied = await authorizeOnly('practice_registry.submit', { type: 'org' });
+  if (denied) return denied;
 
   let form: FormData;
   try {

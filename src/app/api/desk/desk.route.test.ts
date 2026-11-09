@@ -115,6 +115,21 @@ describe('執業主體端', () => {
   });
 });
 
+describe('執業主體端的角色把關（authorize）', () => {
+  it('唯讀成員看得到登錄進度，送件被拒，什麼都沒寫入；屋主組織看登錄進度回 403', async () => {
+    const account = await kit.practiceAccount('a@example.com');
+    actAsContext({ kind: 'org', orgId: account.orgId, orgKind: 'practice', userId: account.userId, partyId: account.partyId, role: 'viewer', requestId: 'test' });
+    const view = await registrationRoute();
+    expect(view.status).toBe(200);
+    expect((await json(view)).data.canSubmit).toBe(false);
+    expect((await submitRoute(submitForm())).status).toBe(403);
+    expect(await kit.registry('SELECT 1 FROM vault.credential_evidence')).toHaveLength(0);
+
+    actAsContext({ kind: 'org', orgId: account.orgId, orgKind: 'owner', userId: account.userId, partyId: account.partyId, role: 'admin', requestId: 'test' });
+    expect((await registrationRoute()).status).toBe(403);
+  });
+});
+
 describe('審核台的身分把關', () => {
   it('沒登入 401；組織身分（執業主體、屋主）一律 403：佇列、詳情、核對、認領、證據檔', async () => {
     const { account, itemId } = await practiceSubmitted();
