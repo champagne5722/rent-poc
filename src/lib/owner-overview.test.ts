@@ -271,8 +271,8 @@ describe('deriveOverview：每列', () => {
   });
 
   it.each([
-    { name: '屋主組織且有合約時連到合約詳情頁', o: { orgId: OWNER_ORG, contractId: 7 }, href: '/contracts/7' },
-    { name: '其他組織的案件不可點', o: { orgId: 'org-pm', contractId: 7 }, href: null },
+    { name: '屋主組織且有合約時連到合約詳情頁', o: { orgId: OWNER_ORG, contractId: '7' }, href: '/contracts/7' },
+    { name: '其他組織的案件不可點', o: { orgId: 'org-pm', contractId: '7' }, href: null },
     { name: '屋主組織但沒有合約時不可點', o: { orgId: OWNER_ORG, contractId: null }, href: null },
   ])('$name', ({ o, href }) => {
     const f = facts({ units: [unit('u1')], leaseCases: [lease('c1', 'u1', o)] });

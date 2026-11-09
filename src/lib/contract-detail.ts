@@ -25,6 +25,7 @@ import {
 } from './types';
 import { contractEquipmentAnnex, formatEquipmentItem } from './equipment';
 import { signingProgressStep, signingStepRoles } from './contract-list';
+import { partyLabels, type ContractType } from './labels';
 import type { CurrentSigner } from './signing-module/provider';
 import type { SigningProgress } from './signing-module/sign-task-store';
 
@@ -88,19 +89,67 @@ export interface DetailSigningSteps {
   current: number;
 }
 
-const STEP_TITLES: Record<SignerRole, string> = {
-  party_b: '待乙方（租客）簽署',
-  practitioner: '待執業人員簽署',
-  party_a: '待甲方（房東）簽署',
+/** 狀態列每一步的標題。甲乙方稱謂依合約類型從標籤對照表取（MIL-122）。 */
+function stepTitle(role: SignerRole, contractType: ContractType): string {
+  const labels = partyLabels(contractType);
+  if (role === 'party_a') return `待${labels.partyAFull}簽署`;
+  if (role === 'party_b') return `待${labels.partyBFull}簽署`;
+  return `待${SIGNER_ROLE_LABELS.practitioner}簽署`;
+}
+
+/**
+ * 狀態列的簽署步驟。有簽署進度時依實際的簽署序列畫，順序與人數由序列決定（MIL-69）：
+ * 包租是乙方、執業人員、甲方，承租人是包租業者時是甲方、執業人員、乙方。
+ * 沒有簽署進度（舊資料）時沿用清單的簽署人順序（signingStepRoles）。清單與確認頁的進度屬 MIL-72。
+ */
+export function detailSigningSteps(
+  status: ContractStatus,
+  progress?: Pick<SigningProgress, 'signers'> | null,
+  contractType: ContractType = 'lease'
+): DetailSigningSteps {
+  if (progress && progress.signers.length > 0) {
+    const titles = [...progress.signers.map((s) => stepTitle(s.role, contractType)), '完成'];
+    const pending = progress.signers.findIndex((s) => s.status === 'pending');
+    return { titles, current: status === 'completed' || pending === -1 ? titles.length - 1 : pending };
+  }
+  const titles = [...signingStepRoles(status).map((role) => stepTitle(role, contractType)), '完成'];
+  return { titles, current: Math.min(signingProgressStep(status) ?? 0, titles.length - 1) };
+}
+
+export interface MockAdvanceAction {
+  event: 'signed' | 'completed' | 'declined';
+  label: string;
+  /** 操作成功後顯示的訊息 */
+  message: string;
+  danger?: boolean;
+}
+
+const MOCK_ROLE_BY_STATUS: Partial<Record<ContractStatus, SignerRole>> = {
+  awaiting_tenant: 'party_b',
+  awaiting_practitioner: 'practitioner',
+  awaiting_landlord: 'party_a',
 };
 
 /**
- * 狀態列的簽署步驟，與清單的簽署進度共用同一個簽署人順序（signingStepRoles）。
- * 兩方合約三步；待執業人員簽時在乙方與甲方之間多一步。依簽署進度畫步驟屬 MIL-72。
+ * mock 模式的模擬 webhook 按鈕，依當前簽署人決定。
+ * 當前簽署人是最後一位時，簽署就是合約完成，事件用 completed；否則用 signed。
+ * 沒有簽署進度時（舊資料）依合約狀態：甲方視為最後一位，與兩方合約的原本行為相同。
  */
-export function detailSigningSteps(status: ContractStatus): DetailSigningSteps {
-  const titles = [...signingStepRoles(status).map((role) => STEP_TITLES[role]), '完成'];
-  return { titles, current: Math.min(signingProgressStep(status) ?? 0, titles.length - 1) };
+export function mockAdvanceActions(
+  status: ContractStatus,
+  progress: Pick<SigningProgress, 'signers'> | null
+): MockAdvanceAction[] {
+  const role = MOCK_ROLE_BY_STATUS[status];
+  if (!role) return [];
+  const label = SIGNER_ROLE_LABELS[role];
+  const pendingCount = progress ? progress.signers.filter((s) => s.status === 'pending').length : null;
+  const isLast = pendingCount === null ? role === 'party_a' : pendingCount <= 1;
+  const sign: MockAdvanceAction = isLast
+    ? { event: 'completed', label: `模擬${label}簽署完成`, message: `已模擬${label}簽署，合約完成` }
+    : { event: 'signed', label: `模擬${label}簽署`, message: `已模擬${label}簽署` };
+  // 最後一位甲方原本沒有拒簽按鈕，維持不變
+  if (isLast && role === 'party_a') return [sign];
+  return [sign, { event: 'declined', label: `模擬${label}拒簽`, message: `已模擬${label}拒簽`, danger: true }];
 }
 
 /**
@@ -141,7 +190,7 @@ export function contractEventColor(type: string): string {
 }
 
 export interface ContractEventEntry {
-  key: number;
+  key: string;
   label: string;
   actorLabel: string;
   time: string;
@@ -187,7 +236,7 @@ const DOWNLOAD_PATHS: Record<ContractFileKind, string> = {
   audit_trail: 'audit-trail',
 };
 
-export function contractFileDownloadHref(contractId: number, kind: ContractFileKind): string {
+export function contractFileDownloadHref(contractId: string, kind: ContractFileKind): string {
   return `/api/contracts/${contractId}/${DOWNLOAD_PATHS[kind]}`;
 }
 
@@ -250,7 +299,7 @@ export type ContractChainRole = 'predecessor' | 'self' | 'successor';
 
 export interface ContractChainNode {
   role: ContractChainRole;
-  id: number;
+  id: string;
   status: ContractStatus;
   note: string;
   /** 本約不連自己，其餘連到該合約詳情頁 */
@@ -263,7 +312,7 @@ const CHAIN_NOTES: Record<ContractChainRole, string> = {
   successor: '本約撤回後衍生',
 };
 
-function chainNode(role: ContractChainRole, id: number, status: ContractStatus): ContractChainNode {
+function chainNode(role: ContractChainRole, id: string, status: ContractStatus): ContractChainNode {
   return {
     role,
     id,

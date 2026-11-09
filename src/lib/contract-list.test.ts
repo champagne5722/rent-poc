@@ -13,6 +13,7 @@ import {
   statusTabs,
   EMPTY_CONTRACT_LIST_FILTER,
 } from './contract-list';
+import { ulidOf } from './test-ids';
 
 interface MakeOptions {
   id?: number;
@@ -26,7 +27,7 @@ interface MakeOptions {
 
 function makeContract(o: MakeOptions = {}): Contract {
   return {
-    id: o.id ?? 1,
+    id: ulidOf(o.id ?? 1),
     property_id: null,
     contract_type: 'lease',
     status: o.status ?? 'draft',
@@ -192,7 +193,7 @@ describe('compareByWorkPriority（進行中優先排序）', () => {
         updated_at: '2026-08-05 00:00:00',
       }),
     ];
-    expect([...items].sort(compareByWorkPriority).map((c) => c.id)).toEqual([3, 2, 1]);
+    expect([...items].sort(compareByWorkPriority).map((c) => Number(c.id))).toEqual([3, 2, 1]);
   });
 
   it('最後動作時間相同時以 id 新到舊收尾（順序穩定）', () => {
@@ -200,7 +201,7 @@ describe('compareByWorkPriority（進行中優先排序）', () => {
       makeContract({ id: 7, status: 'draft', created_at: '2026-08-01 00:00:00' }),
       makeContract({ id: 9, status: 'draft', created_at: '2026-08-01 00:00:00' }),
     ];
-    expect([...items].sort(compareByWorkPriority).map((c) => c.id)).toEqual([9, 7]);
+    expect([...items].sort(compareByWorkPriority).map((c) => Number(c.id))).toEqual([9, 7]);
   });
 });
 
@@ -211,11 +212,11 @@ describe('selectContracts（篩選＋排序）', () => {
       makeContract({ id: 2, status: 'awaiting_tenant', propertyName: '信義套房', created_at: '2026-08-02 00:00:00' }),
       makeContract({ id: 3, status: 'draft', propertyName: '中山雅房', created_at: '2026-08-03 00:00:00' }),
     ];
-    const snapshot = items.map((c) => c.id);
+    const snapshot = items.map((c) => Number(c.id));
 
     const result = selectContracts(items, { ...EMPTY_CONTRACT_LIST_FILTER, propertyName: '信義套房' });
-    expect(result.map((c) => c.id)).toEqual([2, 1]);
-    expect(items.map((c) => c.id)).toEqual(snapshot);
+    expect(result.map((c) => Number(c.id))).toEqual([2, 1]);
+    expect(items.map((c) => Number(c.id))).toEqual(snapshot);
   });
 
   it('租期區間可與狀態一起篩', () => {
@@ -228,7 +229,7 @@ describe('selectContracts（篩選＋排序）', () => {
       propertyName: null,
       leaseRange: ['2027-01-01', '2027-02-01'],
     });
-    expect(result.map((c) => c.id)).toEqual([1]);
+    expect(result.map((c) => Number(c.id))).toEqual([1]);
   });
 });
 
@@ -269,7 +270,7 @@ describe('第七態待執業人員簽的簽署進度', () => {
       makeContract({ id: 1, status: 'draft', updated_at: '2026-09-01 00:00:00' }),
       makeContract({ id: 2, status: 'awaiting_practitioner', updated_at: '2026-01-01 00:00:00' }),
     ];
-    expect(selectContracts(items, EMPTY_CONTRACT_LIST_FILTER).map((c) => c.id)).toEqual([2, 1]);
+    expect(selectContracts(items, EMPTY_CONTRACT_LIST_FILTER).map((c) => Number(c.id))).toEqual([2, 1]);
   });
 });
 

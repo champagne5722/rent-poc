@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createDottedSignProvider } from './dottedsign-adapter';
 import { createMockProvider } from './mock-adapter';
 import type { SignableDocument, Signer, SigningProvider } from './provider';
+import { ulidOf } from '../test-ids';
 
 // 兩個 adapter 共用這組契約測試：Mock 的行為必須可信，所以它與點點簽 adapter 走同一份斷言。
 // 每個 adapter 提供 provider，並提供「把 raw body 包成該服務商會接受的 headers」。
@@ -32,7 +33,7 @@ const signers: Signer[] = [
   },
 ];
 
-const subject = { type: 'contract', id: 7 } as const;
+const subject = { type: 'contract', id: ulidOf(7) } as const;
 
 const taskPayload = (action: string, extra: Record<string, unknown> = {}) =>
   JSON.stringify({ resource_id: 470, resource_type: 'task', action_name: action, ...extra });

@@ -105,7 +105,7 @@ export function practitionerTitle(certificateKind: CertificateKind): string {
 }
 
 /**
- * 介面與文件禁用的舊用詞（MIL-122 AC7）。給之後的 lint 測試用。
+ * 介面與文件禁用的舊用詞（MIL-122 AC7）。給舊用詞 lint 測試用（legacy-terms.lint.test.ts）。
  * - everywhere：所有介面字串都禁用。
  * - contractPdfAndLessee：合約 PDF、承租人端與標章的字串另外禁用。
  * - exemptPhrases：含禁用詞作為子字串的合法詞，掃描時先排除。

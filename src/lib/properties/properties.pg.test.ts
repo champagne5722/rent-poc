@@ -1,6 +1,4 @@
-import Database from 'better-sqlite3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ensureSchema, setDb } from '@/lib/db';
 import { pgDriver } from '@/lib/pg/drivers';
 import { createPgTestDatabase, type PgTestDatabase } from '@/lib/pg/pg-database-kit';
 import { newUlid } from '@/lib/pg/ulid';
@@ -31,16 +29,11 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
   const orgB = newUlid();
 
   beforeAll(async () => {
-    // 刪除物件要問合約接縫，合約還在 SQLite
-    const sqlite = new Database(':memory:');
-    ensureSchema(sqlite);
-    setDb(sqlite);
     dbh = await createPgTestDatabase(adminUrl!, 2);
     withTx = createWithTx(pgDriver(dbh.pool));
     await dbh.owner.query(`SET ROLE app_owner; INSERT INTO control.orgs (id, name, kind) VALUES ('${orgA}', 'A', 'owner'), ('${orgB}', 'B', 'owner'); RESET ROLE`);
   });
   afterAll(async () => {
-    setDb(null);
     await dbh.close();
   });
 

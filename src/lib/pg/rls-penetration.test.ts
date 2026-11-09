@@ -2,6 +2,8 @@ import type { PGliteInterface } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pgliteDriver } from './drivers';
 import {
+  CONTROL_TABLE_EXCEPTIONS,
+  controlTablesWithoutException,
   ORG_TABLE_CASES,
   REGISTRY_FUNCTION_CASES,
   REGISTRY_TABLE_CASES,
@@ -49,6 +51,53 @@ describe('案例清單機制', () => {
       await db.exec('CREATE TABLE org.unregistered_probe (id text PRIMARY KEY, org_id text NOT NULL)');
       const { rows } = await db.query<{ name: string }>(ORG_TABLES_SQL);
       expect(tablesWithoutCase(rows.map((r) => r.name))).toEqual(['org.unregistered_probe']);
+    } finally {
+      await db.close();
+    }
+  });
+});
+
+const CONTROL_TABLES_SQL = `SELECT n.nspname || '.' || c.relname AS name
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'control' AND c.relkind IN ('r', 'p') ORDER BY 1`;
+
+describe('control 表的例外清單', () => {
+  const controlTables = async () => (await testDb.base.query<{ name: string }>(CONTROL_TABLES_SQL)).rows.map((r) => r.name);
+
+  it('每張 control 表都登記在例外清單（沒有登記就失敗）', async () => {
+    const missing = controlTablesWithoutException(await controlTables());
+    expect(missing, `這些 control 表沒有登記，請到 src/lib/pg/rls-cases.ts 的 CONTROL_TABLE_EXCEPTIONS 登記：${missing.join('、')}`).toEqual([]);
+  });
+
+  it('清單裡沒有不存在的表', async () => {
+    const tables = new Set(await controlTables());
+    expect(Object.keys(CONTROL_TABLE_EXCEPTIONS).filter((t) => !tables.has(t))).toEqual([]);
+  });
+
+  it('app_rw 的直接 DML 權限與清單一致，PUBLIC 沒有任何權限', async () => {
+    for (const [table, exception] of Object.entries(CONTROL_TABLE_EXCEPTIONS)) {
+      const actual: string[] = [];
+      for (const privilege of ['SELECT', 'INSERT', 'UPDATE', 'DELETE']) {
+        const { rows } = await testDb.base.query<{ ok: boolean }>(`SELECT has_table_privilege('app_rw', $1, $2) AS ok`, [table, privilege]);
+        if (rows[0].ok) actual.push(privilege);
+      }
+      expect(actual, `${table} 給 app_rw 的權限`).toEqual([...exception.appRw]);
+      const { rows } = await testDb.base.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM pg_class c, aclexplode(c.relacl) a
+          WHERE c.oid = $1::regclass AND a.grantee = 0`,
+        [table],
+      );
+      expect(rows[0].n, `${table} 不得對 PUBLIC 授權`).toBe(0);
+    }
+  });
+
+  it('機制本身有效：加一張沒登記的 control 表，同一個檢查會抓到', async () => {
+    const db = await testDb.base.clone();
+    try {
+      await db.exec('SET ROLE app_owner');
+      await db.exec('CREATE TABLE control.unregistered_probe (id text PRIMARY KEY)');
+      const { rows } = await db.query<{ name: string }>(CONTROL_TABLES_SQL);
+      expect(controlTablesWithoutException(rows.map((r) => r.name))).toEqual(['control.unregistered_probe']);
     } finally {
       await db.close();
     }

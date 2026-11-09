@@ -22,6 +22,14 @@ export class Unauthenticated extends Error {
   }
 }
 
+/** 登入了，但不是組織身分（例如承租人、平台營運者）。route 回 403。 */
+export class OrgContextRequired extends Error {
+  constructor(message = '此操作需要組織身分') {
+    super(message);
+    this.name = 'OrgContextRequired';
+  }
+}
+
 /** 預設組織的環境變數。值必須是 control.orgs 裡的組織 ID。種子見 db/migrations/0002_control_orgs.sql。 */
 export const DEFAULT_ORG_ENV = 'DEFAULT_ORG_ID';
 

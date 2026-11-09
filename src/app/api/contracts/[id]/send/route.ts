@@ -1,18 +1,26 @@
 import { NextRequest } from 'next/server';
-import { getContract } from '@/lib/db';
+import { getContract } from '@/lib/contracts';
+import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/contracts/route';
+import { readInOrgTx } from '@/lib/org-route';
 import { generateContractPdf, PDF_PAGE_SIZE } from '@/lib/pdf';
-import { loadContractRoutingFacts } from '@/lib/signature-routing/repository';
-import { contractDocumentFileName, prepareContractSigners } from '@/lib/signing';
+import { getPracticeRegistry } from '@/lib/practice-registry';
+import { loadSendInputs, prepareContractSend, recordSendSnapshots } from '@/lib/practitioner-assignment/send';
+import { contractDocumentFileName } from '@/lib/signing';
 import { contractSubject, signing, signingErrorResponse } from '@/lib/signing-module';
 import { jsonOk, jsonError } from '@/lib/http';
 
-type Ctx = { params: Promise<{ id: string }> };
-
 // 送簽：驗證欄位 → 產出 PDF → 交給簽署模組（建立簽署任務，合約進入「待乙方簽」）
-export async function POST(_request: NextRequest, { params }: Ctx) {
-  const { id } = await params;
-  const contract = getContract(Number(id));
-  if (!contract) return jsonError(404, '合約不存在');
+export async function POST(_request: NextRequest, { params }: ContractRouteCtx) {
+  const id = await contractIdOf(params);
+  if (!id) return contractNotFound();
+  // 合約與分流條件在同一個交易讀。產 PDF 與呼叫簽署服務商都在交易外
+  const read = await readInOrgTx(async (tx) => {
+    const found = await getContract(tx, id);
+    return found ? { contract: found, inputs: await loadSendInputs(tx, id) } : null;
+  });
+  if (!read.ok) return read.response;
+  if (!read.value) return contractNotFound();
+  const { contract, inputs } = read.value;
   if (contract.status !== 'draft') {
     return jsonError(409, '僅草稿可送簽');
   }
@@ -32,20 +40,23 @@ export async function POST(_request: NextRequest, { params }: Ctx) {
   if (contract.contract_type !== 'lease') {
     return jsonError(400, '這個合約類型尚未支援送簽');
   }
-  const routing = await loadContractRoutingFacts(contract.id);
-  if (!routing.ok) return jsonError(400, routing.reason);
-  const prepared = prepareContractSigners(contract, routing.facts);
-  if (!prepared.ok) return jsonError(prepared.status, prepared.error);
+  // 送簽前檢查（ADR-0018 決議 10）：分流、執業人員指派與資格。不符時列出全部原因，簽署人與判定事實快照通過才產生
+  const prepared = await prepareContractSend(contract, inputs, getPracticeRegistry(), new Date().toISOString());
+  if (!prepared.ok) {
+    return jsonOk({ error: prepared.error, reasons: prepared.reasons }, { status: prepared.status });
+  }
 
-  const pdf = await generateContractPdf(f);
+  const pdf = await generateContractPdf(f, prepared.printed);
   try {
     const task = await signing.send(
       contractSubject(contract.id),
       { fileName: contractDocumentFileName(contract), pdf, pageSize: PDF_PAGE_SIZE },
-      prepared.signers
+      prepared.signers,
+      // 判定事實快照與簽署任務、合約狀態同一個交易：建立簽署任務失敗時不留快照
+      { alsoInTx: (tx) => recordSendSnapshots(tx, contract.id, prepared) }
     );
     // 簽署模組不對外提供服務商任務編號（ADR-0010），回應不帶 task_id
-    return jsonOk({ data: { id: contract.id, mock: task.mode === 'mock' } });
+    return jsonOk({ data: { id: contract.id, mock: task.mode === 'mock', notices: prepared.notices } });
   } catch (e) {
     return signingErrorResponse(e, '送簽失敗');
   }

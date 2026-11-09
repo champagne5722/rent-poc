@@ -34,6 +34,7 @@ status: accepted
 - 架構 2.4 的 `ESignProvider` 改為 `SigningProvider`：`verifyWebhook` 與 `toInboxMessage` 併成 `parseWebhook`，空 body 的驗證 ping 也由 adapter 處理。
 - **修訂 ADR-0006：** 合約狀態機由六態變七態，加 `awaiting_practitioner`。修約走撤回後衍生的規則不變。
 - **延伸 ADR-0007：** 同交易的範圍加上簽署進度。法律舉證仍是 Audit Trail File，合約歷程的定位不變。
+  - **過渡期例外（MIL-83 到 MIL-85）：** 合約已在 PostgreSQL，簽署任務還在 SQLite，兩邊無法同一個交易。簽署模組先提交合約狀態與歷程，再寫簽署進度。同一簽署標的的寫入在行程內排隊。SQLite 寫入失敗時合約已前進，webhook 重送可補寫，代價是 `signer_signed` 歷程可能多一筆。MIL-85 把簽署任務搬進 PostgreSQL 後，這個例外已取消（2026-11-09）：簽署進度、合約狀態、合約歷程回到同一個交易，任一步失敗整筆回滾，同一個簽署任務列的鎖取代行程內的排隊。
 - 不與 ADR-0003 矛盾：點點簽仍用 Client Credentials 與 email 簽署，只換位置。
 - 同一人兼任甲方代表與執業人員時，送簽會被擋下，直到 sandbox 驗證同一 email 能否出現在兩個 stage。
 - email 守門依賴 `event_email` 等於簽署人 email。非會員簽署人的行為必須先以 sandbox 驗證，才能上線。

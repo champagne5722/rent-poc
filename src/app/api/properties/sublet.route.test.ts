@@ -1,10 +1,11 @@
-import Database from 'better-sqlite3';
 import { NextRequest } from 'next/server';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureSchema, insertContractWithEvent, setDb } from '@/lib/db';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createContract } from '@/lib/contracts';
 import { withTx } from '@/lib/pg/database';
 import { actAs, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { newUlid } from '@/lib/pg/ulid';
+import { createProperty, parsePropertyInput, type PropertyInput } from '@/lib/properties';
+import type { ContractFields } from '@/lib/types';
 import { POST as createContractRoute } from '../contracts/route';
 import { POST as postAnchorKey } from './[id]/anchor-key/route';
 import { DELETE, GET as getOne, PUT } from './[id]/route';
@@ -15,11 +16,10 @@ vi.mock('@/lib/current-request-context', async () => ({
   requestContext: (await import('@/lib/pg/route-test-kit')).stubRequestContext,
 }));
 
-// MIL-145：分租單位、顯示編碼、封存與刪除。連線是 PGlite 的 app_rw，合約是記憶體 SQLite（過渡期接縫）。
+// MIL-145：分租單位、顯示編碼、封存與刪除。連線是 PGlite 的 app_rw，合約也在 PostgreSQL（MIL-83），接縫在同一個交易內查。
 // 段碼用真實資料：臺北市(A) 大安區(02) 龍泉 一(0021)。
 
 let kit: RouteDb;
-let sqlite: Database.Database;
 beforeAll(async () => {
   kit = await setupRouteDb();
 });
@@ -27,13 +27,6 @@ afterAll(() => kit.close());
 beforeEach(async () => {
   await kit.reset();
   actAs(kit.orgA);
-  sqlite = new Database(':memory:');
-  ensureSchema(sqlite);
-  setDb(sqlite);
-});
-afterEach(() => {
-  setDb(null);
-  sqlite.close();
 });
 
 const KEY = { city: 'A', town: '02', section: '0021', buildingNo: '1234', subNo: '' };
@@ -55,13 +48,18 @@ const sublet = (id: string, payload: unknown) => addSublet(req('POST', payload),
 const count = (sql: string) => kit.asOwner(async (db) => (await db.query<{ n: number }>(sql)).rows[0].n);
 const unitCount = () => count('SELECT count(*)::int AS n FROM registry.rental_units');
 
-/** 在 SQLite 放一份合約。status 與租期止日由測試決定。 */
-function addContract(propertyId: string, status: string, endDate: string, contractType: 'lease' | 'management' = 'lease'): number {
-  const id = insertContractWithEvent(
-    { property_id: propertyId, fields: JSON.stringify({ endDate }), contract_type: contractType },
-    { type: 'created', actor: 'landlord' },
+/** 在 PostgreSQL 放一份合約。status 與租期止日由測試決定，狀態在同組織的交易內直接改。 */
+async function addContract(
+  propertyId: string,
+  status: string,
+  endDate: string,
+  contractType: 'lease' | 'management' = 'lease',
+  orgId: string = kit.orgA,
+): Promise<string> {
+  const id = await withTx({ kind: 'org', orgId }, (tx) =>
+    createContract(tx, { property_id: propertyId, fields: { endDate } as unknown as ContractFields, contract_type: contractType }),
   );
-  sqlite.prepare('UPDATE contracts SET status = ? WHERE id = ?').run(status, id);
+  await withTx({ kind: 'org', orgId }, (tx) => tx.query('UPDATE org.contracts SET status = $1 WHERE id = $2', [status, id]));
   return id;
 }
 
@@ -161,7 +159,7 @@ describe('POST /api/properties/[id]/sublet-units（新增分租單位）', () =>
   describe('整戶有生效中的租賃合約（P0-06 AC4）', () => {
     it('已完成且租期未屆滿：先回 409 與 code，不建單位；帶 confirmed 才建立', async () => {
       const wholeId = await createKeyed();
-      addContract(wholeId, 'completed', '2999-12-31');
+      await addContract(wholeId, 'completed', '2999-12-31');
       const unitsBefore = await unitCount();
 
       const warned = await sublet(wholeId, { label: '301' });
@@ -177,7 +175,7 @@ describe('POST /api/properties/[id]/sublet-units（新增分租單位）', () =>
     it('從分租物件新增時，也看整戶的合約', async () => {
       const wholeId = await createKeyed();
       const first = (await json(await sublet(wholeId, { label: '301' }))).data.id;
-      addContract(wholeId, 'completed', '2999-12-31');
+      await addContract(wholeId, 'completed', '2999-12-31');
       expect((await sublet(first, { label: '302' })).status).toBe(409);
     });
 
@@ -189,21 +187,21 @@ describe('POST /api/properties/[id]/sublet-units（新增分租單位）', () =>
       ['委託管理合約', 'completed', '2999-12-31', 'management'],
     ] as const)('不警告：%s', async (_label, status, endDate, type) => {
       const wholeId = await createKeyed();
-      addContract(wholeId, status, endDate, type);
+      await addContract(wholeId, status, endDate, type);
       expect((await sublet(wholeId, { label: '301' })).status).toBe(201);
     });
 
     it('別的物件的合約不影響這個物件', async () => {
       const wholeId = await createKeyed();
       const other = await create({ address: '別處' });
-      addContract(other, 'completed', '2999-12-31');
+      await addContract(other, 'completed', '2999-12-31');
       expect((await sublet(wholeId, { label: '301' })).status).toBe(201);
     });
   });
 
   it('封存的物件不能新增分租單位', async () => {
     const wholeId = await createKeyed();
-    addContract(wholeId, 'draft', '2999-12-31');
+    await addContract(wholeId, 'draft', '2999-12-31');
     await DELETE(req('DELETE'), ctx(wholeId));
     const res = await sublet(wholeId, { label: '301' });
     expect(res.status).toBe(409);
@@ -286,7 +284,7 @@ describe('DELETE /api/properties/[id]（刪除或封存）', () => {
   it('有任何合約（草稿也算）：改為封存，物件列還在，單位仍是 active', async () => {
     const id = await createKeyed();
     const unitId = (await get(id)).rental_unit_id;
-    addContract(id, 'draft', '2999-12-31');
+    await addContract(id, 'draft', '2999-12-31');
 
     const res = await DELETE(req('DELETE'), ctx(id));
     expect(res.status).toBe(200);
@@ -302,7 +300,7 @@ describe('DELETE /api/properties/[id]（刪除或封存）', () => {
 
   it('重複封存仍回 archived，封存時間不變，稽核只寫一筆', async () => {
     const id = await createKeyed();
-    addContract(id, 'completed', '2000-01-01');
+    await addContract(id, 'completed', '2000-01-01');
     await DELETE(req('DELETE'), ctx(id));
     const first = (await get(id)).archived_at;
     const again = await DELETE(req('DELETE'), ctx(id));
@@ -316,13 +314,14 @@ describe('DELETE /api/properties/[id]（刪除或封存）', () => {
 
   it('另一個組織的合約資料不會影響判斷：合約只認物件 ID', async () => {
     const id = await createKeyed();
-    addContract(newUlid(), 'draft', '2999-12-31');
+    const bProperty = await withTx({ kind: 'org', orgId: kit.orgB }, (tx) => createProperty(tx, (parsePropertyInput({ name: 'B 的', address: '別處', equipment: [] }) as { ok: true; value: PropertyInput }).value));
+    await addContract(bProperty, 'draft', '2999-12-31', 'lease', kit.orgB);
     expect(await json(await DELETE(req('DELETE'), ctx(id)))).toEqual({ data: { id, result: 'deleted' } });
   });
 
   it('封存的物件不得編輯、建合約、補建號', async () => {
     const id = await create();
-    addContract(id, 'draft', '2999-12-31');
+    await addContract(id, 'draft', '2999-12-31');
     await DELETE(req('DELETE'), ctx(id));
 
     const put = await PUT(req('PUT', { name: '改名', address: '改地址', equipment: [] }), ctx(id));
@@ -343,12 +342,12 @@ describe('DELETE /api/properties/[id]（刪除或封存）', () => {
 
   it('封存寫稽核事件，payload 只有租賃單位 ID', async () => {
     const id = await create();
-    addContract(id, 'draft', '2999-12-31');
+    await addContract(id, 'draft', '2999-12-31');
     await DELETE(req('DELETE'), ctx(id));
     const events = await withTx({ kind: 'org', orgId: kit.orgA }, async (tx) =>
       (await tx.query(`SELECT action, object_id, payload FROM audit.events ORDER BY seq`)).rows,
     );
-    expect(events.map((e) => e.action)).toEqual(['property.create', 'property.archive']);
+    expect(events.map((e) => e.action)).toEqual(['property.create', 'contract.create', 'property.archive']);
   });
 });
 

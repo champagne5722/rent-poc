@@ -1,3 +1,4 @@
+import { shortUlid } from './pg/ulid';
 import { buildSignerSequence, routeSignatures, type RoutingFacts, type SeatAssignee } from './signature-routing';
 import type { Signer } from './signing-module/provider';
 import { SIGNER_ROLE_LABELS, type Contract } from './types';
@@ -11,16 +12,22 @@ const refuse = (error: string): ContractSignersResult => ({ ok: false, status: 4
 
 /**
  * 由分流事實與合約欄位組出送簽的簽署人。
- * 當事人的姓名與 email 取自合約欄位。執業人員的指派屬 MIL-69，目前合約沒有指派欄位，
- * 所以規則要求執業人員的組合會在這裡擋下。
+ * 當事人的姓名與 email 取自合約欄位。執業人員的姓名與 email 由呼叫端傳入（取自登錄，MIL-69），
+ * 沒有傳入的執業人員席位會在這裡擋下。資格檢查在送簽前檢查（send-preconditions），這裡不重複。
+ *
+ * @param practitioners 以席位的 rule_id 為鍵。
  */
-export function prepareContractSigners(contract: Contract, facts: RoutingFacts): ContractSignersResult {
+export function prepareContractSigners(
+  contract: Contract,
+  facts: RoutingFacts,
+  practitioners: Readonly<Record<string, SeatAssignee>> = {}
+): ContractSignersResult {
   const route = routeSignatures(facts);
   if (route.kind === 'rejected') return refuse(route.reason);
   if (route.kind === 'not_required') return refuse('這個組合不送簽，由雙方確認');
 
   const { fields } = contract;
-  const assignees: Record<string, SeatAssignee> = {};
+  const assignees: Record<string, SeatAssignee> = { ...practitioners };
   for (const seat of route.plan.seats) {
     if (seat.role === 'party_a') assignees[seat.ruleId] = { name: fields.landlordName, email: fields.landlordEmail };
     if (seat.role === 'party_b') assignees[seat.ruleId] = { name: fields.tenantName, email: fields.tenantEmail };
@@ -38,5 +45,5 @@ export function prepareContractSigners(contract: Contract, facts: RoutingFacts):
 }
 
 export function contractDocumentFileName(contract: Contract): string {
-  return `租賃合約-${contract.fields.propertyName || contract.id}`;
+  return `租賃合約-${contract.fields.propertyName || shortUlid(contract.id)}`;
 }

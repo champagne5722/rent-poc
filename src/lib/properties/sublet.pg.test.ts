@@ -1,10 +1,10 @@
-import Database from 'better-sqlite3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ensureSchema, insertContractWithEvent, setDb } from '@/lib/db';
+import { createContract } from '@/lib/contracts';
 import { pgDriver } from '@/lib/pg/drivers';
 import { createPgTestDatabase, type PgTestDatabase } from '@/lib/pg/pg-database-kit';
 import { newUlid } from '@/lib/pg/ulid';
 import { createWithTx, type WithTx } from '@/lib/pg/with-tx';
+import type { ContractFields } from '@/lib/types';
 import { createProperty, createSubletUnit, getProperty, listSiblingUnits, parsePropertyInput, parseSubletInput, removeProperty } from '.';
 
 // MIL-145 的真實 PostgreSQL 測試：兩個交易同時搶同一個錨點的下一號、跨組織持有計數、封存。
@@ -15,20 +15,15 @@ const adminUrl = process.env.TEST_DATABASE_URL;
 describe.skipIf(!adminUrl)('分租單位、持有計數與封存（真實 PostgreSQL）', () => {
   let dbh: PgTestDatabase;
   let withTx: WithTx;
-  let sqlite: Database.Database;
   const orgA = newUlid();
   const orgB = newUlid();
 
   beforeAll(async () => {
-    sqlite = new Database(':memory:');
-    ensureSchema(sqlite);
-    setDb(sqlite);
     dbh = await createPgTestDatabase(adminUrl!, 4);
     withTx = createWithTx(pgDriver(dbh.pool));
     await dbh.owner.query(`SET ROLE app_owner; INSERT INTO control.orgs (id, name, kind) VALUES ('${orgA}', 'A', 'owner'), ('${orgB}', 'B', 'owner'); RESET ROLE`);
   });
   afterAll(async () => {
-    setDb(null);
     await dbh.close();
   });
 
@@ -87,7 +82,7 @@ describe.skipIf(!adminUrl)('分租單位、持有計數與封存（真實 Postgr
     expect(rows.length).toBeGreaterThan(0);
 
     const withContract = await whole(orgA);
-    insertContractWithEvent({ property_id: withContract, fields: '{}' }, { type: 'created', actor: 'landlord' });
+    await withTx({ kind: 'org', orgId: orgA }, (tx) => createContract(tx, { property_id: withContract, fields: {} as ContractFields }));
     expect(await withTx({ kind: 'org', orgId: orgA }, (tx) => removeProperty(tx, withContract))).toBe('archived');
     expect(await unitStatus(withContract, orgA)).toEqual({ status: 'active', holder_count: 1 });
     expect((await withTx({ kind: 'org', orgId: orgA }, (tx) => getProperty(tx, withContract)))!.archived_at).toMatch(/^\d{4}-/);
