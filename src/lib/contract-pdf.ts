@@ -36,18 +36,16 @@ export interface ContractPdfRenderer<F extends ContractFields = ContractFields> 
 
 const leaseRenderer: ContractPdfRenderer<LeaseContractFields> = {
   pageSize: PDF_PAGE_SIZE,
-  async render(fields, practitioners, attachments) {
-    return (await this.renderWithPages(fields, practitioners, attachments)).pdf;
-  },
+  render: async (fields, practitioners, attachments) =>
+    (await generateContractPdfWithPages(fields, practitioners, { statusAnnex: attachments?.statusAnnex })).pdf,
   renderWithPages: (fields, practitioners, attachments) =>
     generateContractPdfWithPages(fields, practitioners, { statusAnnex: attachments?.statusAnnex }),
 };
 
 const managementRenderer: ContractPdfRenderer<ManagementContractFields> = {
   pageSize: PDF_PAGE_SIZE,
-  async render(fields, practitioners, attachments) {
-    return (await this.renderWithPages(fields, practitioners, attachments)).pdf;
-  },
+  render: async (fields, practitioners, attachments) =>
+    (await generateManagementPdfWithPages(fields, practitioners, attachments?.mandateItems ?? [])).pdf,
   renderWithPages: (fields, practitioners, attachments) =>
     generateManagementPdfWithPages(fields, practitioners, attachments?.mandateItems ?? []),
 };

@@ -192,8 +192,8 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
         <Alert
           type="warning"
           showIcon
-          message={`現況確認附件頁尚未放置${annexMissing.map((seat) => seat.label).join('、')}簽名框`}
-          description="包租租賃合約的現況確認附件須由執業人員簽章。請在標示「現況確認附件頁」的那一頁新增簽名框。"
+          title={`現況確認附件頁尚未放置${annexMissing.map((seat) => seat.label).join('、')}簽名框`}
+          description="包租租賃合約的現況確認附件必須由執業人員簽章。請在標示「現況確認附件頁」的那一頁新增簽名框。"
           style={{ marginBottom: 12 }}
         />
       )}
