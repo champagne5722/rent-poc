@@ -51,13 +51,14 @@ const IDENTITY_NAV_ICONS: Record<IdentityNavKey, React.ReactNode> = {
   desk: <AuditOutlined />,
 };
 
-// 殼層依路徑分派（MIL-94）：/owner 底下交給 src/app/owner/layout.tsx 掛 OwnerShell，
-// 因為屋主身分要在 server 端讀，只限屋主端的請求；其他路徑用後台殼層。
+// 殼層依路徑分派（MIL-94，MIL-121）：/owner 底下交給 src/app/owner/layout.tsx 掛 OwnerShell，
+// /tenant 底下交給 src/app/tenant/layout.tsx 掛 TenantShell，因為這兩種身分要在 server 端讀；其他路徑用後台殼層。
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   // 登入頁與 demo 驗證碼頁還沒有登入身分，不套任何殼層（MIL-103）
   if (isAuthScreen(pathname)) return children;
-  if (shellFor(pathname) === 'owner') return children;
+  // 屋主端與承租人端的殼層由各自的 layout 掛（src/app/owner/layout.tsx、src/app/tenant/layout.tsx）
+  if (shellFor(pathname) !== 'admin') return children;
   return <AdminShell pathname={pathname}>{children}</AdminShell>;
 }
 

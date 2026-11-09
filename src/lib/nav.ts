@@ -91,12 +91,16 @@ function matches(pathname: string, href: string): boolean {
 }
 
 // 殼層分派（MIL-94）：屋主端在 /owner 底下，其他路徑維持後台殼層。既有頁面不搬目錄。
-export type ShellKind = 'admin' | 'owner';
+export type ShellKind = 'admin' | 'owner' | 'tenant';
 
 export const OWNER_ROOT_HREF = '/owner';
+// 承租人端（MIL-121）：與屋主端對稱，頁面都在 /tenant 底下，殼層由 src/app/tenant/layout.tsx 提供
+export const TENANT_ROOT_HREF = '/tenant';
 
 export function shellFor(pathname: string): ShellKind {
-  return matches(pathname, OWNER_ROOT_HREF) ? 'owner' : 'admin';
+  if (matches(pathname, OWNER_ROOT_HREF)) return 'owner';
+  if (matches(pathname, TENANT_ROOT_HREF)) return 'tenant';
+  return 'admin';
 }
 
 // 屋主端選單：只有資產總覽與移交，不放「建立合約」（P0-09 不允許屋主替代管案件擬約）

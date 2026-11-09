@@ -1,0 +1,57 @@
+/* 承租人端殼層的版面。只放結構與間距（DESIGN.md spacing），顏色由 antd token 在元件內帶入。
+   結構與 OwnerShell 對稱，但沒有選單：承租人端的一級頁面只有「我的案件」。375px 寬時不得水平捲動。 */
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 24px; /* lg */
+  padding: 0 24px; /* lg，與後台 Header 相同 */
+}
+
+.brand {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* xs */
+  margin-left: auto;
+  min-width: 0;
+  max-width: 60%;
+}
+
+/* 顯示名稱過長時讓 Typography 的 ellipsis 生效（第 2 個子元素是名稱，後面是身分切換器與登出鈕） */
+.identity > :nth-child(2) {
+  min-width: 0;
+}
+
+.content {
+  padding: 24px; /* lg，與後台 Content 相同 */
+  min-width: 0;
+  /* 內容寬度上限：手機以外的畫面不要拉成整排 */
+  width: 100%;
+  max-width: 960px;
+  margin-inline: auto;
+}
+
+@media (max-width: 767.98px) {
+  .bar {
+    column-gap: 12px; /* sm */
+    padding: 0 16px; /* md */
+  }
+
+  .identity {
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .content {
+    padding: 16px; /* md */
+  }
+}

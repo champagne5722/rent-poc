@@ -82,11 +82,17 @@ describe('landingPath', () => {
     expect(landingPath([owner('a'), owner('b')])).toBe('/owner');
   });
 
+  it('只有承租人身分的帳號落到 /tenant（MIL-121）', () => {
+    expect(landingPath([party])).toBe('/tenant');
+  });
+
   it.each([
     ['屋主加經理人', [owner('a'), practiceOrg('b')]],
     ['只有經理人', [practiceOrg('b')]],
     ['屋主加平台營運者', [owner('a'), operator]],
     ['屋主加承租人', [owner('a'), party]],
+    ['經理人加承租人', [practiceOrg('b'), party]],
+    ['承租人加平台營運者', [party, operator]],
     ['沒有任何身分', []],
   ])('%s 落到工作台', (_name, options) => {
     expect(landingPath(options)).toBe('/');
@@ -94,10 +100,11 @@ describe('landingPath', () => {
 });
 
 describe('landingPathFor', () => {
-  it('切到屋主組織落 /owner，其餘落工作台', () => {
+  it('切到屋主組織落 /owner，承租人落 /tenant，其餘落工作台', () => {
     expect(landingPathFor(owner('a'))).toBe('/owner');
     expect(landingPathFor(practiceOrg('b'))).toBe('/');
     expect(landingPathFor(operator)).toBe('/');
-    expect(landingPathFor(party)).toBe('/');
+    // MIL-121 改：原本承租人落工作台（'/'），承租人端建好後落 /tenant
+    expect(landingPathFor(party)).toBe('/tenant');
   });
 });

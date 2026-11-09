@@ -147,6 +147,10 @@ try {
 - 第 3 步之後，這個交易看得到整個組織的資料。callback 內不得直接寫 SQL，只呼叫收 `CaseMemberTx` 的 repository 方法。
 - 新的案件範圍表必須在 `CASE_SCOPED_READS` 登記可讀的關係。
 
+## 承租人端（MIL-121）
+
+承租人登入、我的案件、已簽 PDF 下載與承租人換 email，見 `src/lib/tenant/README.md`。成員 email 更新新增案件事件 `member_replaced`（0049 改 `case_events` 的 CHECK），由 `replaceTenantMemberEmail` 寫入。
+
 ## 這個階段不做
 
 代管與包租案件的建立檢查接線（MIL-116）、委託管理案件的建立、委託連結與 `onBehalf` 事實載入、`close_mandatary_valid_period` 等 outbox 任務的處理（MIL-119）、worker 計時器接線、退租與結案的操作入口（E 線）、站內通知。

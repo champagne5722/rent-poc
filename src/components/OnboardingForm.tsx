@@ -103,6 +103,8 @@ export default function OnboardingForm() {
     return (
       <Flex vertical gap="middle">
         <Typography.Text>這個帳號還沒有加入任何組織。請選擇你的身分，我們會建立第一個組織。</Typography.Text>
+        {/* P0-21 AC6：email 不屬於任何案件時，只說「沒有案件」，不提示案件是否存在 */}
+        <Typography.Text type="secondary">沒有案件。承租人請確認使用簽約時填寫的 email 登入。</Typography.Text>
         <Flex vertical gap="small">
           <Button size="large" block style={{ height: 'auto', padding: `${token.paddingSM}px ${token.padding}px`, justifyContent: 'flex-start', textAlign: 'start' }} onClick={() => setStep('owner')}>
             <Flex vertical align="flex-start">
