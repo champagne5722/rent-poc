@@ -12,6 +12,7 @@ import {
 import {
   ACTIONS,
   ACTION_IDS,
+  actionForUncasedObject,
   decideAccess,
   type AccessFacts,
   type ActionId,
@@ -124,6 +125,8 @@ interface Expectation {
   states: { lease: CaseState[]; management: CaseState[] };
 }
 
+const CONTRACT_OPERATORS = [...hostWriters('self', 'managed', 'master', 'mgmt'), 'self.lessor', 'master.lessor'];
+
 const CASE_EXPECTATIONS: Record<string, Expectation> = {
   // 讀租期與狀態：所有成員，含包租案件的所有權人
   'case.read_summary': {
@@ -157,7 +160,7 @@ const CASE_EXPECTATIONS: Record<string, Expectation> = {
   },
   // 擬約與送簽：代管案件的屋主否，承租人否
   'contract.draft_send': {
-    personas: [...hostWriters('self', 'managed', 'master', 'mgmt'), 'self.lessor', 'master.lessor'],
+    personas: CONTRACT_OPERATORS,
     states: { lease: ['draft'], management: ['draft'] },
   },
   'ledger.record_payment': {
@@ -210,6 +213,32 @@ const CASE_EXPECTATIONS: Record<string, Expectation> = {
     personas: [...hostWriters('managed', 'mgmt'), 'managed.owner', 'mgmt.mandator', 'mgmt.mandatary'],
     states: { lease: OPERATING, management: ['active'] },
   },
+  // 合約生命週期動作（MIL-108）：與擬約送簽同一批人，只差允許的案件狀態。
+  // 撤回與拒簽後案件回 draft（cases README），所以複製為新草稿在 draft。
+  'contract.void': {
+    personas: CONTRACT_OPERATORS,
+    states: { lease: ['signing'], management: ['signing'] },
+  },
+  'contract.copy': {
+    personas: CONTRACT_OPERATORS,
+    states: { lease: ['draft'], management: ['draft'] },
+  },
+  'contract.resend': {
+    personas: CONTRACT_OPERATORS,
+    states: { lease: ['signing'], management: ['signing'] },
+  },
+  'contract.sign_link': {
+    personas: CONTRACT_OPERATORS,
+    states: { lease: ['signing'], management: ['signing'] },
+  },
+  'contract.refetch_files': {
+    personas: CONTRACT_OPERATORS,
+    states: { lease: ['signing', 'active'], management: ['signing', 'active'] },
+  },
+  'contract.simulate_signing': {
+    personas: CONTRACT_OPERATORS,
+    states: { lease: ['signing'], management: ['signing'] },
+  },
   // 成員管理（案件層）：主辦組織 admin、staff（ADR-0023 決議 5）
   'case_member.manage': {
     personas: hostWriters('self', 'managed', 'master', 'mgmt'),
@@ -220,6 +249,14 @@ const CASE_EXPECTATIONS: Record<string, Expectation> = {
 const ORG_EXPECTATIONS: Record<string, { roles: OrgRole[] }> = {
   'org_member.manage': { roles: ['admin'] },
   'audit.export': { roles: ['admin'] },
+  // 組織成員列表：所有角色（待處理邀請的過濾由載入資料的人負責）
+  'org_member.read': { roles: ['admin', 'staff', 'viewer'] },
+  // 物件在組織層，沒有案件：讀取所有角色，寫入 viewer 被拒（MIL-108 剩餘範圍）
+  'property.read': { roles: ['admin', 'staff', 'viewer'] },
+  'property.manage': { roles: ['admin', 'staff'] },
+  // 還沒歸屬案件的合約（MIL-115 遷移前）：依組織角色
+  'uncased_contract.read': { roles: ['admin', 'staff', 'viewer'] },
+  'uncased_contract.write': { roles: ['admin', 'staff'] },
 };
 
 function persona(id: string): Persona {
@@ -560,5 +597,77 @@ describe('動作表本身', () => {
         'repair.manage',
       ].sort(),
     );
+  });
+});
+
+describe('沒有案件的物件：actionForUncasedObject', () => {
+  it('合約動作依讀寫對應到沒有案件的合約動作', () => {
+    expect(actionForUncasedObject('contract.read')).toBe('uncased_contract.read');
+    for (const id of [
+      'contract.draft_send',
+      'contract.void',
+      'contract.copy',
+      'contract.resend',
+      'contract.sign_link',
+      'contract.refetch_files',
+      'contract.simulate_signing',
+    ] as const) {
+      expect(actionForUncasedObject(id), id).toBe('uncased_contract.write');
+    }
+  });
+
+  it('組織層動作原樣回傳', () => {
+    for (const id of Object.keys(ORG_EXPECTATIONS)) {
+      expect(actionForUncasedObject(id as ActionId), id).toBe(id);
+    }
+  });
+
+  it('帳務、修繕、點交等案件動作沒有對應，不得因為沒有案件而放行', () => {
+    for (const id of [
+      'case.read_summary',
+      'ledger.read',
+      'ledger.record_payment',
+      'ledger.record_deposit',
+      'repair.manage',
+      'inspection.confirm',
+      'move_out.start',
+      'deposit.dispute',
+      'handover.initiate',
+      'case_member.manage',
+      'report.read_owner',
+    ] as const) {
+      expect(actionForUncasedObject(id), id).toBeNull();
+    }
+  });
+
+  it('沒有案件的對應動作，寫入與讀取的組織角色與原動作不衝突', () => {
+    // viewer 只讀：對應後的寫入動作必須是組織層的 write
+    for (const id of ACTION_IDS) {
+      const mapped = actionForUncasedObject(id);
+      if (mapped === null) continue;
+      const rule = ACTIONS[id];
+      expect(ACTIONS[mapped].scope).toBe('org');
+      expect(ACTIONS[mapped].effect).toBe(rule.effect);
+    }
+  });
+
+  it('P0-09 權限表每一列至少有一個對應的動作', () => {
+    // 預期值照 PRD P0-09 權限表的列名人工對照，不從 ACTIONS 推導
+    const P0_09_ROWS: Record<string, ActionId[]> = {
+      讀合約與帳務: ['contract.read', 'ledger.read', 'case.read_summary'],
+      擬約與送簽: ['contract.draft_send'],
+      登錄入帳確認與押金分錄: ['ledger.record_payment', 'ledger.record_deposit'],
+      建立與處理修繕紀錄: ['repair.manage', 'repair.report'],
+      確認點交: ['inspection.confirm'],
+      對押金扣抵標示異議: ['deposit.dispute'],
+      讀屋主報表: ['report.read_owner'],
+      發起移交: ['handover.initiate'],
+    };
+    for (const [row, ids] of Object.entries(P0_09_ROWS)) {
+      for (const id of ids) expect(ACTION_IDS, `${row} → ${id}`).toContain(id);
+    }
+    // 另含成員管理、稽核紀錄匯出（票的驗收條件）
+    expect(ACTION_IDS).toContain('org_member.manage');
+    expect(ACTION_IDS).toContain('audit.export');
   });
 });

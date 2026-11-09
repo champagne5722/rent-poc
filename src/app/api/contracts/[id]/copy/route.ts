@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { authorize } from '@/lib/authorize';
 import { copyContractAsDraft } from '@/lib/contracts';
 import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/contracts/route';
 import { jsonOk } from '@/lib/http';
@@ -11,6 +12,7 @@ export async function POST(_request: NextRequest, { params }: ContractRouteCtx) 
   const id = await contractIdOf(params);
   if (!id) return contractNotFound();
   return inOrgTx(async (tx) => {
+    await authorize(tx, 'contract.copy', { type: 'contract', id });
     const newId = await copyContractAsDraft(tx, id);
     // 沿用執業人員的指派。改派一律是撤回後衍生新草稿（ADR-0018 決議 11），新草稿仍要重新通過送簽前檢查
     if (newId) await copyAssignments(tx, id, newId);

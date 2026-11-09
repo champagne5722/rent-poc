@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { authorize } from '@/lib/authorize';
 import { jsonOk, jsonError } from '@/lib/http';
 import { inOrgTx, readJson } from '@/lib/org-route';
 import { addCustomItem, listVocabulary } from '@/lib/properties';
@@ -8,7 +9,10 @@ import { addCustomItem, listVocabulary } from '@/lib/properties';
 // 刪除留待有使用中檢查再開。
 
 export async function GET() {
-  return inOrgTx(async (tx) => jsonOk({ data: await listVocabulary(tx) }));
+  return inOrgTx(async (tx) => {
+    await authorize(tx, 'property.read', { type: 'org' });
+    return jsonOk({ data: await listVocabulary(tx) });
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -20,6 +24,7 @@ export async function POST(request: NextRequest) {
   if (!name) return jsonError(400, '請輸入設備名稱');
 
   return inOrgTx(async (tx) => {
+    await authorize(tx, 'property.manage', { type: 'org' });
     const added = await addCustomItem(tx, name);
     if (!added) return jsonError(409, `「${name}」已在設備詞彙庫中`);
     return jsonOk({ data: added }, { status: 201 });

@@ -85,6 +85,7 @@
 |---|---|
 | `case.read_summary` | 讀租期與狀態，包租案件的所有權人只有這一項（AC5） |
 | `contract.read`、`ledger.read` | 讀合約與帳務 |
+| `contract.void`、`contract.copy`、`contract.resend`、`contract.sign_link`、`contract.refetch_files`、`contract.simulate_signing` | 合約生命週期（MIL-108 剩餘範圍）：與擬約送簽同一批人，差別在允許的案件狀態 |
 | `report.read_owner` | 讀屋主報表 |
 | `contract.draft_send` | 擬約與送簽 |
 | `ledger.record_payment`、`ledger.record_deposit` | 登錄入帳確認與押金分錄 |
@@ -96,15 +97,24 @@
 | `handover.initiate` | 發起移交 |
 | `case_member.manage` | 案件成員管理（ADR-0023 決議 5） |
 | `org_member.manage` | 組織成員管理，只限 `admin` |
+| `org_member.read` | 組織成員列表，所有角色 |
+| `property.read`、`property.manage` | 物件（組織層，沒有案件）：讀取所有角色，寫入 `admin`、`staff` |
+| `uncased_contract.read`、`uncased_contract.write` | 還沒歸屬案件的合約。案件動作的 `uncased` 欄位指向這兩列，MIL-115 遷移後不再用到 |
 | `audit.export` | 稽核紀錄匯出，只限 `admin`（P0-23 AC6） |
 
 P0-09 表與 ADR-0023 決議 7 衝突的地方以 ADR 為準：代管業者的確認點交是點交範圍的代操作。
 
 加新動作：在 `ACTIONS` 加一列，在 `decide-access.test.ts` 的預期表加一列。測試會檢查動作清單與預期表一一對應。E 線的動作加入時，必須標示 `onBehalfScope`。
 
-這次不做的動作：案件放棄、結案、撤回合約等生命週期動作，由用到它們的票自己加列。
+這次不做的動作：案件放棄、結案等生命週期動作，由用到它們的票自己加列。撤回合約、複製為新草稿等合約動作已在 MIL-108 剩餘範圍補上。
 
-## 之後怎麼接（MIL-108 剩餘範圍，等 MIL-82 併進 `integration/line-a`）
+沒有案件的物件用 `actionForUncasedObject(action)` 找對應的組織層動作，沒有對應回 `null`，載入者必須拒絕。
+
+## `authorize()` 已完成
+
+`authorize()`、事實載入與 route 接線在 `src/lib/authorize/`，見該目錄的 README。以下是原本的設計草稿，保留作對照。細節以 `src/lib/authorize/` 為準：脈絡綁在 tx 上而不是呼叫 `requestContext()`，拒絕不寫稽核，有 ID 的物件拒絕一律回 404，組織層動作回 403。
+
+## 原本的設計草稿
 
 ### `authorize(t, action, object)`
 

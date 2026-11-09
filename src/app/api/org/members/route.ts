@@ -1,14 +1,17 @@
+import { authorize, checkAccess } from '@/lib/authorize';
 import { getMailer } from '@/lib/mailer';
 import { jsonError, jsonOk, readJson } from '@/lib/http';
 import { inOrgTxAs } from '@/lib/org-route';
 import { inviteMember, listMembers, type InviteResult } from '@/lib/orgs/members';
 
 // 組織成員（MIL-106）。列表所有成員都看得到，待處理的邀請只有 admin 看得到。邀請只有 admin 能做。
+// 權限一律經 authorize（MIL-108）。邀請拒絕時保留原本的訊息，成員已能看到這個頁面，沒有洩漏問題。
 
 export async function GET(): Promise<Response> {
-  return inOrgTxAs(async (tx, rc) =>
-    jsonOk({ data: { ...(await listMembers(tx, rc)), me: { userId: rc.userId, role: rc.role } } }),
-  );
+  return inOrgTxAs(async (tx, rc) => {
+    await authorize(tx, 'org_member.read', { type: 'org' });
+    return jsonOk({ data: { ...(await listMembers(tx, rc)), me: { userId: rc.userId, role: rc.role } } });
+  });
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -17,6 +20,11 @@ export async function POST(request: Request): Promise<Response> {
 
   let result: InviteResult | undefined;
   const response = await inOrgTxAs(async (tx, rc) => {
+    const access = await checkAccess(tx, 'org_member.manage', { type: 'org' });
+    if (!access.allowed) {
+      result = { status: 'forbidden' };
+      return jsonOk(null);
+    }
     result = await inviteMember(tx, rc, { email: body.email, role: body.role, now: new Date() });
     return jsonOk(null);
   });

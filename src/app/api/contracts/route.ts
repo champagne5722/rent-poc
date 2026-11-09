@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { authorize } from '@/lib/authorize';
 import { createContract, listContracts } from '@/lib/contracts';
 import { DEFAULT_CONTRACT_TYPE, initialFieldsFor, type InitialFieldsInput } from '@/lib/contract-types';
 import { inOrgTx, readJson } from '@/lib/org-route';
@@ -8,7 +9,10 @@ import { routingInputError } from '@/lib/signature-routing';
 import { jsonOk, jsonError } from '@/lib/http';
 
 export async function GET() {
-  return inOrgTx(async (tx) => jsonOk({ data: await listContracts(tx) }));
+  return inOrgTx(async (tx) => {
+    await authorize(tx, 'contract.read', { type: 'org' });
+    return jsonOk({ data: await listContracts(tx) });
+  });
 }
 
 // 從物件建立合約草稿：欄位快照由合約類型定義產生（物件資料帶入成快照、綁定範本版本，見 contract-types）。
@@ -23,6 +27,7 @@ export async function POST(request: NextRequest) {
   // 讀物件與建合約在同一個交易。別的組織的物件與不存在的物件同樣回 400；
   // 即使讀到之後物件被刪，複合外鍵 (org_id, property_id) 也會讓建立失敗並回滾
   return inOrgTx(async (tx) => {
+    await authorize(tx, 'contract.draft_send', { type: 'org' });
     const property = await getProperty(tx, propertyId);
     if (!property) return jsonError(400, '請指定有效的物件');
     const routingError = routingInputError(routing);

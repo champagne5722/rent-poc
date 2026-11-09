@@ -1,3 +1,4 @@
+import { authorize } from '@/lib/authorize';
 import { getContract } from '@/lib/contracts';
 import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/contracts/route';
 import { jsonOk } from '@/lib/http';
@@ -12,6 +13,7 @@ export async function GET(_request: Request, { params }: ContractRouteCtx) {
   const id = await contractIdOf(params);
   if (!id) return contractNotFound();
   const read = await readInOrgTx(async (tx) => {
+    await authorize(tx, 'contract.read', { type: 'contract', id });
     if (!(await getContract(tx, id))) return null;
     const records = await listSignatureRecords(tx, id);
     return { records, signers: records.length > 0 ? await listSignatureRecordSigners(tx, id) : new Map() };

@@ -1,10 +1,14 @@
 import { NextRequest } from 'next/server';
+import { authorize } from '@/lib/authorize';
 import { jsonOk, jsonError } from '@/lib/http';
 import { inOrgTx, readJson } from '@/lib/org-route';
 import { createProperty, listProperties, parsePropertyInput } from '@/lib/properties';
 
 export async function GET() {
-  return inOrgTx(async (tx) => jsonOk({ data: await listProperties(tx) }));
+  return inOrgTx(async (tx) => {
+    await authorize(tx, 'property.read', { type: 'org' });
+    return jsonOk({ data: await listProperties(tx) });
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -12,6 +16,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.ok) return jsonError(400, parsed.error);
   // 建物件時同一個交易建待驗證錨點與 0000 單位，表單就地新增的自訂設備也一併補進詞彙庫
   return inOrgTx(async (tx) => {
+    await authorize(tx, 'property.manage', { type: 'org' });
     const id = await createProperty(tx, parsed.value);
     return jsonOk({ data: { id } }, { status: 201 });
   });
