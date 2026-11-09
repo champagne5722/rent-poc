@@ -95,12 +95,40 @@ export function describeFileStoreContract(name: string, makeStore: () => Promise
       expect(text(await store.read(b))).toBe('2');
     });
 
+    it('delete 之後 exists 回 false，read 回 null', async () => {
+      const store = await makeStore();
+      const key = buildObjectKey(freshOrg(), 'vault', 'gone.pdf');
+      await store.write(key, bytes('要刪的證據檔'), { contentType: PDF });
+      await store.delete(key);
+      expect(await store.exists(key)).toBe(false);
+      expect(await store.read(key)).toBeNull();
+    });
+
+    it('delete 沒寫過的 key 不丟錯（重試安全）', async () => {
+      const store = await makeStore();
+      await expect(store.delete(buildObjectKey(freshOrg(), 'vault', 'never.pdf'))).resolves.toBeUndefined();
+    });
+
+    it('delete 只刪那一個 key，同組織與別的組織的其他檔案不受影響', async () => {
+      const store = await makeStore();
+      const orgA = freshOrg();
+      const orgB = freshOrg();
+      const target = buildObjectKey(orgA, 'vault', 'a.pdf');
+      const sibling = buildObjectKey(orgA, 'vault', 'b.pdf');
+      const other = buildObjectKey(orgB, 'vault', 'a.pdf');
+      for (const key of [target, sibling, other]) await store.write(key, bytes(key), { contentType: PDF });
+      await store.delete(target);
+      expect(await store.exists(sibling)).toBe(true);
+      expect(await store.exists(other)).toBe(true);
+    });
+
     it('不合法的 key 不會被當成路徑使用', async () => {
       const store = await makeStore();
       const evil = ['org/x/../../etc/passwd', '/org/x/a/b.pdf', 'org/x/a/b.pdf/', 'org//a/b.pdf', 'x/y/z/w.pdf'];
       for (const key of evil) {
         await expect(store.read(key as never)).rejects.toThrow(/物件 key/);
         await expect(store.exists(key as never)).rejects.toThrow(/物件 key/);
+        await expect(store.delete(key as never)).rejects.toThrow(/物件 key/);
         await expect(store.write(key as never, bytes('x'), { contentType: PDF })).rejects.toThrow(/物件 key/);
       }
     });

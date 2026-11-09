@@ -55,6 +55,7 @@ describe('createFileStores', () => {
           return found;
         },
         exists: async (n) => objects.has(`${name}/${n}`),
+        delete: async (n) => void objects.delete(`${name}/${n}`),
       };
     };
     const get = createFileStores(
@@ -89,7 +90,7 @@ describe('Cloud Storage 連線', () => {
     let attempts = 0;
     const openBucket = async (): Promise<ObjectBucket> => {
       if (++attempts === 1) throw new Error('SDK 載入失敗');
-      return { save: async () => {}, download: async () => new Uint8Array(), exists: async () => true };
+      return { save: async () => {}, download: async () => new Uint8Array(), exists: async () => true, delete: async () => {} };
     };
     const get = createFileStores({ mode: 'gcs', buckets: { 'signed-document': 'b1', general: 'b2' } }, { openBucket });
     const key = buildObjectKey('01ORG', 'x', 'a.pdf');

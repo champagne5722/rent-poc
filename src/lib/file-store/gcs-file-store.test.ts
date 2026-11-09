@@ -23,11 +23,22 @@ class MemoryBucket implements ObjectBucket {
     if (this.failWith) throw this.failWith;
     return this.objects.has(name);
   }
+  async delete(name: string) {
+    if (this.failWith) throw this.failWith;
+    this.objects.delete(name);
+  }
 }
 
 describeFileStoreContract('Cloud Storage（記憶體替身）', () => createGcsFileStore(new MemoryBucket()));
 
 describe('Cloud Storage adapter 專屬行為', () => {
+  it('delete 的權限或網路錯誤不吞掉，呼叫端才知道檔案還在', async () => {
+    const bucket = new MemoryBucket();
+    const store = createGcsFileStore(bucket);
+    bucket.failWith = new Error('Permission denied');
+    await expect(store.delete(buildObjectKey('01ORG', 'vault', 'a.pdf'))).rejects.toThrow('Permission denied');
+  });
+
   it('物件名稱就是物件 key，contentType 一併送出', async () => {
     const bucket = new MemoryBucket();
     const store = createGcsFileStore(bucket);

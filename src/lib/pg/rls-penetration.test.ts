@@ -4,6 +4,8 @@ import { pgliteDriver } from './drivers';
 import {
   CONTROL_TABLE_EXCEPTIONS,
   controlTablesWithoutException,
+  DEFINER_ONLY_TABLES,
+  definerOnlyTablesWithoutEntry,
   ORG_TABLE_CASES,
   tablesWithoutCase,
 } from './rls-cases';
@@ -155,6 +157,54 @@ describe('control schema 的表（不掛組織 RLS，登記為例外）', () => 
       );
       expect({ table, privileges: rows.map((r) => r.p) }).toEqual({ table, privileges: [...exception.appRw].sort() });
     }
+  });
+});
+
+describe('registry 與 vault 的表（只經定義者函式，MIL-109）', () => {
+  const TABLES_SQL = `SELECT n.nspname || '.' || c.relname AS name, c.relrowsecurity AS rls
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname IN ('registry', 'vault') AND c.relkind IN ('r', 'p') ORDER BY 1`;
+
+  it('每張表都登記了（沒登記就失敗），清單裡沒有不存在的表', async () => {
+    const { rows } = await testDb.base.query<{ name: string }>(TABLES_SQL);
+    const names = rows.map((r) => r.name);
+    const missing = definerOnlyTablesWithoutEntry(names);
+    expect(missing, `這些表沒有登記，請到 src/lib/pg/rls-cases.ts 的 DEFINER_ONLY_TABLES 登記：${missing.join('、')}`).toEqual([]);
+    expect(Object.keys(DEFINER_ONLY_TABLES).filter((t) => !names.includes(t))).toEqual([]);
+  });
+
+  it('app_rw 與 PUBLIC 對這些表沒有任何權限，直接查會被拒', async () => {
+    for (const table of Object.keys(DEFINER_ONLY_TABLES)) {
+      const { rows } = await testDb.base.query<{ p: string; who: string }>(
+        `SELECT p, who FROM unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) AS p,
+                unnest(ARRAY['app_rw']) AS who WHERE has_table_privilege(who, $1, p)`,
+        [table],
+      );
+      expect({ table, privileges: rows.map((r) => r.p) }).toEqual({ table, privileges: [] });
+      const acl = await testDb.base.query<{ acl: string | null }>('SELECT relacl::text AS acl FROM pg_class WHERE oid = $1::regclass', [table]);
+      expect({ table, publicGrant: /(^|[{,])=/.test(acl.rows[0].acl ?? '') }).toEqual({ table, publicGrant: false });
+    }
+  });
+
+  it('app_rw 能執行的 registry 與 vault 函式都是 SECURITY DEFINER、固定 search_path、PUBLIC 不能執行（ADR-0012 決議 8）', async () => {
+    const { rows } = await testDb.base.query<{ name: string; secdef: boolean; has_path: boolean; public_exec: boolean }>(
+      `SELECT n.nspname || '.' || p.proname AS name, p.prosecdef AS secdef,
+              coalesce(p.proconfig::text ~ 'search_path=', false) AS has_path,
+              has_function_privilege('public', p.oid, 'EXECUTE') AS public_exec
+         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname IN ('registry', 'vault') AND has_function_privilege('app_rw', p.oid, 'EXECUTE') ORDER BY 1`,
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.filter((r) => !r.secdef || !r.has_path || r.public_exec).map((r) => r.name)).toEqual([]);
+  });
+
+  it('函式的擁有者沒有 SUPERUSER 與 BYPASSRLS', async () => {
+    const { rows } = await testDb.base.query<{ name: string }>(
+      `SELECT DISTINCT n.nspname || '.' || p.proname AS name
+         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace JOIN pg_roles r ON r.oid = p.proowner
+        WHERE n.nspname IN ('registry', 'vault') AND (r.rolsuper OR r.rolbypassrls)`,
+    );
+    expect(rows).toEqual([]);
   });
 });
 

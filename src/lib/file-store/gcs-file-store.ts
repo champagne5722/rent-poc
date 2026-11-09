@@ -17,6 +17,8 @@ export interface ObjectBucket {
   save(name: string, bytes: Uint8Array, meta: { contentType: string }): Promise<void>;
   download(name: string): Promise<Uint8Array>;
   exists(name: string): Promise<boolean>;
+  /** 物件不存在時不丟錯。 */
+  delete(name: string): Promise<void>;
 }
 
 export function createGcsFileStore(bucket: ObjectBucket): FileStore {
@@ -36,6 +38,8 @@ export function createGcsFileStore(bucket: ObjectBucket): FileStore {
     },
 
     exists: async (key) => bucket.exists(parseObjectKey(key)),
+
+    delete: async (key) => bucket.delete(parseObjectKey(key)),
   };
 }
 
@@ -61,6 +65,9 @@ export async function createSdkBucket(bucketName: string): Promise<ObjectBucket>
     exists: async (name) => {
       const [found] = await bucket.file(name).exists();
       return found;
+    },
+    delete: async (name) => {
+      await bucket.file(name).delete({ ignoreNotFound: true });
     },
   };
 }

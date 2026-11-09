@@ -50,6 +50,15 @@ export function createLocalFileStore(root: string): FileStore {
         throw e;
       }
     },
+
+    async delete(key) {
+      // force：檔案不存在時不丟錯。key 的上層是檔案（ENOTDIR）等同不存在
+      try {
+        await fs.rm(fileOf(key), { force: true });
+      } catch (e) {
+        if (!isNotFound(e)) throw e;
+      }
+    },
   };
 }
 

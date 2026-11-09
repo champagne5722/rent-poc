@@ -138,3 +138,23 @@ describe('resolvePageTitle（後台 header 標題，MIL-106）', () => {
     expect(resolvePageTitle('/nowhere')).toBe('');
   });
 });
+
+describe('依身分出現的入口（MIL-109）', () => {
+  it('執業主體組織看到「執業主體」，平台營運者看到「審核台」，其他身分沒有專屬入口', async () => {
+    const { identityNavItems } = await import('./nav');
+    expect(identityNavItems('practice').map((i) => [i.label, i.href])).toEqual([['執業主體', '/practice']]);
+    expect(identityNavItems('operator').map((i) => [i.label, i.href])).toEqual([['審核台', '/desk']]);
+    expect(identityNavItems('owner')).toEqual([]);
+    expect(identityNavItems(null)).toEqual([]);
+  });
+
+  it('子頁面沿用高亮與標題；只是前綴相同的路徑不算', async () => {
+    const { resolveIdentityNavKey } = await import('./nav');
+    expect(resolveIdentityNavKey('/desk')).toBe('desk');
+    expect(resolveIdentityNavKey('/desk/items/01ABC')).toBe('desk');
+    expect(resolveIdentityNavKey('/practice')).toBe('practice');
+    expect(resolveIdentityNavKey('/desktop')).toBeNull();
+    expect(resolvePageTitle('/desk/items/01ABC')).toBe('審核台');
+    expect(resolvePageTitle('/practice')).toBe('執業主體');
+  });
+});
