@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultStatusAnnex, type StatusAnnex } from '../status-annex';
+import { ulidOf } from '../test-ids';
 import type { ContractRoutingConditions, LeaseContractFields } from '../types';
 import { contractTypeDefinition, initialFieldsFor, missingFieldsForSendOf, missingFieldsOf } from './index';
 
@@ -79,7 +80,7 @@ describe('建立草稿', () => {
   it('不預先帶附件內容，沒有填過的包租合約讀入不報錯', () => {
     const fields = initialFieldsFor('lease', {
       property: {
-        id: 1, name: 'x', address: 'y', type: '套房', size: null, default_rent: 1000, note: '', equipment: [], created_at: '', updated_at: null,
+        id: ulidOf(1), name: 'x', address: 'y', type: '套房', size: null, default_rent: 1000, note: '', equipment: [], rental_unit_id: ulidOf(2), created_at: '', updated_at: null,
       },
       routing: MASTER_LEASE,
     });

@@ -1,23 +1,24 @@
-import Database from 'better-sqlite3';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { copyContractAsDraft, deleteContractWithEvents, ensureSchema, getContract, insertContractWithEvent, setDb } from '../db';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { copyContractAsDraft, createContract, deleteDraftContract, getContract, saveDraft } from '../contracts';
+import { withTx } from '../pg/database';
+import { setupRouteDb, type RouteDb } from '../pg/route-test-kit';
+import type { OrgTx } from '../pg/with-tx';
+import type { ContractFields } from '../types';
 import { defaultStatusAnnex, statusAnnexOf, type StatusAnnex } from './index';
 
 // 現況確認附件隨草稿保存（MIL-71）：內容收在合約欄位，所以複製為新草稿會跟著複製，刪除草稿時一起消失，
-// 沒有附件的舊包租合約讀入不報錯。
+// 沒有附件的舊包租合約讀入不報錯。資料庫是 PGlite（MIL-85）。
 
-let db: Database.Database;
+let kit: RouteDb;
 
-beforeEach(() => {
-  db = new Database(':memory:');
-  ensureSchema(db);
-  setDb(db);
+beforeAll(async () => {
+  kit = await setupRouteDb();
 });
+afterAll(() => kit.close());
 
-afterEach(() => {
-  setDb(null);
-  db.close();
-});
+const inA = <T,>(fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId: kit.orgA }, fn);
+
+beforeEach(() => kit.reset());
 
 const MASTER = { businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: false };
 
@@ -29,45 +30,50 @@ function annexWithDefect(): StatusAnnex {
   };
 }
 
-function insert(fields: object): number {
-  return insertContractWithEvent(
-    { property_id: null, fields: JSON.stringify(fields), signature_fields: '[]' },
-    { type: 'created', actor: 'landlord' },
-    db,
-  );
-}
+const insert = (fields: object): Promise<string> =>
+  inA((tx) => createContract(tx, { property_id: null, fields: fields as unknown as ContractFields, signature_fields: [] }));
+
+const load = (id: string) => inA((tx) => getContract(tx, id));
 
 describe('現況確認附件的草稿生命週期', () => {
-  it('存進草稿再讀回來，內容與版本、標籤都在', () => {
+  it('存進草稿再讀回來，內容與版本、標籤都在', async () => {
     const annex = annexWithDefect();
-    const id = insert({ routing: MASTER, statusAnnex: annex });
-    expect(getContract(id)?.fields).toMatchObject({ statusAnnex: annex });
+    const id = await insert({ routing: MASTER, statusAnnex: annex });
+    expect((await load(id))?.fields).toMatchObject({ statusAnnex: annex });
   });
 
-  it('複製為新草稿時附件內容跟著複製，兩份互不影響', () => {
+  it('複製為新草稿時附件內容跟著複製，兩份互不影響', async () => {
     const annex = annexWithDefect();
-    const id = insert({ routing: MASTER, statusAnnex: annex });
-    const copyId = copyContractAsDraft(getContract(id)!, db);
-    const copied = getContract(copyId)!;
+    const id = await insert({ routing: MASTER, statusAnnex: annex });
+    const copyId = (await inA((tx) => copyContractAsDraft(tx, id)))!;
+    const copied = (await load(copyId))!;
     expect(copied.status).toBe('draft');
     expect('statusAnnex' in copied.fields && copied.fields.statusAnnex).toEqual(annex);
     expect(statusAnnexOf('draft', 'lease', copied.fields)).toEqual(annex);
     // 改新草稿不動來源
-    db.prepare('UPDATE contracts SET fields = ? WHERE id = ?').run(JSON.stringify({ routing: MASTER, statusAnnex: defaultStatusAnnex() }), copyId);
-    expect(getContract(id)?.fields).toMatchObject({ statusAnnex: annex });
+    await inA(async (tx) => {
+      const current = (await getContract(tx, copyId, 'update'))!;
+      await saveDraft(tx, copyId, {
+        fields: { routing: MASTER, statusAnnex: defaultStatusAnnex() } as unknown as ContractFields,
+        signature_fields: current.signature_fields,
+      });
+    });
+    expect((await load(id))?.fields).toMatchObject({ statusAnnex: annex });
   });
 
-  it('刪除草稿時附件一併消失（內容在合約欄位，沒有殘留的子表資料）', () => {
-    const id = insert({ routing: MASTER, statusAnnex: annexWithDefect() });
-    deleteContractWithEvents(id, db);
-    expect(getContract(id)).toBeNull();
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%status_annex%'").all();
-    expect(tables).toEqual([]);
+  it('刪除草稿時附件一併消失（內容在合約欄位，沒有殘留的子表資料）', async () => {
+    const id = await insert({ routing: MASTER, statusAnnex: annexWithDefect() });
+    expect(await inA((tx) => deleteDraftContract(tx, id))).toBe('deleted');
+    expect(await load(id)).toBeNull();
+    const tables = await inA((tx) =>
+      tx.query("SELECT tablename FROM pg_catalog.pg_tables WHERE tablename LIKE '%status_annex%'"),
+    );
+    expect(tables.rows).toEqual([]);
   });
 
-  it('沒有附件內容的舊包租合約讀入不報錯：草稿印預設清單，送簽後的舊合約不印附件頁', () => {
-    const id = insert({ routing: MASTER, landlordName: '王', tenantName: '李' });
-    const fields = getContract(id)!.fields;
+  it('沒有附件內容的舊包租合約讀入不報錯：草稿印預設清單，送簽後的舊合約不印附件頁', async () => {
+    const id = await insert({ routing: MASTER, landlordName: '王', tenantName: '李' });
+    const fields = (await load(id))!.fields;
     expect(() => statusAnnexOf('draft', 'lease', fields)).not.toThrow();
     expect(statusAnnexOf('draft', 'lease', fields)?.rows.every((r) => r.status === null)).toBe(true);
     expect(statusAnnexOf('completed', 'lease', fields)).toBeNull();
