@@ -1,5 +1,6 @@
 import type { ActionId } from '../access';
 import { Forbidden } from '../authorize';
+import { isTenantRelation } from '../cases';
 import { withCaseMemberTx, type CaseMemberTx } from '../case-store';
 import { sha256Hex, parseObjectKey, type FileStore } from '../file-store';
 import { withTx } from '../pg/database';
@@ -17,7 +18,7 @@ export type PartyRequestContext = Extract<RequestContext, { kind: 'party' }>;
  * 也不得從這裡讀（他們有自己的畫面）。拒絕與「不是成員」同一個錯誤，對外同一個回應。
  */
 function requireTenantRelation(tx: CaseMemberTx, action: ActionId): void {
-  if (!tx.relations.includes('lessee') && !tx.relations.includes('co_lessee')) {
+  if (!tx.relations.some(isTenantRelation)) {
     throw new Forbidden('not_a_member', action, { type: 'case', id: tx.caseId });
   }
 }

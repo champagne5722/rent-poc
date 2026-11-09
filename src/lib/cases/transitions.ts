@@ -30,6 +30,14 @@ export const CASE_MEMBER_RELATIONS = [
 ] as const;
 export type CaseMemberRelation = (typeof CASE_MEMBER_RELATIONS)[number];
 
+/** 承租人端的關係：承租人與共同承租人（ADR-0022 決議 6）。承租人身分、承租人端查詢與 email 更新共用。 */
+export const TENANT_RELATIONS = ['lessee', 'co_lessee'] as const satisfies readonly CaseMemberRelation[];
+export type TenantRelation = (typeof TENANT_RELATIONS)[number];
+
+export function isTenantRelation(relation: string): relation is TenantRelation {
+  return (TENANT_RELATIONS as readonly string[]).includes(relation);
+}
+
 interface CaseSnapshotBase {
   id: string;
   stateVersion: number;

@@ -8,7 +8,7 @@ import { isUlid } from '@/lib/pg/ulid';
 
 // 更新承租人或共同承租人的 email（MIL-121，ADR-0023 決議 5，P0-21 AC5）。
 // 權限是 case_member.manage：主辦組織的 admin、staff（出租人或受託人所屬組織），案件在結案前。
-// 舊成員列關閉，舊 email 立即失效；新 email 找或建 party，加一列同關係的新成員。同一個交易，寫案件事件與稽核事件。
+// 舊成員列關閉，舊 email 立即失效。新 email 找或建 party，加一列同關係的新成員。同一個交易，寫案件事件與稽核事件。
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string; memberId: string }> }) {
   const { memberId } = await params;
   const id = await caseIdOf(params);

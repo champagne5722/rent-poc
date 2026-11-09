@@ -12,7 +12,6 @@ export const TENANT_CONTRACT_STATUS_LABELS: Record<ContractStatus, string> = {
   voided: '已撤回',
 };
 
-export function tenantContractStatusLabel(status: string | null): string {
-  if (status === null) return '尚無合約';
-  return TENANT_CONTRACT_STATUS_LABELS[status as ContractStatus] ?? '—';
+export function tenantContractStatusLabel(status: ContractStatus | null): string {
+  return status === null ? '尚無合約' : TENANT_CONTRACT_STATUS_LABELS[status];
 }

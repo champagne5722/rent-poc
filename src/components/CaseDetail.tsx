@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { App as AntApp, Alert, Button, Col, Descriptions, Flex, Form, Input, Modal, Row, Spin, Table, Tabs, Tag, Typography, theme } from 'antd';
 import Link from 'next/link';
 import type { CaseContractRow, CaseEventRecord, CaseMemberRecord, CaseRecord } from '@/lib/case-store';
+import { isTenantRelation } from '@/lib/cases';
 import { eventDescription, formatTaipei, leasePeriodLabel, monthlyRentLabel } from '@/lib/case-display';
 import { BUSINESS_TYPE_LABELS } from '@/lib/labels';
 import { CASE_MEMBER_RELATION_LABELS, CASE_STATE_COLORS, CASE_STATE_LABELS } from '@/lib/labels/case-labels';
@@ -182,7 +183,7 @@ function CaseDetailBody({ caseId, readOnly, backHref }: { caseId: string; readOn
                             title: '操作',
                             width: 120,
                             render: (_: unknown, m: CaseMemberRecord) =>
-                              m.validUntil === null && (m.relation === 'lessee' || m.relation === 'co_lessee') ? (
+                              m.validUntil === null && isTenantRelation(m.relation) ? (
                                 <Button type="link" size="small" onClick={() => setReplacing(m)}>
                                   更新 email
                                 </Button>

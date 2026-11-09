@@ -252,7 +252,7 @@ export const CASE_SCOPED_READS: Record<string, { readableBy: readonly CaseMember
   },
   'org.sign_tasks': { readableBy: ['lessor', 'mandator', 'mandatary'], note: '簽署任務，經合約對應到案件' },
   'org.signers': { readableBy: ['lessor', 'mandator', 'mandatary'], note: '經簽署任務對應到案件' },
-  'org.contract_events': { readableBy: [], note: '合約歷程。成員讀取等 MIL-121' },
+  'org.contract_events': { readableBy: [], note: '合約歷程。成員讀取未開放，承租人端不需要（MIL-121）' },
   'org.contract_practitioner_assignments': { readableBy: [], note: '指派改成案件成員前仍只有主辦組織讀取（MIL-116）' },
   'org.sign_task_files': {
     readableBy: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker', 'mandator', 'mandatary'],

@@ -2,6 +2,7 @@ import { appendAudit } from '../audit';
 import {
   buildCaseEvent,
   decideCaseCreation,
+  isTenantRelation,
   type BusinessType,
   type CaseMemberRelation,
   type CreationBlockReason,
@@ -9,7 +10,17 @@ import {
 } from '../cases';
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
-import { findOrCreateParty, insertCase, insertCaseEvent, insertCaseMember, normalizePartyEmail, setCurrentContract } from './repository';
+import {
+  closeMemberPeriod,
+  findOrCreateParty,
+  insertCase,
+  insertCaseEvent,
+  insertCaseMember,
+  isEmailActiveMember,
+  lockMemberForReplacement,
+  normalizePartyEmail,
+  setCurrentContract,
+} from './repository';
 import type { CaseActor } from './types';
 
 // 案件的建立、掛合約與加成員（MIL-115）。轉移不在這裡，一律走 dispatch()。
@@ -150,44 +161,30 @@ export async function replaceTenantMemberEmail(
   options: { now?: Date; actor?: CaseActor } = {},
 ): Promise<ReplaceMemberEmailResult> {
   const now = options.now ?? new Date();
-  const { rows } = await tx.query<{ party_id: string; relation: CaseMemberRelation; active: boolean; display_name: string; email: string }>(
-    `SELECT m.party_id, m.relation, upper_inf(m.valid_period) AS active, p.display_name, p.email
-       FROM org.case_members m JOIN control.parties p ON p.id = m.party_id
-      WHERE m.id = $1 AND m.case_id = $2`,
-    [memberId, caseId],
-  );
-  const old = rows[0];
+  const old = await lockMemberForReplacement(tx, caseId, memberId);
   if (!old) return { ok: false, reason: 'member_not_found' };
-  if (old.relation !== 'lessee' && old.relation !== 'co_lessee') return { ok: false, reason: 'not_tenant' };
+  if (!isTenantRelation(old.relation)) return { ok: false, reason: 'not_tenant' };
   if (!old.active) return { ok: false, reason: 'not_active' };
 
   const email = normalizePartyEmail(input.email);
   if (!email) throw new Error('email 格式不正確');
   if (email === old.email) return { ok: false, reason: 'same_email' };
-  const taken = await tx.query(
-    `SELECT 1 FROM org.case_members m JOIN control.parties p ON p.id = m.party_id
-      WHERE m.case_id = $1 AND p.email = $2 AND upper_inf(m.valid_period) LIMIT 1`,
-    [caseId, email],
-  );
-  if (taken.rows.length > 0) return { ok: false, reason: 'already_member' };
+  if (await isEmailActiveMember(tx, caseId, email)) return { ok: false, reason: 'already_member' };
 
-  const newPartyId = await findOrCreateParty(tx, email, input.displayName?.trim() || old.display_name);
-  // 範圍不得變空：成員剛在同一個交易加入時，終點至少比起點晚 1 微秒
-  await tx.query(
-    `UPDATE org.case_members
-        SET valid_period = tstzrange(lower(valid_period), greatest(now(), lower(valid_period) + interval '1 microsecond'), '[)')
-      WHERE id = $1`,
-    [memberId],
-  );
-  await insertCaseMember(tx, caseId, { partyId: newPartyId, relation: old.relation }, now);
+  const newPartyId = await findOrCreateParty(tx, email, input.displayName?.trim() || old.displayName);
+  // 先加新列再關舊列：加入被唯一索引擋下（並行的請求搶先加了同一個人）時，回 already_member，舊列原封不動。
+  // 成員列在上面已 FOR UPDATE 鎖住，同一列的並行更新會排隊，後到的看到 not_active
+  const added = await insertCaseMember(tx, caseId, { partyId: newPartyId, relation: old.relation }, now);
+  if (!added) return { ok: false, reason: 'already_member' };
+  await closeMemberPeriod(tx, memberId);
   await insertCaseEvent(tx, caseId, {
-    event: buildCaseEvent('member_replaced', now, { relation: old.relation, fromPartyId: old.party_id, toPartyId: newPartyId }),
+    event: buildCaseEvent('member_replaced', now, { relation: old.relation, fromPartyId: old.partyId, toPartyId: newPartyId }),
     actorPartyId: options.actor?.partyId ?? null,
   });
   await appendAudit(tx, {
     action: 'case_member.replace_email',
     object: { type: 'case', id: caseId },
-    payload: { relation: old.relation, from_party_id: old.party_id, to_party_id: newPartyId },
+    payload: { relation: old.relation, from_party_id: old.partyId, to_party_id: newPartyId },
   });
   return { ok: true, newPartyId, relation: old.relation };
 }

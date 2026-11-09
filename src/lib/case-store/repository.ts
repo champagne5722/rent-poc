@@ -243,6 +243,46 @@ export async function insertCaseMember(
   return rows.length > 0;
 }
 
+/** 更新 email 前讀成員列並鎖住（FOR UPDATE），同一列的並行更新會排隊。含舊 party 的 email 與顯示名稱。 */
+export async function lockMemberForReplacement(
+  tx: OrgTx,
+  caseId: string,
+  memberId: string,
+): Promise<{ partyId: string; relation: CaseMemberRelation; active: boolean; displayName: string; email: string } | null> {
+  const { rows } = await tx.query<{ party_id: string; relation: CaseMemberRelation; active: boolean; display_name: string; email: string }>(
+    `SELECT m.party_id, m.relation, upper_inf(m.valid_period) AS active, p.display_name, p.email
+       FROM org.case_members m JOIN control.parties p ON p.id = m.party_id
+      WHERE m.id = $1 AND m.case_id = $2
+        FOR UPDATE OF m`,
+    [memberId, caseId],
+  );
+  const r = rows[0];
+  return r ? { partyId: r.party_id, relation: r.relation, active: r.active, displayName: r.display_name, email: r.email } : null;
+}
+
+/** 這個 email 是不是案件的有效成員（任何關係）。 */
+export async function isEmailActiveMember(tx: OrgTx, caseId: string, email: string): Promise<boolean> {
+  const { rows } = await tx.query(
+    `SELECT 1 FROM org.case_members m JOIN control.parties p ON p.id = m.party_id
+      WHERE m.case_id = $1 AND p.email = $2 AND upper_inf(m.valid_period) LIMIT 1`,
+    [caseId, email],
+  );
+  return rows.length > 0;
+}
+
+/**
+ * 關閉成員列的有效期，不刪列。終點用資料庫的 now()，與讀取政策同一個時鐘，成員資格立即失效。
+ * 範圍不得變空：成員剛在同一個交易加入時，終點至少比起點晚 1 微秒。
+ */
+export async function closeMemberPeriod(tx: OrgTx, memberId: string): Promise<void> {
+  await tx.query(
+    `UPDATE org.case_members
+        SET valid_period = tstzrange(lower(valid_period), greatest(now(), lower(valid_period) + interval '1 microsecond'), '[)')
+      WHERE id = $1 AND upper_inf(valid_period)`,
+    [memberId],
+  );
+}
+
 // --- 當事人 ---
 
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+$/;

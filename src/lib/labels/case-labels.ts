@@ -62,7 +62,7 @@ export const CASE_EVENT_LABELS: Record<CaseEventType, string> = {
   handed_over: '移交生效',
   member_added: '加入案件成員',
   contract_attached: '掛上合約草稿',
-  member_replaced: '更換成員的 email',
+  member_replaced: '更新成員的 email',
 };
 
 /** `input_rejected` 事件的 payload 帶被拒絕的輸入種類，畫面用這張表說明是哪一種操作。 */

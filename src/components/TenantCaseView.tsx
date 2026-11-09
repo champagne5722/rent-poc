@@ -99,7 +99,7 @@ export default function TenantCaseView({
                       },
                       { key: 'period', label: '租期', children: leasePeriodLabel(detail.leaseStart, detail.leaseEnd) },
                       { key: 'rent', label: '月租金', children: monthlyRentLabel(detail.monthlyRent) },
-                      { key: 'relation', label: '你的身分', children: CASE_MEMBER_RELATION_LABELS[detail.relation] },
+                      { key: 'relation', label: '你在案件中的關係', children: CASE_MEMBER_RELATION_LABELS[detail.relation] },
                     ]}
                   />
                 </Flex>

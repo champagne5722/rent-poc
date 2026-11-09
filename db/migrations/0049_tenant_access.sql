@@ -35,7 +35,7 @@ SET search_path = org, pg_temp
 AS $$
 DECLARE
   previous text := coalesce(current_setting('app.party_id', true), '');
-  found    boolean;
+  v_found  boolean;
 BEGIN
   IF p_party_id IS NULL OR p_party_id = '' THEN
     RETURN false;
@@ -46,9 +46,9 @@ BEGIN
      WHERE m.party_id = p_party_id
        AND m.relation IN ('lessee', 'co_lessee')
        AND m.valid_period @> now()
-  ) INTO found;
+  ) INTO v_found;
   PERFORM set_config('app.party_id', previous, true);
-  RETURN found;
+  RETURN v_found;
 END;
 $$;
 

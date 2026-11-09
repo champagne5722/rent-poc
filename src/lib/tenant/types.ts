@@ -1,9 +1,7 @@
-import type { BusinessType, CaseState } from '../cases';
+import type { BusinessType, CaseState, TenantRelation } from '../cases';
+import type { ContractStatus } from '../types';
 
 // 承租人端的資料形狀（MIL-121）。只放承租人該看到的欄位：不含 email、其他成員、完整建號、登記名義人。
-
-/** 承租人端認得的案件關係。 */
-export type TenantRelation = 'lessee' | 'co_lessee';
 
 /** 我的案件清單的一列。 */
 export interface TenantCaseSummary {
@@ -18,7 +16,7 @@ export interface TenantCaseSummary {
   leaseEnd: string | null;
   monthlyRent: number | null;
   /** 目前合約的狀態。沒有合約（後繼案件）是 null。 */
-  contractStatus: string | null;
+  contractStatus: ContractStatus | null;
   /** 我在這個案件的關係。 */
   relation: TenantRelation;
   createdAt: string;
@@ -26,7 +24,7 @@ export interface TenantCaseSummary {
 
 /** 案件詳情「合約」區塊。 */
 export interface TenantContractView {
-  status: string;
+  status: ContractStatus;
   /** 合約已完成簽署，且已簽 PDF 已保存，可以下載。 */
   hasSignedPdf: boolean;
 }

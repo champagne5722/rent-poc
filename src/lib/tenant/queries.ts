@@ -1,7 +1,8 @@
-import type { CaseState } from '../cases';
+import { TENANT_RELATIONS, type CaseState, type TenantRelation } from '../cases';
 import type { CaseMemberTx } from '../case-store';
 import type { PartyTx } from '../pg/with-tx';
-import type { TenantCaseDetail, TenantCaseSummary, TenantRelation } from './types';
+import type { ContractStatus } from '../types';
+import type { TenantCaseDetail, TenantCaseSummary } from './types';
 
 // 承租人端的 SQL（MIL-121）。兩種交易：
 // - 清單：party 脈絡（PartyTx），靠成員讀取政策（member_read、self_read）篩選，不需要組織。
@@ -24,15 +25,13 @@ const CASE_COLUMNS = `k.id, o.name AS org_name, k.state, k.business_type, k.titl
   to_char(k.lease_start, 'YYYY-MM-DD') AS lease_start, to_char(k.lease_end, 'YYYY-MM-DD') AS lease_end,
   k.monthly_rent, k.created_at`;
 
-const TENANT_RELATIONS = ['lessee', 'co_lessee'] as const;
-
 /**
  * 這個 party 在所有組織的承租案件，新的在前（P0-21 AC1）。
  * 只列自己是有效 lessee 或 co_lessee 的案件：出租人、屋主等關係不屬於承租人端。
  * 結案的案件仍列出，唯讀（P0-09 AC6）。
  */
 export async function selectTenantCases(tx: PartyTx, partyId: string): Promise<TenantCaseSummary[]> {
-  const { rows } = await tx.query<CaseRow & { contract_status: string | null; relation: TenantRelation }>(
+  const { rows } = await tx.query<CaseRow & { contract_status: ContractStatus | null; relation: TenantRelation }>(
     `SELECT ${CASE_COLUMNS}, c.status AS contract_status,
             (SELECT m.relation FROM org.case_members m
               WHERE m.case_id = k.id AND m.party_id = $1 AND m.relation = ANY($2::text[]) AND m.valid_period @> now()
@@ -61,8 +60,8 @@ export async function selectTenantCases(tx: PartyTx, partyId: string): Promise<T
 }
 
 /** 目前合約的 ID 與狀態。案件沒有合約時是 null。 */
-async function selectCurrentContract(tx: CaseMemberTx): Promise<{ id: string; status: string } | null> {
-  const { rows } = await tx.query<{ id: string; status: string }>(
+async function selectCurrentContract(tx: CaseMemberTx): Promise<{ id: string; status: ContractStatus } | null> {
+  const { rows } = await tx.query<{ id: string; status: ContractStatus }>(
     `SELECT c.id, c.status FROM org.cases k JOIN org.contracts c ON c.id = k.current_contract_id AND c.case_id = k.id
       WHERE k.id = $1`,
     [tx.caseId],
@@ -83,10 +82,11 @@ async function selectSignedPdf(tx: CaseMemberTx, contractId: string): Promise<Si
     `SELECT f.object_key, f.sha256, f.file_name, f.content_type
        FROM org.sign_task_files f
        JOIN org.sign_tasks t ON t.id = f.sign_task_id AND t.org_id = f.org_id
-      WHERE t.subject_type = 'contract' AND t.subject_id = $1
+       JOIN org.contracts c ON c.id = t.subject_id AND c.org_id = t.org_id
+      WHERE t.subject_type = 'contract' AND t.subject_id = $1 AND c.case_id = $2
         AND f.kind = 'signed_pdf' AND f.status = 'saved' AND f.object_key IS NOT NULL AND f.sha256 IS NOT NULL
       ORDER BY f.saved_at DESC LIMIT 1`,
-    [contractId],
+    [contractId, tx.caseId],
   );
   const r = rows[0];
   return r ? { objectKey: r.object_key, sha256: r.sha256, fileName: r.file_name, contentType: r.content_type ?? 'application/pdf' } : null;
