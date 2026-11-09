@@ -34,10 +34,14 @@ export const AUDIT_ACTIONS = [
   'practice_entity.register', // MIL-106：經理人送出統編登錄。統編已被別人登錄時（改排審核台）事件也一樣，不讓匯出稽核的人推出別的組織存在
   'practice_entity.submit', // MIL-109：執業主體送出業別與證字號，寫在送件組織自己的鏈。payload 只放業別與狀態轉移，不放證字號
   'practice_entity.claim_resolve', // MIL-109：營運者判定第二個組織認領同一統編的歸屬，寫在平台組織的鏈
-  'practitioner.verify',
+  'practitioner.verify', // MIL-111：營運者核對證書、任職、同意書，寫在平台組織的鏈。payload 放核對紀錄 ID、層級、結果與狀態轉移
+  'practitioner.submit', // MIL-111：執業人員本人登錄或補件證書，寫在登錄者組織的鏈。payload 只放證書種類與狀態轉移，不放證號
+  'employment.create', // MIL-111：建立待驗證任職，payload 放任職 ID、證書種類與是否需要同意書
+  'employment.end', // MIL-111：結束任職，payload 放任職 ID 與結束日
 
   // 規則（專任阻擋與提示、簽章人員指派、狀態改為已失效）
-  'rule.full_time_block',
+  'rule.full_time_block', // MIL-111：專任規則阻擋（建立任職或營運者核對相符），payload 放證號、時間與原因，不放別的組織的任何資料
+  'rule.full_time_notice', // MIL-111：專任規則提示（經紀人員掛第二家要求同意書，或同意書尚未核對），payload 同上
   'signer.assign',
   'signature.route',
   'contract.invalidate',

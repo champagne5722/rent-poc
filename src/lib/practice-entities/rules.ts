@@ -40,7 +40,7 @@ export function detectEvidenceType(bytes: Uint8Array): EvidenceContentType | nul
 type Fail<F extends string> = { ok: false; field: F; message: string };
 const fail = <F extends string>(field: F, message: string): Fail<F> => ({ ok: false, field, message });
 
-function cleanFileName(raw: string): string {
+export function cleanFileName(raw: string): string {
   const base = raw.split(/[\\/]/).pop() ?? '';
   const trimmed = base.trim().replace(/[\u0000-\u001f]/g, '');
   return (trimmed === '' ? '證據檔' : trimmed).slice(-FILE_NAME_MAX);

@@ -2,7 +2,7 @@ import { appendAudit } from '../audit';
 import { buildObjectKey, type FileStore, type ObjectKey, parseObjectKey, sha256Hex } from '../file-store';
 import type { OrgTx } from '../pg/with-tx';
 import { newUlid } from '../pg/ulid';
-import type { LicenseKind } from '../registry-rules';
+import type { CertificateKind, LicenseKind } from '../registry-rules';
 import { EVIDENCE_EXTENSIONS, type CheckedEvidenceUpload } from './rules';
 
 // 證據檔（MIL-109，ADR-0017 決議 10 與補充）。檔案本體在 FileStore，中繼資料在 vault。
@@ -18,7 +18,14 @@ import { EVIDENCE_EXTENSIONS, type CheckedEvidenceUpload } from './rules';
 export const EVIDENCE_AREA = 'vault';
 export const EVIDENCE_FOLDER = 'credential-evidence';
 
-export type EvidenceSubjectType = 'license' | 'claim';
+/**
+ * license、claim：業別的證明文件（MIL-109）。practitioner：證書影本。employment_consent：所屬業者的同意書（MIL-111）。
+ * 證書影本相符後刪除，同意書在任職有效期間保留。
+ */
+export type EvidenceSubjectType = 'license' | 'claim' | 'practitioner' | 'employment_consent';
+
+/** 業別證據檔記業別種類，證書影本與同意書記證書種類。 */
+export type EvidenceKind = LicenseKind | CertificateKind;
 
 export interface StoredEvidence {
   id: string;
@@ -33,7 +40,7 @@ export interface EvidenceMeta {
   id: string;
   subjectType: EvidenceSubjectType;
   subjectId: string;
-  kind: LicenseKind;
+  kind: EvidenceKind;
   fileName: string;
   contentType: string;
   byteSize: number;
@@ -76,7 +83,7 @@ export async function discardEvidenceFiles(store: FileStore, stored: readonly St
 /** 登記中繼資料並寫 vault.upload。組織脈絡，對象必須屬於目前組織（資料庫函式檢查）。 */
 export async function registerEvidence(
   tx: OrgTx,
-  input: { subjectType: EvidenceSubjectType; subjectId: string; kind: LicenseKind; uploadedBy: string; files: readonly StoredEvidence[] },
+  input: { subjectType: EvidenceSubjectType; subjectId: string; kind: EvidenceKind; uploadedBy: string; files: readonly StoredEvidence[] },
 ): Promise<void> {
   for (const file of input.files) {
     await tx.query('SELECT vault.register_credential_evidence($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)', [
@@ -94,7 +101,7 @@ interface MetaRow {
   id: string;
   subject_type: EvidenceSubjectType;
   subject_id: string;
-  kind: LicenseKind;
+  kind: EvidenceKind;
   file_name: string;
   content_type: string;
   byte_size: string | number;

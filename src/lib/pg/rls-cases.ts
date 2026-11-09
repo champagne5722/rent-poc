@@ -364,6 +364,12 @@ export const DEFINER_ONLY_TABLES: Record<string, DefinerOnlyTable> = {
   'registry.practice_licenses': { reason: '業別與驗證三態的業別層。經 submit_license、record_license_check、my_registration 存取（MIL-106、109）' },
   'registry.review_items': { reason: '審核台佇列。經 review_queue、review_item_detail、record_license_check、resolve_entity_claim 存取（MIL-106、109）' },
   'registry.credential_checks': { reason: '核對紀錄，只增不改（觸發器擋 UPDATE、DELETE、TRUNCATE）。只經 record_license_check 寫入（MIL-109）' },
+  'registry.practitioners': {
+    reason: '執業人員證書層，驗證狀態全域一份，證號未遮罩。經 my_practitioner、submit_practitioner、record_practitioner_check、signing_facts、certificate_badges 等函式存取（MIL-111）',
+  },
+  'registry.practitioner_employments': {
+    reason: '執業人員任職層與專任排除約束（部分唯一索引）。經 create_employment、end_employment、record_employment_check、org_employments、employment_exclusivity_facts 存取，回應不透露別的組織（MIL-111）',
+  },
   'vault.credential_evidence': { reason: '證據檔的中繼資料，檔案本體在 FileStore。經 vault.*_credential_evidence 函式存取，開啟與刪除寫稽核事件（MIL-109）' },
 };
 

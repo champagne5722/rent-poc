@@ -263,6 +263,10 @@ const ORG_EXPECTATIONS: Record<string, { roles: OrgRole[] }> = {
   'practice_registry.read': { roles: ['admin', 'staff', 'viewer'] },
   'practice_registry.submit': { roles: ['admin', 'staff'] },
   'practice_entity.lookup': { roles: ['admin', 'staff', 'viewer'] },
+  'practitioner.read': { roles: ['admin', 'staff', 'viewer'] },
+  // 執業人員證書與任職（MIL-111）：看所有角色，登錄與結束任職 viewer 被拒
+  'practitioner.register': { roles: ['admin', 'staff'] },
+  'employment.end': { roles: ['admin', 'staff'] },
 };
 
 function persona(id: string): Persona {
