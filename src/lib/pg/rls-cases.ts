@@ -542,6 +542,21 @@ export const REGISTRY_FUNCTION_CASES: Record<string, RegistryFunctionCase> = {
     probe: null,
     reason: '只允許該執業主體自己的組織與平台營運者呼叫，別的組織被拒（MIL-111）',
   },
+  // C 線（MIL-113）：practiceRegistry 真實 adapter。關係（own、bound、selecting、none）由資料庫依交易的組織脈絡算出，
+  // 呼叫者不能指定。沒有關係與執業主體不存在回同一個空結果。案例在 practice-registry/live-adapter.test.ts 與 live-adapter.pg.test.ts。
+  'registry.list_practice_entities': {
+    probe: null,
+    reason: '名單設計上任何屋主或執業主體組織都能查，只列已驗證的執業主體，只回 ID、名稱與業別，不回統編、組織 ID、人員（MIL-113）',
+  },
+  'registry.party_signer_candidates': {
+    probe: (tx, { anchorId }) =>
+      tx.query('SELECT * FROM registry.party_signer_candidates($1, NULL)', [anchorId]).then((r) => r.rows),
+    reason: '以執業主體 ID 列組織成員。呼叫者與該執業主體沒有關係時回空，與執業主體不存在不可區分（MIL-113）',
+  },
+  'registry.signing_view': {
+    probe: (tx, { anchorId }) => tx.query('SELECT registry.signing_view($1, NULL) AS view', [anchorId]).then((r) => r.rows),
+    reason: '以執業主體或任職 ID 讀簽章事實。證號原文與核對紀錄 ID 只給 own 與 bound，沒有關係回空（MIL-113）',
+  },
   'registry.submit_consent': {
     probe: null,
     reason: '呼叫者必須是目前執業主體的成員，只為本人的任職送同意書（MIL-111）',
