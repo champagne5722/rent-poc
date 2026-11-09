@@ -1,20 +1,18 @@
 import { NextRequest } from 'next/server';
 import { createContract, listContracts } from '@/lib/contracts';
+import { DEFAULT_CONTRACT_TYPE, initialFieldsFor, type InitialFieldsInput } from '@/lib/contract-types';
 import { inOrgTx, readJson } from '@/lib/org-route';
 import { isUlid } from '@/lib/pg/ulid';
 import { getProperty } from '@/lib/properties';
-import { bindTemplate } from '@/lib/clause-library';
-import { toEquipmentAnnex } from '@/lib/equipment';
 import { routingInputError } from '@/lib/signature-routing';
-import type { ContractFields } from '@/lib/types';
 import { jsonOk, jsonError } from '@/lib/http';
 
 export async function GET() {
   return inOrgTx(async (tx) => jsonOk({ data: await listContracts(tx) }));
 }
 
-// 從物件建立合約草稿：物件資料在此帶入成快照，之後與物件脫鉤（見 docs/domain-model.md）；
-// 範本版本也在此綁定，選用條款在 wizard 第①步勾選後才寫進快照（ADR-0005）
+// 從物件建立合約草稿：欄位快照由合約類型定義產生（物件資料帶入成快照、綁定範本版本，見 contract-types）。
+// 目前建約入口只建租賃合約，委託管理合約的建立屬 MIL-74。
 export async function POST(request: NextRequest) {
   const body = await readJson(request);
   const propertyId = typeof body === 'object' && body !== null ? (body as { property_id?: unknown }).property_id : undefined;
@@ -30,29 +28,13 @@ export async function POST(request: NextRequest) {
     const routingError = routingInputError(routing);
     if (routingError) return jsonError(400, routingError);
 
-    const fields: ContractFields = {
-      ...(routing ? { routing: routing as ContractFields['routing'] } : {}),
-      landlordName: '',
-      landlordEmail: '',
-      tenantName: '',
-      tenantEmail: '',
-      propertyName: property.name,
-      propertyAddress: property.address,
-      propertyType: property.type,
-      propertySize: property.size,
-      // 設備附件（ADR-0008）：物件的設備清單帶入成附件列，修繕責任預設出租方，之後逐約調整
-      equipmentAnnex: toEquipmentAnnex(property.equipment),
-      rent: property.default_rent,
-      deposit: property.default_rent != null ? property.default_rent * 2 : null,
-      startDate: '',
-      endDate: '',
-      payDay: 5,
-      extra: '',
-      ...bindTemplate(),
-    };
+    const fields = initialFieldsFor(DEFAULT_CONTRACT_TYPE, {
+      property,
+      routing: routing as InitialFieldsInput['routing'],
+    });
 
     // 合約、「建立」歷程事件與稽核事件同交易寫入（ADR-0007、ADR-0019）
-    const id = await createContract(tx, { property_id: property.id, fields });
+    const id = await createContract(tx, { property_id: property.id, fields, contract_type: DEFAULT_CONTRACT_TYPE });
     return jsonOk({ data: { id } }, { status: 201 });
   });
 }

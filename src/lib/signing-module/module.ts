@@ -49,7 +49,7 @@ import {
   type SignTaskRecord,
   type SigningProgress,
 } from './sign-task-store';
-import { SigningRefusal, type SigningSubscriber } from './subscriber';
+import { SigningRefusal, type OutcomeContext, type ReadInOrg, type SendContext, type SigningSubscriber } from './subscriber';
 
 // 簽署模組（ADR-0010）：route handler 只呼叫這裡，服務商細節都在 adapter，
 // 業務實體的細節都在訂閱者。介面一律回傳 Promise，呼叫端看不到服務商任務編號。
@@ -103,9 +103,18 @@ export interface SaveFilesOptions {
 
 // 送簽的選項
 export interface SendOptions {
-  // 與建立簽署任務同一個交易執行（簽署進度、合約狀態與歷程已寫入後）。例如保存送簽時的判定事實快照。
+  // 業務資料，原樣交給訂閱者的 onSent，在送簽交易內使用（MIL-70）。例如簽章紀錄的送簽資料。
+  // 模組不讀、不改。丟例外時整個送簽回滾。
+  context?: SendContext;
+  // 與建立簽署任務同一個交易執行（簽署進度、合約狀態與歷程已寫入後）。
   // 丟例外時整個送簽回滾。交易內不得有外部 API 呼叫。
   alsoInTx?: (tx: OrgTx) => Promise<void>;
+}
+
+// 簽署事件的交易前準備結果（prepareEvent）：事件時間與訂閱者 prepareOutcome 的回傳值
+interface PreparedEvent {
+  eventAt: string;
+  prepared?: unknown;
 }
 
 // 下載端點回給使用者的文件
@@ -148,6 +157,19 @@ export function createSigningModule({
     return subscriber;
   }
 
+  // 簽署事件進交易之前的準備（MIL-70）：定出事件時間，並讓訂閱者查外部來源（例如登錄資料）。
+  // 必須在交易外呼叫，交易內不得有外部呼叫。準備失敗不擋下簽署進度，見 prepareOutcome。
+  async function prepareEvent(
+    ctx: OrgContext,
+    subject: SigningSubject,
+    subscriber: SigningSubscriber,
+    event: SigningEvent
+  ): Promise<PreparedEvent> {
+    const eventAt = event.occurredAt ?? now().toISOString();
+    const read: ReadInOrg = (fn) => db.inOrg(ctx, fn);
+    return { eventAt, prepared: await prepareOutcome(subject, subscriber, event, eventAt, read) };
+  }
+
   // webhook、撤回與 mock advance 共用這條路徑，確保模擬與真接行為一致。
   // 在呼叫端的交易內：鎖住簽署任務列、讀進度、推進、套用業務實體狀態與歷程、寫進度。任一步失敗整筆回滾。
   // 鎖讓同一個任務的兩個事件（webhook 重送）依序處理，後到的看得到先到的結果，不會雙重套用。
@@ -157,14 +179,21 @@ export function createSigningModule({
     tx: OrgTx,
     subject: SigningSubject,
     subscriber: SigningSubscriber,
-    event: SigningEvent | ((task: SignTaskRecord) => SigningEvent)
+    event: SigningEvent | ((task: SignTaskRecord) => SigningEvent),
+    prep?: PreparedEvent
   ): Promise<ProgressOutcome | null> {
     const task = await findSignTask(tx, subject, { lock: true });
     if (!task) return logIgnored(subject, typeOfEvent(event), 'no_task');
     const resolved = typeof event === 'function' ? event(task) : event;
     const advance = advanceProgress(task, resolved);
     if (!advance.accepted) return logIgnored(subject, resolved.type, advance.reason);
-    await subscriber.onOutcome(tx, subject, advance.outcome);
+    // 事件時間：服務商提供的優先，沒有時用現在時間。訂閱者的判定用它，不用系統收到事件的時間（MIL-70）。
+    // prep 是交易前 prepareEvent 的結果，沒有時 eventAt 取現在，prepared 為空。
+    const outcomeContext: OutcomeContext = {
+      eventAt: prep?.eventAt ?? resolved.occurredAt ?? now().toISOString(),
+      prepared: prep?.prepared,
+    };
+    await subscriber.onOutcome(tx, subject, advance.outcome, outcomeContext);
     await saveProgress(tx, task, advance);
     // 全員完成：保存文件的 outbox 列與完成狀態同交易寫入。提交後才派送，進程在這之間中斷也不會漏掉（MIL-87）
     if (advance.outcome.type === 'completed') await enqueueOutbox(tx, { action: 'save_sign_task_files', subject });
@@ -306,10 +335,13 @@ export function createSigningModule({
       return { kind: 'failed', error, status };
     }
 
+    // 撤回事件的準備在交易外做（MIL-70）。重寄不套用事件
+    const voidedEvent: SigningEvent = { type: 'voided' };
+    const prep = row.action === 'void_sign_task' ? await prepareEvent(ctx, row.subject, subscriber, voidedEvent) : undefined;
     try {
       return await db.inOrg(ctx, async (tx): Promise<DispatchResult> => {
         if (row.action === 'void_sign_task') {
-          const outcome = await applyEventTx(tx, row.subject, subscriber, { type: 'voided' });
+          const outcome = await applyEventTx(tx, row.subject, subscriber, voidedEvent, prep);
           if (!outcome) {
             // 服務商的 voided webhook 比這裡先到：進度已是撤回，目的達成
             if ((await findSignTask(tx, row.subject))?.status === 'voided') {
@@ -409,7 +441,7 @@ export function createSigningModule({
           const inserted = await insertSignTask(tx, { provider: provider.id, taskRef, subject, signers });
           // 簽署標的或服務商任務編號已有簽署任務：丟例外讓交易回滾，合約維持草稿
           if (!inserted) throw new SigningRefusal(409, '簽署標的或服務商任務編號已有簽署任務');
-          await subscriber.onSent(tx, subject, { signers });
+          await subscriber.onSent(tx, subject, { signers, context: options.context });
           await options.alsoInTx?.(tx);
           await completeOutbox(tx, outbox.id, { status: 'done', providerTaskRef: taskRef });
         });
@@ -550,20 +582,28 @@ export function createSigningModule({
     async simulateEvent(subject: SigningSubject, event: unknown, reason?: unknown): Promise<{ status: string }> {
       refuseIfUnsupported(provider.unsupported.simulate, 403);
       const ctx = await db.requestOrg();
-      const applied = await db.inOrg(ctx, async (tx) => {
+      // 交易一：檢查並定出模擬事件。事件的 email 是當前簽署人
+      const simulated = await db.inOrg(ctx, async (tx) => {
         const subscriber = await requireSubscriber(tx, subject);
         if (!SIMULATABLE_EVENTS.includes(event as SigningEventType)) {
           throw new SigningRefusal(400, '不支援的事件');
         }
-        const outcome = await applyEventTx(tx, subject, subscriber, (task) => ({
+        const task = await findSignTask(tx, subject);
+        const simulatedEvent: SigningEvent = {
           type: event as SigningEventType,
-          email: currentSignerOf(task)?.email,
+          email: task ? currentSignerOf(task)?.email : undefined,
           reason: typeof reason === 'string' ? reason : undefined,
           occurredAt: now().toISOString(),
-        }));
-        const status = await subscriber.currentStatus(tx, subject);
+        };
+        return { subscriber, simulatedEvent };
+      });
+      // 事件進交易之前的準備（MIL-70），交易外
+      const prep = await prepareEvent(ctx, subject, simulated.subscriber, simulated.simulatedEvent);
+      const applied = await db.inOrg(ctx, async (tx) => {
+        const outcome = await applyEventTx(tx, subject, simulated.subscriber, simulated.simulatedEvent, prep);
+        const status = await simulated.subscriber.currentStatus(tx, subject);
         if (!outcome) throw new SigningRefusal(409, `目前狀態（${status}）不接受此事件`);
-        return { subscriber, outcome, status };
+        return { subscriber: simulated.subscriber, outcome, status };
       });
       await finishAfterCommit(ctx, subject, applied.subscriber, applied.outcome);
       return { status: applied.status };
@@ -637,6 +677,13 @@ export function createSigningModule({
     const { row } = claim;
     const ctx: OrgContext = { kind: 'org', orgId: claim.orgId };
     try {
+      // 事件進交易之前的準備（MIL-70）：先找出簽署標的，準備在交易外做
+      const target = await db.inOrg(ctx, async (tx) => {
+        const task = await findSignTaskByRef(tx, row.provider, row.taskRef);
+        const found = task && subscribers[task.subject.type];
+        return task && found ? { subject: task.subject, subscriber: found } : null;
+      });
+      const prep = target ? await prepareEvent(ctx, target.subject, target.subscriber, row.event) : undefined;
       const applied = await db.inOrg(ctx, async (tx) => {
         const task = await findSignTaskByRef(tx, row.provider, row.taskRef);
         const subscriber = task && subscribers[task.subject.type];
@@ -645,7 +692,7 @@ export function createSigningModule({
           await finishInbox(tx, row.id, { status: 'ignored', note: '對不到簽署任務' });
           return null;
         }
-        const outcome = await applyEventTx(tx, task.subject, subscriber, row.event);
+        const outcome = await applyEventTx(tx, task.subject, subscriber, row.event, prep);
         // 不接受的事件（重複、亂序、email 不符）也標為已處理：重試不會讓它變得可接受
         await finishInbox(tx, row.id, outcome ? { status: 'done' } : { status: 'ignored', note: '事件不需要套用' });
         return { subject: task.subject, subscriber, outcome };
@@ -763,6 +810,23 @@ const typeOfEvent = (event: SigningEvent | ((task: SignTaskRecord) => SigningEve
 function logIgnored(subject: SigningSubject, eventType: string, reason: string): null {
   console.info(`[signing] 忽略簽署事件 ${eventType}：${subject.type} ${subject.id}，${reason}`);
   return null;
+}
+
+// 準備失敗不得擋下簽署進度：簽署已經發生，法律事實優先（ADR-0018 決議 11）
+async function prepareOutcome(
+  subject: SigningSubject,
+  subscriber: SigningSubscriber,
+  event: SigningEvent,
+  eventAt: string,
+  read: ReadInOrg
+): Promise<unknown> {
+  if (!subscriber.prepareOutcome) return undefined;
+  try {
+    return await subscriber.prepareOutcome(subject, event, eventAt, read);
+  } catch (e) {
+    console.error(`[signing] ${subject.type} ${subject.id} 簽署事件的準備失敗：${errorMessage(e)}`);
+    return undefined;
+  }
 }
 
 // 訂閱者完成後的處理失敗不得讓 webhook 回非 2xx（MIL-52）

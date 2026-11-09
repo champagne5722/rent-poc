@@ -1,4 +1,4 @@
-// 指派與判定事實快照的 repository（MIL-69 建立，MIL-85 搬進 PostgreSQL）。
+// 指派的 repository（MIL-69 建立，MIL-85 搬進 PostgreSQL）。判定事實快照在 MIL-70 改由簽章紀錄承接，見 src/lib/signature-records/。
 // 表的說明見 db/migrations/0005_practitioner_assignments.sql。
 //
 // 形狀照 src/lib/contracts/repository.ts：第一個參數是 withTx 給的 tx（OrgTx），
@@ -66,57 +66,4 @@ export async function copyAssignments(tx: OrgTx, fromContractId: string, toContr
   for (const r of rows) {
     await tx.query(INSERT_ASSIGNMENT, [newUlid(), toContractId, r.slot, r.entity_id, r.practitioner_id, r.party_signer_id]);
   }
-}
-
-export interface CredentialSnapshotInput {
-  slot: string;
-  practitionerId: string;
-  /** 判定時點，ISO 8601。 */
-  decidedAt: string;
-  /** 判定用的事實，原樣保存。 */
-  facts: unknown;
-  /** 判定結果，原樣保存。 */
-  result: unknown;
-}
-
-/** 重複送簽時覆蓋同一個席位的快照。 */
-export async function saveCredentialSnapshots(
-  tx: OrgTx,
-  contractId: string,
-  snapshots: readonly CredentialSnapshotInput[],
-): Promise<void> {
-  for (const s of snapshots) {
-    await tx.query(
-      `INSERT INTO org.contract_credential_snapshots
-         (id, org_id, contract_id, slot, practitioner_id, decided_at, facts, result)
-       VALUES ($1, current_setting('app.org_id', true), $2, $3, $4, $5, $6::jsonb, $7::jsonb)
-       ON CONFLICT (org_id, contract_id, slot) DO UPDATE SET
-         practitioner_id = excluded.practitioner_id,
-         decided_at = excluded.decided_at,
-         facts = excluded.facts,
-         result = excluded.result`,
-      [newUlid(), contractId, s.slot, s.practitionerId, s.decidedAt, JSON.stringify(s.facts), JSON.stringify(s.result)],
-    );
-  }
-}
-
-export async function listCredentialSnapshots(tx: OrgTx, contractId: string): Promise<CredentialSnapshotInput[]> {
-  const { rows } = await tx.query<{
-    slot: string;
-    practitioner_id: string;
-    decided_at: Date;
-    facts: unknown;
-    result: unknown;
-  }>(
-    `SELECT slot, practitioner_id, decided_at, facts, result
-       FROM org.contract_credential_snapshots WHERE contract_id = $1 ORDER BY slot`,
-    [contractId],
-  );
-  return rows.map((r) => ({
-    slot: r.slot,
-    practitionerId: r.practitioner_id,
-    decidedAt: r.decided_at.toISOString(),
-    facts: r.facts,
-    result: r.result,
-  }));
 }

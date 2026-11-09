@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server';
 import { getContract } from '@/lib/contracts';
 import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/contracts/route';
+import { contractPdfRenderer } from '@/lib/contract-pdf';
+import { missingFieldsForSendOf } from '@/lib/contract-types';
 import { readInOrgTx } from '@/lib/org-route';
-import { generateContractPdf, PDF_PAGE_SIZE } from '@/lib/pdf';
 import { getPracticeRegistry } from '@/lib/practice-registry';
-import { loadSendInputs, prepareContractSend, recordSendSnapshots } from '@/lib/practitioner-assignment/send';
+import { loadSendInputs, prepareContractSend } from '@/lib/practitioner-assignment/send';
 import { contractDocumentFileName } from '@/lib/signing';
 import { contractSubject, signing, signingErrorResponse } from '@/lib/signing-module';
 import { jsonOk, jsonError } from '@/lib/http';
@@ -25,35 +26,30 @@ export async function POST(_request: NextRequest, { params }: ContractRouteCtx) 
     return jsonError(409, '僅草稿可送簽');
   }
 
-  const f = contract.fields;
-  const missing: string[] = [];
-  if (!f.landlordName.trim()) missing.push('甲方姓名');
-  if (!/.+@.+\..+/.test(f.landlordEmail)) missing.push('甲方 Email');
-  if (!f.tenantName.trim()) missing.push('乙方姓名');
-  if (!/.+@.+\..+/.test(f.tenantEmail)) missing.push('乙方 Email');
-  if (!f.startDate || !f.endDate) missing.push('租期起迄');
-  if (f.rent == null) missing.push('租金');
+  // PDF 與必填欄位都依合約類型。沒有 PDF 的類型（委託管理合約屬 MIL-74、MIL-77）尚未支援送簽。
+  const renderer = contractPdfRenderer(contract.contract_type);
+  if (!renderer) {
+    return jsonError(400, '這個合約類型尚未支援送簽');
+  }
+  const missing = missingFieldsForSendOf(contract);
   if (missing.length) {
     return jsonError(400, `請先完成欄位：${missing.join('、')}`);
   }
-  // 簽署序列由簽章分流規則表產生（ADR-0018）。PDF 與欄位檢查目前只支援租賃合約，委託管理合約屬 MIL-74、MIL-77。
-  if (contract.contract_type !== 'lease') {
-    return jsonError(400, '這個合約類型尚未支援送簽');
-  }
-  // 送簽前檢查（ADR-0018 決議 10）：分流、執業人員指派與資格。不符時列出全部原因，簽署人與判定事實快照通過才產生
+  // 簽署序列由簽章分流規則表產生（ADR-0018）
+  // 送簽前檢查（ADR-0018 決議 10）：分流、執業人員指派與資格。不符時列出全部原因，簽署人與簽章紀錄資料通過才產生
   const prepared = await prepareContractSend(contract, inputs, getPracticeRegistry(), new Date().toISOString());
   if (!prepared.ok) {
     return jsonOk({ error: prepared.error, reasons: prepared.reasons }, { status: prepared.status });
   }
 
-  const pdf = await generateContractPdf(f, prepared.printed);
+  const pdf = await renderer.render(contract.fields, prepared.printed);
   try {
     const task = await signing.send(
       contractSubject(contract.id),
-      { fileName: contractDocumentFileName(contract), pdf, pageSize: PDF_PAGE_SIZE },
+      { fileName: contractDocumentFileName(contract), pdf, pageSize: renderer.pageSize },
       prepared.signers,
-      // 判定事實快照與簽署任務、合約狀態同一個交易：建立簽署任務失敗時不留快照
-      { alsoInTx: (tx) => recordSendSnapshots(tx, contract.id, prepared) }
+      // 簽章紀錄在送簽交易內寫入（MIL-70），送簽失敗時不留紀錄
+      { context: prepared.sendContext }
     );
     // 簽署模組不對外提供服務商任務編號（ADR-0010），回應不帶 task_id
     return jsonOk({ data: { id: contract.id, mock: task.mode === 'mock', notices: prepared.notices } });

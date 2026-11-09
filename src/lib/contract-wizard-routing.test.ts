@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Contract, ContractFields, ContractRoutingConditions, SignatureField } from './types';
+import type { LeaseContract, LeaseContractFields, ContractRoutingConditions, SignatureField } from './types';
 import {
   STEP_CONFIRM,
   STEP_FIELDS,
@@ -16,7 +16,7 @@ import {
 } from './contract-wizard';
 import { ulidOf } from './test-ids';
 
-function fields(routing?: ContractRoutingConditions): ContractFields {
+function fields(routing?: ContractRoutingConditions): LeaseContractFields {
   return {
     ...(routing ? { routing } : {}),
     landlordName: '王大明',
@@ -58,7 +58,7 @@ function sig(signer: SignatureField['signer'], slot?: string, id = `${signer}-${
 
 const masterFields = [sig('party_b', MASTER_B), sig('practitioner', MASTER_P), sig('party_a', MASTER_A)];
 
-function contract(patch: Partial<Contract> = {}): Contract {
+function contract(patch: Partial<LeaseContract> = {}): LeaseContract {
   return {
     id: ulidOf(1),
     property_id: '01HF7YAT00ABCDEFGHJKMNPQRS',

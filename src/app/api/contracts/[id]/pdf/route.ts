@@ -1,8 +1,9 @@
 import { NextRequest } from 'next/server';
 import { getContract } from '@/lib/contracts';
 import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/contracts/route';
+import { jsonError } from '@/lib/http';
 import { readInOrgTx } from '@/lib/org-route';
-import { generateContractPdf } from '@/lib/pdf';
+import { contractPdfRenderer } from '@/lib/contract-pdf';
 import { getPracticeRegistry } from '@/lib/practice-registry';
 import { getAssignments } from '@/lib/practitioner-assignment/repository';
 import { loadPrintedPractitioners } from '@/lib/practitioner-assignment/service';
@@ -22,9 +23,12 @@ export async function GET(_request: NextRequest, { params }: ContractRouteCtx) {
   if (!read.value) return contractNotFound();
   const { contract, routing, assignments } = read.value;
 
+  const renderer = contractPdfRenderer(contract.contract_type);
+  if (!renderer) return jsonError(400, '這個合約類型尚未支援預覽');
+
   // 簽署欄印已指派的執業人員（姓名、法定稱謂、執業主體）。分流條件有問題或尚未指派時留底線
   const printed = routing.ok ? await loadPrintedPractitioners(routing.facts, assignments, getPracticeRegistry()) : {};
-  const pdf = await generateContractPdf(contract.fields, printed);
+  const pdf = await renderer.render(contract.fields, printed);
   return new Response(Buffer.from(pdf), {
     headers: {
       'Content-Type': 'application/pdf',

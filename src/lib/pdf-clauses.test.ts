@@ -3,11 +3,11 @@ import { generateContractPdf } from './pdf';
 import { buildContractClauses, clauseNumeral, extraClauseLabel } from './contract-clauses';
 import { OPTIONAL_CLAUSES, bindTemplate, findClause } from './clause-library';
 import { signatureStampBaselines } from './pdf-layout';
-import type { ContractFields } from './types';
+import type { LeaseContractFields } from './types';
 
 // 選用條款併入 PDF 條款區（MIL-26、ADR-0005）：條號要連號、勾選條款要出現全文。
 
-function fields(patch: Partial<ContractFields> = {}): ContractFields {
+function fields(patch: Partial<LeaseContractFields> = {}): LeaseContractFields {
   return {
     propertyName: '測試物件',
     propertyAddress: '台北市中正區測試路 1 號',
@@ -30,7 +30,7 @@ function fields(patch: Partial<ContractFields> = {}): ContractFields {
 }
 
 /** 把 PDF 的所有文字接成一串（每個 item 是一行，接起來即可比對被斷行的條文）。 */
-async function pdfText(f: ContractFields): Promise<string> {
+async function pdfText(f: LeaseContractFields): Promise<string> {
   const bytes = await generateContractPdf(f);
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const doc = await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise;
@@ -78,7 +78,7 @@ describe('buildContractClauses', () => {
 });
 
 describe('附屬設備條文（範本 v2，ADR-0008）', () => {
-  const equipmentClause = (f: ContractFields) =>
+  const equipmentClause = (f: LeaseContractFields) =>
     buildContractClauses(f).find((c) => c.title.includes('附屬設備'))!;
 
   it('有設備附件列時改為引用附件，不再列舉品項', () => {

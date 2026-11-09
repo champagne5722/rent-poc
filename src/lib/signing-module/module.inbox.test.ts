@@ -361,9 +361,9 @@ describe('drainInbox：每次的量、隔離與中斷', () => {
     // 排程時只有 bad 的合約出錯
     const selective: SigningSubscriber = {
       ...createContractSubscriber(),
-      onOutcome: async (tx, subject, outcome) => {
+      onOutcome: async (tx, subject, outcome, outcomeContext) => {
         if (subject.id === bad.subject.id) throw new Error('只有這份合約出錯');
-        return createContractSubscriber().onOutcome(tx, subject, outcome);
+        return createContractSubscriber().onOutcome(tx, subject, outcome, outcomeContext);
       },
     };
     const results = await moduleWith(providerWith(), selective).drainInbox(10);

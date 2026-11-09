@@ -14,6 +14,8 @@ export const DEFAULT_TEMPLATE: ContractTemplate = {
   version: 2,
   provider: '平台提供',
   note: '條款全文由平台維護並經法務審閱，出租人只編輯欄位。',
+  // 範本審閱屬 MIL-48，審閱完成前是未審閱，正式金鑰下擋下送簽（P0-10 AC5）
+  legalReviewed: false,
 };
 
 /** 選用條款庫：逐約勾選後併入合約產出的條款區。 */

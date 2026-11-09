@@ -7,11 +7,11 @@ import {
   sendBlockReasons,
 } from './contract-wizard';
 import type { PractitionerAssignmentInput } from './practitioner-assignment/seats';
-import type { ContractFields, ContractRoutingConditions, SignatureField } from './types';
+import type { LeaseContractFields, ContractRoutingConditions, SignatureField } from './types';
 
 // 建約 wizard 的執業人員指派（MIL-69）：指派影響擋下一步、送簽前原因與簽署欄資料。
 
-function fields(routing?: ContractRoutingConditions, patch: Partial<ContractFields> = {}): ContractFields {
+function fields(routing?: ContractRoutingConditions, patch: Partial<LeaseContractFields> = {}): LeaseContractFields {
   return {
     ...(routing ? { routing } : {}),
     landlordName: '王建國',
