@@ -150,6 +150,26 @@ export const ACTIONS = {
     onBehalfScope: null,
     uncased: 'uncased_contract.read',
   },
+  // 下載已簽合約 PDF（MIL-121）：與讀合約同一批人，結案後仍可（終態只允許讀取，P0-09 AC6）。
+  // 獨立成一列，是因為 Audit Trail File 這類檔案之後得以不同的關係開放。
+  'contract.download_signed': {
+    scope: 'case',
+    effect: 'read',
+    states: ALL_STATES,
+    hostRoles: {
+      self_managed: ALL_ROLES,
+      managed: ALL_ROLES,
+      master_lease: ALL_ROLES,
+      management: ALL_ROLES,
+    },
+    relations: {
+      self_managed: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
+      managed: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
+      master_lease: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
+      management: ['mandator', 'mandatary', 'practitioner'],
+    },
+    onBehalfScope: null,
+  },
   // 讀帳務：不含經紀業者、簽章人員、所有權人。
   'ledger.read': {
     scope: 'case',

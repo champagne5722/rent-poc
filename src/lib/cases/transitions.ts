@@ -105,6 +105,8 @@ export const CASE_EVENT_TYPES = [
   'member_added',
   /** 案件的目前合約改指向另一份合約：建立案件時掛第一份草稿，或撤回、拒簽後複製的新草稿。 */
   'contract_attached',
+  /** 承租人或共同承租人換 email：舊成員列關閉，新 party 加一列（MIL-121，P0-21 AC5）。payload 只放 ID。 */
+  'member_replaced',
 ] as const;
 export type CaseEventType = (typeof CASE_EVENT_TYPES)[number];
 

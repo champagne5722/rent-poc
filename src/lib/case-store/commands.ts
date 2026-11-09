@@ -9,7 +9,7 @@ import {
 } from '../cases';
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
-import { insertCase, insertCaseEvent, insertCaseMember, setCurrentContract } from './repository';
+import { findOrCreateParty, insertCase, insertCaseEvent, insertCaseMember, normalizePartyEmail, setCurrentContract } from './repository';
 import type { CaseActor } from './types';
 
 // 案件的建立、掛合約與加成員（MIL-115）。轉移不在這裡，一律走 dispatch()。
@@ -125,4 +125,69 @@ export async function addCaseMember(
     payload: { relation: member.relation, party_id: member.partyId },
   });
   return true;
+}
+
+export type ReplaceMemberEmailResult =
+  | { ok: true; newPartyId: string; relation: CaseMemberRelation }
+  /** member_not_found：案件下沒有這個成員。not_active：這一列已結束。not_tenant：不是承租人或共同承租人。
+   *  same_email：新 email 與目前相同。already_member：新 email 已是同案件的有效成員。 */
+  | { ok: false; reason: 'member_not_found' | 'not_active' | 'not_tenant' | 'same_email' | 'already_member' };
+
+/**
+ * 更新承租人或共同承租人的 email（MIL-121，ADR-0023 決議 5，P0-21 AC5）。呼叫端先 authorize(case_member.manage)。
+ *
+ * 不改 control.parties.email：party 是跨組織的自然人，改它會動到這個人在其他案件的身分。
+ * 做法是關閉舊成員列的 valid_period（不刪列），以新 email 找或建 party，加一列新的成員，關係沿用原本的。
+ * 關閉用資料庫的 now()，與讀取政策同一個時鐘，舊 email 的下一個請求就失去成員資格。
+ * 全部檢查通過才寫入，檢查不過什麼都不改。合約內的乙方 email 不改（合約不可變，ADR-0006）。
+ * 事件與稽核的 payload 只放 ID 與關係，不放 email（canonical 寫入後刪不掉，ADR-0019 決議 5）。
+ */
+export async function replaceTenantMemberEmail(
+  tx: OrgTx,
+  caseId: string,
+  memberId: string,
+  input: { email: string; displayName?: string },
+  options: { now?: Date; actor?: CaseActor } = {},
+): Promise<ReplaceMemberEmailResult> {
+  const now = options.now ?? new Date();
+  const { rows } = await tx.query<{ party_id: string; relation: CaseMemberRelation; active: boolean; display_name: string; email: string }>(
+    `SELECT m.party_id, m.relation, upper_inf(m.valid_period) AS active, p.display_name, p.email
+       FROM org.case_members m JOIN control.parties p ON p.id = m.party_id
+      WHERE m.id = $1 AND m.case_id = $2`,
+    [memberId, caseId],
+  );
+  const old = rows[0];
+  if (!old) return { ok: false, reason: 'member_not_found' };
+  if (old.relation !== 'lessee' && old.relation !== 'co_lessee') return { ok: false, reason: 'not_tenant' };
+  if (!old.active) return { ok: false, reason: 'not_active' };
+
+  const email = normalizePartyEmail(input.email);
+  if (!email) throw new Error('email 格式不正確');
+  if (email === old.email) return { ok: false, reason: 'same_email' };
+  const taken = await tx.query(
+    `SELECT 1 FROM org.case_members m JOIN control.parties p ON p.id = m.party_id
+      WHERE m.case_id = $1 AND p.email = $2 AND upper_inf(m.valid_period) LIMIT 1`,
+    [caseId, email],
+  );
+  if (taken.rows.length > 0) return { ok: false, reason: 'already_member' };
+
+  const newPartyId = await findOrCreateParty(tx, email, input.displayName?.trim() || old.display_name);
+  // 範圍不得變空：成員剛在同一個交易加入時，終點至少比起點晚 1 微秒
+  await tx.query(
+    `UPDATE org.case_members
+        SET valid_period = tstzrange(lower(valid_period), greatest(now(), lower(valid_period) + interval '1 microsecond'), '[)')
+      WHERE id = $1`,
+    [memberId],
+  );
+  await insertCaseMember(tx, caseId, { partyId: newPartyId, relation: old.relation }, now);
+  await insertCaseEvent(tx, caseId, {
+    event: buildCaseEvent('member_replaced', now, { relation: old.relation, fromPartyId: old.party_id, toPartyId: newPartyId }),
+    actorPartyId: options.actor?.partyId ?? null,
+  });
+  await appendAudit(tx, {
+    action: 'case_member.replace_email',
+    object: { type: 'case', id: caseId },
+    payload: { relation: old.relation, from_party_id: old.party_id, to_party_id: newPartyId },
+  });
+  return { ok: true, newPartyId, relation: old.relation };
 }

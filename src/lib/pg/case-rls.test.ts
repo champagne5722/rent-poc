@@ -223,6 +223,13 @@ describe('成員讀取矩陣：每種關係讀得到哪些表', () => {
         `INSERT INTO org.signers (id, org_id, sign_task_id, position, role, name, email) VALUES ($1, $2, $3, 0, 'party_b', 'x', 'x@example.com')`,
         [newUlid(), host, taskId],
       );
+      for (const kind of ['signed_pdf', 'audit_trail']) {
+        await tx.query(
+          `INSERT INTO org.sign_task_files (id, org_id, sign_task_id, kind, status, file_name, object_key, sha256, byte_size, content_type)
+           VALUES ($1, $2, $3, $4, 'saved', $5, $6, $7, 10, 'application/pdf')`,
+          [newUlid(), host, taskId, kind, `${kind}.pdf`, `org/${host}/sign-tasks/${taskId}/${kind}.pdf`, 'a'.repeat(64)],
+        );
+      }
       await tx.query(`INSERT INTO org.case_events (id, org_id, case_id, type, occurred_at) VALUES ($1, $2, $3, 'created', now())`, [newUlid(), host, caseId]);
       await tx.query(`INSERT INTO org.case_events (id, org_id, case_id, type, occurred_at) VALUES ($1, $2, $3, 'created', now())`, [newUlid(), host, otherCaseId]);
       await tx.query(
@@ -251,7 +258,7 @@ describe('成員讀取矩陣：每種關係讀得到哪些表', () => {
   async function visibleTo(partyId: string, table: string): Promise<number> {
     const column = table === 'org.cases' ? 'id' : 'case_id';
     const sql =
-      table === 'org.sign_tasks' || table === 'org.signers' || table === 'org.contract_events'
+      table === 'org.sign_tasks' || table === 'org.signers' || table === 'org.contract_events' || table === 'org.sign_task_files'
         ? `SELECT count(*)::int AS n FROM ${table}`
         : `SELECT count(*)::int AS n FROM ${table} WHERE ${column} = $1`;
     const params = sql.includes('$1') ? [caseId] : [];
@@ -259,7 +266,7 @@ describe('成員讀取矩陣：每種關係讀得到哪些表', () => {
     return rows[0].n;
   }
 
-  const TABLES = Object.keys(CASE_SCOPED_READS).filter((t) => t !== 'org.contract_practitioner_assignments' && t !== 'org.signature_records' && t !== 'org.sign_task_files');
+  const TABLES = Object.keys(CASE_SCOPED_READS).filter((t) => t !== 'org.contract_practitioner_assignments' && t !== 'org.signature_records');
 
   describe.each(CASE_MEMBER_RELATIONS)('%s', (relation) => {
     it.each(TABLES)('讀 %s 的結果符合 CASE_SCOPED_READS', async (table) => {
@@ -269,6 +276,44 @@ describe('成員讀取矩陣：每種關係讀得到哪些表', () => {
       else if (table === 'org.case_members') expect(n).toBe(1); // 只讀自己的列（self_read）
       else expect(n).toBe(0);
     });
+  });
+
+  it('已簽合約檔案：可讀的關係只看到 signed_pdf，看不到 Audit Trail File（MIL-121）', async () => {
+    for (const relation of ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker', 'mandator', 'mandatary'] as const) {
+      const { rows } = await withTx({ kind: 'party', partyId: partyOf[relation] }, (tx) =>
+        tx.query<{ kind: string }>('SELECT kind FROM org.sign_task_files'),
+      );
+      expect({ relation, kinds: rows.map((r) => r.kind) }).toEqual({ relation, kinds: ['signed_pdf'] });
+    }
+    // 包租案件的所有權人讀不到合約，也讀不到合約的簽署檔案（P0-09 AC5）
+    const owner = await withTx({ kind: 'party', partyId: partyOf.owner }, (tx) => tx.query('SELECT 1 FROM org.sign_task_files'));
+    expect(owner.rows).toEqual([]);
+  });
+
+  it('已簽合約檔案：成員資格過期或已關閉後讀不到', async () => {
+    await withTx({ kind: 'org', orgId: host }, (tx) =>
+      tx.query(
+        `UPDATE org.case_members SET valid_period = tstzrange(now() - interval '2 days', now() - interval '1 day', '[)') WHERE party_id = $1`,
+        [partyOf.lessee],
+      ),
+    );
+    const { rows } = await withTx({ kind: 'party', partyId: partyOf.lessee }, (tx) => tx.query('SELECT 1 FROM org.sign_task_files'));
+    expect(rows).toEqual([]);
+  });
+
+  it('已簽合約檔案：別的案件的成員讀不到這個案件的檔案', async () => {
+    const stranger = newUlid();
+    await withTx({ kind: 'org', orgId: host }, async (tx) => {
+      await tx.query(`INSERT INTO control.parties (id, email, display_name) VALUES ($1, 'stranger@example.com', 's')`, [stranger]);
+      await tx.query(`INSERT INTO org.case_members (id, org_id, case_id, party_id, relation) VALUES ($1, $2, $3, $4, 'lessee')`, [
+        newUlid(),
+        host,
+        otherCaseId,
+        stranger,
+      ]);
+    });
+    const { rows } = await withTx({ kind: 'party', partyId: stranger }, (tx) => tx.query('SELECT 1 FROM org.sign_task_files'));
+    expect(rows).toEqual([]);
   });
 
   it('peer_read 的關係看得到整個案件的成員，其他關係只看到自己', async () => {
@@ -318,5 +363,79 @@ describe('成員讀取矩陣：每種關係讀得到哪些表', () => {
   it('其他組織的主辦成員（沒有 party）讀不到這個案件', async () => {
     const { rows } = await withTx({ kind: 'org', orgId: other }, (tx) => tx.query(`SELECT 1 FROM org.cases`));
     expect(rows).toEqual([]);
+  });
+});
+
+describe('org.party_has_tenant_membership：登入時判斷承租人身分（MIL-121）', () => {
+  let db: PGliteInterface;
+  let withTx: WithTx;
+  const host = newUlid();
+  const caseId = newUlid();
+  const pid = (n: number) => `0000000000000000000000010${n}`;
+
+  beforeEach(async () => {
+    db = await testDb.fresh();
+    withTx = createWithTx(pgliteDriver(db));
+    await asRole(db, 'app_owner', () => db.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, '主辦', 'owner')`, [host]));
+    await withTx({ kind: 'org', orgId: host }, async (tx) => {
+      for (let i = 0; i < 6; i++) await tx.query(`INSERT INTO control.parties (id, email, display_name) VALUES ($1, $2, 'p')`, [pid(i), `m${i}@example.com`]);
+      await tx.query(`INSERT INTO org.cases (id, org_id, kind, state, business_type) VALUES ($1, $2, 'lease', 'active', 'self_managed')`, [caseId, host]);
+      const add = (party: string, relation: string, period = `tstzrange(now() - interval '1 day', NULL, '[)')`) =>
+        tx.query(`INSERT INTO org.case_members (id, org_id, case_id, party_id, relation, valid_period) VALUES ($1, $2, $3, $4, $5, ${period})`, [
+          newUlid(),
+          host,
+          caseId,
+          party,
+          relation,
+        ]);
+      await add(pid(0), 'lessee');
+      await add(pid(1), 'co_lessee');
+      await add(pid(2), 'lessor');
+      await add(pid(3), 'lessee', `tstzrange(now() - interval '2 days', now() - interval '1 day', '[)')`);
+    });
+  });
+
+  const check = (partyId: string) =>
+    withTx({ kind: 'control' }, async (tx) => (await tx.query<{ ok: boolean }>('SELECT org.party_has_tenant_membership($1) AS ok', [partyId])).rows[0].ok);
+
+  it('承租人與共同承租人的有效成員資格回 true', async () => {
+    expect(await check(pid(0))).toBe(true);
+    expect(await check(pid(1))).toBe(true);
+  });
+
+  it('出租人、已關閉的承租人、不是成員的人、空字串都回 false', async () => {
+    expect(await check(pid(2))).toBe(false);
+    expect(await check(pid(3))).toBe(false);
+    expect(await check(pid(4))).toBe(false);
+    expect(await check('')).toBe(false);
+  });
+
+  it('呼叫前後交易的 app.party_id 不變（不把設定留在交易裡）', async () => {
+    const after = await withTx({ kind: 'control' }, async (tx) => {
+      await tx.query('SELECT org.party_has_tenant_membership($1)', [pid(0)]);
+      return (await tx.query<{ v: string | null }>(`SELECT current_setting('app.party_id', true) AS v`)).rows[0].v;
+    });
+    expect(after === null || after === '').toBe(true);
+    const kept = await withTx({ kind: 'party', partyId: pid(1) }, async (tx) => {
+      await tx.query('SELECT org.party_has_tenant_membership($1)', [pid(0)]);
+      return (await tx.query<{ v: string }>(`SELECT current_setting('app.party_id', true) AS v`)).rows[0].v;
+    });
+    expect(kept).toBe(pid(1));
+  });
+
+  it('PUBLIC 不能執行，app_rw 能執行，且是固定 search_path 的定義者函式', async () => {
+    const { rows } = await asRole(db, 'app_owner', () =>
+      db.query<{ secdef: boolean; config: string[] | null; public_exec: boolean; rw_exec: boolean }>(
+        `SELECT p.prosecdef AS secdef, p.proconfig AS config,
+                has_function_privilege('public', p.oid, 'EXECUTE') AS public_exec,
+                has_function_privilege('app_rw', p.oid, 'EXECUTE') AS rw_exec
+           FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'org' AND p.proname = 'party_has_tenant_membership'`,
+      ),
+    );
+    expect(rows[0].secdef).toBe(true);
+    expect(rows[0].config?.some((c) => c.startsWith('search_path='))).toBe(true);
+    expect(rows[0].public_exec).toBe(false);
+    expect(rows[0].rw_exec).toBe(true);
   });
 });

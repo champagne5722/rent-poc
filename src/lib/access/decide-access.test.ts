@@ -138,6 +138,11 @@ const CASE_EXPECTATIONS: Record<string, Expectation> = {
     personas: NOT_STRANGER.filter((id) => id !== 'master.owner'),
     states: { lease: ALL_LEASE_STATES, management: ALL_MGMT_STATES },
   },
+  // 下載已簽合約（MIL-121）：與讀合約相同，結案後仍可
+  'contract.download_signed': {
+    personas: NOT_STRANGER.filter((id) => id !== 'master.owner'),
+    states: { lease: ALL_LEASE_STATES, management: ALL_MGMT_STATES },
+  },
   // 讀帳務：不含經紀業者、簽章人員、所有權人
   'ledger.read': {
     personas: [
@@ -631,6 +636,7 @@ describe('沒有案件的物件：actionForUncasedObject', () => {
   it('帳務、修繕、點交等案件動作沒有對應，不得因為沒有案件而放行', () => {
     for (const id of [
       'case.read_summary',
+      'contract.download_signed',
       'ledger.read',
       'ledger.record_payment',
       'ledger.record_deposit',

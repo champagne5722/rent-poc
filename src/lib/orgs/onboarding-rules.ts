@@ -1,6 +1,7 @@
 // 第一次登入建組織的表單規則與登入落地規則（MIL-106，ADR-0022 決議 4、6）。純函式，沒有 I/O。
 
 import type { IdentityOption } from '../auth/account-service';
+import { TENANT_ROOT_HREF } from '../nav';
 import { checkLicenseEligibility, ENTITY_TYPES, LICENSE_KINDS, type EntityType, type LicenseKind } from '../registry-rules';
 
 export const ORG_NAME_MAX = 80;
@@ -66,16 +67,21 @@ export function validatePracticeForm(input: {
 }
 
 /**
- * 登入後的落地頁（MIL-106，MIL-94）。帳號的所有身分都是屋主組織時落到 /owner，其餘落到工作台。
- * 承租人端與審核台還沒有自己的首頁（MIL-121、MIL-109），目前都先落到工作台。
+ * 登入後的落地頁（MIL-106，MIL-94，MIL-121）。帳號的所有身分都是屋主組織時落到 /owner，
+ * 只有承租人身分時落到 /tenant，其餘（含組織與承租人並存）落到工作台，由身分切換器選擇。
+ * 審核台還沒有自己的首頁（MIL-109），先落到工作台。
  */
 export function landingPath(options: readonly IdentityOption[]): string {
-  return options.length > 0 && options.every((o) => o.kind === 'owner') ? '/owner' : '/';
+  if (options.length > 0 && options.every((o) => o.kind === 'owner')) return '/owner';
+  if (options.length > 0 && options.every((o) => o.kind === 'party')) return TENANT_ROOT_HREF;
+  return '/';
 }
 
-/** 切換到某個身分之後的落地頁：屋主組織到 /owner，其餘到工作台。 */
+/** 切換到某個身分之後的落地頁：屋主組織到 /owner，承租人到 /tenant，其餘到工作台。 */
 export function landingPathFor(option: IdentityOption): string {
-  return option.kind === 'owner' ? '/owner' : '/';
+  if (option.kind === 'owner') return '/owner';
+  if (option.kind === 'party') return TENANT_ROOT_HREF;
+  return '/';
 }
 
 export type { IdentityOption };

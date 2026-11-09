@@ -57,6 +57,7 @@ export const AUDIT_ACTIONS = [
   // 案件（MIL-115）。狀態轉移不在這裡：案件事件表已完整記錄，這裡只記建立、成員異動與未結結案
   'case.create', // 建立案件，payload 放案件種類與業務類型
   'case_member.add', // 加入案件成員，payload 放案件 ID、關係與 party ID，不放 email
+  'case_member.replace_email', // 更新承租人 email（MIL-121，P0-21 AC5），payload 放關係、舊與新的 party ID，不放 email
   'case.unsettled_close', // 有未結事項仍結案（ADR-0016 決議 6），payload 放未結原因
 
   // 告知與同意（P0-24，MIL-84）

@@ -61,15 +61,23 @@ export async function provisionAccount(
 export type SessionIdentity = { kind: 'org'; orgId: string } | { kind: 'party' } | { kind: 'operator' } | null;
 
 /**
- * 外部事實的接點。承租人身分要有案件成員關係才成立，案件表由 MIL-115 建立，MIL-121 接上真實查詢。
- * 在那之前預設為 false：沒有人能以承租人身分登入，也不會有 party 脈絡的 session 通過重查。
+ * 外部事實的接點。測試可以注入替身，正式環境用 defaultIdentityFacts。
+ * 承租人身分要有案件成員關係才成立（ADR-0022 決議 6）：party 是任何案件的有效承租人（lessee）或共同承租人（co_lessee）。
  */
 export interface IdentityFacts {
   partyHasCaseMembership(tx: ControlTx, partyId: string): Promise<boolean>;
 }
 
+/**
+ * 登入時的交易是 control 脈絡，讀不到 org.case_members，所以經 0049 的定義者函式 org.party_has_tenant_membership 查。
+ * 它跨組織讀成員表，只回 boolean。呼叫端必須在驗證碼通過之後才呼叫，否則回應差異會洩漏 email 有沒有案件（P0-21 AC6）。
+ * listIdentityOptions 與 recheckMembership 都在驗證碼通過、或 session 已建立之後才用它。
+ */
 export const defaultIdentityFacts: IdentityFacts = {
-  partyHasCaseMembership: async () => false,
+  async partyHasCaseMembership(tx, partyId) {
+    const { rows } = await tx.query<{ ok: boolean }>('SELECT org.party_has_tenant_membership($1) AS ok', [partyId]);
+    return rows[0]?.ok === true;
+  },
 };
 
 /** 切換器的一個選項。identity 是寫進 session 的值，其餘是顯示用。 */

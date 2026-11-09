@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { App as AntApp, Alert, Button, Col, Descriptions, Flex, Form, Input, Row, Spin, Table, Tabs, Tag, Typography, theme } from 'antd';
+import { App as AntApp, Alert, Button, Col, Descriptions, Flex, Form, Input, Modal, Row, Spin, Table, Tabs, Tag, Typography, theme } from 'antd';
 import Link from 'next/link';
 import type { CaseContractRow, CaseEventRecord, CaseMemberRecord, CaseRecord } from '@/lib/case-store';
 import { eventDescription, formatTaipei, leasePeriodLabel, monthlyRentLabel } from '@/lib/case-display';
@@ -39,6 +39,10 @@ function CaseDetailBody({ caseId, readOnly, backHref }: { caseId: string; readOn
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [adding, setAdding] = useState(false);
   const [form] = Form.useForm<{ name: string; email: string }>();
+  // 更新承租人 email（MIL-121）：正在更新哪一位成員。null 表示 Modal 關閉
+  const [replacing, setReplacing] = useState<CaseMemberRecord | null>(null);
+  const [replacingBusy, setReplacingBusy] = useState(false);
+  const [replaceForm] = Form.useForm<{ email: string }>();
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/cases/${caseId}`);
@@ -99,6 +103,29 @@ function CaseDetailBody({ caseId, readOnly, backHref }: { caseId: string; readOn
     }
   };
 
+  const replaceEmail = async (values: { email: string }) => {
+    if (!replacing) return;
+    setReplacingBusy(true);
+    try {
+      const res = await fetch(`/api/cases/${caseId}/members/${replacing.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: values.email }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        message.error(json.error ?? '更新失敗');
+        return;
+      }
+      message.success('已更新 email，舊 email 已失效');
+      setReplacing(null);
+      replaceForm.resetFields();
+      await refresh();
+    } finally {
+      setReplacingBusy(false);
+    }
+  };
+
   return (
     <Flex vertical gap="large">
       <Flex align="center" gap="small" wrap>
@@ -149,8 +176,47 @@ function CaseDetailBody({ caseId, readOnly, backHref }: { caseId: string; readOn
                     { title: 'Email', dataIndex: 'email' },
                     { title: '加入時間', width: 160, render: (_, m) => formatTaipei(m.validFrom) },
                     { title: '狀態', width: 90, render: (_, m) => (m.validUntil === null ? '有效' : '已結束') },
+                    ...(canEdit
+                      ? [
+                          {
+                            title: '操作',
+                            width: 120,
+                            render: (_: unknown, m: CaseMemberRecord) =>
+                              m.validUntil === null && (m.relation === 'lessee' || m.relation === 'co_lessee') ? (
+                                <Button type="link" size="small" onClick={() => setReplacing(m)}>
+                                  更新 email
+                                </Button>
+                              ) : null,
+                          },
+                        ]
+                      : []),
                   ]}
                 />
+                <Modal
+                  open={replacing !== null}
+                  title={`更新${replacing ? CASE_MEMBER_RELATION_LABELS[replacing.relation] : ''}的 email`}
+                  okText="更新 email"
+                  cancelText="取消"
+                  confirmLoading={replacingBusy}
+                  onOk={() => replaceForm.submit()}
+                  onCancel={() => setReplacing(null)}
+                  destroyOnHidden
+                >
+                  <Flex vertical gap="small">
+                    <Typography.Text>
+                      更新後，{replacing?.displayName}目前的 email 立即失去這個案件的存取權，新的 email 取得相同的關係。合約內記載的 email 不會改變。
+                    </Typography.Text>
+                    <Form form={replaceForm} layout="vertical" onFinish={(values) => void replaceEmail(values)}>
+                      <Form.Item
+                        name="email"
+                        label="新的 email"
+                        rules={[{ required: true, type: 'email', message: '請填寫有效的 email' }]}
+                      >
+                        <Input autoComplete="off" />
+                      </Form.Item>
+                    </Form>
+                  </Flex>
+                </Modal>
                 {canEdit && (
                   <Row>
                     <Col xs={24} md={12} lg={8}>
