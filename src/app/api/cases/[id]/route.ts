@@ -6,6 +6,7 @@ import {
   listCaseEvents,
   listCaseMembers,
   listContractsOfCase,
+  type CaseRecord,
 } from '@/lib/case-store';
 import { caseIdOf, caseNotFound, type CaseRouteCtx } from '@/lib/case-store/route';
 import { jsonOk } from '@/lib/http';
@@ -28,9 +29,13 @@ export async function GET(_request: NextRequest, { params }: CaseRouteCtx) {
       listCaseEvents(tx, id),
       checkAccess(tx, 'case_member.manage', { type: 'case', id }),
     ]);
+    // 預設收款帳戶 ID 不給案件的所有成員：承租人用不到，要看走 ledger.read_case_setup（MIL-123）
+    const publicRecord: Partial<CaseRecord> = { ...record };
+    delete publicRecord.defaultRentAccountId;
+    delete publicRecord.defaultDepositAccountId;
     return jsonOk({
       data: {
-        case: record,
+        case: publicRecord,
         orgName,
         isHost: record.orgId === rc.orgId,
         members,

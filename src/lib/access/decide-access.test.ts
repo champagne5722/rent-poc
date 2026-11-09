@@ -176,6 +176,21 @@ const CASE_EXPECTATIONS: Record<string, Expectation> = {
     personas: [...hostWriters('self', 'managed', 'master'), 'self.lessor', 'master.lessor'],
     states: { lease: OPERATING, management: [] },
   },
+  // 案件的帳務設定（MIL-123）：匯款識別與預設收款帳戶。不是代操作，所以代管案件不查委託範圍
+  'ledger.configure_case': {
+    personas: [...hostWriters('self', 'managed', 'master'), 'self.lessor', 'master.lessor'],
+    states: { lease: OPEN_LEASE, management: [] },
+  },
+  // 讀案件的帳務設定：主辦組織全部角色加出租人與屋主，不含承租人與所有權人
+  'ledger.read_case_setup': {
+    personas: [...hostReaders('self', 'managed', 'master'), 'self.lessor', 'managed.owner', 'managed.owner_viewer', 'master.lessor'],
+    states: { lease: ALL_LEASE_STATES, management: [] },
+  },
+  // 修改社宅代管旗標：代管與包租案件的主辦組織寫入角色。屋主與出租人本人否，自管案件否
+  'case.set_social_housing': {
+    personas: hostWriters('managed', 'master'),
+    states: { lease: OPEN_LEASE, management: [] },
+  },
   'ledger.send_overdue_reminder': {
     personas: [...hostWriters('self', 'managed', 'master'), 'self.lessor', 'master.lessor'],
     states: { lease: OPERATING, management: [] },

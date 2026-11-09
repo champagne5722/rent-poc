@@ -1,5 +1,5 @@
 // 帳務與屋主報表的動作：讀帳務、屋主報表、入帳確認、逾期提醒、押金分錄。
-import { ALL_ROLES, ALL_STATES, OPERATING, WRITE_ROLES, type ActionRule } from './rules';
+import { ALL_ROLES, ALL_STATES, OPEN, OPERATING, WRITE_ROLES, type ActionRule } from './rules';
 
 export const ledgerActions = {
   // 讀帳務：不含經紀業者、簽章人員、所有權人。
@@ -54,5 +54,34 @@ export const ledgerActions = {
     hostRoles: { self_managed: WRITE_ROLES, managed: WRITE_ROLES, master_lease: WRITE_ROLES },
     relations: { self_managed: ['lessor'], master_lease: ['lessor'] },
     onBehalfScope: 'deposit_management',
+  },
+  // 案件的帳務設定（MIL-123）：匯款識別與預設收款帳戶。草稿案件就能設，結案後唯讀。
+  // 不列入代操作：代操作正好是 ADR-0023 決議 7 的六個動作。設定匯款識別是代管業者自己的作業，不代屋主收租。
+  'ledger.configure_case': {
+    scope: 'case',
+    effect: 'write',
+    states: OPEN,
+    hostRoles: { self_managed: WRITE_ROLES, managed: WRITE_ROLES, master_lease: WRITE_ROLES },
+    relations: { self_managed: ['lessor'], master_lease: ['lessor'] },
+    onBehalfScope: null,
+  },
+  // 讀案件的帳務設定（MIL-123）：押金台帳、應收期別、匯款識別、預設帳戶、社宅旗標修改紀錄。
+  // 比 ledger.read 窄：承租人端不顯示應收期別與逾期，匯款識別是付款人個資。
+  'ledger.read_case_setup': {
+    scope: 'case',
+    effect: 'read',
+    states: ALL_STATES,
+    hostRoles: { self_managed: ALL_ROLES, managed: ALL_ROLES, master_lease: ALL_ROLES },
+    relations: { self_managed: ['lessor'], managed: ['lessor'], master_lease: ['lessor'] },
+    onBehalfScope: null,
+  },
+  // 修改社宅代管旗標（ADR-0050 決議 10）：代管與包租案件的主辦組織。自管案件沒有代管業者，旗標不適用。
+  'case.set_social_housing': {
+    scope: 'case',
+    effect: 'write',
+    states: OPEN,
+    hostRoles: { managed: WRITE_ROLES, master_lease: WRITE_ROLES },
+    relations: {},
+    onBehalfScope: null,
   },
 } as const satisfies Record<string, ActionRule>;
