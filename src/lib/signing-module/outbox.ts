@@ -3,7 +3,7 @@ import type { OrgTx } from '../pg/with-tx';
 import type { SigningSubject } from './provider';
 
 // outbox 的儲存（ADR-0020 決議 5、6，MIL-85）。表與狀態的意義見 db/migrations/0006_sign_tasks.sql。
-// 這裡只管資料列的狀態轉移，不呼叫服務商。派送在 module.ts，排程重試（drain-outbox）在 MIL-86。
+// 這裡只管資料列的狀態轉移，不呼叫服務商。派送在 module.ts，排程重試（drain-outbox）在 src/lib/jobs/jobs.ts（MIL-86）。
 
 export type OutboxAction = 'create_sign_task' | 'void_sign_task' | 'resend_sign_task';
 export type OutboxStatus = 'pending' | 'sending' | 'done' | 'failed' | 'dead' | 'skipped';

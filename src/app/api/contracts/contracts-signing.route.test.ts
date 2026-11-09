@@ -300,11 +300,11 @@ describe('送簽失敗與 webhook（MIL-85）', () => {
     expect(await statusOf(id)).toBe('awaiting_landlord');
   });
 
-  it('webhook：空 body 是 ping，對不到的任務回 ignored，無效 JSON 回 400', async () => {
+  it('webhook：空 body 是 ping，對不到路由列的事件留在 inbox 回 queued，無效 JSON 回 400', async () => {
     expect(await json(await webhook(webhookReq('')))).toEqual({ ok: true, ping: true });
     const ignored = await webhook(webhookReq(JSON.stringify({ resource_id: 'no-such', resource_type: 'task', action_name: 'signed', event_email: 'x@example.com' })));
     expect(ignored.status).toBe(200);
-    expect(await json(ignored)).toEqual({ ok: true, ignored: true });
+    expect(await json(ignored)).toEqual({ ok: true, queued: true });
     const bad = await webhook(webhookReq('not-json'));
     expect(bad.status).toBe(400);
     expect(await json(bad)).toEqual({ error: expect.any(String) });

@@ -177,7 +177,7 @@ export function tablesWithoutCase(tables: readonly string[]): string[] {
 // control schema 的表不掛組織 RLS，也不需要滲透案例（ADR-0012 決議 3）。
 // 取而代之的是這份例外清單：每張 control 表必須登記，並寫明 app_rw 的直接 DML 權限。
 // 不在清單內的 control 表讓 rls-penetration.test.ts 失敗，權限與清單不符也會失敗。
-// 之後新增 control 表的人（inbox 屬 MIL-86、F 線的 control.handovers）自己加進來。
+// 之後新增 control 表的人（F 線的 control.handovers 等）自己加進來。MIL-86 已加 inbox_messages 與 timer_fires。
 // MIL-89 會擴充成完整的系統目錄檢查，沿用這份清單。
 
 export interface ControlTableException {
@@ -198,6 +198,18 @@ export const CONTROL_TABLE_EXCEPTIONS: Record<string, ControlTableException> = {
   },
   'control.sign_task_routes': {
     reason: 'webhook 沒有組織脈絡，靠它由服務商任務編號查出 org_id（ADR-0012 決議 5）。與簽署任務同交易寫入，寫入後不變',
+    appRw: ['SELECT', 'INSERT'],
+  },
+  'control.inbox_messages': {
+    reason:
+      'webhook 沒有組織脈絡，先寫這張表再處理（ADR-0020 決議 5、9）。只存標準化事件與 body 雜湊，不存原始 body。' +
+      '處理時在組織交易內更新狀態，所以 app_rw 要有 UPDATE。事件到達的紀錄不刪',
+    appRw: ['SELECT', 'INSERT', 'UPDATE'],
+  },
+  'control.timer_fires': {
+    reason:
+      '計時器的冪等紀錄，鍵是主體、事件、日期（ADR-0020 決議 7）。與計時器的效果同交易寫入，寫入後不變。' +
+      '全域計時器沒有組織，所以 org_id 可為空',
     appRw: ['SELECT', 'INSERT'],
   },
 };
