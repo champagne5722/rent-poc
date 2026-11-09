@@ -56,7 +56,7 @@ export async function PUT(request: NextRequest, { params }: ContractRouteCtx) {
     if (body.signature_fields !== undefined && !Array.isArray(body.signature_fields)) {
       return jsonError(400, '簽署區域格式有誤');
     }
-    const routingError = routingInputError(isRecord(body.fields) ? body.fields.routing : undefined);
+    const routingError = routingInputError(isRecord(body.fields) ? body.fields.routing : undefined, contract.contract_type);
     if (routingError) return jsonError(400, routingError);
 
     const fields = { ...contract.fields, ...((body.fields as Partial<ContractFields> | undefined) ?? {}) };

@@ -219,9 +219,21 @@ describe('成員讀取矩陣：每種關係讀得到哪些表', () => {
         `INSERT INTO org.sign_tasks (id, org_id, provider, provider_task_ref, subject_type, subject_id) VALUES ($1, $2, 'mock', 'ref', 'contract', $3)`,
         [taskId, host, contractId],
       );
+      const signerId = newUlid();
       await tx.query(
         `INSERT INTO org.signers (id, org_id, sign_task_id, position, role, name, email) VALUES ($1, $2, $3, 0, 'party_b', 'x', 'x@example.com')`,
-        [newUlid(), host, taskId],
+        [signerId, host, taskId],
+      );
+      // 合約子表（沒有 case_id）：簽署中失效紀錄與委託標的清單（MIL-75、MIL-74）
+      await tx.query(
+        `INSERT INTO org.signing_lapses (id, org_id, contract_id, signer_id, rule_id, state, event_at)
+         VALUES ($1, $2, $3, $4, 'rls.slot', 'void_pending', now())`,
+        [newUlid(), host, contractId, signerId],
+      );
+      await tx.query(
+        `INSERT INTO org.contract_mandate_items (id, org_id, contract_id, position, property_id, property_name, property_address)
+         VALUES ($1, $2, $3, 0, 'rls-property', '測試物件', '測試地址')`,
+        [newUlid(), host, contractId],
       );
       await tx.query(`INSERT INTO org.case_events (id, org_id, case_id, type, occurred_at) VALUES ($1, $2, $3, 'created', now())`, [newUlid(), host, caseId]);
       await tx.query(`INSERT INTO org.case_events (id, org_id, case_id, type, occurred_at) VALUES ($1, $2, $3, 'created', now())`, [newUlid(), host, otherCaseId]);
@@ -259,7 +271,7 @@ describe('成員讀取矩陣：每種關係讀得到哪些表', () => {
     return rows[0].n;
   }
 
-  const TABLES = Object.keys(CASE_SCOPED_READS).filter((t) => t !== 'org.contract_practitioner_assignments' && t !== 'org.signature_records' && t !== 'org.sign_task_files');
+  const TABLES = Object.keys(CASE_SCOPED_READS).filter((t) => t !== 'org.contract_practitioner_assignments' && t !== 'org.signature_records' && t !== 'org.sign_task_files' && t !== 'org.signing_lapses' && t !== 'org.contract_mandate_items');
 
   describe.each(CASE_MEMBER_RELATIONS)('%s', (relation) => {
     it.each(TABLES)('讀 %s 的結果符合 CASE_SCOPED_READS', async (table) => {
@@ -275,6 +287,16 @@ describe('成員讀取矩陣：每種關係讀得到哪些表', () => {
     expect(await visibleTo(partyOf.lessor, 'org.case_members')).toBe(CASE_MEMBER_RELATIONS.length + 1); // 含過期的那一列
     expect(await visibleTo(partyOf.lessee, 'org.case_members')).toBe(1);
     expect(await visibleTo(partyOf.owner, 'org.case_members')).toBe(1);
+  });
+
+  // 合約子表沒有 case_id，案件成員一律讀不到，與其他合約子表相同。表裡確實有列，所以是政策擋下而不是沒資料
+  it.each(['org.signing_lapses', 'org.contract_mandate_items'])('案件成員與非成員都讀不到 %s', async (table) => {
+    const host_n = await withTx({ kind: 'org', orgId: host }, async (tx) => (await tx.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n);
+    expect(host_n).toBeGreaterThan(0);
+    for (const partyId of [...Object.values(partyOf), outsider, expired]) {
+      const { rows } = await withTx({ kind: 'party', partyId }, (tx) => tx.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${table}`));
+      expect({ table, partyId, n: rows[0].n }).toEqual({ table, partyId, n: 0 });
+    }
   });
 
   it('不是成員的人什麼都讀不到', async () => {

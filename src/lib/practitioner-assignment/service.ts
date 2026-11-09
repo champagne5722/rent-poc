@@ -5,6 +5,7 @@
 // 換掉 `assignments` 的來源即可，這裡的組裝邏輯不變。
 
 import { credentialStatusAt, type RenewalWindow } from '../credential-status';
+import { REQUIRED_BUSINESS_ITEM_CODE } from '../registry-rules';
 import { practitionerTitle, type LicenseKind } from '../labels';
 import type { LeasingAuthoritySendFacts } from '../leasing-authority/preconditions';
 import type {
@@ -23,11 +24,15 @@ import {
   type SendPreconditionResult,
 } from '../send-preconditions';
 import {
+  findMergedSeats,
   routeSignatures,
+  seatSignerIndexes,
+  type MergedSeats,
   type PlannedSeat,
   type PractitionerEntitySource,
   type RoutingFacts,
   type SeatAssignee,
+  type SeatIdentity,
 } from '../signature-routing';
 import { buildCredentialSnapshot } from '../signature-records/snapshot';
 import type { ContractSendRecord } from '../signature-records/types';
@@ -60,6 +65,13 @@ export interface SendEvaluation extends SendPreconditionResult {
   /** 執業人員席位的簽署人，以席位 rule_id 為鍵。姓名與 email 取自登錄。 */
   assignees: Record<string, SeatAssignee>;
   printed: Record<string, PrintedPractitioner>;
+  /**
+   * 席位簽署人的身分，以席位 rule_id 為鍵。執業人員席位與執業主體是甲方或乙方的當事人席位才有。
+   * 組簽署序列時交給 `buildSignerSequence`，合併的判定靠它（ADR-0018 決議 9）。
+   */
+  identities: Record<string, SeatIdentity>;
+  /** 要合併成一位簽署人的席位。畫面據此提示，檢查未通過時也會列出。 */
+  merges: MergedSeats[];
   /** 送簽時要寫的簽章紀錄（含 snapshot_at_send），由合約訂閱者在送簽交易內寫入（MIL-70）。 */
   records: ContractSendRecord[];
 }
@@ -116,7 +128,7 @@ export async function evaluateSend(
 ): Promise<SendEvaluation> {
   const { routing, assignments, at } = input;
   const route = routeSignatures(routing);
-  const base = { assignees: {}, printed: {}, records: [] };
+  const base = { assignees: {}, printed: {}, identities: {}, merges: [], records: [] };
   if (route.kind !== 'sequence') {
     return {
       ...checkSendPreconditions({ routing, at, entities: {}, signers: [], registryAvailable: resolution.available, leasingAuthority: input.leasingAuthority }),
@@ -130,6 +142,20 @@ export async function evaluateSend(
     : [];
   const resolvedBySeat = new Map(resolved.map((r) => [r.seat.ruleId, r]));
 
+  // 席位簽署人的身分。同一人兼任的合併靠它判定，簽章紀錄的 signerIndex 也要用合併後的位置
+  const identities: Record<string, SeatIdentity> = {};
+  for (const r of resolved) {
+    if (!r.assignment || !r.candidate) continue;
+    identities[r.seat.ruleId] = { partyId: r.candidate.partyId, entityId: r.candidate.entityId };
+    const partyRole = partyRoleOfEntitySource(r.seat.practitioner!.entitySource);
+    const partySeat = partyRole && route.plan.seats.find((s) => s.role === partyRole);
+    if (partySeat && r.partySigner) {
+      identities[partySeat.ruleId] = { partyId: r.partySigner.partyId, entityId: r.partySigner.entityId };
+    }
+  }
+  const merges = findMergedSeats(route.plan, identities);
+  const signerIndexes = seatSignerIndexes(route.plan, merges);
+
   const extraReasons: SendBlockReason[] = [];
   const entities: Partial<Record<PractitionerEntitySource, string>> = {};
   const signers: SeatSigner[] = [];
@@ -137,9 +163,9 @@ export async function evaluateSend(
   const printed: Record<string, PrintedPractitioner> = {};
   const records: ContractSendRecord[] = [];
 
-  for (const [seatIndex, seat] of route.plan.seats.entries()) {
+  for (const seat of route.plan.seats) {
     if (seat.role === 'party_a' || seat.role === 'party_b') {
-      signers.push({ seatRuleId: seat.ruleId, ...partyField(input, seat.role) });
+      signers.push({ seatRuleId: seat.ruleId, ...partyField(input, seat.role), identity: identities[seat.ruleId] });
       continue;
     }
     const r = resolvedBySeat.get(seat.ruleId);
@@ -163,12 +189,18 @@ export async function evaluateSend(
       credential: r.candidate.credential,
     };
     // 執業人員的 email 一律取自登錄的帳號（ADR-0018 決議 10 第 6 項）
-    signers.push({ seatRuleId: seat.ruleId, name: r.candidate.name, email: r.candidate.accountEmail, practitioner: facts });
+    signers.push({
+      seatRuleId: seat.ruleId,
+      name: r.candidate.name,
+      email: r.candidate.accountEmail,
+      practitioner: facts,
+      identity: identities[seat.ruleId],
+    });
     assignees[seat.ruleId] = { name: r.candidate.name, email: r.candidate.accountEmail };
     const print = printedOf(r);
     if (print) printed[seat.ruleId] = print;
     records.push({
-      signerIndex: seatIndex,
+      signerIndex: signerIndexes[seat.ruleId],
       ruleId: seat.ruleId,
       statuteRef: seat.statuteRef,
       ruleVersion: route.plan.ruleVersion,
@@ -222,6 +254,8 @@ export async function evaluateSend(
     reasons: orderReasons(reasons, route.plan.seats),
     assignees: ok ? assignees : {},
     printed,
+    identities: ok ? identities : {},
+    merges,
     records: ok ? records : [],
   };
 }
@@ -253,6 +287,15 @@ export async function loadPrintedPractitioners(
   return printed;
 }
 
+/** 委託管理合約的受託人必須有代管業別（營業項目 H706011）且業別已驗證（P0-11）。 */
+export const MANDATARY_LICENSE_MISSING = `缺少租賃住宅代管業的營業項目 ${REQUIRED_BUSINESS_ITEM_CODE.management}，不能擔任受託人`;
+export const MANDATARY_LICENSE_UNVERIFIED = '租賃住宅代管業的業別尚未驗證，不能擔任受託人';
+
+/** 委託管理合約的乙方（受託人）是執業主體：這個席位要查代管業別與業別是否已驗證。 */
+function isMandataryEntity(routing: RoutingFacts, entitySource: PractitionerEntitySource): boolean {
+  return routing.documentType === 'management' && partyRoleOfEntitySource(entitySource) === 'party_b';
+}
+
 // ── wizard 的指派選項 ────────────────────────────────────────
 
 export interface PractitionerOption {
@@ -267,15 +310,25 @@ export interface PractitionerOption {
 export interface EntityOption {
   id: string;
   name: string;
+  /**
+   * 不能選的原因。委託管理合約的受託人缺少代管業別（H706011）或業別未驗證時有值，畫面標示並說明（P0-11 AC2）。
+   * 其他席位只列持有業別的執業主體，沒有這個欄位。
+   */
+  blockedReason?: string;
   /** 執業主體不是合約的甲方或乙方時為空。 */
   partySigners: Array<Pick<PartySignerCandidate, 'id' | 'name' | 'email'>>;
   practitioners: PractitionerOption[];
 }
 
+/** 經紀人席位的說明。經紀營業員不得簽章（P0-12 AC6、規則 7），選單不列出。 */
+export const BROKER_ONLY_NOTICE = '這個席位只能指派不動產經紀人。不動產經紀營業員不得簽章，選單不列出。';
+
 export interface SeatOption {
   /** 席位的 rule_id，也是指派的 slot。 */
   ruleId: string;
   label: string;
+  /** 畫面在席位下方顯示的說明。 */
+  notice?: string;
   /** 執業主體是哪一方。null 代表不是甲乙方（經紀人席位）。 */
   partyRole: ContractPartyRole | null;
   licenseKind: LicenseKind;
@@ -311,9 +364,14 @@ export async function loadSeatOptions(
     const licenseKind = licenseKindForSeat(routing, seat);
     if (!requirement || !licenseKind) continue;
     const partyRole = partyRoleOfEntitySource(requirement.entitySource);
-    const entities = await registry.listEntities({ licenseKind });
+    // 委託管理合約的受託人：列出全部執業主體，不符的標示原因，讓使用者知道為什麼不能選
+    const isMandatary = isMandataryEntity(routing, requirement.entitySource);
+    const entities = await registry.listEntities(isMandatary ? undefined : { licenseKind });
     const entityOptions = await Promise.all(
       entities.map(async (entity): Promise<EntityOption> => {
+        if (isMandatary && !entity.licenseKinds.includes(licenseKind)) {
+          return { id: entity.id, name: entity.name, blockedReason: MANDATARY_LICENSE_MISSING, partySigners: [], practitioners: [] };
+        }
         const [partySigners, candidates] = await Promise.all([
           partyRole ? registry.listPartySigners(entity.id) : Promise.resolve([]),
           registry.listPractitioners(entity.id, {
@@ -323,9 +381,13 @@ export async function loadSeatOptions(
           }),
         ]);
         const practitioners: PractitionerOption[] = [];
+        let licenseUnverified = false;
         for (const c of candidates) {
           const status = credentialStatusAt(c.credential, at);
-          if (!status.signable) continue;
+          if (!status.signable) {
+            if (status.issues.some((i) => i.code === 'license_not_verified')) licenseUnverified = true;
+            continue;
+          }
           practitioners.push({
             id: c.id,
             name: c.name,
@@ -333,6 +395,9 @@ export async function loadSeatOptions(
             ...(c.certificateKind ? { title: practitionerTitle(c.certificateKind) } : {}),
             renewalWindow: status.renewalWindow,
           });
+        }
+        if (isMandatary && licenseUnverified) {
+          return { id: entity.id, name: entity.name, blockedReason: MANDATARY_LICENSE_UNVERIFIED, partySigners: [], practitioners: [] };
         }
         return {
           id: entity.id,
@@ -347,6 +412,7 @@ export async function loadSeatOptions(
       label: `${SIGNER_ROLE_LABELS.practitioner}（${practitionerTitle(requirement.certificateKinds[0])}）`,
       partyRole,
       licenseKind,
+      ...(requirement.entitySource === 'broker_entity' ? { notice: BROKER_ONLY_NOTICE } : {}),
       entities: entityOptions,
     });
   }
@@ -367,6 +433,8 @@ export async function validateAssignments(
   assignments: readonly PractitionerAssignmentInput[],
   resolution: PracticeRegistryResolution,
   stored: readonly PractitionerAssignmentInput[] = [],
+  /** 判定時點，ISO 8601。委託管理合約檢查受託人的業別層是否已驗證時用。 */
+  at: string = new Date().toISOString(),
 ): Promise<string | null> {
   if (assignments.length === 0) return null;
   if (!resolution.available) return resolution.reason;
@@ -383,7 +451,10 @@ export async function validateAssignments(
     if (!seat?.practitioner || !licenseKind) return `目前的簽署序列沒有這個執業人員席位：${a.slot}`;
 
     const entity = await registry.getEntity(a.entityId);
-    if (!entity?.licenseKinds.includes(licenseKind)) return '所選的執業主體沒有這個席位要求的業別';
+    const isMandatary = isMandataryEntity(routing, seat.practitioner.entitySource);
+    if (!entity?.licenseKinds.includes(licenseKind)) {
+      return isMandatary ? MANDATARY_LICENSE_MISSING : '所選的執業主體沒有這個席位要求的業別';
+    }
 
     const unchanged = stored.some(
       (s) =>
@@ -392,6 +463,12 @@ export async function validateAssignments(
         s.practitionerId === a.practitionerId &&
         s.partySignerId === a.partySignerId,
     );
+    // 經紀營業員不得簽章是法定限制，不論是否原樣再存都拒絕，並說明原因
+    const salesAgent = await salesAgentIn(registry, a.practitionerId, licenseKind, seat);
+    if (salesAgent) {
+      return `${salesAgent.name}是${practitionerTitle('real_estate_sales_agent')}，不得簽章。經紀人席位只能指派${practitionerTitle('real_estate_broker')}。`;
+    }
+
     if (!unchanged) {
       const candidates = await registry.listPractitioners(a.entityId, {
         certificateKinds: seat.practitioner.certificateKinds,
@@ -399,6 +476,13 @@ export async function validateAssignments(
         licenseKind,
       });
       if (!candidates.some((c) => c.id === a.practitionerId)) return '所選的執業人員不在這個席位的候選清單內';
+    }
+    if (isMandatary) {
+      const candidate = await registry.getPractitioner(a.practitionerId, { licenseKind });
+      const status = candidate ? credentialStatusAt(candidate.credential, at) : null;
+      if (status && !status.signable && status.issues.some((i) => i.code === 'license_not_verified')) {
+        return MANDATARY_LICENSE_UNVERIFIED;
+      }
     }
 
     if (a.partySignerId !== null) {
@@ -408,6 +492,18 @@ export async function validateAssignments(
     }
   }
   return null;
+}
+
+/** 經紀人席位指派了經紀營業員時回傳這個人，其他情況回 null。 */
+async function salesAgentIn(
+  registry: PracticeRegistry,
+  practitionerId: string,
+  licenseKind: LicenseKind,
+  seat: PlannedSeat,
+): Promise<PractitionerCandidate | null> {
+  if (seat.practitioner?.entitySource !== 'broker_entity') return null;
+  const candidate = await registry.getPractitioner(practitionerId, { licenseKind });
+  return candidate?.certificateKind === 'real_estate_sales_agent' ? candidate : null;
 }
 
 export type { PrintedPractitioner, SendNotice };

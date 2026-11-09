@@ -18,6 +18,19 @@ export const DEFAULT_TEMPLATE: ContractTemplate = {
   legalReviewed: false,
 };
 
+/**
+ * 委託管理契約範本 v1（MIL-74）：簡化示意條文，條文見 management-clauses.ts，沒有選用條款。
+ * 法務審閱屬 MIL-48，審閱完成前是未審閱，正式金鑰下擋下送簽（P0-11、P0-10 AC5）。
+ */
+export const MANAGEMENT_TEMPLATE: ContractTemplate = {
+  id: 'management-agreement',
+  name: '委託管理契約',
+  version: 1,
+  provider: '平台提供',
+  note: '條款為簡化示意條文，尚未經法務審閱，不得用於正式簽約。',
+  legalReviewed: false,
+};
+
 /** 選用條款庫：逐約勾選後併入合約產出的條款區。 */
 export const OPTIONAL_CLAUSES: readonly OptionalClause[] = [
   {

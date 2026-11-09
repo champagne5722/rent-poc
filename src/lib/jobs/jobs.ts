@@ -1,3 +1,7 @@
+import { runAnchorAudit } from '../audit/anchor/anchor-audit';
+import type { AuditLogger } from '../audit/anchor/audit-log';
+import type { AnchorProviders } from '../audit/anchor/providers-from-env';
+import { runVerifyAudit } from '../audit/anchor/verify-audit';
 import { migrateContractsToCases } from '../case-store/legacy-migration';
 import { withTx } from '../pg/database';
 import type { DispatchResult, InboxResult } from '../signing-module/module';
@@ -36,9 +40,17 @@ export interface JobSigning {
   drainOutbox(orgId: string, limit: number): Promise<DispatchResult[]>;
 }
 
+/** anchor-audit 與 verify-audit 需要的錨定服務（MIL-88）。沒有提供時，這兩個 job 不註冊，呼叫回 404。 */
+export interface JobAudit {
+  /** 每次 job 執行時才呼叫：設定錯誤只讓這兩個 job 回 500，不影響其他 job。 */
+  providers(): AnchorProviders;
+  logger?: AuditLogger;
+}
+
 export interface JobDeps {
   signing: JobSigning;
   timers: TimerRegistry;
+  audit?: JobAudit;
   limits?: { inbox?: number; outbox?: number; timers?: number };
 }
 
@@ -76,6 +88,21 @@ export function summarizeOutbox(results: DispatchResult[]) {
  */
 function alertDead(job: string, dead: number): void {
   if (dead > 0) console.error(`[jobs] ${job}：${dead} 筆重試用完，已轉人工處理清單`);
+}
+
+function auditJobs(audit: JobAudit): JobTable {
+  return {
+    // 結果的 status 是 failed 時仍回 200：失敗已記在資料庫，排程重試會在幾分鐘內再打一次 FreeTSA（每秒限 1 次），
+    // 且連續失敗次數會被算快。下一次排程自然重送（ADR-0019 決議 10）
+    async 'anchor-audit'(ctx) {
+      return { ...(await runAnchorAudit({ withTx, provider: audit.providers().primary, logger: audit.logger }, ctx.now)) };
+    },
+
+    // 驗證出問題時也回 200：問題是資料狀態，重試不會改變結果。維運靠 CRITICAL log 告警（見 audit-log.ts）
+    async 'verify-audit'(ctx) {
+      return { ...(await runVerifyAudit({ withTx, providers: audit.providers().byId, logger: audit.logger }, ctx.now)) };
+    },
+  };
 }
 
 export function createJobs(deps: JobDeps): JobTable {
@@ -126,6 +153,7 @@ export function createJobs(deps: JobDeps): JobTable {
       return { ...result };
     },
 
-    // anchor-audit、verify-audit 屬 MIL-88，在那張票加到這裡
+    // 稽核鏈的每日錨定與驗證（MIL-88，ADR-0019）。有任何組織寫入的鏈才會錨定，沒有新事件就不呼叫外部服務
+    ...(deps.audit && auditJobs(deps.audit)),
   };
 }

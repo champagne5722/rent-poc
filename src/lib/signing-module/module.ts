@@ -49,7 +49,14 @@ import {
   type SignTaskRecord,
   type SigningProgress,
 } from './sign-task-store';
-import { SigningRefusal, type OutcomeContext, type ReadInOrg, type SendContext, type SigningSubscriber } from './subscriber';
+import {
+  SigningRefusal,
+  type AfterOutcomeTools,
+  type OutcomeContext,
+  type ReadInOrg,
+  type SendContext,
+  type SigningSubscriber,
+} from './subscriber';
 
 // 簽署模組（ADR-0010）：route handler 只呼叫這裡，服務商細節都在 adapter，
 // 業務實體的細節都在訂閱者。介面一律回傳 Promise，呼叫端看不到服務商任務編號。
@@ -200,16 +207,50 @@ export function createSigningModule({
     return advance.outcome;
   }
 
-  // 提交後的處理：全員完成才有。保存文件與訂閱者的完成後處理都是外部 IO，失敗不回滾狀態
+  // 提交後的處理，保存文件與訂閱者的後處理都是外部 IO，失敗不回滾狀態：
+  // - 全員完成：保存文件，再呼叫 afterCompleted。
+  // - 每個被接受的事件：呼叫選填的 afterOutcome（全員完成時在 afterCompleted 之後），例如自動撤回（MIL-75）。
   async function finishAfterCommit(
     ctx: OrgContext,
     subject: SigningSubject,
     subscriber: SigningSubscriber,
     outcome: ProgressOutcome | null
   ): Promise<void> {
-    if (outcome?.type !== 'completed') return;
-    await saveFilesOnCompleted(ctx, subject, subscriber);
-    await runAfterCompleted(subject, subscriber);
+    if (!outcome) return;
+    if (outcome.type === 'completed') {
+      await saveFilesOnCompleted(ctx, subject, subscriber);
+      await runAfterCompleted(subject, subscriber);
+    }
+    await runAfterOutcome(subject, subscriber, outcome, {
+      voidTask: () => voidTaskIn(ctx, subject),
+      inOrg: (fn) => db.inOrg(ctx, fn),
+    });
+  }
+
+  // 撤回。呼叫服務商期間可能收到全員完成事件。applyEventTx 會在交易內重讀進度，
+  // 所以這時撤回不接受並回 409，已完成的簽署標的不會被改成已撤回。
+  // 使用者手動撤回與 afterOutcome 的 tools.voidTask 走同一條路徑。組織脈絡由呼叫端給：
+  // 手動撤回是請求的脈絡，webhook 與排程裡的自動撤回是該事件所屬的組織。
+  async function voidTaskIn(ctx: OrgContext, subject: SigningSubject): Promise<void> {
+    const plan = await db.inOrg(ctx, async (tx) => {
+      const subscriber = await requireSubscriber(tx, subject);
+      const task = await findSignTask(tx, subject);
+      if (!task) {
+        // 沒有服務商任務，沒有外部呼叫，在同一個交易直接撤回
+        await subscriber.voidWithoutTask(tx, subject);
+        return null;
+      }
+      if (task.status !== 'in_progress') throw new SigningRefusal(409, `僅簽署中的${subscriber.label}可撤回`);
+      await recoverStaleOutbox(tx, subject);
+      const entry = await enqueueOutbox(tx, { action: 'void_sign_task', subject });
+      return { subscriber, outboxId: entry.row.id };
+    });
+    if (!plan) return;
+
+    const result = await dispatchOutbox(ctx, plan.outboxId);
+    if (result.kind === 'not_claimed') throw new SigningRefusal(409, '撤回處理中，請稍後再試');
+    if (result.kind === 'failed') throw dispatchFailure(plan.subscriber, '撤回', result);
+    if (result.kind === 'skipped') throw new SigningRefusal(409, `僅簽署中的${plan.subscriber.label}可撤回`);
   }
 
   // 派送完成時寫入的那一列 outbox（applyEventTx）。第一次派送在這裡，同一請求內做；
@@ -338,10 +379,13 @@ export function createSigningModule({
     // 撤回事件的準備在交易外做（MIL-70）。重寄不套用事件
     const voidedEvent: SigningEvent = { type: 'voided' };
     const prep = row.action === 'void_sign_task' ? await prepareEvent(ctx, row.subject, subscriber, voidedEvent) : undefined;
+    const voided: { outcome: ProgressOutcome | null } = { outcome: null };
+    let result: DispatchResult;
     try {
-      return await db.inOrg(ctx, async (tx): Promise<DispatchResult> => {
+      result = await db.inOrg(ctx, async (tx): Promise<DispatchResult> => {
         if (row.action === 'void_sign_task') {
           const outcome = await applyEventTx(tx, row.subject, subscriber, voidedEvent, prep);
+          voided.outcome = outcome;
           if (!outcome) {
             // 服務商的 voided webhook 比這裡先到：進度已是撤回，目的達成
             if ((await findSignTask(tx, row.subject))?.status === 'voided') {
@@ -364,6 +408,9 @@ export function createSigningModule({
       await db.inOrg(ctx, (tx) => failOutbox(tx, row, error)).catch(() => undefined);
       throw e;
     }
+    // 撤回事件提交後的處理（例如結清失效紀錄）。例外只記 log，不影響撤回的結果
+    await finishAfterCommit(ctx, row.subject, subscriber, voided.outcome);
+    return result;
   }
 
   // 保存文件：向服務商下載、寫入 FileStore、記文件紀錄。已保存的種類略過，所以重試只補沒成功的。
@@ -488,30 +535,7 @@ export function createSigningModule({
       return { signer };
     },
 
-    // 呼叫服務商期間可能收到全員完成事件。applyEventTx 會在交易內重讀進度，
-    // 所以這時撤回不接受並回 409，已完成的簽署標的不會被改成已撤回。
-    async voidTask(subject: SigningSubject): Promise<void> {
-      const ctx = await db.requestOrg();
-      const plan = await db.inOrg(ctx, async (tx) => {
-        const subscriber = await requireSubscriber(tx, subject);
-        const task = await findSignTask(tx, subject);
-        if (!task) {
-          // 沒有服務商任務，沒有外部呼叫，在同一個交易直接撤回
-          await subscriber.voidWithoutTask(tx, subject);
-          return null;
-        }
-        if (task.status !== 'in_progress') throw new SigningRefusal(409, `僅簽署中的${subscriber.label}可撤回`);
-        await recoverStaleOutbox(tx, subject);
-        const entry = await enqueueOutbox(tx, { action: 'void_sign_task', subject });
-        return { subscriber, outboxId: entry.row.id };
-      });
-      if (!plan) return;
-
-      const result = await dispatchOutbox(ctx, plan.outboxId);
-      if (result.kind === 'not_claimed') throw new SigningRefusal(409, '撤回處理中，請稍後再試');
-      if (result.kind === 'failed') throw dispatchFailure(plan.subscriber, '撤回', result);
-      if (result.kind === 'skipped') throw new SigningRefusal(409, `僅簽署中的${plan.subscriber.label}可撤回`);
-    },
+    voidTask: async (subject: SigningSubject) => voidTaskIn(await db.requestOrg(), subject),
 
     // 排程（MIL-86 的 drain-outbox）與測試用：派送一列，或處理一個組織到期的列。
     // 這個模組不知道有哪些組織，組織清單由呼叫端從 control 取得（ADR-0020 決議 7）。
@@ -826,6 +850,21 @@ async function prepareOutcome(
   } catch (e) {
     console.error(`[signing] ${subject.type} ${subject.id} 簽署事件的準備失敗：${errorMessage(e)}`);
     return undefined;
+  }
+}
+
+// 事件提交後的處理（例如自動撤回）失敗不得讓 webhook 回非 2xx，否則點點簽重試會累積到暫停 webhook
+async function runAfterOutcome(
+  subject: SigningSubject,
+  subscriber: SigningSubscriber,
+  outcome: ProgressOutcome,
+  tools: AfterOutcomeTools
+): Promise<void> {
+  if (!subscriber.afterOutcome) return;
+  try {
+    await subscriber.afterOutcome(subject, outcome, tools);
+  } catch (e) {
+    console.error(`[signing] ${subject.type} ${subject.id} 簽署事件後的處理失敗：${errorMessage(e)}`);
   }
 }
 

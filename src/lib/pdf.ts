@@ -36,7 +36,7 @@ import {
 const LEASE = partyLabels('lease');
 
 let fontBytesCache: Buffer | null = null;
-function loadFontBytes(): Buffer {
+export function loadFontBytes(): Buffer {
   if (!fontBytesCache) {
     // 用 TTF 而非 OTF：pdf-lib 對 CFF（OTF）做 subset 會缺字（踩坑記錄見整合筆記）
     fontBytesCache = fs.readFileSync(path.join(process.cwd(), 'assets/fonts/NotoSansTC-Regular.ttf'));
@@ -44,7 +44,7 @@ function loadFontBytes(): Buffer {
   return fontBytesCache;
 }
 
-class Writer {
+export class Writer {
   doc: PDFDocument;
   font: PDFFont;
   page!: PDFPage;
@@ -104,22 +104,23 @@ class Writer {
     this.y -= opts.gapAfter ?? 0;
   }
 
-  /** 表格一列的高度：每格逐字斷行後取最高的一格。 */
-  rowHeight(cells: readonly string[], size = BODY_SIZE): number {
+  /** 表格一列的高度：每格逐字斷行後取最高的一格。欄寬預設是設備附件的四欄。 */
+  rowHeight(cells: readonly string[], size = BODY_SIZE, widths: readonly number[] = ANNEX_COLUMN_WIDTHS): number {
     const maxLines = Math.max(
-      ...cells.map((cell, i) => this.wrap(cell, size, ANNEX_COLUMN_WIDTHS[i] - ANNEX_CELL_PAD_X * 2).length)
+      ...cells.map((cell, i) => this.wrap(cell, size, widths[i] - ANNEX_CELL_PAD_X * 2).length)
     );
     return maxLines * (size + LINE_GAP) - LINE_GAP + ANNEX_CELL_PAD_Y * 2;
   }
 
   /** 畫一列表格（含格線），列高由內容決定；呼叫端負責換頁。 */
-  tableRow(cells: readonly string[], opts: { head?: boolean; size?: number } = {}) {
+  tableRow(cells: readonly string[], opts: { head?: boolean; size?: number; widths?: readonly number[] } = {}) {
     const size = opts.size ?? BODY_SIZE;
-    const height = this.rowHeight(cells, size);
+    const widths = opts.widths ?? ANNEX_COLUMN_WIDTHS;
+    const height = this.rowHeight(cells, size, widths);
     const bottom = this.y - height;
     let x = MARGIN;
     cells.forEach((cell, i) => {
-      const width = ANNEX_COLUMN_WIDTHS[i];
+      const width = widths[i];
       this.page.drawRectangle({
         x,
         y: bottom,
@@ -159,6 +160,14 @@ class Writer {
   }
 }
 
+/** 建一份空白 PDF 與寫入器（內嵌 Noto Sans TC）。寫入器建好時已有第一頁。 */
+export async function createPdfWriter(): Promise<Writer> {
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+  const font = await doc.embedFont(loadFontBytes(), { subset: false });
+  return new Writer(doc, font);
+}
+
 /**
  * 設備附件頁（ADR-0008）：另起一頁，表格欄位＝項目／數量／修繕責任／備註。
  * 列數多到一頁放不下就續頁並重畫表頭。
@@ -185,6 +194,37 @@ function printedSeats(fields: LeaseContractFields): SeatView[] {
 }
 
 /**
+ * 執業人員簽署欄「簽章：」之前的兩行資料：姓名與法定稱謂、執業主體，不印證號（ADR-0018 決議 14）。
+ * 尚未指派時姓名與執業主體留底線。已指派時印登錄的姓名、法定稱謂與執業主體（MIL-69）。
+ */
+export function practitionerBlockLines(seat: SeatView, practitioner: PrintedPractitioner | undefined): [string, string] {
+  const titleText = practitioner?.title ?? seat.practitionerTitle;
+  const title = titleText ? `（${titleText}）` : '';
+  return [
+    `${SIGNER_ROLE_LABELS.practitioner}：${blank(practitioner?.name)}${title}`,
+    `執業主體：${blank(practitioner?.entityName)}`,
+  ];
+}
+
+/**
+ * 畫簽署欄（「立契約書人」以下）：另起一頁，依印列順序每個席位三行（兩行資料、一行簽章）。
+ * 排版順序被 pdf-layout.ts 的 signatureBlockLayout() 重走一遍以推出預設落點，改這裡要一起改。
+ * 租賃合約與委託管理合約共用，差別只在當事人兩行的內容（`linesOf` 回傳）。
+ */
+export function drawSignatureBlock(w: Writer, seats: readonly SeatView[], linesOf: (seat: SeatView) => [string, string]): void {
+  w.addPage();
+  w.y -= SIGN_BLOCK_TOP_GAP;
+  w.text('立契約書人', SIGN_HEADING_SIZE, { gapAfter: SIGN_HEADING_GAP_AFTER });
+  for (const seat of seats) {
+    for (const line of linesOf(seat)) {
+      w.text(line, BODY_SIZE, { gapAfter: SIGN_ROW_GAP_AFTER });
+    }
+    w.text('簽章：', BODY_SIZE, { gapAfter: SIGN_STAMP_BLANK });
+  }
+  w.text(`中華民國　簽約日期以電子簽署完成日為準`, BODY_SIZE);
+}
+
+/**
  * 一個簽署欄「簽章：」之前的兩行資料。
  * 當事人印稱謂、姓名與 Email。執業人員印姓名與法定稱謂、執業主體，不印證號（ADR-0018 決議 14）。
  * 執業人員尚未指派時姓名與執業主體留底線。已指派時印登錄的姓名、法定稱謂與執業主體（MIL-69）。
@@ -200,12 +240,7 @@ function signatureBlockLines(
   if (seat.role === 'party_b') {
     return [`${seat.fullLabel}：${blank(fields.tenantName)}`, `Email：${blank(fields.tenantEmail)}`];
   }
-  const titleText = practitioner?.title ?? seat.practitionerTitle;
-  const title = titleText ? `（${titleText}）` : '';
-  return [
-    `${SIGNER_ROLE_LABELS.practitioner}：${blank(practitioner?.name)}${title}`,
-    `執業主體：${blank(practitioner?.entityName)}`,
-  ];
+  return practitionerBlockLines(seat, practitioner);
 }
 
 /**
@@ -215,10 +250,7 @@ export async function generateContractPdf(
   fields: LeaseContractFields,
   practitioners: Readonly<Record<string, PrintedPractitioner>> = {}
 ): Promise<Uint8Array> {
-  const doc = await PDFDocument.create();
-  doc.registerFontkit(fontkit);
-  const font = await doc.embedFont(loadFontBytes(), { subset: false });
-  const w = new Writer(doc, font);
+  const w = await createPdfWriter();
 
   w.center('房屋租賃契約書', 20, 10);
   w.text(
@@ -240,16 +272,7 @@ export async function generateContractPdf(
   // 實際簽名位置由房東在簽署區域編輯器拖放決定（見 docs/adr/0004）。
   // 這段的排版順序被 pdf-layout.ts 的 signatureBlockLayout() 重走一遍以推出預設落點，改這裡要一起改。
   // 一律另起一頁：選用條款勾幾條會改變條款區長度，簽署欄若跟著浮動，預設落點就對不上了。
-  w.addPage();
-  w.y -= SIGN_BLOCK_TOP_GAP;
-  w.text('立契約書人', SIGN_HEADING_SIZE, { gapAfter: SIGN_HEADING_GAP_AFTER });
-  for (const seat of printedSeats(fields)) {
-    for (const line of signatureBlockLines(seat, fields, practitioners[seat.ruleId])) {
-      w.text(line, BODY_SIZE, { gapAfter: SIGN_ROW_GAP_AFTER });
-    }
-    w.text('簽章：', BODY_SIZE, { gapAfter: SIGN_STAMP_BLANK });
-  }
-  w.text(`中華民國　簽約日期以電子簽署完成日為準`, BODY_SIZE);
+  drawSignatureBlock(w, printedSeats(fields), (seat) => signatureBlockLines(seat, fields, practitioners[seat.ruleId]));
 
   // 設備附件頁排在簽署欄之後（內政部慣例：附件在本文與簽章之後），所以附件多長都不影響簽名框落點；
   // 沒有設備附件列就不產這一頁（主約條文同步寫「本房屋無附屬設備」）。
@@ -257,7 +280,7 @@ export async function generateContractPdf(
   const annex = usesEquipmentAnnex(fields) ? contractEquipmentAnnex(fields) : [];
   if (annex.length > 0) drawEquipmentAnnex(w, annex);
 
-  return doc.save();
+  return w.doc.save();
 }
 
 export const PDF_PAGE_SIZE = { width: PAGE_W, height: PAGE_H };

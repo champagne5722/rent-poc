@@ -72,6 +72,10 @@ describe('既有合約讀入', () => {
           mandataryName: '北辰管理',
           mandataryEmail: 'manager@example.com',
           extra: '',
+          termStart: '',
+          termEnd: '',
+          feeMode: null,
+          feeValue: null,
         },
       }),
     );

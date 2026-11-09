@@ -119,3 +119,46 @@ describe('evaluateRouting（分流條件換成畫面用的簽署序列）', () =
     expect(result.ok).toBe(false);
   });
 });
+
+describe('委託管理合約的席位（MIL-74）', () => {
+  it('沒有分流條件時是代管，序列為甲方、執業人員、乙方，稱謂用委託人與受託人', () => {
+    const result = evaluateRouting(undefined, 'management');
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.seats.map((s) => s.role)).toEqual(['party_a', 'practitioner', 'party_b']);
+    expect(result.seats.map((s) => s.fullLabel)).toEqual([
+      '甲方（委託人）',
+      '執業人員（租賃住宅管理人員）',
+      '乙方（受託人）',
+    ]);
+    expect(result.seats.map((s) => s.label)).toEqual(['甲方', '執業人員（租賃住宅管理人員）', '乙方']);
+  });
+
+  it('印列順序是甲方、乙方、執業人員', () => {
+    const result = evaluateRouting(undefined, 'management');
+    if (!result.ok) throw new Error(result.reason);
+    expect(printOrder(result.seats).map((s) => s.fullLabel)).toEqual([
+      '甲方（委託人）',
+      '乙方（受託人）',
+      '執業人員（租賃住宅管理人員）',
+    ]);
+  });
+
+  it('租賃合約沒有帶類型時稱謂不變', () => {
+    const result = evaluateRouting(undefined);
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.seats.map((s) => s.fullLabel)).toEqual(['乙方（承租人）', '甲方（出租人）']);
+  });
+
+  it('委託管理合約的分流條件形狀檢查', () => {
+    expect(routingInputError(undefined, 'management')).toBeNull();
+    expect(routingInputError('x', 'management')).toContain('分流條件');
+  });
+
+  it('委託管理合約只存在於代管，其他業務類型被擋下並說明', () => {
+    const result = evaluateRouting(
+      { businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: false },
+      'management',
+    );
+    expect(result).toEqual({ ok: false, reason: expect.stringContaining('委託管理合約') });
+  });
+});

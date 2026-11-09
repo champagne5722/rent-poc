@@ -23,9 +23,14 @@ describe('範本依合約類型查詢', () => {
     expect(optionalClausesFor('lease')).toBe(OPTIONAL_CLAUSES);
   });
 
-  it('委託管理合約在 MIL-74 之前沒有範本也沒有選用條款，不退回租賃範本', () => {
-    expect(templatesFor('management')).toEqual([]);
-    expect(currentTemplate('management')).toBeNull();
+  it('委託管理合約的範本是委託管理契約 v1，簡化示意條文，沒有選用條款', () => {
+    expect(currentTemplate('management')).toMatchObject({
+      id: 'management-agreement',
+      name: '委託管理契約',
+      version: 1,
+      legalReviewed: false,
+    });
+    expect(templatesFor('management')).toHaveLength(1);
     expect(optionalClausesFor('management')).toEqual([]);
   });
 });

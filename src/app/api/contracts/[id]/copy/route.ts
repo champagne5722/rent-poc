@@ -4,6 +4,7 @@ import { attachContract } from '@/lib/case-store';
 import { copyContractAsDraft, getContract, getContractCaseId } from '@/lib/contracts';
 import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/contracts/route';
 import { jsonOk } from '@/lib/http';
+import { copyMandateItems } from '@/lib/mandate-schedule/repository';
 import { inOrgTxAs } from '@/lib/org-route';
 import { copyAssignments } from '@/lib/practitioner-assignment/repository';
 
@@ -25,6 +26,8 @@ export async function POST(_request: NextRequest, { params }: ContractRouteCtx) 
         await attachContract(tx, caseId, newId, { actor: { partyId: rc.partyId }, derivedFrom });
       }
     }
+    // 委託標的清單（委託管理合約）也沿用。租賃合約沒有清單，複製是空操作
+    if (newId) await copyMandateItems(tx, id, newId);
     return newId ? jsonOk({ data: { id: newId } }, { status: 201 }) : contractNotFound();
   });
 }
