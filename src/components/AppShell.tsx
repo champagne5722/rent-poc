@@ -9,6 +9,7 @@ import {
   PlusOutlined,
   BgColorsOutlined,
   SwapOutlined,
+  ProfileOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -19,6 +20,7 @@ import { NAV_ITEMS, CREATE_CONTRACT_HREF, resolveNavKey, resolvePageTitle, shell
 const NAV_ICONS: Record<NavKey, React.ReactNode> = {
   workbench: <DashboardOutlined />,
   properties: <HomeOutlined />,
+  cases: <ProfileOutlined />,
   contracts: <FileTextOutlined />,
   handovers: <SwapOutlined />,
   design: <BgColorsOutlined />,
