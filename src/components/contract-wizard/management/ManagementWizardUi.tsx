@@ -39,7 +39,7 @@ function ManagementPropertyStep() {
 
 const FEE_UNIT: Record<ManagementFeeMode, string> = { monthly_fixed: '元', rent_percentage: '%' };
 
-/** 第②步：當事人、受託人的執業主體與專任管理人員（共用指派區）、委託期間、報酬約定、其他約定與委託標的清單。 */
+/** 第②步：當事人、受託人的執業主體與專任管理人員（共用指派區）、委託期間、報酬約定與委託標的清單。 */
 function ManagementFieldsStep({
   form,
   labels,
