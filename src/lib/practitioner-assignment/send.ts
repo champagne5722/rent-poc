@@ -3,8 +3,9 @@
 
 import type Database from 'better-sqlite3';
 import { getDb } from '../db';
+import type { PdfPageMap } from '../pdf-layout';
 import type { PracticeRegistryResolution } from '../practice-registry';
-import type { SendBlockReason, SendNotice } from '../send-preconditions';
+import { checkStatusAnnexSignatureFields, type SendBlockReason, type SendNotice } from '../send-preconditions';
 import { templateReviewBlock } from '../template-review';
 import { loadContractRoutingFacts } from '../signature-routing/repository';
 import { prepareContractSigners } from '../signing';
@@ -31,6 +32,14 @@ export type PreparedContractSend =
     }
   | { ok: false; status: 400; error: string; reasons: SendBlockReason[] };
 
+export interface PrepareContractSendOptions {
+  /**
+   * PDF 的頁面地圖（statusAnnexPageMap 算出）。有帶時檢查規則列要求的現況確認附件頁簽署區域（MIL-71），
+   * 缺少時原因併入原因清單。沒有帶時不檢查這一項：只有呼叫端知道附件頁在哪一頁，送簽 route 一律要帶。
+   */
+  pages?: PdfPageMap;
+}
+
 /**
  * @param at 判定時點，ISO 8601。送簽當下由呼叫端傳入，不在這裡讀系統時間。
  */
@@ -39,6 +48,7 @@ export async function prepareContractSend(
   resolution: PracticeRegistryResolution,
   at: string,
   db: Database.Database = getDb(),
+  options: PrepareContractSendOptions = {},
 ): Promise<PreparedContractSend> {
   const routing = await loadContractRoutingFacts(contract.id, db);
   if (!routing.ok) return { ok: false, status: 400, error: routing.reason, reasons: [] };
@@ -50,8 +60,16 @@ export async function prepareContractSend(
   );
   // 未審閱範本的閘門（P0-10 AC5）：正式金鑰下擋下，與送簽前檢查的原因一起列出
   const templateBlock = templateReviewBlock(contract.contract_type, contract.fields, process.env);
-  if (!evaluation.ok || templateBlock) {
-    const reasons: SendBlockReason[] = [...(evaluation.ok ? [] : evaluation.reasons), ...(templateBlock ? [templateBlock] : [])];
+  // 現況確認附件頁的簽署區域（MIL-71）：規則列要求的席位在附件頁沒有簽名框時擋下
+  const annexReasons = options.pages
+    ? checkStatusAnnexSignatureFields(routing.facts, contract.signature_fields, options.pages)
+    : [];
+  if (!evaluation.ok || templateBlock || annexReasons.length > 0) {
+    const reasons: SendBlockReason[] = [
+      ...(evaluation.ok ? [] : evaluation.reasons),
+      ...(templateBlock ? [templateBlock] : []),
+      ...annexReasons,
+    ];
     return { ok: false, status: 400, error: `無法送簽：${reasons.map((r) => r.message).join('。')}`, reasons };
   }
 

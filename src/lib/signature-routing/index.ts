@@ -26,6 +26,8 @@ export {
 } from './seats';
 export {
   countFieldsBySeat,
+  missingStatusAnnexSeats,
+  seatViewsMissingStatusAnnex,
   reconcileSignatureFields,
   seatOfField,
   type ReconcileResult,

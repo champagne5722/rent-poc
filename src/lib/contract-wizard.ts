@@ -12,6 +12,8 @@ import {
   type EditableFieldValues,
 } from './contract-types';
 import type { MandateItem } from './mandate-schedule';
+import type { PdfPageMap } from './pdf-layout';
+import { statusAnnexSignatureMissingMessage } from './status-annex';
 import { buildSigningSteps } from './signing-steps';
 import { entityPartyRoles, partyRoleOfEntitySource, type PractitionerAssignmentInput } from './practitioner-assignment/seats';
 import {
@@ -19,6 +21,7 @@ import {
   evaluateRouting,
   hasPractitionerSeat,
   reconcileSignatureFields,
+  seatViewsMissingStatusAnnex,
   type MergedSeats,
   type SeatView,
 } from './signature-routing';
@@ -63,6 +66,11 @@ export interface WizardState {
   assignments?: readonly PractitionerAssignmentInput[];
   /** 委託標的清單（MIL-74）。委託管理合約的清單存在子表，沒有載入（undefined）時不檢查。 */
   mandateItems?: readonly MandateItem[];
+  /**
+   * PDF 的頁面地圖，由簽署區編輯器讀預覽 PDF 後回報（MIL-71）。有附件頁時，第③步檢查規則列要求的席位在附件頁有簽名框。
+   * 沒有帶（還沒開過編輯器）時 wizard 不判斷，由伺服器的送簽前檢查擋下。
+   */
+  pages?: PdfPageMap;
 }
 
 function attachmentsOf(state: WizardState): ContractAttachments {
@@ -106,12 +114,17 @@ function signatureBlockReason(
   fields: ContractFields,
   signatureFields: SignatureField[],
   contractType: ContractType,
+  pages?: PdfPageMap,
 ): string | null {
   const evaluation = evaluateRouting(fields.routing, contractType);
   if (!evaluation.ok) return evaluation.reason;
   const counts = countFieldsBySeat(signatureFields, evaluation.seats);
   const missing = counts.filter((c) => c.count === 0);
-  if (missing.length === 0) return null;
+  if (missing.length === 0) {
+    // 每個席位都有框之後，再看規則列要求在現況確認附件頁簽章的席位（MIL-71）
+    const annexMissing = pages ? seatViewsMissingStatusAnnex(evaluation.seats, signatureFields, pages.statusAnnexPage) : [];
+    return annexMissing.length > 0 ? statusAnnexSignatureMissingMessage(annexMissing.map((s) => s.fullLabel).join('、')) : null;
+  }
   if (isPartiesOnly(evaluation.seats)) {
     const count = (role: ContractPartyRole) => counts.find((c) => c.seat.role === role)?.count ?? 0;
     return `請為甲乙雙方各設定至少一個簽名框（目前甲方 ${count('party_a')} 個、乙方 ${count('party_b')} 個）`;
@@ -165,7 +178,7 @@ export function nextStepBlockReason(stepIndex: number, state: WizardState): stri
   if (stepIndex === STEP_FIELDS) {
     return fieldsBlockReason(contractType, state.fields, state.assignments, attachmentsOf(state));
   }
-  if (stepIndex === STEP_SIGNATURE) return signatureBlockReason(state.fields, state.signatureFields, contractType);
+  if (stepIndex === STEP_SIGNATURE) return signatureBlockReason(state.fields, state.signatureFields, contractType, state.pages);
   return null;
 }
 
@@ -211,7 +224,7 @@ export function sendBlockReasons(state: WizardState): string[] {
     reasons.push(evaluation.reason);
     return reasons;
   }
-  const signatureReason = signatureBlockReason(state.fields, state.signatureFields, contractType);
+  const signatureReason = signatureBlockReason(state.fields, state.signatureFields, contractType, state.pages);
   if (signatureReason) reasons.push(signatureReason);
   reasons.push(...assignmentReasons(state.fields, state.assignments ?? [], contractType));
   return reasons;

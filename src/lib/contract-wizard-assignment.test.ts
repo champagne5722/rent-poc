@@ -7,9 +7,15 @@ import {
   sendBlockReasons,
 } from './contract-wizard';
 import type { PractitionerAssignmentInput } from './practitioner-assignment/seats';
+import { defaultStatusAnnex } from './status-annex';
 import type { LeaseContractFields, ContractRoutingConditions, SignatureField } from './types';
 
 // 建約 wizard 的執業人員指派（MIL-69）：指派影響擋下一步、送簽前原因與簽署欄資料。
+
+const FILLED_STATUS_ANNEX = (() => {
+  const annex = defaultStatusAnnex();
+  return { ...annex, rows: annex.rows.map((r) => ({ ...r, status: 'normal' as const })) };
+})();
 
 function fields(routing?: ContractRoutingConditions, patch: Partial<LeaseContractFields> = {}): LeaseContractFields {
   return {
@@ -23,6 +29,8 @@ function fields(routing?: ContractRoutingConditions, patch: Partial<LeaseContrac
     propertyType: '整層住家',
     propertySize: 25,
     equipmentAnnex: [],
+    // 包租租賃合約必附現況確認附件（MIL-71）。夾具給填完的附件，這個檔案測的是指派與簽署區
+    statusAnnex: FILLED_STATUS_ANNEX,
     rent: 28000,
     deposit: 56000,
     startDate: '2026-09-01',

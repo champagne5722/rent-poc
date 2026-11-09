@@ -4,6 +4,7 @@
 import { bindTemplate, upgradedTemplateBinding } from '../clause-library';
 import { contractEquipmentAnnex, toEquipmentAnnex } from '../equipment';
 import { TERMS, partyLabels } from '../labels';
+import { statusAnnexIssues, statusAnnexRequired } from '../status-annex';
 import { OPTIONAL_CLAUSE_LIBRARIES, TEMPLATES } from '../template-registry';
 import type { ContractPartyRole, ContractTemplate, LeaseContractFields, OptionalClause } from '../types';
 import type { ContractListSummary, ContractTypeDefinition, InitialFieldsInput, LeasePartyFields, PartyIdentity } from './types';
@@ -36,7 +37,12 @@ export function leaseMissingFields(fields: LeaseContractFields): string[] {
   else if (fields.startDate && fields.endDate < fields.startDate) {
     missing.push('租期迄日（不得早於起日）');
   }
-  return missing;
+  return [...missing, ...statusAnnexMissing(fields)];
+}
+
+/** 包租租賃合約必附現況確認附件（MIL-71），附件沒填完時列入缺漏。其他組合不檢查。 */
+function statusAnnexMissing(fields: LeaseContractFields): string[] {
+  return statusAnnexRequired(fields.routing, 'lease') ? statusAnnexIssues(fields.statusAnnex) : [];
 }
 
 /** 送簽前伺服器端的必填欄位檢核。標籤與 wizard 的檢核不同，維持原本的回應文字。 */
@@ -48,7 +54,7 @@ export function leaseMissingFieldsForSend(f: LeaseContractFields): string[] {
   if (!EMAIL_PATTERN.test(f.tenantEmail)) missing.push('乙方 Email');
   if (!f.startDate || !f.endDate) missing.push('租期起迄');
   if (f.rent == null) missing.push('租金');
-  return missing;
+  return [...missing, ...statusAnnexMissing(f)];
 }
 
 export const leaseDefinition: ContractTypeDefinition<LeaseContractFields> = {

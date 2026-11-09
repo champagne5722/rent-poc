@@ -4,6 +4,7 @@
 
 import type { ContractType, PartyLabels } from '../labels';
 import type { MandateItem } from '../mandate-schedule';
+import type { StatusAnnex } from '../status-annex';
 import type {
   ContractFields,
   ContractPartyRole,
@@ -46,6 +47,11 @@ export interface ContractListSummary {
  */
 export interface ContractAttachments {
   mandateItems?: readonly MandateItem[];
+  /**
+   * 要印進 PDF 的現況確認附件（MIL-71）。內容存在租賃合約的欄位，不在子表，
+   * 但要不要印取決於合約狀態與分流條件（statusAnnexOf），所以由呼叫端算好傳入。null 代表不印。
+   */
+  statusAnnex?: StatusAnnex | null;
 }
 
 export interface InitialFieldsInput {

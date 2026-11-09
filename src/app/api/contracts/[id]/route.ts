@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { deleteContractWithEvents, getContract, getContractRelations, getDb } from '@/lib/db';
 import { contractSubject, signing } from '@/lib/signing-module';
 import { routingInputError } from '@/lib/signature-routing';
+import { statusAnnexInputError } from '@/lib/status-annex';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -29,6 +30,9 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
   const body = await request.json();
   const routingError = routingInputError(body.fields?.routing, contract.contract_type);
   if (routingError) return Response.json({ error: routingError }, { status: 400 });
+  // 現況確認附件隨草稿保存（MIL-71）。只檢查形狀，填沒填完由送簽前的必填檢核擋
+  const annexError = statusAnnexInputError(body.fields?.statusAnnex);
+  if (annexError) return Response.json({ error: annexError }, { status: 400 });
   const fields = { ...contract.fields, ...(body.fields ?? {}) };
   const signatureFields = body.signature_fields ?? contract.signature_fields;
   getDb()
