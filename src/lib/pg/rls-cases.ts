@@ -321,6 +321,113 @@ export function tablesWithoutCase(tables: readonly string[]): string[] {
   return tables.filter((t) => !(t in ORG_TABLE_CASES));
 }
 
+// ---------------------------------------------------------------------------
+// registry 的表與函式（MIL-143 加）
+//
+// registry 不掛組織 RLS（ADR-0012 決議 8），隔離靠兩件事：
+//   1. app_rw 對 registry 的表沒有任何直接權限，只能呼叫 SECURITY DEFINER 函式。
+//   2. 函式只回呼叫者組織有物件指向的錨點與單位，別的組織的 ID 與不存在的 ID 得到完全相同的結果。
+// rls-penetration.test.ts 從系統目錄列出 registry 所有表與 app_rw 能執行的函式，缺登記就失敗。
+
+/** registry 的每張表都必須登記。測試對每張表驗證 app_rw 的 SELECT、INSERT、UPDATE、DELETE 都被拒。 */
+export const REGISTRY_TABLE_CASES: Record<string, { purpose: string }> = {
+  'registry.anchors': { purpose: '產權錨點' },
+  'registry.rental_units': { purpose: '租賃單位' },
+  'registry.areas': { purpose: '縣市與鄉鎮市區編碼表（參照）' },
+  'registry.sections': { purpose: '段碼表（參照）' },
+  // C 線（MIL-106、109）：執業主體登錄與審核台
+  'registry.practice_entities': { purpose: '執業主體，統編全域唯一' },
+  'registry.practice_licenses': { purpose: '業別與驗證三態的業別層' },
+  'registry.review_items': { purpose: '審核台佇列' },
+  'registry.credential_checks': { purpose: '核對紀錄，只增不改' },
+};
+
+/** 一個 registry 函式的跨組織探測。被探測的 ID 由測試提供：A 組織建好的物件，與隨機產生的不存在 ID。 */
+export interface RegistryFunctionCase {
+  /**
+   * 以 B 組織的脈絡呼叫函式，目標是 `target`（A 組織的物件，或不存在的隨機 ID）。
+   * 回傳值或丟出的錯誤必須與目標的歸屬無關：兩種目標得到的結果必須逐位元相同。
+   * 函式沒有接收別人能猜的 ID 時填 null，並在 reason 說明。
+   */
+  probe: ((tx: OrgTx, target: { anchorId: string; unitId: string }) => Promise<unknown>) | null;
+  reason: string;
+}
+
+/** app_rw 能執行的每個 registry 函式都必須登記。 */
+export const REGISTRY_FUNCTION_CASES: Record<string, RegistryFunctionCase> = {
+  'registry.create_pending_anchor': {
+    probe: null,
+    reason: '呼叫端自己給新 ID，只建不讀，沒有可探測的目標',
+  },
+  'registry.assign_anchor_key': {
+    probe: (tx, { anchorId }) =>
+      tx.query('SELECT registry.assign_anchor_key($1, $2, $3, $4, $5, NULL)', [anchorId, 'A', '01', '0001', '1']),
+    reason: '以錨點 ID 補建號',
+  },
+  'registry.get_anchors_for_units': {
+    probe: async (tx, { unitId }) =>
+      (await tx.query('SELECT * FROM registry.get_anchors_for_units($1::text[])', [[unitId]])).rows,
+    reason: '以單位 ID 讀錨點',
+  },
+  // MIL-145
+  'registry.create_sublet_unit': {
+    probe: (tx, { unitId }) => tx.query('SELECT * FROM registry.create_sublet_unit($1, $2, $3, NULL)', [unitId, newUlid(), '301']),
+    reason: '以來源單位 ID 在同一錨點下新增分租單位，來源不是呼叫者組織的就失敗',
+  },
+  'registry.get_unit_details': {
+    probe: async (tx, { unitId }) => (await tx.query('SELECT * FROM registry.get_unit_details($1::text[])', [[unitId]])).rows,
+    reason: '以單位 ID 讀單位資料與顯示編碼要用的編碼',
+  },
+  'registry.get_sibling_units': {
+    probe: async (tx, { unitId }) => (await tx.query('SELECT * FROM registry.get_sibling_units($1)', [unitId])).rows,
+    reason: '以單位 ID 讀同一錨點下呼叫者組織的單位',
+  },
+  // C 線（MIL-106、109）：執業主體登錄與審核台。隔離不靠「別人的 ID 與不存在的 ID 同一回應」，
+  // 而靠脈絡：組織端函式只看 app.org_id，營運者端函式先呼叫 assert_operator()。案例在 desk.route.test.ts 與 practice 相關測試。
+  'registry.claim_practice_entity': {
+    probe: null,
+    reason: '呼叫端給新 ID，且 p_org_id 必須等於目前的 app.org_id，沒有可探測的別人 ID（MIL-106）',
+  },
+  'registry.my_registration': {
+    probe: null,
+    reason: '沒有參數，只回目前 app.org_id 的登錄進度（MIL-109）',
+  },
+  'registry.submit_license': {
+    probe: null,
+    reason: '寫入目前 app.org_id 自己的執業主體，不接收別組織的主體 ID（MIL-109）',
+  },
+  'registry.lookup_practice_entities': {
+    probe: null,
+    reason: '批次查詢設計上任何組織成員都能查，只回名稱、稱謂與驗證狀態（MIL-94、109）',
+  },
+  'registry.review_queue': {
+    probe: null,
+    reason: '營運者專用，先呼叫 assert_operator()，組織脈絡呼叫會被拒（MIL-109）',
+  },
+  'registry.review_item_detail': {
+    probe: null,
+    reason: '營運者專用，先呼叫 assert_operator()（MIL-109）',
+  },
+  'registry.record_license_check': {
+    probe: null,
+    reason: '營運者專用，先呼叫 assert_operator()（MIL-109）',
+  },
+  'registry.resolve_entity_claim': {
+    probe: null,
+    reason: '營運者專用，先呼叫 assert_operator()（MIL-106、109）',
+  },
+};
+
+/** 傳入系統目錄列出的 registry 表名（schema.table），回傳沒有登記案例的表。 */
+export function registryTablesWithoutCase(tables: readonly string[]): string[] {
+  return tables.filter((t) => !(t in REGISTRY_TABLE_CASES));
+}
+
+/** 傳入系統目錄列出的 registry 函式名（schema.name），回傳沒有登記案例的函式。 */
+export function registryFunctionsWithoutCase(functions: readonly string[]): string[] {
+  return functions.filter((f) => !(f in REGISTRY_FUNCTION_CASES));
+}
+
 // control schema 的表不掛組織 RLS，也不需要滲透案例（ADR-0012 決議 3）。
 // 取而代之的是這份例外清單：每張 control 表必須登記「為什麼不掛 RLS」，並寫明 app_rw 的直接 DML 權限。
 // 不在清單內的 control 表讓 rls-penetration.test.ts 失敗，權限與清單不符也會失敗。
@@ -404,6 +511,8 @@ export interface DefinerOnlyTable {
 export const DEFINER_ONLY_TABLES: Record<string, DefinerOnlyTable> = {
   'registry.anchors': { reason: '產權錨點，全域一份。經 registry.create_pending_anchor 等函式存取（MIL-81）' },
   'registry.rental_units': { reason: '租賃單位，全域一份。經 registry.create_pending_anchor 等函式存取（MIL-81）' },
+  'registry.areas': { reason: '縣市與鄉鎮市區編碼表（參照）。執行期不讀，seed 檔由 migration 載入（MIL-143）' },
+  'registry.sections': { reason: '段碼表（參照）。執行期不讀，seed 檔由 migration 載入（MIL-143）' },
   'registry.practice_entities': {
     reason: '執業主體，統編全域唯一。經 claim_practice_entity、my_registration、submit_license、review_item_detail、lookup_practice_entities 存取（MIL-106、109）',
   },

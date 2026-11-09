@@ -22,6 +22,7 @@ import {
   RollbackOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
+import { DisplayCode, useDisplayCodes } from '@/components/DisplayCode';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { Contract, ContractStatus } from '@/lib/types';
 import { shortUlid } from '@/lib/pg/ulid';
@@ -98,6 +99,8 @@ function ContractList() {
   const [status, setStatus] = useState<ContractStatus | 'all'>('all');
   const [propertyName, setPropertyName] = useState<string | null>(null);
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null);
+  // 物件的顯示編碼（MIL-145）。合約只存物件 ID，編碼從物件清單對照
+  const displayCodes = useDisplayCodes();
 
   useEffect(() => {
     fetchContracts().then((data) => {
@@ -245,6 +248,12 @@ function ContractList() {
             ),
           },
           { title: '物件', render: (_, r) => listPropertyLabel(r) },
+          {
+            title: '顯示編碼',
+            width: 130,
+            render: (_, r) =>
+              r.property_id && displayCodes.has(r.property_id) ? <DisplayCode code={displayCodes.get(r.property_id)} /> : '—',
+          },
           { title: partyB.title, render: (_, r) => partyB.cell(r) },
           { title: '租金', width: 100, render: (_, r) => listRentLabel(r) },
           { title: '租期', width: 210, render: (_, r) => listPeriodLabel(r) },

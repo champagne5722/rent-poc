@@ -1,6 +1,7 @@
 import { parseEquipmentPayload } from '@/lib/equipment';
 import type { EquipmentItem, PropertyType } from '@/lib/types';
 import { PROPERTY_TYPES } from '@/lib/types';
+import { parseAnchorInput, type AnchorInput } from './anchor';
 
 // 物件的請求本文驗證。純函式，建立與修改共用同一份規則。
 
@@ -13,6 +14,11 @@ export interface PropertyInput {
   default_rent: number | null;
   note: string;
   equipment: EquipmentItem[];
+  /**
+   * 建立時的產權輸入（MIL-143）：鍵（已正規化）與座標。沒給等於暫無建號、沒有座標。
+   * 只有建立用得到。修改物件不改產權：補建號走自己的 route，已建號的鍵由平台營運者更正。
+   */
+  anchor?: AnchorInput;
 }
 
 // default_rent 欄位是 PostgreSQL integer，超過上限會變成 500，所以在這裡擋
@@ -24,7 +30,7 @@ const fail = (error: string): PropertyInputResult => ({ ok: false, error });
 
 export function parsePropertyInput(body: unknown): PropertyInputResult {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) return fail('請求內容格式有誤');
-  const { name, address, type, size, default_rent, note, equipment } = body as Record<string, unknown>;
+  const { name, address, type, size, default_rent, note, equipment, anchor } = body as Record<string, unknown>;
 
   if (typeof name !== 'string' || !name.trim() || typeof address !== 'string' || !address.trim()) {
     return fail('名稱與地址為必填');
@@ -45,6 +51,8 @@ export function parsePropertyInput(body: unknown): PropertyInputResult {
     return fail('預設租金需為不小於 0 的整數');
   }
   if (note != null && typeof note !== 'string') return fail('備註需為文字');
+  const parsedAnchor = parseAnchorInput(anchor);
+  if (!parsedAnchor.ok) return fail(parsedAnchor.error);
 
   return {
     ok: true,
@@ -56,6 +64,7 @@ export function parsePropertyInput(body: unknown): PropertyInputResult {
       default_rent: (default_rent as number | null | undefined) ?? null,
       note: (note as string | null | undefined) ?? '',
       equipment: items,
+      anchor: parsedAnchor.value,
     },
   };
 }

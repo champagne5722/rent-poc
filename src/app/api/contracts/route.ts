@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
     await authorize(tx, 'contract.draft_send', { type: 'org' });
     const property = await getProperty(tx, propertyId);
     if (!property) return jsonError(400, '請指定有效的物件');
+    if (property.archived_at) return jsonError(409, '物件已封存，不能建立合約');
     const routingError = routingInputError(routing, type);
     if (routingError) return jsonError(400, routingError);
 

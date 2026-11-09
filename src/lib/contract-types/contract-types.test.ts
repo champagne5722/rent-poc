@@ -17,6 +17,9 @@ import {
 const PROPERTY: Property = {
   id: '01HZ0000000000000000000007',
   rental_unit_id: '01HZ0000000000000000000008',
+  unit: null,
+  archived_at: null,
+  anchor: null,
   name: '信義小宅',
   address: '台北市信義區松仁路 1 號',
   type: '套房',
