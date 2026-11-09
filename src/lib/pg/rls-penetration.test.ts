@@ -166,7 +166,7 @@ describe.each(Object.entries(ORG_TABLE_CASES))('%s 的跨組織探測', (table, 
     const id = await seedA();
     await expect(
       withTx({ kind: 'org', orgId: orgA }, (tx) => tx.query(`UPDATE ${table} SET org_id = $2 WHERE id = $1`, [id, orgB])),
-    ).rejects.toThrow(testCase.appendOnly ? /permission denied/ : /row-level security/);
+    ).rejects.toThrow(testCase.appendOnly ? /permission denied/ : (testCase.blockedUpdateMessage ?? /row-level security/));
   });
 
   it('在自己的脈絡寫入別的組織的 org_id，被 RLS 擋下', async () => {

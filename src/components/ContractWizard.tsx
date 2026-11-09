@@ -2,57 +2,26 @@
 
 // 建約 wizard（規格 §7）：四步分頁流程，草稿的編輯體驗一律在這裡。
 // 檢核與步驟推導的純邏輯在 src/lib/contract-wizard.ts，本檔只負責蒐集輸入、呼叫 API 與畫畫面。
+// 合約類型專屬的畫面（第①步物件與範本、第②步欄位、確認頁摘要）由 src/components/contract-wizard 依
+// 合約類型提供（MIL-73），本檔只管步驟、儲存、簽署區與送簽，不判斷合約類型。
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import {
-  Alert,
-  App as AntApp,
-  Button,
-  Card,
-  Checkbox,
-  Col,
-  DatePicker,
-  Descriptions,
-  Divider,
-  Flex,
-  Form,
-  Input,
-  InputNumber,
-  Row,
-  Select,
-  Space,
-  Spin,
-  Steps,
-  Table,
-  Tag,
-  Typography,
-} from 'antd';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, App as AntApp, Button, Card, Descriptions, Divider, Flex, Form, Row, Col, Space, Spin, Steps, Tag, Typography } from 'antd';
 import {
   CheckCircleTwoTone,
   CloseCircleTwoTone,
-  DeleteOutlined,
   LeftOutlined,
-  PlusOutlined,
   RightOutlined,
   SendOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import dayjs from 'dayjs';
-import type {
-  Contract,
-  ContractFields,
-  ContractRoutingConditions,
-  EquipmentAnnexRow,
-  EquipmentVocabularyItem,
-  SignatureField,
-} from '@/lib/types';
-import { REPAIR_RESPONSIBILITIES, REPAIR_RESPONSIBILITY_LABELS, SIGNER_ROLE_LABELS } from '@/lib/types';
-import { contractEquipmentAnnex, formatEquipmentItem, newAnnexRow } from '@/lib/equipment';
-import { depositWarning, type DepositWarning } from '@/lib/deposit-warning';
+import type { Contract, ContractFields, ContractRoutingConditions, SignatureField } from '@/lib/types';
+import { SIGNER_ROLE_LABELS } from '@/lib/types';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
 import RoutingConditionsPanel from '@/components/RoutingConditionsPanel';
 import PractitionerAssignmentPanel, { type PartySignerPick } from '@/components/PractitionerAssignmentPanel';
+import { wizardUiFor } from '@/components/contract-wizard';
 import type { PractitionerAssignmentInput, PrintedPractitioner } from '@/lib/practitioner-assignment/seats';
 import { entityPartyRoles } from '@/lib/practitioner-assignment/seats';
 import type { SeatOptions } from '@/lib/practitioner-assignment/service';
@@ -64,19 +33,9 @@ import {
   seatOfField,
   type SeatView,
 } from '@/lib/signature-routing';
-import {
-  DEFAULT_TEMPLATE,
-  OPTIONAL_CLAUSES,
-  clauseSnapshots,
-  reselectClauses,
-  selectedClauseIds,
-  templateLabel,
-  upgradeNotice,
-} from '@/lib/clause-library';
-import { extraClauseLabel, usesEquipmentAnnex } from '@/lib/contract-clauses';
-import { equipmentAnnexSummary } from '@/lib/contract-detail';
+import { contractTypeDefinition } from '@/lib/contract-types';
 import { shortUlid } from '@/lib/pg/ulid';
-import { TERMS, partyLabels } from '@/lib/labels';
+import type { PartyLabels } from '@/lib/labels';
 import {
   STEP_CONFIRM,
   STEP_FIELDS,
@@ -87,18 +46,17 @@ import {
   applyRoutingChange,
   checkSignatureFields,
   isPartiesOnly,
-  mergeEditableFields,
   nextStepBlockReason,
   pruneAssignments,
   resumeStepIndex,
   sendBlockReasons,
   signingSequenceNotice,
   stepStatuses,
-  upgradeDraftFields,
 } from '@/lib/contract-wizard';
 
-// 建約 wizard 目前只建租賃合約，甲乙方稱謂從標籤對照表取（MIL-122）。
-const LEASE_LABELS = partyLabels('lease');
+// `/contracts/new` 的第①步也用範本區，依合約類型取範本
+export { TemplateNotice } from '@/components/contract-wizard';
+
 
 /** 四步進度條；`/contracts/new` 的第①步也共用這一條。 */
 export function WizardStepsBar({
@@ -122,207 +80,6 @@ export function WizardStepsBar({
   );
 }
 
-/** 範本區：單範本時顯示為說明，不做選擇（ADR-0005）。 */
-export function TemplateNotice() {
-  return (
-    <Alert
-      type="info"
-      showIcon
-      message={`範本：${DEFAULT_TEMPLATE.name} v${DEFAULT_TEMPLATE.version}，${DEFAULT_TEMPLATE.provider}`}
-      description={`${DEFAULT_TEMPLATE.note}目前平台僅一份範本，系統自動選用。`}
-    />
-  );
-}
-
-/**
- * 選用條款勾選清單（規格 §12）：平台提供的條款逐約勾選，勾選當下就把條文快照進合約。
- * 勾選結果隨草稿保存（按「下一步」自動存），之後平台改版不動這份快照。
- */
-function OptionalClauseChecklist({
-  fields,
-  onChange,
-}: {
-  fields: ContractFields;
-  onChange: (clauses: ContractFields['clauses']) => void;
-}) {
-  const checked = selectedClauseIds(fields);
-  const toggle = (id: string, on: boolean) => {
-    onChange(reselectClauses(fields, on ? [...checked, id] : checked.filter((x) => x !== id)));
-  };
-  return (
-    <div style={{ marginTop: 12 }}>
-      <Typography.Text strong>選用條款（逐約勾選，併入合約條款區）</Typography.Text>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-        {OPTIONAL_CLAUSES.map((clause) => (
-          <Checkbox
-            key={clause.id}
-            checked={checked.includes(clause.id)}
-            onChange={(e) => toggle(clause.id, e.target.checked)}
-          >
-            <Typography.Text strong>{clause.title}</Typography.Text>
-            <Typography.Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>
-              {clause.body}
-            </Typography.Paragraph>
-          </Checkbox>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/**
- * 設備附件編輯表格（ADR-0008）：建約時由物件的設備清單帶入，之後逐約增刪列、改數量、
- * 切修繕責任、填備註，送簽時隨合約凍結為快照。可從設備詞彙庫加列。
- * 同名允許多列（例如同型冷氣分屬不同修繕責任），所以一律以列索引操作。
- */
-function EquipmentAnnexEditor({
-  rows,
-  onChange,
-}: {
-  rows: EquipmentAnnexRow[];
-  onChange: (rows: EquipmentAnnexRow[]) => void;
-}) {
-  const [vocabulary, setVocabulary] = useState<EquipmentVocabularyItem[]>([]);
-  const [picked, setPicked] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch('/api/equipment-vocabulary')
-      .then((r) => (r.ok ? r.json() : { data: [] }))
-      .then((j) => setVocabulary(j.data ?? []))
-      .catch(() => setVocabulary([]));
-  }, []);
-
-  const patch = (index: number, values: Partial<EquipmentAnnexRow>) =>
-    onChange(rows.map((row, i) => (i === index ? { ...row, ...values } : row)));
-
-  const addRow = () => {
-    if (!picked) return;
-    onChange([...rows, newAnnexRow(picked)]);
-    setPicked(null);
-  };
-
-  return (
-    <>
-      <Table<EquipmentAnnexRow>
-        size="small"
-        rowKey={(_, index) => String(index)}
-        dataSource={rows}
-        pagination={false}
-        style={{ marginTop: 8 }}
-        locale={{ emptyText: '沒有設備附件列，合約條文會寫「本房屋無附屬設備」' }}
-        columns={[
-          {
-            title: '項目',
-            render: (_, row, index) => (
-              <Input size="small" value={row.name} onChange={(e) => patch(index, { name: e.target.value })} />
-            ),
-          },
-          {
-            title: '數量',
-            width: 90,
-            render: (_, row, index) => (
-              <InputNumber
-                size="small"
-                min={1}
-                precision={0}
-                style={{ width: '100%' }}
-                value={row.quantity}
-                onChange={(v) => patch(index, { quantity: v ?? 1 })}
-              />
-            ),
-          },
-          {
-            title: '修繕責任',
-            width: 110,
-            render: (_, row, index) => (
-              <Select
-                size="small"
-                style={{ width: '100%' }}
-                value={row.repair}
-                onChange={(v) => patch(index, { repair: v })}
-                options={REPAIR_RESPONSIBILITIES.map((r) => ({
-                  value: r,
-                  label: REPAIR_RESPONSIBILITY_LABELS[r],
-                }))}
-              />
-            ),
-          },
-          {
-            title: '備註',
-            render: (_, row, index) => (
-              <Input
-                size="small"
-                placeholder="選填"
-                value={row.note}
-                onChange={(e) => patch(index, { note: e.target.value })}
-              />
-            ),
-          },
-          {
-            title: '',
-            width: 44,
-            render: (_, __, index) => (
-              <Button
-                size="small"
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={() => onChange(rows.filter((_, i) => i !== index))}
-              />
-            ),
-          },
-        ]}
-      />
-      <Space.Compact style={{ marginTop: 8, width: 320 }}>
-        <Select
-          size="small"
-          showSearch
-          style={{ width: '100%' }}
-          placeholder="從設備詞彙庫挑一項加列"
-          value={picked}
-          onChange={setPicked}
-          options={vocabulary.map((v) => ({ value: v.name, label: v.name }))}
-        />
-        <Button size="small" icon={<PlusOutlined />} disabled={!picked} onClick={addRow}>
-          加一列
-        </Button>
-      </Space.Compact>
-    </>
-  );
-}
-
-/** 升版提示（規格 §12）：草稿綁的範本或已勾條款有新版時提示可重建，按不按由房東決定。 */
-function TemplateUpgradeNotice({
-  fields,
-  onUpgrade,
-  disabled,
-}: {
-  fields: ContractFields;
-  onUpgrade: () => void;
-  disabled?: boolean;
-}) {
-  const notice = upgradeNotice(fields);
-  if (!notice.hasUpgrade) return null;
-  const parts = [
-    ...(notice.template ? [`範本 v${notice.template.from} → v${notice.template.to}`] : []),
-    ...notice.clauses.map((c) => `${c.title} v${c.from} → v${c.to}`),
-  ];
-  return (
-    <Alert
-      type="warning"
-      showIcon
-      style={{ marginTop: 12 }}
-      message="平台已有新版條文，可升版重建"
-      description={`${parts.join('、')}。這份草稿目前用的是建立當時的版本，升版會重新快照最新條文；不升版也能照樣送簽。`}
-      action={
-        <Button size="small" onClick={onUpgrade} disabled={disabled}>
-          升版重建
-        </Button>
-      }
-    />
-  );
-}
-
 function CheckLine({ ok, text }: { ok: boolean; text: string }) {
   return (
     <Space size={6}>
@@ -339,10 +96,12 @@ function CheckLine({ ok, text }: { ok: boolean; text: string }) {
 function SignatureChecklist({
   fields,
   signatureFields,
+  labels,
   withDetail,
 }: {
   fields: ContractFields;
   signatureFields: SignatureField[];
+  labels: PartyLabels;
   withDetail?: boolean;
 }) {
   const evaluation = evaluateRouting(fields.routing);
@@ -352,8 +111,8 @@ function SignatureChecklist({
   const check = checkSignatureFields(signatureFields);
   return (
     <Space orientation="vertical" size={4}>
-      <CheckLine ok={check.party_a > 0} text={`${LEASE_LABELS.partyAFull}簽名框 ${check.party_a} 個`} />
-      <CheckLine ok={check.party_b > 0} text={`${LEASE_LABELS.partyBFull}簽名框 ${check.party_b} 個`} />
+      <CheckLine ok={check.party_a > 0} text={`${labels.partyAFull}簽名框 ${check.party_a} 個`} />
+      <CheckLine ok={check.party_b > 0} text={`${labels.partyBFull}簽名框 ${check.party_b} 個`} />
       {withDetail && signatureFields.length > 0 && (
         <Space size={4} wrap style={{ marginTop: 4 }}>
           {signatureFields.map((f) => (
@@ -395,35 +154,12 @@ function SeatChecklist({
   );
 }
 
-function money(value: number | null | undefined): string {
-  return value == null ? '—' : `$${Number(value).toLocaleString()}`;
-}
-
-/** 押金超過 2 個月租金的警告（P0-10 規則 7）：只提醒，不擋下一步也不擋送簽。 */
-function DepositWarningAlert({ warning, style }: { warning: DepositWarning | null; style?: CSSProperties }) {
-  if (!warning) return null;
-  return <Alert type="warning" showIcon style={style} title="押金高於 2 個月租金" description={warning.message} />;
-}
-
 /** GET /api/contracts/[id]/practitioners 的回應。 */
 interface PractitionerData {
   options: SeatOptions;
   assignments: PractitionerAssignmentInput[];
   printed: Record<string, PrintedPractitioner>;
   evaluation: { ok: boolean; reasons: SendBlockReason[]; notices: SendNotice[] };
-}
-
-interface FormValues {
-  landlordName?: string;
-  landlordEmail?: string;
-  tenantName?: string;
-  tenantEmail?: string;
-  rent?: number | null;
-  deposit?: number | null;
-  startDate?: dayjs.Dayjs | null;
-  endDate?: dayjs.Dayjs | null;
-  payDay?: number | null;
-  extra?: string;
 }
 
 export default function ContractWizard({ id }: { id: string }) {
@@ -440,11 +176,10 @@ export default function ContractWizard({ id }: { id: string }) {
   // 執業人員的指派（MIL-69）。草稿中可能只選了一半，存檔時只送選完的
   const [assignments, setAssignments] = useState<PractitionerAssignmentInput[]>([]);
   const [practitionerData, setPractitionerData] = useState<PractitionerData | null>(null);
-  const [form] = Form.useForm<FormValues>();
+  const [form] = Form.useForm();
   const initialised = useRef(false);
-  // 欄位步驟邊填邊判斷：表單的值還沒併回 fields 快照前，警告要跟著輸入即時更新
-  const watchedRent = Form.useWatch('rent', form);
-  const watchedDeposit = Form.useWatch('deposit', form);
+  // 合約類型專屬的畫面（MIL-73）。沒有畫面的合約類型在載入後說明尚未支援
+  const ui = contract ? wizardUiFor(contract.contract_type) : null;
 
   // 指派選項、已存的指派與送簽前檢查的結果。選項與檢查依已存的草稿計算，所以存檔後要重讀
   const loadPractitioners = useCallback(
@@ -475,18 +210,8 @@ export default function ContractWizard({ id }: { id: string }) {
       // 中斷後續作：落在第一個還沒完成的步驟（規格 §7 草稿保全）
       setStep(resumeStepIndex(data));
       void loadPractitioners(true);
-      form.setFieldsValue({
-        landlordName: data.fields.landlordName,
-        landlordEmail: data.fields.landlordEmail,
-        tenantName: data.fields.tenantName,
-        tenantEmail: data.fields.tenantEmail,
-        rent: data.fields.rent,
-        deposit: data.fields.deposit,
-        startDate: data.fields.startDate ? dayjs(data.fields.startDate) : null,
-        endDate: data.fields.endDate ? dayjs(data.fields.endDate) : null,
-        payDay: data.fields.payDay,
-        extra: data.fields.extra,
-      });
+      const typeUi = wizardUiFor(data.contract_type);
+      if (typeUi) form.setFieldsValue(typeUi.formValuesOf(data.fields));
     })();
     return () => {
       cancelled = true;
@@ -497,14 +222,9 @@ export default function ContractWizard({ id }: { id: string }) {
   // 底稿一律取 fields 狀態而非載入當時的 contract.fields：不然在第①步改過的選用條款勾選，
   // 會在第②步按下一步時被載入當時的舊快照蓋掉。
   const readFields = useCallback((): ContractFields => {
-    if (!fields) throw new Error('合約尚未載入');
-    const v = form.getFieldsValue(true) as FormValues;
-    return mergeEditableFields(fields, {
-      ...v,
-      startDate: v.startDate ? v.startDate.format('YYYY-MM-DD') : '',
-      endDate: v.endDate ? v.endDate.format('YYYY-MM-DD') : '',
-    });
-  }, [fields, form]);
+    if (!fields || !ui) throw new Error('合約尚未載入');
+    return ui.mergeFormValues(fields, form.getFieldsValue(true));
+  }, [fields, form, ui]);
 
   // 每按「下一步」自動存草稿（規格 §7 五點基線第 5 點）
   const saveDraft = useCallback(
@@ -557,6 +277,21 @@ export default function ContractWizard({ id }: { id: string }) {
   }
   if (!contract || !fields) return <Spin style={{ display: 'block', margin: '64px auto' }} />;
 
+  if (!ui) {
+    return (
+      <Alert
+        type="warning"
+        showIcon
+        message="這個合約類型尚未支援建約流程"
+        action={
+          <Link href="/contracts">
+            <Button size="small">回合約列表</Button>
+          </Link>
+        }
+      />
+    );
+  }
+
   if (contract.status !== 'draft') {
     return (
       <Alert
@@ -576,7 +311,14 @@ export default function ContractWizard({ id }: { id: string }) {
   }
 
   // 指派還沒從伺服器讀回來之前不檢查指派，避免步驟列閃一下錯誤
-  const state = { fields, signatureFields: sigFields, assignments: practitionerData ? assignments : undefined };
+  const contractType = contract.contract_type;
+  const labels = contractTypeDefinition(contractType).labels;
+  const state = {
+    contractType,
+    fields,
+    signatureFields: sigFields,
+    assignments: practitionerData ? assignments : undefined,
+  };
   const routingEvaluation = evaluateRouting(fields.routing);
   const seats = routingEvaluation.ok ? routingEvaluation.seats : undefined;
   const partiesOnly = !seats || isPartiesOnly(seats);
@@ -586,15 +328,10 @@ export default function ContractWizard({ id }: { id: string }) {
   const sendReasons = partiesOnly ? [] : [...new Set([...sendBlockReasons(state), ...serverReasons])];
   const renewalNotices = practitionerData?.evaluation.notices ?? [];
   const lockedPartyRoles = routingEvaluation.ok ? entityPartyRoles(routingEvaluation.plan) : [];
-  const partyALocked = lockedPartyRoles.includes('party_a');
-  const partyBLocked = lockedPartyRoles.includes('party_b');
-
-  const fieldsStepDepositWarning = depositWarning(watchedRent, watchedDeposit);
-  const confirmDepositWarning = depositWarning(fields.rent, fields.deposit);
 
   const goNext = async () => {
     const nextFields = step === STEP_FIELDS ? readFields() : fields;
-    const blocked = nextStepBlockReason(step, { fields: nextFields, signatureFields: sigFields, assignments });
+    const blocked = nextStepBlockReason(step, { contractType, fields: nextFields, signatureFields: sigFields, assignments });
     if (blocked) {
       message.error(blocked);
       // 第②步同時觸發表單的欄位錯誤提示
@@ -606,18 +343,13 @@ export default function ContractWizard({ id }: { id: string }) {
     setStep(step + 1);
   };
 
-  // 勾選變動只改記憶體裡的草稿；跟其他欄位一樣按「下一步」時才一併存回
-  const changeClauses = (clauses: ContractFields['clauses']) => setFields({ ...fields, clauses });
+  // 合約類型畫面改欄位：先放記憶體，按「下一步」時隨草稿一起存
+  const changeFields = (next: ContractFields) => setFields(next);
 
-  // 設備附件同理：改完先放記憶體，按「下一步」時隨草稿一起存
-  const changeAnnex = (equipmentAnnex: EquipmentAnnexRow[]) => setFields({ ...fields, equipmentAnnex });
-
-  // 升版重建＝重新快照最新範本版本與已勾條款條文（v1→v2 一併把舊設備欄位轉成附件列），
-  // 並立刻存檔（房東按了才會動）
-  const upgradeTemplate = async () => {
-    const next = upgradeDraftFields(fields);
+  // 改欄位並立刻存檔（例如升版重建，出租人按了才會動）
+  const commitFields = async (next: ContractFields, successMessage: string) => {
     setFields(next);
-    if (await saveDraft(next, sigFields)) message.success('已升版重建，條文換成平台最新版本');
+    if (await saveDraft(next, sigFields)) message.success(successMessage);
   };
 
   // 第①步改分流條件：寫入 fields.routing，並依新的簽署序列整理簽署區域，按「下一步」時隨草稿存回
@@ -632,13 +364,32 @@ export default function ContractWizard({ id }: { id: string }) {
   // 選定當事人簽署人後，那一方的姓名與 Email 由簽署人帶入，不開放手填（ADR-0018 決議 2）
   const pickPartySigner = ({ role, signer }: PartySignerPick) => {
     const person = signer ?? { name: '', email: '' };
-    setFields((current) => (current ? applyPartySigner(current, role, person) : current));
-    form.setFieldsValue(
-      role === 'party_a'
-        ? { landlordName: person.name, landlordEmail: person.email }
-        : { tenantName: person.name, tenantEmail: person.email }
-    );
+    setFields((current) => (current ? applyPartySigner(current, role, person, contractType) : current));
+    form.setFieldsValue(ui.partyFormValues(role, person));
   };
+
+  // 執業人員指派區：簽署序列有執業人員席位時才有，放在第②步雙方資訊之後
+  const practitionerSlot = partiesOnly ? null : (
+              <>
+                <Divider />
+                <Flex vertical gap={12}>
+                  {lockedPartyRoles.length > 0 && (
+                    <Typography.Text type="secondary">
+                      {lockedPartyRoles.map((role) => SIGNER_ROLE_LABELS[role]).join('、')}是執業主體，姓名與 Email
+                      由下方選定的當事人簽署人帶入。
+                    </Typography.Text>
+                  )}
+                  <PractitionerAssignmentPanel
+                    options={practitionerData?.options ?? null}
+                    assignments={assignments}
+                    onChange={setAssignments}
+                    onPartySigner={pickPartySigner}
+                    disabled={saving}
+                  />
+                </Flex>
+                <Divider />
+              </>
+  );
 
   const goPrev = () => {
     if (step === STEP_FIELDS) setFields(readFields());
@@ -664,60 +415,8 @@ export default function ContractWizard({ id }: { id: string }) {
     router.push(`/contracts/${id}`);
   };
 
-  const selected = clauseSnapshots(fields);
-  // 編輯器綁在原始快照上：名稱打到剩空字串時整列不會被正規化掉；
-  // v1 舊草稿沒有這一欄，先由舊的設備欄位轉一份出來當編輯起點。
-  const annexRows = fields.equipmentAnnex ?? contractEquipmentAnnex(fields);
-  const annexSummary = equipmentAnnexSummary(fields);
   const summaryItems = [
-    { key: 'property', label: '物件', span: 2, children: fields.propertyName || '—' },
-    { key: 'address', label: '地址', span: 2, children: fields.propertyAddress || '—' },
-    {
-      key: 'landlord',
-      label: LEASE_LABELS.partyAFull,
-      children: `${fields.landlordName}（${fields.landlordEmail}）`,
-    },
-    {
-      key: 'tenant',
-      label: LEASE_LABELS.partyBFull,
-      children: `${fields.tenantName}（${fields.tenantEmail}）`,
-    },
-    { key: 'rent', label: '月租金', children: money(fields.rent) },
-    { key: 'deposit', label: '押金', children: money(fields.deposit) },
-    { key: 'lease', label: '租期', children: `${fields.startDate} ~ ${fields.endDate}` },
-    { key: 'payDay', label: '每月付款日', children: fields.payDay != null ? `${fields.payDay} 日` : '—' },
-    { key: 'template', label: '範本', span: 2, children: `${templateLabel(fields)}（${DEFAULT_TEMPLATE.provider}）` },
-    {
-      key: 'clauses',
-      label: '選用條款',
-      span: 2,
-      children: selected.length ? (
-        <Space size={4} wrap>
-          {selected.map((clause) => (
-            <Tag key={clause.id} color="blue">
-              {clause.title} v{clause.version}
-            </Tag>
-          ))}
-        </Space>
-      ) : (
-        '（未勾選）'
-      ),
-    },
-    {
-      key: 'equipmentAnnex',
-      label: '設備附件',
-      span: 2,
-      children: annexSummary.length ? (
-        <Space orientation="vertical" size={2}>
-          {annexSummary.map((line) => (
-            <Typography.Text key={line}>{line}</Typography.Text>
-          ))}
-        </Space>
-      ) : (
-        '（無附屬設備）'
-      ),
-    },
-    { key: 'extra', label: '其他約定事項', span: 2, children: fields.extra || '（無）' },
+    ...ui.summaryItems(fields, { labels }),
     ...(seats && !partiesOnly
       ? [
           {
@@ -749,7 +448,7 @@ export default function ContractWizard({ id }: { id: string }) {
       key: 'signature',
       label: '簽署區',
       span: 2,
-      children: <SignatureChecklist fields={fields} signatureFields={sigFields} withDetail />,
+      children: <SignatureChecklist fields={fields} signatureFields={sigFields} labels={labels} withDetail />,
     },
   ];
 
@@ -768,183 +467,30 @@ export default function ContractWizard({ id }: { id: string }) {
 
       {step === STEP_PROPERTY && (
         <Card size="small" style={{ maxWidth: 760 }}>
-          <Descriptions
-            column={1}
-            size="small"
-            style={{ marginBottom: 12 }}
-            items={[
-              { key: 'name', label: '物件', children: fields.propertyName || '—' },
-              { key: 'address', label: '地址', children: fields.propertyAddress || '—' },
-              { key: 'type', label: '型態', children: fields.propertyType || '—' },
-              {
-                key: 'size',
-                label: '坪數',
-                children: fields.propertySize != null ? `${fields.propertySize} 坪` : '—',
-              },
-              {
-                key: 'equipment',
-                label: '附屬設備',
-                children: (() => {
-                  const items = contractEquipmentAnnex(fields);
-                  return items.length ? items.map(formatEquipmentItem).join('、') : '—';
-                })(),
-              },
-            ]}
+          <ui.PropertyStep
+            fields={fields}
+            routingPanel={
+              <Flex vertical gap={12} style={{ marginBottom: 12 }}>
+                <RoutingConditionsPanel value={fields.routing ?? DEFAULT_ROUTING} onChange={changeRouting} disabled={saving} />
+              </Flex>
+            }
+            saving={saving}
+            onFieldsChange={changeFields}
+            onCommitFields={commitFields}
           />
-          <Flex vertical gap={12} style={{ marginBottom: 12 }}>
-            <RoutingConditionsPanel value={fields.routing ?? DEFAULT_ROUTING} onChange={changeRouting} disabled={saving} />
-          </Flex>
-          <TemplateNotice />
-          <OptionalClauseChecklist fields={fields} onChange={changeClauses} />
-          <TemplateUpgradeNotice fields={fields} onUpgrade={upgradeTemplate} disabled={saving} />
-          <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0, fontSize: 12 }}>
-            物件資料在建立草稿時已帶入成快照，之後修改物件不影響這份合約。要換物件請回合約列表另建一份草稿。
-            選用條款也在勾選當下快照，平台之後改版不影響這份合約。
-          </Typography.Paragraph>
         </Card>
       )}
 
       {step === STEP_FIELDS && (
         <Card size="small" style={{ maxWidth: 760 }}>
-          <Form form={form} layout="vertical" size="small" requiredMark>
-            <Typography.Text strong>雙方資訊</Typography.Text>
-            <Row gutter={12} style={{ marginTop: 8 }}>
-              <Col span={12}>
-                <Form.Item
-                  name="landlordName"
-                  label={`${LEASE_LABELS.partyAFull}姓名`}
-                  rules={partyALocked ? [] : [{ required: true, message: '請輸入甲方姓名' }]}
-                >
-                  <Input disabled={partyALocked} />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="landlordEmail"
-                  label="甲方 Email"
-                  rules={
-                    partyALocked
-                      ? []
-                      : [{ required: true, type: 'email', message: '請輸入有效的甲方 Email' }]
-                  }
-                >
-                  <Input disabled={partyALocked} />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="tenantName"
-                  label={`${LEASE_LABELS.partyBFull}姓名`}
-                  rules={partyBLocked ? [] : [{ required: true, message: '請輸入乙方姓名' }]}
-                >
-                  <Input disabled={partyBLocked} />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item
-                  name="tenantEmail"
-                  label="乙方 Email"
-                  rules={
-                    partyBLocked
-                      ? []
-                      : [{ required: true, type: 'email', message: '請輸入有效的乙方 Email' }]
-                  }
-                >
-                  <Input disabled={partyBLocked} />
-                </Form.Item>
-              </Col>
-            </Row>
-            {!partiesOnly && (
-              <>
-                <Divider />
-                <Flex vertical gap={12}>
-                  {lockedPartyRoles.length > 0 && (
-                    <Typography.Text type="secondary">
-                      {lockedPartyRoles.map((role) => SIGNER_ROLE_LABELS[role]).join('、')}是執業主體，姓名與 Email
-                      由下方選定的當事人簽署人帶入。
-                    </Typography.Text>
-                  )}
-                  <PractitionerAssignmentPanel
-                    options={practitionerData?.options ?? null}
-                    assignments={assignments}
-                    onChange={setAssignments}
-                    onPartySigner={pickPartySigner}
-                    disabled={saving}
-                  />
-                </Flex>
-                <Divider />
-              </>
-            )}
-
-            <Typography.Text strong>租金與租期</Typography.Text>
-            <Row gutter={12} style={{ marginTop: 8 }}>
-              <Col span={12}>
-                <Form.Item name="rent" label="月租金（元）" rules={[{ required: true, message: '請輸入月租金' }]}>
-                  <InputNumber min={0} step={1000} style={{ width: '100%' }} />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="deposit" label="押金（元）">
-                  <InputNumber min={0} step={1000} style={{ width: '100%' }} />
-                </Form.Item>
-              </Col>
-              {fieldsStepDepositWarning && (
-                <Col span={24}>
-                  <Form.Item>
-                    <DepositWarningAlert warning={fieldsStepDepositWarning} />
-                  </Form.Item>
-                </Col>
-              )}
-              <Col span={8}>
-                <Form.Item name="startDate" label="租期起日" rules={[{ required: true, message: '請選擇租期起日' }]}>
-                  <DatePicker style={{ width: '100%' }} />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="endDate" label="租期迄日" rules={[{ required: true, message: '請選擇租期迄日' }]}>
-                  <DatePicker style={{ width: '100%' }} />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="payDay" label="每月付款日">
-                  <InputNumber min={1} max={28} style={{ width: '100%' }} />
-                </Form.Item>
-              </Col>
-            </Row>
-            <Form.Item
-              name="extra"
-              label={`其他約定事項（${extraClauseLabel(fields)}）`}
-              style={{ marginBottom: 0 }}
-            >
-              <Input.TextArea rows={3} placeholder="無則留空" />
-            </Form.Item>
-          </Form>
-
-          <Typography.Text strong style={{ display: 'block', marginTop: 16 }}>
-            設備附件（附屬設備清單）
-          </Typography.Text>
-          {usesEquipmentAnnex(fields) ? (
-            <>
-              <Typography.Paragraph type="secondary" style={{ margin: '4px 0 0', fontSize: 12 }}>
-                由物件的設備清單帶入，可逐約增刪列、調整數量與修繕責任；產出的合約以「詳如附件」引用這張清單，
-                清單本身另成一頁排在簽署欄之後。修繕責任預設{TERMS.lessor}。
-              </Typography.Paragraph>
-              <EquipmentAnnexEditor rows={annexRows} onChange={changeAnnex} />
-            </>
-          ) : (
-            // v1 草稿的附屬設備仍寫在主約本文（ADR-0005 不回溯）：這裡只唸不編，升版後才開放附件編輯
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginTop: 8 }}
-              message="此草稿綁定範本 v1，附屬設備列在主約本文，不產出附件頁"
-              description={
-                annexSummary.length
-                  ? `目前品項：${annexSummary.join('、')}。升版為 v2 後，才能逐約編輯設備附件。`
-                  : '目前沒有附屬設備。升版為 v2 後，才能逐約編輯設備附件。'
-              }
-            />
-          )}
+          <ui.FieldsStep
+            form={form}
+            fields={fields}
+            labels={labels}
+            lockedPartyRoles={lockedPartyRoles}
+            practitionerSlot={practitionerSlot}
+            onFieldsChange={changeFields}
+          />
         </Card>
       )}
 
@@ -965,7 +511,7 @@ export default function ContractWizard({ id }: { id: string }) {
           </Col>
           <Col span={7}>
             <Card size="small" title="簽署區檢核">
-              <SignatureChecklist fields={fields} signatureFields={sigFields} withDetail />
+              <SignatureChecklist fields={fields} signatureFields={sigFields} labels={labels} withDetail />
             </Card>
           </Col>
         </Row>
@@ -978,9 +524,9 @@ export default function ContractWizard({ id }: { id: string }) {
             showIcon
             style={{ marginBottom: 12 }}
             message={partiesOnly ? '乙方先簽' : '依序簽署'}
-            description={signingSequenceNotice(fields)}
+            description={signingSequenceNotice(fields, contractType)}
           />
-          <DepositWarningAlert warning={confirmDepositWarning} style={{ marginBottom: 12 }} />
+          <ui.ConfirmNotices fields={fields} />
           {renewalNotices.map((notice) => (
             <Alert key={notice.seatRuleId} type="warning" showIcon style={{ marginBottom: 12 }} title="換證期限將到" description={`${notice.message}。換證窗口內仍可送簽。`} />
           ))}

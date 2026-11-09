@@ -29,9 +29,12 @@ import {
   type RoutingFacts,
   type SeatAssignee,
 } from '../signature-routing';
+import { buildCredentialSnapshot } from '../signature-records/snapshot';
+import type { ContractSendRecord } from '../signature-records/types';
 import { normalizeEmail } from '../signing-module/progress';
-import { SIGNER_ROLE_LABELS, type ContractFields, type ContractPartyRole } from '../types';
-import type { CredentialSnapshotInput } from './repository';
+import { DEFAULT_CONTRACT_TYPE, partyOfFields, type PartyFields } from '../contract-types';
+import type { ContractType } from '../labels';
+import { SIGNER_ROLE_LABELS, type ContractPartyRole } from '../types';
 import {
   licenseKindForSeat,
   partyRoleOfEntitySource,
@@ -43,7 +46,10 @@ import {
 
 export interface EvaluateSendInput {
   routing: RoutingFacts;
-  fields: Pick<ContractFields, 'landlordName' | 'landlordEmail' | 'tenantName' | 'tenantEmail'>;
+  /** 合約類型，決定當事人取自哪些欄位。沒有帶視為租賃合約。 */
+  contractType?: ContractType;
+  /** 當事人姓名與 email 所在的欄位，形狀由 `contractType` 決定。 */
+  fields: PartyFields;
   assignments: readonly PractitionerAssignmentInput[];
   /** 判定時點，ISO 8601。 */
   at: string;
@@ -54,8 +60,8 @@ export interface SendEvaluation extends SendPreconditionResult {
   /** 執業人員席位的簽署人，以席位 rule_id 為鍵。姓名與 email 取自登錄。 */
   assignees: Record<string, SeatAssignee>;
   printed: Record<string, PrintedPractitioner>;
-  /** 判定事實快照，送簽時保存。 */
-  snapshots: CredentialSnapshotInput[];
+  /** 送簽時要寫的簽章紀錄（含 snapshot_at_send），由合約訂閱者在送簽交易內寫入（MIL-70）。 */
+  records: ContractSendRecord[];
 }
 
 interface ResolvedSeat {
@@ -66,10 +72,8 @@ interface ResolvedSeat {
   partySigner: PartySignerCandidate | null;
 }
 
-function partyField(fields: EvaluateSendInput['fields'], role: ContractPartyRole) {
-  return role === 'party_a'
-    ? { name: fields.landlordName, email: fields.landlordEmail }
-    : { name: fields.tenantName, email: fields.tenantEmail };
+function partyField(input: EvaluateSendInput, role: ContractPartyRole) {
+  return partyOfFields(input.contractType ?? DEFAULT_CONTRACT_TYPE, input.fields, role);
 }
 
 async function resolveSeat(
@@ -110,9 +114,9 @@ export async function evaluateSend(
   input: EvaluateSendInput,
   resolution: PracticeRegistryResolution,
 ): Promise<SendEvaluation> {
-  const { routing, fields, assignments, at } = input;
+  const { routing, assignments, at } = input;
   const route = routeSignatures(routing);
-  const base = { assignees: {}, printed: {}, snapshots: [] };
+  const base = { assignees: {}, printed: {}, records: [] };
   if (route.kind !== 'sequence') {
     return {
       ...checkSendPreconditions({ routing, at, entities: {}, signers: [], registryAvailable: resolution.available, leasingAuthority: input.leasingAuthority }),
@@ -131,11 +135,11 @@ export async function evaluateSend(
   const signers: SeatSigner[] = [];
   const assignees: Record<string, SeatAssignee> = {};
   const printed: Record<string, PrintedPractitioner> = {};
-  const snapshots: CredentialSnapshotInput[] = [];
+  const records: ContractSendRecord[] = [];
 
-  for (const seat of route.plan.seats) {
+  for (const [seatIndex, seat] of route.plan.seats.entries()) {
     if (seat.role === 'party_a' || seat.role === 'party_b') {
-      signers.push({ seatRuleId: seat.ruleId, ...partyField(fields, seat.role) });
+      signers.push({ seatRuleId: seat.ruleId, ...partyField(input, seat.role) });
       continue;
     }
     const r = resolvedBySeat.get(seat.ruleId);
@@ -163,12 +167,16 @@ export async function evaluateSend(
     assignees[seat.ruleId] = { name: r.candidate.name, email: r.candidate.accountEmail };
     const print = printedOf(r);
     if (print) printed[seat.ruleId] = print;
-    snapshots.push({
-      slot: seat.ruleId,
+    records.push({
+      signerIndex: seatIndex,
+      ruleId: seat.ruleId,
+      statuteRef: seat.statuteRef,
+      ruleVersion: route.plan.ruleVersion,
       practitionerId: r.candidate.id,
-      decidedAt: at,
-      facts,
-      result: credentialStatusAt(r.candidate.credential, at),
+      employmentId: r.candidate.employmentId,
+      entityId: r.assignment.entityId,
+      licenseKind: licenseKindForSeat(routing, seat)!,
+      snapshotAtSend: buildCredentialSnapshot(r.candidate, at),
     });
   }
 
@@ -185,7 +193,7 @@ export async function evaluateSend(
     } else if (!r.partySigner || r.partySigner.entityId !== r.assignment.entityId) {
       reason('party_signer_mismatch', `${label}的當事人簽署人必須是所選執業主體的成員`);
     } else {
-      const current = partyField(fields, partyRole);
+      const current = partyField(input, partyRole);
       if (current.name !== r.partySigner.name || normalizeEmail(current.email) !== normalizeEmail(r.partySigner.email)) {
         reason('party_signer_mismatch', `${label}的姓名與 email 必須與所選的當事人簽署人相同，請重新選擇`);
       }
@@ -206,7 +214,7 @@ export async function evaluateSend(
     ...extraReasons,
     ...check.reasons.filter((r) => !(r.code === 'practitioner_not_assigned' && notFoundSeats.has(r.seatRuleId))),
   ];
-  // 檢查未通過時不交出簽署人與快照，避免被誤用
+  // 檢查未通過時不交出簽署人與簽章紀錄，避免被誤用
   const ok = reasons.length === 0;
   return {
     ...check,
@@ -214,7 +222,7 @@ export async function evaluateSend(
     reasons: orderReasons(reasons, route.plan.seats),
     assignees: ok ? assignees : {},
     printed,
-    snapshots: ok ? snapshots : [],
+    records: ok ? records : [],
   };
 }
 

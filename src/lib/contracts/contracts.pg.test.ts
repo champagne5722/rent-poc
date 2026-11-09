@@ -5,7 +5,7 @@ import { newUlid } from '@/lib/pg/ulid';
 import { createWithTx, type OrgTx, type WithTx } from '@/lib/pg/with-tx';
 import { createProperty, deleteProperty, parsePropertyInput } from '@/lib/properties';
 import { applySigningResult } from '@/lib/transitions';
-import type { ContractFields } from '@/lib/types';
+import type { ContractFields, LeaseContract } from '@/lib/types';
 import {
   commitTransition,
   copyContractAsDraft,
@@ -75,7 +75,7 @@ describe.skipIf(!adminUrl)('合約 repository（真實 PostgreSQL）', () => {
     });
 
     expect(await inA((tx) => saveDraft(tx, id, { fields: { ...FIELDS, rent: 30000 }, signature_fields: [] }))).toBe(true);
-    expect((await inA((tx) => getContract(tx, id)))?.fields.rent).toBe(30000);
+    expect(((await inA((tx) => getContract(tx, id))) as LeaseContract | null)?.fields.rent).toBe(30000);
 
     await inA((tx) => commitTransition(tx, id, { status: 'voided', event: { type: 'voided', actor: 'landlord' } }));
     const copyId = (await inA((tx) => copyContractAsDraft(tx, id)))!;

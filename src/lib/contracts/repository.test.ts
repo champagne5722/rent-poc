@@ -5,7 +5,7 @@ import { setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { newUlid } from '@/lib/pg/ulid';
 import type { OrgTx } from '@/lib/pg/with-tx';
 import { createProperty, parsePropertyInput } from '@/lib/properties';
-import type { ContractFields, ContractStatus } from '@/lib/types';
+import type { ContractFields, ContractStatus, LeaseContract } from '@/lib/types';
 import {
   appendContractEvent,
   commitTransition,
@@ -129,12 +129,12 @@ describe('saveDraft', () => {
     const id = await seedContract();
     expect(await inA((tx) => saveDraft(tx, id, { fields: { ...FIELDS, rent: 30000 }, signature_fields: [] }))).toBe(true);
     const saved = await inA((tx) => getContract(tx, id));
-    expect(saved?.fields.rent).toBe(30000);
+    expect((saved as LeaseContract | null)?.fields.rent).toBe(30000);
     expect(saved?.updated_at).toMatch(/^\d{4}-/);
 
     await inA((tx) => commitTransition(tx, id, { status: 'awaiting_tenant', event: { type: 'sent', actor: 'landlord' } }));
     expect(await inA((tx) => saveDraft(tx, id, { fields: { ...FIELDS, rent: 1 }, signature_fields: [] }))).toBe(false);
-    expect((await inA((tx) => getContract(tx, id)))?.fields.rent).toBe(30000);
+    expect(((await inA((tx) => getContract(tx, id))) as LeaseContract | null)?.fields.rent).toBe(30000);
   });
 });
 

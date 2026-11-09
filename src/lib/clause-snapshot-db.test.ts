@@ -14,7 +14,7 @@ import {
 } from './clause-library';
 import { buildContractClauses } from './contract-clauses';
 import { upgradeDraftFields } from './contract-wizard';
-import type { Contract, ContractFields, ContractStatus, OptionalClause } from './types';
+import type { LeaseContract, LeaseContractFields, ContractStatus, OptionalClause } from './types';
 
 // 快照落地測試（ADR-0005 §版本化＋建約即快照）：條款存進合約資料後，
 // 平台條款庫怎麼改版都不能回頭改動既有合約與草稿。合約在 PostgreSQL（PGlite），fields 是 jsonb。
@@ -27,7 +27,7 @@ afterAll(() => kit.close());
 beforeEach(() => kit.reset());
 
 const inA = <T,>(fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId: kit.orgA }, fn);
-const load = async (id: string): Promise<Contract> => (await inA((tx) => getContract(tx, id)))!;
+const load = async (id: string): Promise<LeaseContract> => (await inA((tx) => getContract(tx, id))) as LeaseContract;
 const setStatus = (id: string, status: ContractStatus) =>
   inA((tx) => tx.query('UPDATE org.contracts SET status = $2 WHERE id = $1', [id, status]));
 
@@ -38,7 +38,7 @@ const BUMPED_LIBRARY: OptionalClause[] = OPTIONAL_CLAUSES.map((clause) =>
 const BUMPED_TEMPLATE = { ...DEFAULT_TEMPLATE, version: DEFAULT_TEMPLATE.version + 1 };
 const BUMPED = { template: BUMPED_TEMPLATE, library: BUMPED_LIBRARY };
 
-function contractFields(patch: Partial<ContractFields> = {}): ContractFields {
+function contractFields(patch: Partial<LeaseContractFields> = {}): LeaseContractFields {
   return {
     landlordName: '王大明',
     landlordEmail: 'landlord@example.com',
@@ -60,13 +60,13 @@ function contractFields(patch: Partial<ContractFields> = {}): ContractFields {
   };
 }
 
-async function seedDraft(fields: ContractFields = contractFields()): Promise<Contract> {
+async function seedDraft(fields: LeaseContractFields = contractFields()): Promise<LeaseContract> {
   const id = await inA((tx) => createContract(tx, { property_id: null, fields }));
   return load(id);
 }
 
 /** 模擬 PUT /api/contracts/[id] 的草稿保存 */
-async function saveDraftFields(id: string, fields: ContractFields): Promise<Contract> {
+async function saveDraftFields(id: string, fields: LeaseContractFields): Promise<LeaseContract> {
   await inA((tx) => saveDraft(tx, id, { fields, signature_fields: [] }));
   return load(id);
 }
@@ -146,7 +146,7 @@ describe('草稿升版重建', () => {
 // 範本 v1 → v2（MIL-29、ADR-0008）：第一次真的用到 ADR-0005 的草稿升版提示流程。
 describe('範本 v1 草稿升到 v2', () => {
   /** MIL-29 之前建立的草稿：綁範本 v1，設備只有壓平成「名稱 ×數量」的字串 */
-  function v1Fields(): ContractFields {
+  function v1Fields(): LeaseContractFields {
     return contractFields({
       templateVersion: 1,
       equipmentAnnex: undefined,

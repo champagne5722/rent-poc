@@ -45,7 +45,7 @@ export async function GET(request: NextRequest, { params }: ContractRouteCtx) {
   const [options, printed, evaluation] = await Promise.all([
     loadSeatOptions(routing.facts, resolution, at),
     loadPrintedPractitioners(routing.facts, assignments, resolution),
-    evaluateSend({ routing: routing.facts, fields: contract.fields, assignments, at }, resolution),
+    evaluateSend({ routing: routing.facts, contractType: contract.contract_type, fields: contract.fields, assignments, at }, resolution),
   ]);
   return jsonOk({
     data: {

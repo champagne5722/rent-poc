@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { Contract, ContractStatus } from './types';
+import type { LeaseContract, ContractStatus } from './types';
 import { contractDocumentFileName, prepareContractSigners } from './signing';
 import type { RoutingFacts } from './signature-routing';
 import { ulidOf } from './test-ids';
 
-function makeContract(status: ContractStatus): Contract {
+function makeContract(status: ContractStatus): LeaseContract {
   return {
     id: ulidOf(1),
     property_id: null,

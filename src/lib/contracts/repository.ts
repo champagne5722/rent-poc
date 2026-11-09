@@ -38,6 +38,8 @@ const COLUMNS =
   'id, property_id, contract_type, status, fields, signature_fields, declined_reason, derived_from, created_at, updated_at';
 
 function toContract(row: ContractRow): Contract {
+  // 欄位形狀由 contract_type 決定（MIL-73）。資料庫的 CHECK 與 createContract 保證兩者一致，
+  // 欄位 contract_type 預設 'lease'，所以既有資料一律讀成租賃合約。
   return {
     id: row.id,
     property_id: row.property_id,
@@ -50,7 +52,7 @@ function toContract(row: ContractRow): Contract {
     derived_from: row.derived_from,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at ? row.updated_at.toISOString() : null,
-  };
+  } as Contract;
 }
 
 /** 新的在前。ULID 隨時間遞增，所以 id DESC 就是建立時間由新到舊。 */

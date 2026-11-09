@@ -1,0 +1,78 @@
+// 合約類型定義的介面（MIL-73、ADR-0021 決議 2）。
+// 欄位、範本與檢核由合約類型決定，共用流程（建約 wizard、送簽、清單）只經這個介面取用，
+// 不直接判斷「是租賃合約還是委託管理合約」。只有純資料與純函式，沒有 fs，client 端也能引用。
+
+import type { ContractType, PartyLabels } from '../labels';
+import type {
+  ContractFields,
+  ContractPartyRole,
+  ContractRoutingConditions,
+  ContractTemplate,
+  LeaseContractFields,
+  ManagementContractFields,
+  OptionalClause,
+  Property,
+} from '../types';
+
+/** 一位當事人的姓名與 email。 */
+export interface PartyIdentity {
+  name: string;
+  email: string;
+}
+
+/** 取當事人只需要的欄位。傳入完整的合約欄位或這幾個欄位都可以。 */
+export type LeasePartyFields = Pick<LeaseContractFields, 'landlordName' | 'landlordEmail' | 'tenantName' | 'tenantEmail'>;
+export type ManagementPartyFields = Pick<
+  ManagementContractFields,
+  'mandatorName' | 'mandatorEmail' | 'mandataryName' | 'mandataryEmail'
+>;
+export type PartyFields = LeasePartyFields | ManagementPartyFields;
+
+/** 合約清單一列需要的摘要。沒有單一物件或租期的合約類型回 null。 */
+export interface ContractListSummary {
+  propertyName: string | null;
+  /** 月租金。沒有租金的合約類型（委託管理合約）為 null。 */
+  rent: number | null;
+  /** 乙方：租賃合約是承租人，委託管理合約是受託人。欄名依類型從標籤對照表取。 */
+  partyB: PartyIdentity;
+  /** 租期或委託期間的起迄（YYYY-MM-DD）。起迄沒填完或沒有期間時為 null。 */
+  period: readonly [string, string] | null;
+}
+
+export interface InitialFieldsInput {
+  property: Property;
+  routing?: ContractRoutingConditions;
+}
+
+/**
+ * 一種合約類型的定義。`F` 是這個類型的欄位形狀。
+ * 用方法簽名（不是函式屬性）宣告，登錄表才能把各類型的定義放進同一個型別。
+ */
+export interface ContractTypeDefinition<F extends ContractFields = ContractFields> {
+  readonly type: ContractType;
+  /** 文件名稱，用在送簽的檔名前綴，例如「租賃合約」。 */
+  readonly documentName: string;
+  /** 甲乙方稱謂，從標籤對照表（src/lib/labels）取。 */
+  readonly labels: PartyLabels;
+  /** 這個類型的範本與選用條款庫，版本與審閱旗標見 template-registry。 */
+  readonly templates: readonly ContractTemplate[];
+  readonly optionalClauses: readonly OptionalClause[];
+  /** 甲方或乙方在欄位裡對應的姓名與 email。 */
+  party(fields: F, role: ContractPartyRole): PartyIdentity;
+  /** 把當事人寫進欄位，回傳新物件。選定當事人簽署人時用。 */
+  withParty(fields: F, role: ContractPartyRole, person: PartyIdentity): F;
+  /** 當事人姓名與 email 欄位的標籤。執業主體是這一方時，這兩個欄位由簽署人帶入。 */
+  partyFieldLabels(role: ContractPartyRole): readonly [string, string];
+  /** 建約 wizard 第②步的必填欄位檢核，回傳缺漏欄位的標籤。 */
+  missingFields(fields: F): string[];
+  /** 送簽前伺服器端的必填欄位檢核，回傳缺漏欄位的標籤。 */
+  missingFieldsForSend(fields: F): string[];
+  /**
+   * 兩方簽署序列（沒有執業人員席位）在確認頁的說明。沒有定義就用依簽署序列產生的通用說明。
+   * 規則表沒有兩方的委託管理序列，所以委託管理合約不定義。
+   */
+  readonly partiesOnlyNotice?: string;
+  /** 建立草稿時的欄位快照。 */
+  initialFields(input: InitialFieldsInput): F;
+  listSummary(fields: F): ContractListSummary;
+}

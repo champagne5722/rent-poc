@@ -22,6 +22,12 @@ export interface OrgTableCase {
    */
   appendOnly?: boolean;
   /**
+   * 表有 BEFORE UPDATE 的 trigger（寫入後不得修改），它比 RLS 的 WITH CHECK 先執行。
+   * 探測 3「自己的列改 org_id」的錯誤因此是這個訊息，不是 row-level security。
+   * 別的組織看不到列，UPDATE 不會觸發 trigger，探測 2 仍是 0 列。
+   */
+  blockedUpdateMessage?: RegExp;
+  /**
    * 在 tx 的脈絡內寫入一列，org_id 欄位用傳入的 orgId，回傳主鍵（欄位名一律是 id）。
    * 業務鍵必須固定，不得每次隨機：探測 5 靠兩個組織寫入同一組業務鍵，驗證唯一鍵含 org_id。
    * 需要父列（例如 registry 的租賃單位）時，在這裡一併建立。
@@ -87,19 +93,6 @@ export const ORG_TABLE_CASES: Record<string, OrgTableCase> = {
       return id;
     },
   },
-  'org.contract_credential_snapshots': {
-    async seed(tx, orgId) {
-      const contractId = newUlid();
-      await tx.query('INSERT INTO org.contracts (id, org_id) VALUES ($1, $2)', [contractId, orgId]);
-      const id = newUlid();
-      await tx.query(
-        `INSERT INTO org.contract_credential_snapshots (id, org_id, contract_id, slot, practitioner_id, decided_at, facts, result)
-         VALUES ($1, $2, $3, 'penetration.slot', 'practitioner', now(), '{}'::jsonb, '{}'::jsonb)`,
-        [id, orgId, contractId],
-      );
-      return id;
-    },
-  },
   'org.sign_tasks': {
     async seed(tx, orgId) {
       return seedSignTask(tx, orgId);
@@ -136,6 +129,38 @@ export const ORG_TABLE_CASES: Record<string, OrgTableCase> = {
         `INSERT INTO org.outbox (id, org_id, action, subject_type, subject_id, status)
          VALUES ($1, $2, 'void_sign_task', 'contract', $3, 'pending')`,
         [id, orgId, newUlid()],
+      );
+      return id;
+    },
+  },
+  'org.signature_records': {
+    // 寫入後不得修改：BEFORE UPDATE 的 trigger 比 RLS 的 WITH CHECK 先執行，
+    // 所以自己的列改 org_id 時，錯誤是 trigger 的訊息，不是 RLS 的
+    blockedUpdateMessage: /簽章紀錄寫入後不得修改/,
+    async seed(tx, orgId) {
+      // 父列：合約、簽署任務、簽署人。業務鍵 (org_id, contract_id, rule_id) 的 contract_id 是新的 ULID，
+      // rule_id 固定。兩個組織各寫一列都要成功（陷阱 6）
+      const contractId = newUlid();
+      await tx.query('INSERT INTO org.contracts (id, org_id) VALUES ($1, $2)', [contractId, orgId]);
+      const signTaskId = newUlid();
+      await tx.query(
+        `INSERT INTO org.sign_tasks (id, org_id, provider, provider_task_ref, subject_type, subject_id)
+         VALUES ($1, $2, 'mock', 'penetration-ref', 'contract', $3)`,
+        [signTaskId, orgId, contractId],
+      );
+      const signerId = newUlid();
+      await tx.query(
+        `INSERT INTO org.signers (id, org_id, sign_task_id, position, role, name, email)
+         VALUES ($1, $2, $3, 0, 'practitioner', '滲透測試執業人員', 'penetration@example.com')`,
+        [signerId, orgId, signTaskId],
+      );
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.signature_records
+           (id, org_id, contract_id, signer_id, rule_id, statute_ref, rule_version, practitioner_id, employment_id,
+            entity_id, license_kind, snapshot_at_send)
+         VALUES ($1, $2, $3, $4, 'penetration.slot', 'x', 1, 'practitioner', 'employment', 'entity', 'master_lease', '{}'::jsonb)`,
+        [id, orgId, contractId, signerId],
       );
       return id;
     },

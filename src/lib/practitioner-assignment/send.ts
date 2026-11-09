@@ -1,24 +1,21 @@
-// 合約送簽前的準備（MIL-69）：讀分流事實與指派，跑送簽前檢查，通過後組出簽署人並保存判定事實快照。
+// 合約送簽前的準備（MIL-69）：讀分流事實與指派，跑送簽前檢查，通過後組出簽署人與簽章紀錄的送簽資料（MIL-70）。
 // route handler 與整合測試都走這裡，檢查的邏輯在 send-preconditions 與 service.ts。
 //
-// 分成三步，讓交易內只做資料庫讀寫（ADR-0012 決議 10）：
+// 分成兩步，讓交易內只做資料庫讀寫（ADR-0012 決議 10）：
 // 1. `loadSendInputs(tx, contractId)` 在交易內讀分流事實與指派。
 // 2. `prepareContractSend(...)` 在交易外跑檢查。登錄（practiceRegistry）之後可能是外部查詢，不佔著連線。
-// 3. `recordSendSnapshots(tx, ...)` 保存判定事實快照。
+// 簽章紀錄（MIL-70）由合約訂閱者的 `onSent` 在送簽交易內寫入，資料走 `signing.send` 的 `context`。
 
 import type { PracticeRegistryResolution } from '../practice-registry';
 import type { OrgTx } from '../pg/with-tx';
 import type { SendBlockReason, SendNotice } from '../send-preconditions';
+import { templateReviewBlock } from '../template-review';
 import { loadContractRoutingFacts, type ContractRoutingLoad } from '../signature-routing/repository';
 import { prepareContractSigners } from '../signing';
 import type { Signer } from '../signing-module/provider';
 import type { Contract } from '../types';
-import {
-  getAssignments,
-  saveCredentialSnapshots,
-  type CredentialSnapshotInput,
-  type PractitionerAssignment,
-} from './repository';
+import type { ContractSendContext } from '../signature-records/types';
+import { getAssignments, type PractitionerAssignment } from './repository';
 import type { PrintedPractitioner } from './seats';
 import { evaluateSend } from './service';
 
@@ -30,8 +27,11 @@ export type PreparedContractSend =
       printed: Record<string, PrintedPractitioner>;
       /** 換證窗口內的提醒。仍得送簽，畫面顯示期限。 */
       notices: SendNotice[];
-      /** 判定事實快照。簽署任務建立成功時用 `recordSendSnapshots` 在同一個交易保存。 */
-      snapshots: CredentialSnapshotInput[];
+      /**
+       * 簽章紀錄的送簽資料。呼叫 `signing.send` 時放進第四個參數的 `context`，合約訂閱者在送簽交易內寫入（MIL-70）。
+       * 沒有執業人員席位時不帶。
+       */
+      sendContext?: ContractSendContext;
     }
   | { ok: false; status: 400; error: string; reasons: SendBlockReason[] };
 
@@ -61,12 +61,14 @@ export async function prepareContractSend(
   if (!routing.ok) return { ok: false, status: 400, error: routing.reason, reasons: [] };
 
   const evaluation = await evaluateSend(
-    { routing: routing.facts, fields: contract.fields, assignments, at },
+    { routing: routing.facts, contractType: contract.contract_type, fields: contract.fields, assignments, at },
     resolution,
   );
-  if (!evaluation.ok) {
-    const messages = evaluation.reasons.map((r) => r.message);
-    return { ok: false, status: 400, error: `無法送簽：${messages.join('。')}`, reasons: evaluation.reasons };
+  // 未審閱範本的閘門（P0-10 AC5）：正式金鑰下擋下，與送簽前檢查的原因一起列出
+  const templateBlock = templateReviewBlock(contract.contract_type, contract.fields, process.env);
+  if (!evaluation.ok || templateBlock) {
+    const reasons: SendBlockReason[] = [...(evaluation.ok ? [] : evaluation.reasons), ...(templateBlock ? [templateBlock] : [])];
+    return { ok: false, status: 400, error: `無法送簽：${reasons.map((r) => r.message).join('。')}`, reasons };
   }
 
   const prepared = prepareContractSigners(contract, routing.facts, evaluation.assignees);
@@ -77,18 +79,6 @@ export async function prepareContractSend(
     signers: prepared.signers,
     printed: evaluation.printed,
     notices: evaluation.notices,
-    snapshots: evaluation.snapshots,
+    ...(evaluation.records.length > 0 ? { sendContext: { kind: 'contract_send' as const, records: evaluation.records } } : {}),
   };
-}
-
-/**
- * 保存判定事實快照。簽署任務建立成功時與簽署任務同一個交易寫入：建立失敗時不留快照，重複送簽時覆蓋。
- * 簽章紀錄（MIL-70）之後改成與簽署進度同交易的 `snapshot_at_send`。
- */
-export async function recordSendSnapshots(
-  tx: OrgTx,
-  contractId: string,
-  prepared: Extract<PreparedContractSend, { ok: true }>,
-): Promise<void> {
-  await saveCredentialSnapshots(tx, contractId, prepared.snapshots);
 }
