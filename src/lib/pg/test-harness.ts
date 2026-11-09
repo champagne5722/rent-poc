@@ -28,7 +28,7 @@ export interface TestDb {
   /** 隔離的副本，current_user 是 app_rw。測試結束後由 harness 關閉。 */
   fresh(): Promise<PGliteInterface>;
   /** 母體的副本，current_user 是 postgres（繞過 RLS）。給需要超級使用者身分的測試，生命週期同 fresh()。 */
-  raw(): Promise<PGlite>;
+  raw(): Promise<PGliteInterface>;
   /** 關閉母體與所有還開著的副本。 */
   close(): Promise<void>;
 }
