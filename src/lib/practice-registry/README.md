@@ -18,6 +18,7 @@ seam 回傳執業主體、當事人簽署人候選、執業人員候選與可簽
 | `live-test-kit.ts` | 真實 adapter 的 PGlite 測試資料 |
 | `registry.contract.test.ts` | 兩個 adapter 共用的契約測試，加上選擇規則的測試 |
 | `live-adapter.test.ts`、`live-adapter.pg.test.ts` | 揭露規則：PGlite，以及真實 PostgreSQL（有 `TEST_DATABASE_URL` 時） |
+| `../pg/registry-disclosure.test.ts` | 個資揭露矩陣：registry 每個函式乘以每種呼叫者關係（見下方「個資揭露矩陣」） |
 
 資料庫端是 `db/migrations/0070_practice_registry_live.sql`，沒有新表。
 
@@ -72,6 +73,87 @@ vitest 的 `vitest.setup.ts` 設 `PRACTICE_REGISTRY=seed`，所以既有的 rout
 `selecting` 是過渡做法。委託管理合約現在不建案件（MIL-116），選人時沒有任何綁定，卻必須讀別的組織的候選人。MIL-116 把指派搬成案件成員後，可把 `selecting` 拿掉：只改 `caller_relation` 的最後一個判斷。待法務確認：選人階段揭露已驗證人員的姓名與遮罩 email 給有草稿合約的組織，是否符合個資告知（MIL-62）。
 
 `registry.signing_facts()`（0047）沒有放寬，仍只給自己的組織與營運者。跨組織走 `registry.signing_view()`。
+
+## 個資揭露矩陣
+
+起因：MIL-113 的第一版讓其他組織讀到證號原文與成員 email，這條規則當時只寫在 Linear 留言，沒有測試守住（MIL-165）。現在規則由測試守住，測試在 `src/lib/pg/registry-disclosure.test.ts`。
+
+### 規則
+
+1. `registry` schema 內授權給 `app_rw` 的每個函式，必須在 `src/lib/pg/rls-cases/<模組>.ts` 的 `registryFunctions` 登記 `disclosure`。測試從系統目錄列出這些函式，沒登記的讓測試失敗。
+2. 函式不回傳個資時，登記 `{ kind: 'none', reason }`，寫出為什麼不揭露。不能靠漏登記通過。
+3. 函式回傳個資時，登記 `{ kind: 'matrix', variants }`。每種呼叫方式一個 variant，每個 variant 對每種呼叫者關係各有一列期望值。
+4. 呼叫者自己能建立的關係，不得解鎖證號原文。判斷重點是「這個關係是誰能建立的」。建草稿合約、存一筆指派、替案件加成員、開一個執業主體組織，都不需要任何人同意，所以 `bound`、`selecting`、`unrelated` 都讀不到證號原文。
+5. 沒有關係的組織探測真實對象，與探測不存在的對象，回應必須逐值相同。
+6. 期望值有兩種：回應含哪些個資欄位（空陣列代表成功但不含個資），或被拒（42501）。兩者不同。該拒絕卻回了空結果，測試會失敗。
+
+### 檢查的個資欄位
+
+| 欄位 | 偵測方式 |
+|---|---|
+| `certificateNo` | 回應文字含任何一個證書序號原文 |
+| `fullEmail` | 回應文字含任何一個完整 email（遮罩後的 `c***@example.com` 不算） |
+| `taxId` | 回應文字含任何一個統編 |
+| `checkId` | 回應文字含任何一個核對紀錄 ID |
+| `inactiveEmployment` | 回應文字含待驗證、證書失效、已結束任職的任職 ID，或已結束任職的結束日 |
+
+### 呼叫者關係
+
+關係定義在 `src/lib/pg/registry-disclosure-kit.ts` 的 `CALLER_RELATIONS`，每種關係一列。`creatable` 為 true 的關係是呼叫者自己能建立的。
+
+| 關係 | 說明 | creatable |
+|---|---|---|
+| `own` | 自己的組織（執業主體組織的成員） | 否 |
+| `operator` | 平台營運者 | 否 |
+| `bound` | 已指派：草稿合約的指派指向該執業主體 | 是 |
+| `boundByCase` | 已指派：案件成員屬於該執業主體的組織 | 是 |
+| `selecting` | 選人階段：有草稿合約，沒有綁定 | 是 |
+| `unrelated` | 無關的組織：另一個執業主體組織的成員 | 是 |
+| `unrelatedOwner` | 無關的組織：沒有合約的屋主組織 | 是 |
+| `noContext` | 沒有組織脈絡 | 是 |
+
+### 各函式的揭露規則
+
+下表只列有個資讀取路徑的函式。「空」代表成功但不含上列欄位。其他函式（寫入函式、產權函式）登記為「不揭露」，理由寫在各自的 `disclosure.reason`。
+
+| 函式 | own | operator | bound / boundByCase | selecting | unrelated / unrelatedOwner | noContext |
+|---|---|---|---|---|---|---|
+| `signing_view`（列出任職） | 證號原文、email、核對紀錄 ID、失效任職 | 同 own | email、核對紀錄 ID | 空 | 空 | 被拒 |
+| `signing_view`（用任職 ID 查單筆） | 證號原文、email、核對紀錄 ID、失效任職 | 同 own | email、核對紀錄 ID、失效任職 | 空 | 空 | 被拒 |
+| `party_signer_candidates` | email | email | email | 空（email 遮罩） | 空 | 被拒 |
+| `signing_facts` | 證號原文、核對紀錄 ID、失效任職 | 同 own | 空 | 空 | 空 | 被拒 |
+| `org_employments` | 證號原文、失效任職 | 被拒 | 空 | 空 | 空 | 被拒 |
+| `my_practitioner` | 證號原文（本人的） | 被拒 | 空 | 空 | 空 | 被拒 |
+| `my_registration` | 統編 | 空 | 空 | 空 | 空 | 被拒 |
+| `employment_exclusivity_facts` | 失效任職 | 被拒 | 被拒 | 被拒 | `unrelated` 見已知缺口，`unrelatedOwner` 被拒 | 被拒 |
+| `review_queue`、`review_item_detail` | 被拒 | 統編、證號原文、核對紀錄 ID、失效任職 | 被拒 | 被拒 | 被拒 | 被拒 |
+| `practitioner_party` | 被拒 | 空 | 被拒 | 被拒 | 被拒 | 被拒 |
+| `list_practice_entities`、`lookup_practice_entities`、`certificate_badges` | 空 | 空 | 空 | 空 | 空 | 被拒 |
+
+`signing_view` 單筆查詢的 `bound` 讀得到失效任職，是設計：送簽前檢查要說明被拒的原因。呼叫者必須先知道任職 ID，任職 ID 不可猜。
+
+### 新增或修改函式時
+
+1. 在自己模組檔的 `registryFunctions` 加 `disclosure`。不確定時先登記 `matrix`，讓測試告訴你實際回了什麼，再對照規則判斷哪個值是對的。不要直接照測試輸出填期望值。
+2. 期望值表的 `by` 只寫與 `default` 不同的關係。
+3. 新增個資欄位時，在 `PiiField` 與 `registry-disclosure-kit.ts` 的 `sentinels` 加一項，測試資料要有對應的特徵值。
+4. 修好已知缺口後，把期望值改成正確值，並刪掉 `knownGaps` 的那一項。
+
+### 已知缺口
+
+目前行為與原則不符，已有人負責，期望值先登記目前的行為。每則缺口必須指向一張票。
+
+| 函式 | 關係 | 缺口 | 負責 |
+|---|---|---|---|
+| `party_signer_candidates`、`signing_view` | `bound`、`boundByCase` | 回該執業主體全部成員（或全部已驗證人員）的真實 email，不限於被指派的人 | MIL-116 |
+| `employment_exclusivity_facts` | `unrelated` | 任何執業主體組織的成員，用任意證書鍵都能查到別家任職的狀態與起訖日，與查不存在的證書鍵可區分 | MIL-165，待主控決定修法 |
+
+### MIL-116 拿掉選人階段時
+
+1. 刪掉 `registry-disclosure-kit.ts` 的 `CALLER_RELATIONS` 裡 `selecting` 那一列。
+2. 刪掉 `rls-cases/` 內所有 `by.selecting` 的項目。測試會列出還沒刪的。
+3. 同一個 PR 把 `registry.caller_relation` 最後一個判斷拿掉。
+4. 若 `bound` 改成只回被指派的人的 email，刪掉 `party_signer_candidates` 與 `signing_view` 的 `knownGaps`，並調整 `bound` 的期望值。
 
 ## 給下游
 

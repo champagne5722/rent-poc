@@ -23,7 +23,18 @@ import { registryCoreRls } from './rls-cases/registry-core';
 import { signingRls } from './rls-cases/signing';
 import { vaultCredentialsRls } from './rls-cases/vault-credentials';
 
-export type { ControlTableException, DefinerOnlyTable, OrgTableCase, RegistryFunctionCase } from './rls-cases/types';
+export type {
+  ControlTableException,
+  DefinerOnlyTable,
+  DisclosureFixture,
+  DisclosureRule,
+  DisclosureVariant,
+  Exposure,
+  ExposureTable,
+  OrgTableCase,
+  PiiField,
+  RegistryFunctionCase,
+} from './rls-cases/types';
 
 // 滲透測試的案例清單（ADR-0012 決議 6，MIL-81 建骨架，MIL-89 擴充）。
 //
@@ -107,7 +118,11 @@ export const CASE_SCOPED_READS: Record<string, CaseScopedRead> = compose('caseSc
 /** registry 的每張表都必須登記。測試對每張表驗證 app_rw 的 SELECT、INSERT、UPDATE、DELETE 都被拒。 */
 export const REGISTRY_TABLE_CASES: Record<string, RegistryTableCase> = compose('registryTables');
 
-/** app_rw 能執行的每個 registry 函式都必須登記。 */
+/**
+ * app_rw 能執行的每個 registry 函式都必須登記。
+ * 每個案例另有 `disclosure`（MIL-165）：這個函式對各種呼叫者關係揭露哪些個資。規則在
+ * `src/lib/practice-registry/README.md` 的「個資揭露矩陣」，測試在 `registry-disclosure.test.ts`。
+ */
 export const REGISTRY_FUNCTION_CASES: Record<string, RegistryFunctionCase> = compose('registryFunctions');
 
 /** 傳入系統目錄列出的 registry 表名（schema.table），回傳沒有登記案例的表。 */
@@ -118,6 +133,14 @@ export function registryTablesWithoutCase(tables: readonly string[]): string[] {
 /** 傳入系統目錄列出的 registry 函式名（schema.name），回傳沒有登記案例的函式。 */
 export function registryFunctionsWithoutCase(functions: readonly string[]): string[] {
   return functions.filter((f) => !(f in REGISTRY_FUNCTION_CASES));
+}
+
+/**
+ * 傳入系統目錄列出的 registry 函式名（schema.name），回傳沒有個資揭露規則的函式（MIL-165）。
+ * 沒有案例的函式也算沒有規則。規則本身見 `src/lib/practice-registry/README.md` 的「個資揭露矩陣」。
+ */
+export function registryFunctionsWithoutDisclosure(functions: readonly string[]): string[] {
+  return functions.filter((f) => REGISTRY_FUNCTION_CASES[f]?.disclosure === undefined);
 }
 
 // control schema 的表不掛組織 RLS，也不需要滲透案例（ADR-0012 決議 3）。
