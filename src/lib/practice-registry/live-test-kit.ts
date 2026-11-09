@@ -52,6 +52,10 @@ export interface LiveWorld {
   selectingOrgId: string;
   /** 沒有合約也沒有綁定：關係是 none */
   unrelatedOrgId: string;
+  /** 沒有草稿合約，但有案件成員屬於北辰：關係是 bound */
+  caseBoundOrgId: string;
+  /** 北辰三層與業別各一筆核對紀錄 ID */
+  checks: { license: string; practitioner: string; employment: string };
 }
 
 export interface LiveKit {
@@ -181,12 +185,15 @@ export async function setupLiveKit(): Promise<LiveKit> {
     boundOrgId: newUlid(),
     selectingOrgId: newUlid(),
     unrelatedOrgId: newUlid(),
+    caseBoundOrgId: newUlid(),
+    checks: { license: newUlid(), practitioner: newUlid(), employment: newUlid() },
   };
 
   for (const [orgId, name] of [
     [world.boundOrgId, '綁定的屋主'],
     [world.selectingOrgId, '選人中的屋主'],
     [world.unrelatedOrgId, '無關的屋主'],
+    [world.caseBoundOrgId, '案件綁定的屋主'],
   ]) {
     await owner(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, $2, 'owner')`, [orgId, name]);
   }
@@ -203,6 +210,33 @@ export async function setupLiveKit(): Promise<LiveKit> {
     ['c', xinghe.entityId, world.xing.employmentId],
   ]);
   await draft(world.selectingOrgId, []);
+
+  // 案件綁定：屋主組織的案件，成員是北辰的專任管理人員（relation = practitioner）
+  const caseId = newUlid();
+  await withTx({ kind: 'org', orgId: world.caseBoundOrgId }, async (tx) => {
+    await tx.query(`INSERT INTO org.cases (id, org_id, kind, state, business_type, title) VALUES ($1, $2, 'lease', 'draft', 'master_lease', '測試案件')`, [caseId, world.caseBoundOrgId]);
+    await tx.query(`INSERT INTO org.case_members (id, org_id, case_id, party_id, relation) VALUES ($1, $2, $3, $4, 'practitioner')`, [
+      newUlid(),
+      world.caseBoundOrgId,
+      caseId,
+      p.chen.partyId,
+    ]);
+  });
+
+  // 核對紀錄：業別、證書、任職各一筆。稽核欄位是必填，測試填佔位值
+  const licenseRow = await owner<{ id: string }>(`SELECT id FROM registry.practice_licenses WHERE entity_id = $1 AND kind = 'master_lease'`, [beichen.entityId]);
+  const practitionerRow = await owner<{ id: string }>(`SELECT id FROM registry.practitioners WHERE party_id = $1`, [p.chen.partyId]);
+  for (const [id, type, subject] of [
+    [world.checks.license, 'license', licenseRow[0].id],
+    [world.checks.practitioner, 'practitioner', practitionerRow[0].id],
+    [world.checks.employment, 'employment', chenEmployment],
+  ]) {
+    await owner(
+      `INSERT INTO registry.credential_checks (id, subject_type, subject_id, channel, query_source, result, checked_by, audit_chain_id, audit_seq)
+       VALUES ($1, $2, $3, 'resim_manual', '測試', 'match', 'tester', 'test-chain', 1)`,
+      [id, type, subject],
+    );
+  }
 
   const runnerFor = (orgId: string, partyId?: string): RegistryRunner => (fn) =>
     withTx({ kind: 'org', orgId, ...(partyId ? { partyId } : {}) }, (tx) => fn(tx as OrgTx));
