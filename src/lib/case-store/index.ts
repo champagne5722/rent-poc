@@ -3,6 +3,9 @@ export { addCaseMember, attachContract, CaseCreationBlocked, caseTitleOf, create
 export {
   findOrCreateParty,
   getCase,
+  getOrgName,
+  listCaseSummaries,
+  listContractsOfCase,
   insertCase,
   insertCaseEvent,
   insertCaseMember,
@@ -12,6 +15,8 @@ export {
   normalizePartyEmail,
   setCurrentContract,
   updateLeaseTerms,
+  type CaseContractRow,
+  type CaseSummary,
 } from './repository';
 export {
   CaseNotFound,
@@ -23,3 +28,4 @@ export {
   type DispatchResult,
 } from './types';
 export { withCaseMemberTx, type CaseMemberAccess, type CaseMemberTarget, type CaseMemberTx } from './member-tx';
+export { caseStateForContract, migrateContractsToCases, migrateOrgContractsToCases, type MigrationResult, type OrgMigrationResult } from './legacy-migration';

@@ -1,3 +1,4 @@
+import { migrateContractsToCases } from '../case-store/legacy-migration';
 import { withTx } from '../pg/database';
 import type { DispatchResult, InboxResult } from '../signing-module/module';
 import { taipeiToday } from './dates';
@@ -116,6 +117,13 @@ export function createJobs(deps: JobDeps): JobTable {
 
     async 'scan-timers'(ctx) {
       return { ...(await runScanTimers(deps.timers, { today: taipeiToday(ctx.now), limit: limits.timers })) };
+    },
+
+    // 既有合約遷移成自管租賃案件（MIL-115，ADR-0023 決議 3）。MIL-90 搬完資料後呼叫一次，可重複執行：已有案件的合約不動
+    async 'migrate-contracts-to-cases'(ctx) {
+      const result = await migrateContractsToCases({ now: ctx.now });
+      if (result.failedOrgs.length > 0) console.error(`[jobs] migrate-contracts-to-cases：${result.failedOrgs.length} 個組織失敗`);
+      return { ...result };
     },
 
     // anchor-audit、verify-audit 屬 MIL-88，在那張票加到這裡

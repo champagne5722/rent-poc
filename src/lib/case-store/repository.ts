@@ -282,3 +282,99 @@ export async function findOrCreateParty(tx: OrgTx, email: string, displayName: s
   const raced = await tx.query<{ id: string }>(`SELECT id FROM control.parties WHERE email = $1`, [normalized]);
   return raced.rows[0].id;
 }
+
+// --- 清單與詳情用的讀取 ---
+
+/** 案件清單的一列。 */
+export interface CaseSummary {
+  id: string;
+  orgId: string;
+  /** 主辦組織的名稱。 */
+  orgName: string;
+  kind: CaseRecord['kind'];
+  state: CaseState;
+  businessType: CaseRecord['businessType'];
+  title: string;
+  leaseStart: string | null;
+  leaseEnd: string | null;
+  monthlyRent: number | null;
+  /** 目前合約的狀態。沒有合約（後繼案件、草稿被刪）是 null。 */
+  contractStatus: string | null;
+  /** 承租人與共同承租人的名稱，用「、」串起。目前身分讀不到成員時是 null。 */
+  lesseeNames: string | null;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+interface SummaryRow extends CaseRow {
+  org_name: string;
+  contract_status: string | null;
+  lessee_names: string | null;
+}
+
+/**
+ * 目前身分看得到的案件，新的在前（含主辦組織的全部案件與自己是成員的別組織案件）。
+ * 承租人名稱靠 RLS 篩選：主辦組織與 lessor、mandator、mandatary 讀得到整個案件的成員，其他關係讀不到，名稱是 null。
+ */
+export async function listCaseSummaries(tx: OrgTx): Promise<CaseSummary[]> {
+  const { rows } = await tx.query<SummaryRow>(
+    `SELECT k.id, k.org_id, o.name AS org_name, k.kind, k.state, k.business_type, k.title,
+            to_char(k.lease_start, 'YYYY-MM-DD') AS lease_start, to_char(k.lease_end, 'YYYY-MM-DD') AS lease_end,
+            k.monthly_rent, k.created_at, k.updated_at, c.status AS contract_status,
+            (SELECT string_agg(p.display_name, '、' ORDER BY m.id)
+               FROM org.case_members m JOIN control.parties p ON p.id = m.party_id
+              WHERE m.case_id = k.id AND m.relation IN ('lessee', 'co_lessee') AND upper_inf(m.valid_period)) AS lessee_names
+       FROM org.cases k
+       JOIN control.orgs o ON o.id = k.org_id
+       LEFT JOIN org.contracts c ON c.id = k.current_contract_id
+      ORDER BY k.id DESC`,
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    orgId: r.org_id,
+    orgName: r.org_name,
+    kind: r.kind,
+    state: r.state,
+    businessType: r.business_type,
+    title: r.title,
+    leaseStart: r.lease_start,
+    leaseEnd: r.lease_end,
+    monthlyRent: r.monthly_rent,
+    contractStatus: r.contract_status,
+    lesseeNames: r.lessee_names,
+    createdAt: r.created_at.toISOString(),
+    updatedAt: r.updated_at ? r.updated_at.toISOString() : null,
+  }));
+}
+
+export async function getOrgName(tx: OrgTx, orgId: string): Promise<string | null> {
+  const { rows } = await tx.query<{ name: string }>('SELECT name FROM control.orgs WHERE id = $1', [orgId]);
+  return rows[0]?.name ?? null;
+}
+
+/** 案件詳情「合約」分頁的一列。 */
+export interface CaseContractRow {
+  id: string;
+  status: string;
+  derivedFrom: string | null;
+  createdAt: string;
+  /** 是不是案件的目前合約。 */
+  isCurrent: boolean;
+}
+
+/** 案件下的合約，新的在前。主辦組織與 lessor 等關係讀得到（contracts 的 member_read 政策）。 */
+export async function listContractsOfCase(tx: OrgTx, caseId: string): Promise<CaseContractRow[]> {
+  const { rows } = await tx.query<{ id: string; status: string; derived_from: string | null; created_at: Date; is_current: boolean }>(
+    `SELECT c.id, c.status, c.derived_from, c.created_at, (c.id = k.current_contract_id) AS is_current
+       FROM org.contracts c JOIN org.cases k ON k.id = c.case_id
+      WHERE c.case_id = $1 ORDER BY c.id DESC`,
+    [caseId],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    status: r.status,
+    derivedFrom: r.derived_from,
+    createdAt: r.created_at.toISOString(),
+    isCurrent: r.is_current,
+  }));
+}
