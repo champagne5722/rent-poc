@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { authorize } from '@/lib/authorize';
 import {
   deleteDraftContract,
   getContract,
@@ -21,6 +22,7 @@ export async function GET(_request: NextRequest, { params }: ContractRouteCtx) {
   const id = await contractIdOf(params);
   if (!id) return contractNotFound();
   const read = await readInOrgTx(async (tx) => {
+    await authorize(tx, 'contract.read', { type: 'contract', id });
     const contract = await getContract(tx, id);
     return contract ? { contract, relations: await getContractRelations(tx, contract) } : null;
   });
@@ -39,6 +41,7 @@ export async function PUT(request: NextRequest, { params }: ContractRouteCtx) {
   if (!id) return contractNotFound();
   const body = await readJson(request);
   return inOrgTx(async (tx) => {
+    await authorize(tx, 'contract.draft_send', { type: 'contract', id });
     // 鎖住這一列再讀：狀態檢查和寫入之間，送簽不能插進來
     const contract = await getContract(tx, id, 'update');
     if (!contract) return contractNotFound();
@@ -66,6 +69,7 @@ export async function DELETE(_request: NextRequest, { params }: ContractRouteCtx
   if (!id) return contractNotFound();
   // 歷程隨合約保存，草稿刪除時一併移除；合約、歷程、稽核事件同交易
   return inOrgTx(async (tx) => {
+    await authorize(tx, 'contract.draft_send', { type: 'contract', id });
     const result = await deleteDraftContract(tx, id);
     if (result === 'not_found') return contractNotFound();
     if (result === 'not_draft') return jsonError(409, '僅草稿可刪除');

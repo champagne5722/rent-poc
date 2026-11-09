@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { checkAccess } from '@/lib/authorize';
 import { jsonError, jsonOk, readJson } from '@/lib/http';
 import { inOrgTxAs } from '@/lib/org-route';
 import { changeRole, removeMember } from '@/lib/orgs/members';
@@ -6,7 +7,7 @@ import { isUlid } from '@/lib/pg/ulid';
 
 type Ctx = { params: Promise<{ userId: string }> };
 
-// 改角色、移除成員（MIL-106）。只有 admin。格式錯誤的 ID 與別的組織的帳號，回應相同。
+// 改角色、移除成員（MIL-106）。只有 admin，權限經 authorize（MIL-108），拒絕時保留原本的訊息。格式錯誤的 ID 與別的組織的帳號，回應相同。
 const notFound = () => jsonError(404, '成員不存在');
 const forbidden = () => jsonError(403, '只有組織管理員能管理成員');
 const lastAdmin = () => jsonError(409, '組織至少要有一位管理員');
@@ -17,6 +18,7 @@ export async function PATCH(request: NextRequest, { params }: Ctx): Promise<Resp
   if (!body || typeof body !== 'object') return jsonError(400, '請求本文必須是 JSON');
   if (!isUlid(userId)) return notFound();
   return inOrgTxAs(async (tx, rc) => {
+    if (!(await checkAccess(tx, 'org_member.manage', { type: 'org' })).allowed) return forbidden();
     const result = await changeRole(tx, rc, { userId, role: body.role });
     switch (result.status) {
       case 'changed':
@@ -38,6 +40,7 @@ export async function DELETE(_request: NextRequest, { params }: Ctx): Promise<Re
   const { userId } = await params;
   if (!isUlid(userId)) return notFound();
   return inOrgTxAs(async (tx, rc) => {
+    if (!(await checkAccess(tx, 'org_member.manage', { type: 'org' })).allowed) return forbidden();
     const result = await removeMember(tx, rc, { userId });
     switch (result.status) {
       case 'removed':

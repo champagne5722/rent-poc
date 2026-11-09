@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { checkAccess } from '@/lib/authorize';
 import { jsonError, jsonOk } from '@/lib/http';
 import { inOrgTxAs } from '@/lib/org-route';
 import { cancelInvitation } from '@/lib/orgs/members';
@@ -12,6 +13,9 @@ export async function DELETE(_request: NextRequest, { params }: Ctx): Promise<Re
   const { id } = await params;
   if (!isUlid(id)) return jsonError(404, '邀請不存在');
   return inOrgTxAs(async (tx, rc) => {
+    if (!(await checkAccess(tx, 'org_member.manage', { type: 'org' })).allowed) {
+      return jsonError(403, '只有組織管理員能撤銷邀請');
+    }
     const result = await cancelInvitation(tx, rc, id);
     switch (result.status) {
       case 'cancelled':

@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
+import { authorize } from '@/lib/authorize';
 import { getContract } from '@/lib/contracts';
 import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/contracts/route';
-import { readInOrgTx } from '@/lib/org-route';
+import { authorizeOnly, readInOrgTx } from '@/lib/org-route';
 import { contractSubject, signing, signingErrorResponse } from '@/lib/signing-module';
 import { jsonOk } from '@/lib/http';
 import type { SignTaskFile } from '@/lib/signing-module/sign-task-files';
@@ -22,7 +23,10 @@ async function contractFiles(contractId: string) {
 export async function GET(_request: NextRequest, { params }: ContractRouteCtx) {
   const id = await contractIdOf(params);
   if (!id) return contractNotFound();
-  const read = await readInOrgTx((tx) => getContract(tx, id));
+  const read = await readInOrgTx(async (tx) => {
+    await authorize(tx, 'contract.read', { type: 'contract', id });
+    return getContract(tx, id);
+  });
   if (!read.ok) return read.response;
   if (!read.value) return contractNotFound();
   return jsonOk({ data: await contractFiles(id) });
@@ -32,6 +36,8 @@ export async function GET(_request: NextRequest, { params }: ContractRouteCtx) {
 export async function POST(_request: NextRequest, { params }: ContractRouteCtx) {
   const id = await contractIdOf(params);
   if (!id) return contractNotFound();
+  const denied = await authorizeOnly('contract.refetch_files', { type: 'contract', id });
+  if (denied) return denied;
   try {
     const results = await signing.saveFiles(contractSubject(id), { force: true });
     const failed = results.filter((r) => !r.ok);
