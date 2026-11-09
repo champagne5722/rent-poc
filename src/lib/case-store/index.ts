@@ -1,6 +1,7 @@
 export { dispatch, snapshotOf, type DispatchOptions } from './dispatch';
 export { addCaseMember, attachContract, CaseCreationBlocked, caseTitleOf, createLeaseCase, type NewLeaseCaseInput } from './commands';
 export {
+  caseHasContracts,
   findOrCreateParty,
   getCase,
   getOrgName,
@@ -11,7 +12,6 @@ export {
   insertCaseMember,
   listCaseEvents,
   listCaseMembers,
-  listCases,
   normalizePartyEmail,
   setCurrentContract,
   updateLeaseTerms,

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { authorize, authorizeIgnoringState } from '@/lib/authorize';
-import { dispatch } from '@/lib/case-store';
+import { caseHasContracts, dispatch } from '@/lib/case-store';
 import {
   deleteDraftContract,
   getContractCaseId,
@@ -76,8 +76,11 @@ export async function DELETE(_request: NextRequest, { params }: ContractRouteCtx
     const result = await deleteDraftContract(tx, id);
     if (result === 'not_found') return contractNotFound();
     if (result === 'not_draft') return jsonError(409, '僅草稿可刪除');
-    // 草稿刪除後，案件的目前合約已清空。案件還在 draft 時放棄它，不留下沒有合約的草稿案件
-    if (caseId) await dispatch(tx, caseId, { type: 'abandon' }, { actor: { partyId: rc.partyId } });
+    // 草稿刪除後，案件下已經沒有任何合約（沒有撤回或拒簽留下的舊合約）時，放棄這個 draft 案件，不留下空的草稿案件。
+    // 還有舊合約的案件保留：使用者可以再複製舊合約為新草稿
+    if (caseId && !(await caseHasContracts(tx, caseId))) {
+      await dispatch(tx, caseId, { type: 'abandon' }, { actor: { partyId: rc.partyId } });
+    }
     return jsonOk({ data: { id } });
   });
 }

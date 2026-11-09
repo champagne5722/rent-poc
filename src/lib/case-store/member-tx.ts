@@ -16,7 +16,7 @@ import type { RequestContext } from '../request-context';
 //
 // 第 3 步之後，這個交易看得到整個組織的資料。所以：
 // - repository 方法的第一個參數收 CaseMemberTx，內部查詢一律用 tx.caseId 過濾，不接受呼叫端傳別的案件。
-// - fn 裡不得直接寫 SQL。這條靠 review 與滲透測試（case-member-tx.test.ts）把關，型別擋不住。
+// - fn 裡不得直接寫 SQL。這條靠 review 與滲透測試（member-tx.test.ts）把關，型別擋不住。
 // - 對外，查不到成員、被拒絕與案件不存在是同一個回應：route 把 Forbidden 轉成 forbiddenResponse()。
 //
 // 規則同 withTx：fn 內不得有外部 API 呼叫、fs 非同步操作與計時器，不得巢狀呼叫。

@@ -80,6 +80,8 @@ const EMPTY: OrgMigrationResult = { casesCreated: 0, contractsLinked: 0, attache
 
 /** 遷移一個組織。tx 必須是這個組織的脈絡。 */
 export async function migrateOrgContractsToCases(tx: OrgTx, orgId: string, now: Date): Promise<OrgMigrationResult> {
+  // 兩個行程同時遷移同一個組織時，後到的等先到的提交，再讀到的合約已經有案件，不會各建一個
+  await tx.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`cases-legacy-migration:${orgId}`]);
   const { rows } = await tx.query<ContractRow>(
     `SELECT c.id, c.status, c.derived_from, c.case_id, c.property_id, c.fields, c.created_at,
             p.rental_unit_id, p.name AS property_name, p.address AS property_address

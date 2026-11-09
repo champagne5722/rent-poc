@@ -48,7 +48,7 @@ export default function CasesPage() {
   const visible = useMemo(() => rows.filter((r) => inGroup(r, group)), [rows, group]);
 
   return (
-    <Flex vertical gap={12}>
+    <Flex vertical gap="large">
       <Typography.Title level={4} style={{ margin: 0 }}>
         案件
       </Typography.Title>

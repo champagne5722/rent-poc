@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { App as AntApp, Alert, Button, Descriptions, Flex, Form, Input, Spin, Table, Tabs, Tag, Typography } from 'antd';
+import { App as AntApp, Alert, Button, Col, Descriptions, Flex, Form, Input, Row, Spin, Table, Tabs, Tag, Typography, theme } from 'antd';
 import Link from 'next/link';
 import type { CaseContractRow, CaseEventRecord, CaseMemberRecord, CaseRecord } from '@/lib/case-store';
 import { eventDescription, formatTaipei, leasePeriodLabel, monthlyRentLabel } from '@/lib/case-display';
@@ -35,6 +35,7 @@ export default function CaseDetail({ caseId, readOnly = false, backHref }: { cas
 
 function CaseDetailBody({ caseId, readOnly, backHref }: { caseId: string; readOnly: boolean; backHref: string }) {
   const { message } = AntApp.useApp();
+  const { token } = theme.useToken();
   const [load, setLoad] = useState<Load>({ status: 'loading' });
   const [adding, setAdding] = useState(false);
   const [form] = Form.useForm<{ name: string; email: string }>();
@@ -50,7 +51,13 @@ function CaseDetailBody({ caseId, readOnly, backHref }: { caseId: string; readOn
     void refresh();
   }, [refresh]);
 
-  if (load.status === 'loading') return <Spin style={{ display: 'block', margin: '64px auto' }} />;
+  if (load.status === 'loading') {
+    return (
+      <Flex justify="center" style={{ padding: token.paddingXL }}>
+        <Spin />
+      </Flex>
+    );
+  }
   if (load.status === 'missing') {
     return (
       <Alert
@@ -93,8 +100,8 @@ function CaseDetailBody({ caseId, readOnly, backHref }: { caseId: string; readOn
   };
 
   return (
-    <Flex vertical gap={16}>
-      <Flex align="center" gap={12} wrap>
+    <Flex vertical gap="large">
+      <Flex align="center" gap="small" wrap>
         <Typography.Title level={4} style={{ margin: 0 }}>
           {record.title || '（未命名案件）'}
         </Typography.Title>
@@ -128,7 +135,7 @@ function CaseDetailBody({ caseId, readOnly, backHref }: { caseId: string; readOn
             key: 'members',
             label: `成員 ${detail.members.filter((m) => m.validUntil === null).length}`,
             children: (
-              <Flex vertical gap={12}>
+              <Flex vertical gap="large">
                 <Table<CaseMemberRecord>
                   rowKey="id"
                   size="middle"
@@ -145,7 +152,9 @@ function CaseDetailBody({ caseId, readOnly, backHref }: { caseId: string; readOn
                   ]}
                 />
                 {canEdit && (
-                  <Form form={form} layout="vertical" onFinish={(values) => void addMember(values)} style={{ maxWidth: 420 }}>
+                  <Row>
+                    <Col xs={24} md={12} lg={8}>
+                      <Form form={form} layout="vertical" onFinish={(values) => void addMember(values)}>
                     <Typography.Text strong>加入共同承租人</Typography.Text>
                     <Form.Item name="name" label="姓名" rules={[{ required: true, message: '請填寫姓名' }]}>
                       <Input />
@@ -160,7 +169,9 @@ function CaseDetailBody({ caseId, readOnly, backHref }: { caseId: string; readOn
                     <Button type="primary" htmlType="submit" loading={adding}>
                       加入
                     </Button>
-                  </Form>
+                      </Form>
+                    </Col>
+                  </Row>
                 )}
               </Flex>
             ),

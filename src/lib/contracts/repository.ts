@@ -82,7 +82,11 @@ export async function getContractCaseId(tx: OrgTx, contractId: string): Promise<
  */
 export async function getContract(tx: OrgTx, id: string, lock?: 'update' | 'share'): Promise<Contract | null> {
   const suffix = lock === 'update' ? ' FOR UPDATE' : lock === 'share' ? ' FOR SHARE' : '';
-  const { rows } = await tx.query<ContractRow>(`SELECT ${COLUMNS} FROM org.contracts WHERE id = $1${suffix}`, [id]);
+  // 帶 org_id：案件成員政策（0045）讓別的組織的案件成員也讀得到合約，這裡只認目前組織自己的合約
+  const { rows } = await tx.query<ContractRow>(
+    `SELECT ${COLUMNS} FROM org.contracts WHERE id = $1 AND org_id = current_setting('app.org_id', true)${suffix}`,
+    [id],
+  );
   return rows[0] ? toContract(rows[0]) : null;
 }
 

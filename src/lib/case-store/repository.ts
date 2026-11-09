@@ -65,15 +65,6 @@ export async function getCase(tx: OrgTx, id: string): Promise<CaseRecord | null>
   return rows[0] ? toCase(rows[0]) : null;
 }
 
-/**
- * 目前身分看得到的案件，新的在前：主辦組織的全部案件，加上自己是成員的別組織案件（member_read 政策）。
- * 呼叫端用 `orgId` 與自己的組織比對，分出「我主辦」與「我是成員」。
- */
-export async function listCases(tx: OrgTx): Promise<CaseRecord[]> {
-  const { rows } = await tx.query<CaseRow>(`SELECT ${CASE_COLUMNS} FROM org.cases ORDER BY id DESC`);
-  return rows.map(toCase);
-}
-
 /** 新建案件列。`NewCase` 來自 `decideCaseCreation`。合約之後用 `setCurrentContract` 掛上。 */
 export async function insertCase(
   tx: OrgTx,
@@ -377,4 +368,10 @@ export async function listContractsOfCase(tx: OrgTx, caseId: string): Promise<Ca
     createdAt: r.created_at.toISOString(),
     isCurrent: r.is_current,
   }));
+}
+
+/** 案件下還有沒有合約（不分狀態）。 */
+export async function caseHasContracts(tx: OrgTx, caseId: string): Promise<boolean> {
+  const { rows } = await tx.query('SELECT 1 FROM org.contracts WHERE case_id = $1 LIMIT 1', [caseId]);
+  return rows.length > 0;
 }

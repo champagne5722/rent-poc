@@ -220,4 +220,17 @@ describe('刪除草稿', () => {
     expect(record).toMatchObject({ state: 'aborted', currentContractId: null });
     expect(events.at(-1)).toMatchObject({ type: 'aborted', fromState: 'draft', toState: 'aborted' });
   });
+
+  it('案件下還有撤回留下的舊合約時，刪除新草稿不放棄案件，目前合約清空，可以再複製舊合約', async () => {
+    const { contractId, caseId } = await newDraft();
+    await send(req('POST'), ctx(contractId));
+    await voidContract(req('POST'), ctx(contractId));
+    const draftId = (await json(await copy(req('POST'), ctx(contractId)))).data.id;
+    expect((await DELETE(req('DELETE'), ctx(draftId))).status).toBe(200);
+    const { record } = await readCase(caseId!);
+    expect(record).toMatchObject({ state: 'draft', currentContractId: null });
+    const again = await copy(req('POST'), ctx(contractId));
+    expect(again.status).toBe(201);
+    expect((await readCase(caseId!)).record?.currentContractId).toBe((await json(again)).data.id);
+  });
 });
