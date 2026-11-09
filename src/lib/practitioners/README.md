@@ -54,6 +54,6 @@ MIL-111。依據：ADR-0017（三態、三層、專任四個判定點、核對�
 ## 給 MIL-112、MIL-113、MIL-116、F 線 MIL-102
 
 - MIL-112：`registry.practitioners.valid_until`、`registry.practitioner_employments.consent_valid_until`、`consent_ended_at` 是計時器的輸入。同意書的證據檔 subject_type 是 `employment_consent`，刪除用 `deleteEvidence(tx, ids, 'expired')`。
-- MIL-113：`getSigningFacts(tx, entityId, partyIds)`。`practiceRegistry` 真實 adapter 在該執業主體的組織脈絡呼叫，把回傳的事實餵給 `credentialStatusAt()`。跨組織（屋主送簽）要先在 MIL-113 加案件成員檢查，再放寬 `registry.signing_facts` 的呼叫身分。
+- MIL-113：`getSigningFacts(tx, entityId, partyIds)`。`practiceRegistry` 真實 adapter 在該執業主體的組織脈絡呼叫，把回傳的事實餵給 `credentialStatusAt()`。MIL-113 已完成：真實 adapter 讀 `registry.signing_view()`（0070），跨組織的關係判定在那裡。`signing_facts` 沒有放寬。
 - MIL-116：分流條件的「執業主體至少有一名已驗證專任管理人員」可由 `signing_facts().practitioners` 推導。
 - F 線 MIL-102：`getCertificateBadges(tx, partyIds)`，只回 party ID、證書種類與標章文字加核對日。

@@ -40,7 +40,7 @@ checkSendPreconditions(facts: SendPreconditionFacts): SendPreconditionResult
 ## 給 C 線 MIL-113
 
 - 實作 `PracticeRegistry`（`practice-registry/types.ts`）：`listEntities`、`getEntity`、`listPartySigners`、`getPartySigner`、`listPractitioners`、`getPractitioner`。通過 `registry.contract.test.ts` 的契約測試，把 factory 換成真實 adapter 即可。
-- 啟動時呼叫 `registerLivePracticeRegistry(adapter)`。有註冊就任何環境都用它，正式環境不再被擋下。
+- MIL-113 已完成：真實 adapter 在請求時接上，不需要啟動註冊。說明見 `src/lib/practice-registry/README.md`。
 - 判定事實的業別層是查詢時指定的那一種業別（`licenseKind`），因為執業主體得兼營。
 - `credentialStatusAt` 的證書層：已驗證卻沒有 `validUntil` 時不放行。業別層沒有 `validUntil` 代表不設期限。
 - `checkSendPreconditions` 第 2 項：C 線建案件後，把 `signers` 裡執業人員的來源從「合約的指派」改成「案件的 `practitioner` 成員」。檢查函式不改。`entities`（各取得來源指向的執業主體）也改由案件提供。
@@ -74,4 +74,4 @@ checkSendPreconditions(facts: SendPreconditionFacts): SendPreconditionResult
 
 ## 正式金鑰的判定
 
-沿用 `DOTTEDSIGN_VERIFY_SIGNERS=1`（MIL-65），不從金鑰字串推斷。設為 `1` 且沒有真實 adapter 時，`getPracticeRegistry()` 回 `{ available: false }`，要求執業人員的組合在檢查、存指派與 wizard 都被擋下，原因文字是 `REGISTRY_UNAVAILABLE_REASON`。
+沿用 `DOTTEDSIGN_VERIFY_SIGNERS=1`（MIL-65），不從金鑰字串推斷。設為 `1` 且指定 `PRACTICE_REGISTRY=seed`（沒有真實 adapter）時，`getPracticeRegistry()` 回 `{ available: false }`，要求執業人員的組合在檢查、存指派與 wizard 都被擋下，原因文字是 `REGISTRY_UNAVAILABLE_REASON`。
