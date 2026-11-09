@@ -33,3 +33,25 @@ export async function authorize(t: Tx, action: ActionId, object: AuthObject): Pr
   if (!result.allowed) throw result.forbidden;
   return result.grant;
 }
+
+/**
+ * 同 authorize，但案件狀態不符（`state_not_allowed`）不算拒絕，回 `null`。
+ *
+ * 給合約生命週期的 route 用（送簽、編輯、刪除、撤回、重寄、簽署連結、補抓文件、模擬簽署）。
+ * 這些 route 對「合約現在的狀態不能做這件事」有自己的 409 與訊息（例如「僅草稿可送簽」），
+ * 既有行為與測試依賴它。案件有了之後，案件狀態與合約狀態同步，兩者都擋同一件事；
+ * 狀態不符時身分已經通過其他全部檢查，呼叫端是合法成員，看到狀態訊息不洩漏任何東西。
+ *
+ * 回 `null` 時呼叫端必須繼續做自己的狀態檢查並拒絕。不可在 `null` 之後寫入。
+ * 其他拒絕原因（角色、關係、`viewer` 寫入、終態唯讀、物件不存在）照舊丟 Forbidden。
+ */
+export async function authorizeIgnoringState(
+  t: Tx,
+  action: ActionId,
+  object: AuthObject,
+): Promise<AccessGrant | null> {
+  const result = await checkAccess(t, action, object);
+  if (result.allowed) return result.grant;
+  if (result.forbidden.reason === 'state_not_allowed') return null;
+  throw result.forbidden;
+}

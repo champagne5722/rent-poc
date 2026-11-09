@@ -307,6 +307,9 @@ export const ACTIONS = {
   // 物件在組織層，沒有案件：讀取所有角色，寫入 admin 與 staff，viewer 被拒。
   'property.read': { scope: 'org', effect: 'read', orgRoles: ALL_ROLES },
   'property.manage': { scope: 'org', effect: 'write', orgRoles: WRITE_ROLES },
+  // 案件清單（MIL-115）：列出目前組織主辦的案件，加上自己是成員的別組織案件。所有角色可讀。
+  // 清單內每一列能看到什麼，由 RLS 的成員讀取政策決定；進入單一案件另走 case.read_summary。
+  'case.list': { scope: 'org', effect: 'read', orgRoles: ALL_ROLES },
   // 還沒歸屬案件的合約（MIL-115 遷移前）：依組織角色。案件動作的 `uncased` 欄位指向這兩列。
   'uncased_contract.read': { scope: 'org', effect: 'read', orgRoles: ALL_ROLES },
   'uncased_contract.write': { scope: 'org', effect: 'write', orgRoles: WRITE_ROLES },

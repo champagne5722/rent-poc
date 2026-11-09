@@ -1,3 +1,4 @@
+import type { CaseMemberRelation } from '../cases';
 import { newUlid } from './ulid';
 import type { OrgTx } from './with-tx';
 
@@ -180,6 +181,81 @@ export const ORG_TABLE_CASES: Record<string, OrgTableCase> = {
       return id;
     },
   },
+  'org.cases': {
+    async seed(tx, orgId) {
+      return seedCase(tx, orgId);
+    },
+  },
+  'org.case_members': {
+    async seed(tx, orgId) {
+      const caseId = await seedCase(tx, orgId);
+      // 全域的 party 固定一個：兩個組織各寫一列都要成功（陷阱 6），control.parties 不屬於任何組織
+      await tx.query(
+        `INSERT INTO control.parties (id, email, display_name)
+         VALUES ('0000000000000000000000PEN1', 'penetration-member@example.com', '滲透測試成員')
+         ON CONFLICT DO NOTHING`,
+      );
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.case_members (id, org_id, case_id, party_id, relation)
+         VALUES ($1, $2, $3, '0000000000000000000000PEN1', 'lessor')`,
+        [id, orgId, caseId],
+      );
+      return id;
+    },
+  },
+  'org.case_events': {
+    // 寫入後不得修改也不得刪除：trigger 比 RLS 的 WITH CHECK 先執行（同 org.signature_records）
+    blockedUpdateMessage: /案件事件寫入後不得修改或刪除/,
+    async seed(tx, orgId) {
+      const caseId = await seedCase(tx, orgId);
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.case_events (id, org_id, case_id, type, occurred_at) VALUES ($1, $2, $3, 'created', now())`,
+        [id, orgId, caseId],
+      );
+      return id;
+    },
+  },
+};
+
+async function seedCase(tx: OrgTx, orgId: string): Promise<string> {
+  const id = newUlid();
+  await tx.query(
+    `INSERT INTO org.cases (id, org_id, kind, state, business_type, title)
+     VALUES ($1, $2, 'lease', 'draft', 'self_managed', '滲透測試案件')`,
+    [id, orgId],
+  );
+  return id;
+}
+
+/**
+ * 案件範圍表的成員讀取矩陣（ADR-0016 決議 15，MIL-115）。
+ * 規則：凡是有 case_id 或經合約掛在案件下的 org 表，都要在這裡列出「哪些關係讀得到」。
+ * 空陣列代表成員一律讀不到，只有主辦組織（org_isolation）讀得到。
+ * case-rls.test.ts 逐表、逐關係驗證資料庫的政策與這份清單一致，並檢查每張有 case_id 欄位的表都在清單內。
+ * E 線加案件範圍表（押金、點交、修繕、帳務）時，在這裡加一列並補 migration 的政策。
+ */
+export const CASE_SCOPED_READS: Record<string, { readableBy: readonly CaseMemberRelation[]; note: string }> = {
+  'org.cases': {
+    readableBy: ['lessor', 'lessee', 'co_lessee', 'mandator', 'mandatary', 'owner', 'practitioner', 'broker'],
+    note: '含租期欄位，所以包租案件的 owner 只讀這一張（P0-09 AC5）',
+  },
+  'org.case_members': {
+    readableBy: ['lessor', 'mandator', 'mandatary'],
+    note: '其他關係只讀自己的列（self_read，ADR-0012 決議 7）',
+  },
+  'org.case_events': { readableBy: ['lessor', 'mandator', 'mandatary'], note: '' },
+  'org.contracts': {
+    readableBy: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker', 'mandator', 'mandatary'],
+    note: '包租案件的 owner 讀不到合約（P0-09 AC5）',
+  },
+  'org.sign_tasks': { readableBy: ['lessor', 'mandator', 'mandatary'], note: '簽署任務，經合約對應到案件' },
+  'org.signers': { readableBy: ['lessor', 'mandator', 'mandatary'], note: '經簽署任務對應到案件' },
+  'org.contract_events': { readableBy: [], note: '合約歷程。成員讀取等 MIL-121' },
+  'org.contract_practitioner_assignments': { readableBy: [], note: '指派改成案件成員前仍只有主辦組織讀取（MIL-116）' },
+  'org.sign_task_files': { readableBy: [], note: '承租人下載已簽合約等 MIL-121 補政策' },
+  'org.signature_records': { readableBy: [], note: '簽章紀錄只有主辦組織讀取' },
 };
 
 // 簽署任務。服務商任務編號固定：兩個組織各寫一列都要成功（陷阱 6）；

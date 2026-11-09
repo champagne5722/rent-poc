@@ -1,3 +1,4 @@
+import { onContractOutcomeForCase, onContractSentForCase } from './case-store/contract-subscription';
 import { getContract } from './contracts';
 import type { OrgTx } from './pg/with-tx';
 import { getPracticeRegistry, type PracticeRegistryResolution } from './practice-registry';
@@ -60,6 +61,9 @@ export function createContractSubscriber({ registry = () => getPracticeRegistry(
       } else if (signers.some((s) => s.role === 'practitioner')) {
         console.warn(`[signing] 合約 ${subject.id} 有執業人員簽署人，但送簽時沒有帶簽章紀錄資料`);
       }
+
+      // 案件訂閱送簽（ADR-0016 決議 11）：同一個交易。最後才做，案件的版本衝突會讓合約轉移一起回滾
+      await onContractSentForCase(tx, await contractOf(tx, subject));
     },
 
     // 簽署事件進交易之前，用事件時間重新判定還沒補快照的執業人員。
@@ -87,7 +91,9 @@ export function createContractSubscriber({ registry = () => getPracticeRegistry(
 
     onOutcome: async (tx, subject, outcome, outcomeContext) => {
       await contractOf(tx, subject); // 合約不存在時回 404，而不是靜默略過
-      await applySigningResult(tx, subject.id, outcome);
+      const applied = await applySigningResult(tx, subject.id, outcome);
+      // 合約接受這個結果才通知案件。重送的事件合約不轉移，案件也不會被推進（ADR-0016 決議 11）
+      if (applied) await onContractOutcomeForCase(tx, subject.id, outcome, new Date(outcomeContext.eventAt));
       await completeSignSnapshots(
         tx,
         subject,
@@ -102,6 +108,7 @@ export function createContractSubscriber({ registry = () => getPracticeRegistry(
       if (!(await applySigningResult(tx, subject.id, { type: 'voided' }))) {
         throw new SigningRefusal(409, '僅簽署中的合約可撤回');
       }
+      await onContractOutcomeForCase(tx, subject.id, { type: 'voided' });
     },
 
     // 文件保存已由簽署模組負責，合約完成後沒有其他處理

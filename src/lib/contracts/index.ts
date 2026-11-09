@@ -5,6 +5,7 @@ export {
   createContract,
   deleteDraftContract,
   getContract,
+  getContractCaseId,
   getContractRelations,
   listContractEvents,
   listContracts,

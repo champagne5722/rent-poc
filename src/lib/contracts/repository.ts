@@ -55,10 +55,24 @@ function toContract(row: ContractRow): Contract {
   } as Contract;
 }
 
-/** 新的在前。ULID 隨時間遞增，所以 id DESC 就是建立時間由新到舊。 */
+/**
+ * 新的在前。ULID 隨時間遞增，所以 id DESC 就是建立時間由新到舊。
+ * 只列目前組織自己的合約：案件成員政策（0045）讓別的組織的案件成員也讀得到合約，合約清單不含那些。
+ */
 export async function listContracts(tx: OrgTx): Promise<Contract[]> {
-  const { rows } = await tx.query<ContractRow>(`SELECT ${COLUMNS} FROM org.contracts ORDER BY id DESC`);
+  const { rows } = await tx.query<ContractRow>(
+    `SELECT ${COLUMNS} FROM org.contracts WHERE org_id = current_setting('app.org_id', true) ORDER BY id DESC`,
+  );
   return rows.map(toContract);
+}
+
+/** 合約所屬的案件 ID。沒有案件（遷移前、執業主體組織的合約、委託管理合約）或找不到回 null。 */
+export async function getContractCaseId(tx: OrgTx, contractId: string): Promise<string | null> {
+  const { rows } = await tx.query<{ case_id: string | null }>(
+    `SELECT case_id FROM org.contracts WHERE id = $1 AND org_id = current_setting('app.org_id', true)`,
+    [contractId],
+  );
+  return rows[0]?.case_id ?? null;
 }
 
 /**
@@ -114,6 +128,8 @@ export async function listContractEvents(tx: OrgTx, contractId: string): Promise
 
 export interface NewContract {
   property_id: string | null;
+  /** 所屬案件（MIL-115）。案件必須先建好。沒有案件的合約留空：執業主體組織的合約、委託管理合約。 */
+  case_id?: string | null;
   fields: ContractFields;
   signature_fields?: SignatureField[];
   contract_type?: ContractType;
@@ -127,9 +143,16 @@ export async function createContract(tx: OrgTx, values: NewContract): Promise<st
   const id = newUlid();
   const contractType = values.contract_type ?? 'lease';
   await tx.query(
-    `INSERT INTO org.contracts (id, org_id, property_id, contract_type, fields, signature_fields)
-     VALUES ($1, current_setting('app.org_id', true), $2, $3, $4::jsonb, $5::jsonb)`,
-    [id, values.property_id, contractType, JSON.stringify(values.fields), JSON.stringify(values.signature_fields ?? [])],
+    `INSERT INTO org.contracts (id, org_id, property_id, contract_type, fields, signature_fields, case_id)
+     VALUES ($1, current_setting('app.org_id', true), $2, $3, $4::jsonb, $5::jsonb, $6)`,
+    [
+      id,
+      values.property_id,
+      contractType,
+      JSON.stringify(values.fields),
+      JSON.stringify(values.signature_fields ?? []),
+      values.case_id ?? null,
+    ],
   );
   await appendContractEvent(tx, id, { type: 'created', actor: 'landlord' });
   // payload 不放姓名、地址、租金：canonical 寫入後刪不掉（ADR-0019 決議 5）
@@ -171,10 +194,12 @@ export async function copyContractAsDraft(tx: OrgTx, sourceId: string): Promise<
   const isAmendment = source.status === 'voided';
   const derivedFrom = isAmendment ? source.id : null;
   const id = newUlid();
+  // 新草稿留在同一個案件（P0-09 AC7）。案件的目前合約改指向它，由呼叫端的 attachContract 在同交易處理
+  const caseId = await getContractCaseId(tx, source.id);
   await tx.query(
-    `INSERT INTO org.contracts (id, org_id, property_id, contract_type, fields, signature_fields, derived_from)
-     VALUES ($1, current_setting('app.org_id', true), $2, $3, $4::jsonb, $5::jsonb, $6)`,
-    [id, source.property_id, source.contract_type, JSON.stringify(source.fields), JSON.stringify(source.signature_fields), derivedFrom],
+    `INSERT INTO org.contracts (id, org_id, property_id, contract_type, fields, signature_fields, derived_from, case_id)
+     VALUES ($1, current_setting('app.org_id', true), $2, $3, $4::jsonb, $5::jsonb, $6, $7)`,
+    [id, source.property_id, source.contract_type, JSON.stringify(source.fields), JSON.stringify(source.signature_fields), derivedFrom, caseId],
   );
   await appendContractEvent(tx, id, {
     type: 'created',

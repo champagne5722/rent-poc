@@ -81,6 +81,13 @@ export async function setupRouteDb(): Promise<RouteDb> {
           kit.orgB,
         ]),
       );
+      // actAs() 的使用者對應的 party。案件成員（MIL-115）的 party_id 有外鍵指向 control.parties，
+      // 建約會把建立者加為出租人成員，所以這個 party 必須存在
+      await asRole(db, 'app_owner', () =>
+        db!.query(`INSERT INTO control.parties (id, email, display_name) VALUES ($1, 'route-test@example.com', '路由測試帳號')`, [
+          TEST_PARTY_ID,
+        ]),
+      );
       state.current = null;
     },
     asOwner: (fn) => asRole(db!, 'app_owner', () => fn(db!)),

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { authorize } from '@/lib/authorize';
+import { authorizeIgnoringState } from '@/lib/authorize';
 import { getContract } from '@/lib/contracts';
 import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/contracts/route';
 import { contractPdfRenderer } from '@/lib/contract-pdf';
@@ -17,7 +17,7 @@ export async function POST(_request: NextRequest, { params }: ContractRouteCtx) 
   if (!id) return contractNotFound();
   // 合約與分流條件在同一個交易讀。產 PDF 與呼叫簽署服務商都在交易外
   const read = await readInOrgTx(async (tx) => {
-    await authorize(tx, 'contract.draft_send', { type: 'contract', id });
+    await authorizeIgnoringState(tx, 'contract.draft_send', { type: 'contract', id });
     const found = await getContract(tx, id);
     return found ? { contract: found, inputs: await loadSendInputs(tx, id) } : null;
   });

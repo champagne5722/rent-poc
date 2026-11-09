@@ -1,3 +1,4 @@
+import { caseNotFound } from '../case-store/route';
 import { contractNotFound } from '../contracts/route';
 import { jsonError } from '../http';
 import { propertyNotFound } from '../properties/not-found';
@@ -18,6 +19,8 @@ export function forbiddenResponse(forbidden: Forbidden): Response {
       return contractNotFound();
     case 'property':
       return propertyNotFound();
+    case 'case':
+      return caseNotFound();
     case 'org':
       return jsonError(403, forbidden.message);
   }

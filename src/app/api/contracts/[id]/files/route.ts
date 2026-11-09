@@ -36,7 +36,7 @@ export async function GET(_request: NextRequest, { params }: ContractRouteCtx) {
 export async function POST(_request: NextRequest, { params }: ContractRouteCtx) {
   const id = await contractIdOf(params);
   if (!id) return contractNotFound();
-  const denied = await authorizeOnly('contract.refetch_files', { type: 'contract', id });
+  const denied = await authorizeOnly('contract.refetch_files', { type: 'contract', id }, { ignoreCaseState: true });
   if (denied) return denied;
   try {
     const results = await signing.saveFiles(contractSubject(id), { force: true });

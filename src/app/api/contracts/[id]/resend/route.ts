@@ -8,7 +8,7 @@ import { authorizeOnly } from '@/lib/org-route';
 export async function POST(_request: NextRequest, { params }: ContractRouteCtx) {
   const id = await contractIdOf(params);
   if (!id) return contractNotFound();
-  const denied = await authorizeOnly('contract.resend', { type: 'contract', id });
+  const denied = await authorizeOnly('contract.resend', { type: 'contract', id }, { ignoreCaseState: true });
   if (denied) return denied;
   try {
     const { signer } = await signing.resend(contractSubject(id));

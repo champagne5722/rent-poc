@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) ?? {};
   const contractId = body.contract_id;
   if (!isUlid(contractId)) return contractNotFound();
-  const denied = await authorizeOnly('contract.simulate_signing', { type: 'contract', id: contractId });
+  const denied = await authorizeOnly('contract.simulate_signing', { type: 'contract', id: contractId }, { ignoreCaseState: true });
   if (denied) return denied;
   try {
     const { status } = await signing.simulateEvent(contractSubject(contractId), body.event, body.reason);

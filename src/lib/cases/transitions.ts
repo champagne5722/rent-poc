@@ -100,6 +100,11 @@ export const CASE_EVENT_TYPES = [
   'terminated',
   'expired',
   'handed_over',
+  // MIL-115：資料層加的兩個案件層動作。不是狀態轉移，decideCaseTransition 不產生它們。
+  /** 加入案件成員（送簽時的承租人、手動加入的共同承租人）。 */
+  'member_added',
+  /** 案件的目前合約改指向另一份合約：建立案件時掛第一份草稿，或撤回、拒簽後複製的新草稿。 */
+  'contract_attached',
 ] as const;
 export type CaseEventType = (typeof CASE_EVENT_TYPES)[number];
 

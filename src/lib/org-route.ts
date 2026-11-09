@@ -1,5 +1,5 @@
 import type { ActionId } from './access';
-import { authorize, bindAccessContext, Forbidden, forbiddenResponse, type AuthObject } from './authorize';
+import { authorize, authorizeIgnoringState, bindAccessContext, Forbidden, forbiddenResponse, type AuthObject } from './authorize';
 import { requestContext } from './current-request-context';
 import { jsonError, jsonOk } from './http';
 import { withTx } from './pg/database';
@@ -71,8 +71,15 @@ export async function readInOrgTx<R>(
  * 只做權限檢查，不做別的。通過回 null，拒絕回該回應（401、403、404）。
  * 給後面要呼叫簽署模組（它自己開交易或呼叫外部服務）的 route 用：先過這一關，再進模組。
  */
-export async function authorizeOnly(action: ActionId, object: AuthObject): Promise<Response | null> {
-  const checked = await readInOrgTx((tx) => authorize(tx, action, object));
+export async function authorizeOnly(
+  action: ActionId,
+  object: AuthObject,
+  options: { ignoreCaseState?: boolean } = {},
+): Promise<Response | null> {
+  // ignoreCaseState：合約生命週期 route 自己有狀態檢查與 409 訊息，案件狀態不符不在這裡擋（見 authorizeIgnoringState）
+  const checked = await readInOrgTx((tx) =>
+    options.ignoreCaseState ? authorizeIgnoringState(tx, action, object) : authorize(tx, action, object),
+  );
   return checked.ok ? null : checked.response;
 }
 

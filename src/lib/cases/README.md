@@ -93,8 +93,62 @@
 | `receiver_not_verified` | 屬於執業主體的驗證，與案件狀態無關。案件側不重查。 |
 | `effective_date_in_past` | 方向相反，不重複。F 線擋「建立時生效日早於今天」，案件側擋「生效日還沒到就想生效」。 |
 
+## 資料層：`src/lib/case-store/`（MIL-115）
+
+本模組仍是純函式。帶 I/O 的部分在 `src/lib/case-store/`，表在 migration `0045_cases.sql`。
+
+| 檔案 | 內容 |
+|---|---|
+| `dispatch.ts` | `dispatch(tx, caseId, input, options)`：呼叫 `decideCaseTransition`，同交易寫狀態與案件事件，以 `state_version` 樂觀鎖 |
+| `commands.ts` | `createLeaseCase`、`attachContract`、`addCaseMember`：建案件、掛合約、加成員，各自寫事件與稽核 |
+| `repository.ts` | 讀寫三張表的 SQL，`findOrCreateParty` |
+| `contract-subscription.ts` | 案件訂閱合約的送簽、完成、拒簽、撤回。由 `contract-signing.ts` 的合約訂閱者呼叫 |
+| `member-tx.ts` | `withCaseMemberTx`：成員寫入別的組織資料的唯一入口 |
+| `legacy-migration.ts` | 既有合約遷移成自管租賃案件，可重複執行 |
+
+### 規則
+
+- 狀態轉移一律走 `dispatch()`，不直接 `UPDATE org.cases SET state`。
+- 案件拒絕某個輸入時，`dispatch()` 不丟錯，寫 `input_rejected` 事件並回 `{ ok: false }`。合約的轉移照常提交（ADR-0016 決議 11）。
+- `state_version` 衝突丟 `CaseVersionConflict`，呼叫端讓交易回滾，由 inbox 重試。
+- 純函式回傳的 outbox 任務：`audit_unsettled_close` 由 `dispatch()` 寫成稽核事件。委託管理案件的任務原樣放在回傳值，由 MIL-119 處理。
+- 成員讀取依關係過濾，矩陣在 `src/lib/pg/rls-cases.ts` 的 `CASE_SCOPED_READS`。新增案件範圍表時必須加一列，並在 migration 補政策。
+
+### 給 E 線與 B 線：用 `withCaseMemberTx` 寫入別的組織的資料
+
+承租人確認點交、標示異議、報修，以及屋主確認點交，寫入的是別的組織的資料表。入口只有 `withCaseMemberTx`：
+
+```ts
+// repository 方法收 CaseMemberTx，內部查詢一律用 tx.caseId 過濾，不接受呼叫端傳別的案件。
+export async function reportRepair(tx: CaseMemberTx, input: RepairInput): Promise<string> {
+  const id = newUlid();
+  await tx.query(
+    `INSERT INTO org.repairs (id, org_id, case_id, reporter_party_id, body)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [id, tx.orgId, tx.caseId, input.reporterPartyId, input.body],
+  );
+  await appendAudit(tx, { action: 'repair.report', object: { type: 'case', id: tx.caseId } });
+  return id;
+}
+
+// route：把 Forbidden 轉成與「案件不存在」相同的回應
+try {
+  const id = await withCaseMemberTx(rc, { caseId, action: 'repair.report' }, (tx) => reportRepair(tx, input));
+  return jsonOk({ data: { id } }, { status: 201 });
+} catch (error) {
+  if (error instanceof Forbidden) return forbiddenResponse(error);
+  throw error;
+}
+```
+
+- `rc` 是 `requestContext()` 的結果，`org` 或 `party` 脈絡都可以。屋主以自己的組織身分操作時也走這裡。
+- `action` 必須是動作表（`src/lib/access/actions.ts`）裡的動作。沒有就先加一列。
+- `tx.grant.onBehalf` 為真時，稽核事件的 payload 必須帶它。
+- 第 3 步之後，這個交易看得到整個組織的資料。callback 內不得直接寫 SQL，只呼叫收 `CaseMemberTx` 的 repository 方法。
+- 新的案件範圍表必須在 `CASE_SCOPED_READS` 登記可讀的關係。
+
 ## 這個階段不做
 
-資料表、`dispatch()`、`withCaseMemberTx`、樂觀鎖、`input_rejected` 事件的寫入、合約訂閱、既有合約遷移（`migrated` 事件只留常數）、查詢函式、worker 接線。這些在 `integration/line-c` 做，等 A 線 MIL-82。
+代管與包租案件的建立檢查接線（MIL-116）、委託管理案件的建立、委託連結與 `onBehalf` 事實載入、`close_mandatary_valid_period` 等 outbox 任務的處理（MIL-119）、worker 計時器接線、退租與結案的操作入口（E 線）、站內通知。
 
 四個純函式模組（`cases`、`access`、`registry-rules`、`labels`）各自定義型別，併 main 後再開一張小票抽共用型別，由本模組當來源。

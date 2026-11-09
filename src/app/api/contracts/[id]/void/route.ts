@@ -9,7 +9,7 @@ export async function POST(_request: NextRequest, { params }: ContractRouteCtx) 
   const id = await contractIdOf(params);
   if (!id) return contractNotFound();
   // 先過權限，再進簽署模組（它在交易外呼叫簽署服務商）
-  const denied = await authorizeOnly('contract.void', { type: 'contract', id });
+  const denied = await authorizeOnly('contract.void', { type: 'contract', id }, { ignoreCaseState: true });
   if (denied) return denied;
   try {
     await signing.voidTask(contractSubject(id));
