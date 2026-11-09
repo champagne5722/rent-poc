@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
+import { getDepositLedger, listPeriods } from '@/lib/case-ledger';
 import { getCase, listCaseEvents, listCaseMembers } from '@/lib/case-store';
 import { DATA_DIR } from '@/lib/db';
 import { withTx } from '@/lib/pg/database';
@@ -137,6 +138,37 @@ describe('案件訂閱合約', () => {
     const { record, events } = await readCase(caseId!);
     expect(record).toMatchObject({ state: 'active', stateVersion: 2 });
     expect(events.at(-1)).toMatchObject({ type: 'contract_completed', fromState: 'signing', toState: 'active', actorPartyId: null });
+  });
+
+  it('全員完成：同交易建立押金台帳與全部應收期別，約定金額取合約的押金（MIL-123）', async () => {
+    const { contractId, caseId } = await newDraft();
+    await send(req('POST'), ctx(contractId));
+    const ledgerOf = () =>
+      withTx({ kind: 'org', orgId: kit.orgA }, async (tx) => ({ ledger: await getDepositLedger(tx, caseId!), periods: await listPeriods(tx, caseId!) }));
+
+    await mockAdvance(contractId, 'signed');
+    expect(await ledgerOf()).toEqual({ ledger: null, periods: [] });
+
+    await mockAdvance(contractId, 'completed');
+    const { ledger, periods } = await ledgerOf();
+    // 押金是建約時由物件的預設租金兩倍帶入（20000 的兩倍），付款日預設每月 5 日
+    expect(ledger).toMatchObject({ caseId, expectedAmount: 40000, status: 'open' });
+    expect(periods).toHaveLength(12);
+    expect(periods[0]).toMatchObject({ periodKey: '2026-09', periodStart: '2026-09-01', periodEnd: '2026-09-30', dueDate: '2026-09-05', amount: 21000, state: 'active' });
+    expect(periods[11]).toMatchObject({ periodKey: '2027-08', periodEnd: '2027-08-31', dueDate: '2027-08-05' });
+  });
+
+  it('案件拒絕完成事件時，不建押金台帳（案件不在 signing）', async () => {
+    const { contractId, caseId } = await newDraft();
+    await send(req('POST'), ctx(contractId));
+    // 製造不一致：案件已不在 signing，合約仍在簽署中
+    await withTx({ kind: 'org', orgId: kit.orgA }, (tx) => tx.query(`UPDATE org.cases SET state = 'draft' WHERE id = $1`, [caseId]));
+    await mockAdvance(contractId, 'signed');
+    await mockAdvance(contractId, 'completed');
+    const { events } = await readCase(caseId!);
+    expect(events.find((e) => e.type === 'input_rejected' && e.payload.inputType === 'contract_completed')).toBeTruthy();
+    const ledger = await withTx({ kind: 'org', orgId: kit.orgA }, (tx) => getDepositLedger(tx, caseId!));
+    expect(ledger).toBeNull();
   });
 
   it('拒簽：案件回 draft，之後複製的新草稿留在同一案件，目前合約改指向它（P0-09 AC7）', async () => {

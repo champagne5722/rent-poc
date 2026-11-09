@@ -1,4 +1,5 @@
-import { getContractCaseId } from '../contracts';
+import { openCaseLedger } from '../case-ledger/open';
+import { getContract, getContractCaseId } from '../contracts';
 import type { CaseInput } from '../cases';
 import type { OrgTx } from '../pg/with-tx';
 import type { ProgressOutcome } from '../signing-module/progress';
@@ -67,5 +68,25 @@ export async function onContractOutcomeForCase(
   if (input === null) return;
   const caseId = await getContractCaseId(tx, contractId);
   if (caseId === null) return;
-  await dispatch(tx, caseId, input, { now: at });
+  const result = await dispatch(tx, caseId, input, { now: at });
+  // 全員完成：同一個交易建立押金台帳與全部應收期別（ADR-0050 決議 4，MIL-123）。
+  // 案件拒絕這個事件（不是目前合約、案件不在 signing）時不建：台帳要掛在案件真正採用的那份合約上
+  if (result.ok && input.type === 'contract_completed') await openLedgerForCompletedLease(tx, caseId, contractId);
+}
+
+/**
+ * 租賃案件的合約全員完成，建立押金台帳與應收期別。委託管理案件沒有租金與押金，什麼都不做。
+ * 合約欄位不足以切期別時，openCaseLedger 會跳過期別並在稽核事件記下，不丟錯，所以不會讓完成事件回滾。
+ */
+async function openLedgerForCompletedLease(tx: OrgTx, caseId: string, contractId: string): Promise<void> {
+  const contract = await getContract(tx, contractId);
+  if (!contract || contract.contract_type !== 'lease') return;
+  const { fields } = contract;
+  await openCaseLedger(tx, caseId, {
+    deposit: fields.deposit,
+    startDate: fields.startDate,
+    endDate: fields.endDate,
+    payDay: fields.payDay,
+    rent: fields.rent,
+  });
 }
