@@ -26,6 +26,12 @@ const RETRYABLE: Record<OutboxAction, boolean> = {
   send_email: true,
 };
 
+/** 排進 outbox 的對象。簽署動作是簽署標的，其他動作（例如 send_email）由各自的模組決定 type。 */
+export interface OutboxSubject {
+  type: string;
+  id: string;
+}
+
 export interface OutboxRow {
   id: string;
   action: OutboxAction;
@@ -66,7 +72,7 @@ const toRow = (r: Row): OutboxRow => ({
  */
 export async function enqueueOutbox(
   tx: OrgTx,
-  input: { action: OutboxAction; subject: SigningSubject; sending?: boolean },
+  input: { action: OutboxAction; subject: OutboxSubject; sending?: boolean },
 ): Promise<{ row: OutboxRow; created: boolean }> {
   const sending = input.sending === true;
   const { rows } = await tx.query<Row>(

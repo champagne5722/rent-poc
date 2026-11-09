@@ -107,7 +107,9 @@ export async function drainNotificationEmails(orgId: string, limit: number, deps
 }
 
 async function loadEmail(tx: OrgTx, row: OutboxRow): Promise<EmailRow | null> {
-  if (row.subject.type !== EMAIL_SUBJECT_TYPE) return null;
+  // 簽署模組把 subject.type 標成簽署標的型別。send_email 列的值是 EMAIL_SUBJECT_TYPE，所以先放寬成 string 再比對
+  const subjectType: string = row.subject.type;
+  if (subjectType !== EMAIL_SUBJECT_TYPE) return null;
   const { rows } = await tx.query<EmailRow>(
     `SELECT id, kind, to_email, from_name, subject, body_text FROM org.notification_emails WHERE id = $1`,
     [row.subject.id],
