@@ -45,6 +45,7 @@ Cloud Run 的環境變數：
 | `K_SERVICE` | Cloud Run 自動注入 | `src/proxy.ts` 用來判斷是否必須要求密碼 |
 | `JOBS_OIDC_AUDIENCE` | MIL-92 切換時設定 | 內部 job route 驗證 OIDC token 的 `aud`，值是服務網址。見「內部 job 與 Cloud Scheduler」 |
 | `JOBS_OIDC_SERVICE_ACCOUNT` | MIL-92 切換時設定 | Cloud Scheduler 的 service account email。token 的 `email` 必須等於它 |
+| `AUDIT_ANCHOR_PROVIDER` | MIL-92 切換時設定 | 稽核鏈錨定用的服務。demo 設 `freetsa`。正式環境（`NODE_ENV=production`）沒有設定時，`anchor-audit` 與 `verify-audit` 回 500。設成 `mock` 也會被拒絕。見「稽核鏈錨定與每日驗證」 |
 
 GitHub repo variables：
 
@@ -306,8 +307,10 @@ curl -s -o /dev/null -w '%{time_total}s\n' "https://rent-poc-demo-<專案編號>
 | `drain-inbox` | 重試還沒處理完的 webhook 事件 | 每 60 分鐘 | 每 5 分鐘 |
 | `drain-outbox` | 重試未完成的撤回與重寄 | 每 60 分鐘 | 每 5 分鐘 |
 | `scan-timers` | 執行各線註冊的計時器 | 每日 00:10（台灣時間） | 每日 00:10（台灣時間） |
+| `anchor-audit` | 把各組織稽核鏈的鏈頭送到外部時戳服務，保存回執 | 每日 00:30（台灣時間） | 每日 00:30（台灣時間） |
+| `verify-audit` | 逐組織重算稽核鏈，並比對已存的回執 | 每日 01:00（台灣時間） | 每日 01:00（台灣時間） |
 
-`anchor-audit` 與 `verify-audit` 由 MIL-88 加入。加入時照下方「建立排程」的格式多建兩個排程。
+`anchor-audit` 與 `verify-audit` 的細節見「稽核鏈錨定與每日驗證」。
 
 每次 job 的處理筆數有上限。`drain-inbox` 100 筆，`drain-outbox` 50 筆，`scan-timers` 500 項。回應的 `truncated` 為 `true` 時，剩下的留給下一次排程。
 
@@ -355,7 +358,7 @@ route 驗證三項。三項都通過才執行 job。
 
    MIL-92 的部署 workflow 加入這兩個變數後，這一步得省略。
 
-5. 建立三個排程。demo 的 `drain-*` 用 `0 * * * *`（每小時）：
+5. 建立五個排程。demo 的 `drain-*` 用 `0 * * * *`（每小時）：
 
    ```bash
    for JOB in drain-inbox drain-outbox; do
@@ -370,6 +373,17 @@ route 驗證三項。三項都通過才執行 job。
      --uri "$URL/api/internal/jobs/scan-timers" --http-method POST \
      --oidc-service-account-email "$SA" --oidc-token-audience "$URL" \
      --attempt-deadline 300s --max-retry-attempts 3 --min-backoff 30s
+   # 稽核鏈：先錨定，再驗證。錨定失敗時 job 仍回 200，不靠 Cloud Scheduler 重試，所以 --max-retry-attempts 0
+   gcloud scheduler jobs create http "rent-poc-anchor-audit" --location asia-east1 --project "$PROJECT" \
+     --schedule "30 0 * * *" --time-zone "Asia/Taipei" \
+     --uri "$URL/api/internal/jobs/anchor-audit" --http-method POST \
+     --oidc-service-account-email "$SA" --oidc-token-audience "$URL" \
+     --attempt-deadline 120s --max-retry-attempts 0
+   gcloud scheduler jobs create http "rent-poc-verify-audit" --location asia-east1 --project "$PROJECT" \
+     --schedule "0 1 * * *" --time-zone "Asia/Taipei" \
+     --uri "$URL/api/internal/jobs/verify-audit" --http-method POST \
+     --oidc-service-account-email "$SA" --oidc-token-audience "$URL" \
+     --attempt-deadline 300s --max-retry-attempts 0
    ```
 
 6. 手動觸發一次，確認回 200：
@@ -402,6 +416,78 @@ done
 - 查 inbox：用 `app_owner` 連線，執行 `SELECT id, provider_task_ref, event_type, attempts, last_error, received_at FROM control.inbox_messages WHERE status = 'dead' ORDER BY id;`
 - 查 outbox：`org.outbox` 有組織 RLS。用 break-glass 步驟進入該組織，查 `status = 'dead'` 的列。
 - 處理方式：確認原因後，手動把 `status` 改回 `pending` 並把 `attempts` 歸零。下一次排程會重試。
+
+### 稽核鏈錨定與每日驗證
+
+決策見 ADR-0019。實作在 `src/lib/audit/anchor/`。
+
+這兩個 job 的環境變數是 `AUDIT_ANCHOR_PROVIDER=freetsa`。FreeTSA 每個 IP 每秒限 1 次，沒有 SLA。demo 之後必須換成 TWCA 或中華電信，這是 pilot 的上線閘門。
+
+**`anchor-audit`**
+
+1. 讀出所有「鏈頭序號大於最後一片葉序號」的鏈。
+2. 沒有這樣的鏈時，回 `{"status":"no_changes"}`，不呼叫外部服務。
+3. 把這些鏈頭組成 Merkle 樹，只把 32 位元組的樹根送到 FreeTSA。
+4. 回執通過簽章與信任鏈檢查後，連同葉與證明寫入 `audit.anchor_*`。
+
+結果的 `status` 有四種。
+
+| `status` | 意思 | 要做的事 |
+|---|---|---|
+| `no_changes` | 所有鏈都沒有新事件 | 無 |
+| `anchored` | 已保存一批 | 無 |
+| `superseded` | 另一個排程已涵蓋同樣的鏈頭 | 無 |
+| `failed` | 外部服務失敗，什麼都沒保存 | 看下一則 log。稽核寫入不受影響 |
+
+失敗時 job 仍回 200，不靠 Cloud Scheduler 重試。下一次排程會把未錨定的鏈頭，連同失敗期間的新事件一起送出。
+
+**`verify-audit`**
+
+1. 從 `control.orgs` 列出所有鏈，含平台組織。
+2. 每條鏈開一個 org 交易，驗證本地雜湊鏈。
+3. 比對已存的葉：事件雜湊必須與錨定當時相同，證明必須推回樹根，回執必須通過驗證。
+4. 任何一項失敗，寫一筆 `CRITICAL` log，結果的 `failed` 列出該鏈。
+
+驗證出問題時 job 仍回 200，因為重試不會改變結果。
+
+**Log 與告警**
+
+log 是一行 JSON，帶 `severity` 與 `component: "audit-anchor"`。Cloud Logging 依 `severity` 分級。
+
+| `severity` | 條件 | 建議的告警 |
+|---|---|---|
+| `WARNING` | 錨定失敗 1 次 | 不告警 |
+| `ERROR` | 錨定連續失敗 2 次以上，或某條鏈的驗證沒有完成 | 通知維運，查 FreeTSA 是否中斷 |
+| `CRITICAL` | 稽核鏈驗證失敗 | 立即通知，當成資安事件處理 |
+
+查看 `ERROR` 以上的 log：
+
+```bash
+gcloud logging read 'jsonPayload.component="audit-anchor" AND severity>=ERROR' --project "$PROJECT" --limit 20
+```
+
+**處理 `CRITICAL`**
+
+1. 讀 log 的 `chainId`、`localIssues`、`anchorIssues`。
+2. `anchored_hash_mismatch` 表示該鏈在錨定之後被重算過。
+3. `anchored_event_missing` 表示被錨定的事件已不存在。
+4. 用 break-glass 的對帳步驟，找出同一時段的資料庫存取紀錄。
+5. 用資料庫備份對照該鏈被竄改前的內容。
+
+**已知限制**
+
+- 錨定之後才寫的事件，要等下一次 `anchor-audit` 才有回執。竄改這段事件，回執抓不到。
+- 超級使用者也能刪除 `audit.anchor_*` 的列。刪除之後，回執就沒有可比對的對象。資料庫備份是唯一的保險。
+- `app_rw` 能呼叫 `audit.record_anchor()`。函式檢查葉對得上目前的事件，但不檢查回執。偽造的批次會讓 `verify-audit` 回報 `anchor_receipt_invalid`，但也會佔掉該鏈那段序號。MIL-89 評估是否改用專用角色。
+- 回執只證明「這個雜湊在這個時間之前存在」。法律上的舉證力待法務確認（MIL-62）。
+
+**重跑 FreeTSA 實測**
+
+這個測試預設跳過。它只送一個 SHA-256 雜湊，不含業務資料。
+
+```bash
+FREETSA_LIVE=1 npx vitest run src/lib/audit/anchor/freetsa.live.test.ts
+```
 
 ### 註冊計時器（給各線）
 
