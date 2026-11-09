@@ -127,6 +127,28 @@ npm run e2e:visual -- --update-snapshots
 - antd Select 的選項用 `chooseOption`。下拉是虛擬清單，`role=option` 的節點是隱藏的。
 - 重構票改了畫面文字或版面時，同一張票必須更新對應的流程測試。流程測試通過是重構票的完成條件之一。
 
+### 現況基準（baseline）
+
+`docs/ui/baseline/` 是 UI 重構前的基準：每頁截圖、6 項評分、impeccable audit、靜態統計，以及積欠票的畫面驗收（MIL-170）。階段驗收時重跑，與這份基準比較。
+
+1. 跑量測與截圖，約 8 分鐘：
+
+```bash
+HEAVY_COST=6 scripts/heavy.sh e2e-baseline scripts/e2e/run-e2e.sh baseline
+```
+
+2. 重跑靜態統計、評分與報告：
+
+```bash
+node e2e/baseline/static-stats.mjs && node e2e/baseline/score.mjs && node e2e/baseline/build-report.mjs
+```
+
+- 腳本在 `e2e/baseline/`。它沒有斷言，不在 `npm run e2e` 與 `npm run e2e:visual` 裡。
+- 外殼替 dev server 設 `PLATFORM_OPERATOR_EMAILS`，所以測試能登入平台營運者。只有 `baseline` 會設。
+- 測試自己啟動 Chromium 並開 CDP port 9333，給 `impeccable detect --cdp` 掃渲染後的頁面。
+- 重跑後要看新截圖，更新 `e2e/baseline/score.mjs` 裡手填的「一致」「狀態」「回饋」。
+- 只重跑資料準備與驗收，加參數 `--grep "準備資料|前置|驗收|承租人端截圖"`。
+
 ### 量記憶體
 
 ```bash

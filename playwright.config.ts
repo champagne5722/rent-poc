@@ -54,5 +54,14 @@ export default defineConfig({
       dependencies: ['setup'],
       use: { ...fixedEnvironment, storageState: 'e2e-results/.auth/state.json' },
     },
+    // 現況基準（MIL-170）：全站頁面的截圖、量測與 impeccable audit。只量測與記錄，沒有斷言，
+    // 不在 npm run e2e 與 e2e:visual 裡。副檔名用 .baseline.ts，flows 與 visual 的 testMatch 不會撿到。
+    // 執行方式見 docs/ui/baseline/README.md。
+    {
+      name: 'baseline',
+      testMatch: 'baseline/*.baseline.ts',
+      dependencies: ['setup'],
+      use: { ...fixedEnvironment, storageState: 'e2e-results/.auth/state.json' },
+    },
   ],
 });

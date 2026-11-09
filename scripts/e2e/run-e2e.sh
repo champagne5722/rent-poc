@@ -3,7 +3,7 @@
 # 整段包成一個腳本，dev server 與瀏覽器都不會留在背景。寫法參考 scripts/smoke/run-smoke.sh。
 #
 # 用法（在 worktree 根目錄，必須經排程；日常請用 npm run e2e 與 npm run e2e:visual）：
-#   scripts/heavy.sh e2e scripts/e2e/run-e2e.sh <flows|visual> [Playwright 參數...]
+#   scripts/heavy.sh e2e scripts/e2e/run-e2e.sh <flows|visual|baseline> [Playwright 參數...]
 #
 # 環境變數：
 #   E2E_PORT      dev server port，預設 3410。
@@ -13,11 +13,16 @@
 # 簽署走 mock 模式：外殼清掉 DOTTEDSIGN_CLIENT_ID 與 DOTTEDSIGN_CLIENT_SECRET，不呼叫點點簽。
 # 登入走 email 驗證碼：Mailer 用 log adapter，測試從 /demo/otp 取碼。應用程式碼沒有為測試開後門。
 # 資料庫是這次啟動的記憶體 PGlite，每次執行都是全新的，不依賴既有資料。
+#
+# baseline（MIL-170）專用：平台營運者沒有自助註冊，由環境變數建立，所以外殼替 dev server 設
+# PLATFORM_OPERATOR_EMAILS（BASELINE_OPERATOR_EMAIL，預設 e2e-operator@example.com）。
+# 只有 baseline 會設，flows 與 visual 的環境不變。baseline 要開 CDP port 給 impeccable detect，
+# port 由 BASELINE_CDP_PORT 指定（預設 9333），瀏覽器由測試自己啟動，結束時跟著測試關閉。
 set -u
 export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH
-if [ $# -lt 1 ]; then echo "用法：run-e2e.sh <flows|visual> [Playwright 參數...]" >&2; exit 64; fi
+if [ $# -lt 1 ]; then echo "用法：run-e2e.sh <flows|visual|baseline> [Playwright 參數...]" >&2; exit 64; fi
 PROJECT=$1; shift
-case "$PROJECT" in flows|visual) ;; *) echo "第一個參數必須是 flows 或 visual，收到「$PROJECT」" >&2; exit 64 ;; esac
+case "$PROJECT" in flows|visual|baseline) ;; *) echo "第一個參數必須是 flows、visual 或 baseline，收到「$PROJECT」" >&2; exit 64 ;; esac
 
 PORT=${E2E_PORT:-3410}
 PG_PORT=${E2E_PG_PORT:-$((54000 + PORT % 1000))}
@@ -60,7 +65,9 @@ PG_PORT=$PG_PORT node --experimental-strip-types --disable-warning=MODULE_TYPELE
 PG_PID=$!
 wait_for "$PG_LOG" ready 120 || exit 1
 
-env -u DOTTEDSIGN_CLIENT_ID -u DOTTEDSIGN_CLIENT_SECRET \
+OPERATOR_ENV=""
+[ "$PROJECT" = baseline ] && OPERATOR_ENV="PLATFORM_OPERATOR_EMAILS=${BASELINE_OPERATOR_EMAIL:-e2e-operator@example.com}"
+env -u DOTTEDSIGN_CLIENT_ID -u DOTTEDSIGN_CLIENT_SECRET $OPERATOR_ENV \
   NEXT_DIST_DIR=$DIST DATABASE_URL="postgres://app_rw:x@127.0.0.1:$PG_PORT/postgres" PG_POOL_MAX=1 \
   MAILER_ADAPTER=log NEXT_TELEMETRY_DISABLED=1 \
   npx next dev --webpack -p "$PORT" > "$NEXT_LOG" 2>&1 &
