@@ -112,7 +112,7 @@ P0-09 表與 ADR-0023 決議 7 衝突的地方以 ADR 為準：代管業者的�
 
 ## `authorize()` 已完成
 
-`authorize()`、事實載入與 route 接線在 `src/lib/authorize/`，見該目錄的 README。以下是原本的設計草稿，保留作對照。細節以 `src/lib/authorize/` 為準：脈絡綁在 tx 上而不是呼叫 `requestContext()`，拒絕不寫稽核，拒絕的對外回應分 404 與 403。
+`authorize()`、事實載入與 route 接線在 `src/lib/authorize/`，見該目錄的 README。以下是原本的設計草稿，保留作對照。細節以 `src/lib/authorize/` 為準：脈絡綁在 tx 上而不是呼叫 `requestContext()`，拒絕不寫稽核，有 ID 的物件拒絕一律回 404，組織層動作回 403。
 
 ## 原本的設計草稿
 

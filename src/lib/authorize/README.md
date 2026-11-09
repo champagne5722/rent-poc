@@ -41,16 +41,16 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
 
 ## 拒絕怎麼對外回應（`response.ts`）
 
-規則：呼叫者看不到的，回得和「不存在」逐位元相同；看得到、只是不能做，回 403。
+ADR-0023 決議 6：對外，拒絕與資料不存在是同一個回應（P0-02 AC1）。
 
-| 原因 | 對外 |
+| 物件 | 對外 |
 |---|---|
-| `object_not_found`、`not_a_member` | 物件類型的 404，本文與 route 自己的 notFound 相同（`contractNotFound()`、`propertyNotFound()`） |
-| 其他（`viewer_read_only`、`role_not_allowed`、`state_not_allowed`…） | 403 `{ "error": "沒有權限執行此操作" }` |
+| `contract`、`property`（有 ID） | 一律物件類型的 404，不論原因（查不到、別的組織、`viewer` 寫入、角色不夠、狀態不允許）。本文與 route 自己的 notFound 逐位元相同（`contractNotFound()`、`propertyNotFound()`） |
+| `org`（成員管理、稽核匯出、建立物件或合約） | 403 `{ "error": "沒有權限執行此操作" }`。沒有資料可以裝成不存在 |
 
 response body 不含原因碼。原因碼在 `Forbidden.reason`，只給內部與日誌。
 
-這和 `src/lib/access/README.md` 寫的「所有拒絕與不存在是同一個回應」不同。P0-02 AC1 的條件是「A 組織成員以 B 組織的資料 ID 呼叫」，防的是跨組織洩漏。同組織的 viewer 本來就能讀到這筆資料，對他回 404 只會誤導。若要改成一律 404，只改 `response.ts` 的 `HIDDEN_REASONS`。
+取捨：同組織的 `viewer` 對自己看得到的物件按寫入，會看到「物件不存在」。這是 ADR 的規定。畫面應隱藏 `viewer` 的寫入按鈕（F 線），不要靠錯誤訊息告訴使用者。建立類動作回 403，因為沒有 ID 可裝。
 
 ## 不寫稽核
 
@@ -77,6 +77,6 @@ response body 不含原因碼。原因碼在 `Forbidden.reason`，只給內部�
 | `load-facts.ts` | `loadAccessFacts`，兩個 MIL-115 接線處 |
 | `context.ts` | `bindAccessContext`、`accessContextOf`（WeakMap，綁在 tx 上） |
 | `forbidden.ts` | `Forbidden` |
-| `response.ts` | `forbiddenResponse` |
+| `response.ts` | `forbiddenResponse`，有 ID 的物件一律回 404 |
 | `guards.ts` | `authorizeAuditExport` |
 | `types.ts` | `AuthObject`、`ForbiddenReason`、`AccessGrant` |

@@ -108,14 +108,14 @@ describe('viewer：讀取成功', () => {
   });
 });
 
-describe('viewer：寫入被拒（403，本文固定，不含原因碼）', () => {
+describe('viewer：寫入被拒（有 ID 的物件與「不存在」同一個回應，建立類動作回 403）', () => {
   it('物件新增、修改、刪除，設備詞彙新增', async () => {
     const { propertyId } = await seed(kit.orgA);
     actAsRole(kit.orgA, 'viewer');
 
     expect(await snap(await createProperty(req('POST', PROPERTY_BODY)))).toEqual(FORBIDDEN);
-    expect(await snap(await putProperty(req('PUT', PROPERTY_BODY), ctx(propertyId)))).toEqual(FORBIDDEN);
-    expect(await snap(await deleteProperty(req('DELETE'), ctx(propertyId)))).toEqual(FORBIDDEN);
+    expect(await snap(await putProperty(req('PUT', PROPERTY_BODY), ctx(propertyId)))).toEqual(PROPERTY_NOT_FOUND);
+    expect(await snap(await deleteProperty(req('DELETE'), ctx(propertyId)))).toEqual(PROPERTY_NOT_FOUND);
     expect(await snap(await addEquipment(req('POST', { name: '投影機' })))).toEqual(FORBIDDEN);
 
     actAsRole(kit.orgA, 'admin');
@@ -127,20 +127,25 @@ describe('viewer：寫入被拒（403，本文固定，不含原因碼）', () =
     const { propertyId, contractId } = await seed(kit.orgA);
     actAsRole(kit.orgA, 'viewer');
 
-    const denied = [
-      await createContract(req('POST', { property_id: propertyId })),
-      await putContract(req('PUT', { fields: { landlordName: '改名' } }), ctx(contractId)),
-      await deleteContract(req('DELETE'), ctx(contractId)),
-      await send(req('POST'), ctx(contractId)),
-      await copyContract(req('POST'), ctx(contractId)),
-      await putPractitioners(req('PUT', { assignments: [] }), ctx(contractId)),
-      await voidContract(req('POST'), ctx(contractId)),
-      await resend(req('POST'), ctx(contractId)),
-      await getSignLink(req('GET'), ctx(contractId)),
-      await refetchFiles(req('POST'), ctx(contractId)),
-      await advance(req('POST', { contract_id: contractId, event: 'signed' })),
+    // 建立沒有 ID 可以裝成不存在，回 403
+    expect(await snap(await createContract(req('POST', { property_id: propertyId })))).toEqual(FORBIDDEN);
+    // 指到合約的寫入，與不存在的合約同一個回應（ADR-0023 決議 6）
+    const calls: Array<(id: string) => Promise<Response>> = [
+      (id) => putContract(req('PUT', { fields: { landlordName: '改名' } }), ctx(id)),
+      (id) => deleteContract(req('DELETE'), ctx(id)),
+      (id) => send(req('POST'), ctx(id)),
+      (id) => copyContract(req('POST'), ctx(id)),
+      (id) => putPractitioners(req('PUT', { assignments: [] }), ctx(id)),
+      (id) => voidContract(req('POST'), ctx(id)),
+      (id) => resend(req('POST'), ctx(id)),
+      (id) => getSignLink(req('GET'), ctx(id)),
+      (id) => refetchFiles(req('POST'), ctx(id)),
+      (id) => advance(req('POST', { contract_id: id, event: 'signed' })),
     ];
-    for (const res of denied) expect(await snap(res)).toEqual(FORBIDDEN);
+    for (const [index, call] of calls.entries()) {
+      expect(await snap(await call(contractId)), `第 ${index} 個`).toEqual(CONTRACT_NOT_FOUND);
+      expect(await snap(await call(newUlid())), `第 ${index} 個`).toEqual(CONTRACT_NOT_FOUND);
+    }
 
     // 合約沒被動過：仍是草稿，欄位沒被改，沒有複製出新合約
     actAsRole(kit.orgA, 'admin');

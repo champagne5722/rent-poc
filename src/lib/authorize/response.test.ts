@@ -23,19 +23,22 @@ describe('forbiddenResponse', () => {
     });
   });
 
-  it('不是案件成員（承租人看別人的案件）和查不到一樣回 404', async () => {
-    const hidden = await bodyOf(forbiddenResponse(new Forbidden('not_a_member', 'contract.read', contract)));
-    const missing = await bodyOf(forbiddenResponse(new Forbidden('object_not_found', 'contract.read', contract)));
-    expect(hidden).toEqual(missing);
+  it('同組織 viewer 寫入、角色不夠、狀態不允許，對有 ID 的物件也回「不存在」（ADR-0023 決議 6）', async () => {
+    for (const reason of ['viewer_read_only', 'role_not_allowed', 'state_not_allowed', 'not_a_member', 'no_case'] as const) {
+      const denied = await bodyOf(forbiddenResponse(new Forbidden(reason, 'contract.draft_send', contract)));
+      const missing = await bodyOf(forbiddenResponse(new Forbidden('object_not_found', 'contract.draft_send', contract)));
+      expect(denied, reason).toEqual(missing);
+    }
+    const deniedProperty = await bodyOf(forbiddenResponse(new Forbidden('viewer_read_only', 'property.manage', property)));
+    expect(deniedProperty).toEqual({ status: 404, body: JSON.stringify({ error: '物件不存在' }) });
   });
 
-  it('呼叫者看得到物件、只是不能做，回 403 通用訊息', async () => {
-    const res = await bodyOf(forbiddenResponse(new Forbidden('viewer_read_only', 'property.manage', property)));
-    expect(res).toEqual({ status: 403, body: JSON.stringify({ error: '沒有權限執行此操作' }) });
-  });
-
-  it('組織層動作沒有「不存在」可以裝，回 403', async () => {
-    expect((await bodyOf(forbiddenResponse(new Forbidden('role_not_allowed', 'audit.export', org)))).status).toBe(403);
+  it('物件是組織本身時沒有「不存在」可以裝，回 403 通用訊息', async () => {
+    expect(await bodyOf(forbiddenResponse(new Forbidden('role_not_allowed', 'audit.export', org)))).toEqual({
+      status: 403,
+      body: JSON.stringify({ error: '沒有權限執行此操作' }),
+    });
+    expect((await bodyOf(forbiddenResponse(new Forbidden('viewer_read_only', 'property.manage', org)))).status).toBe(403);
   });
 
   it('任何原因碼都不會出現在 response body', async () => {
