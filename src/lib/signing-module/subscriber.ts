@@ -1,6 +1,6 @@
 import type { OrgTx } from '../pg/with-tx';
 import type { ProgressOutcome } from './progress';
-import type { Signer, SigningSubject } from './provider';
+import type { Signer, SigningSubject, SigningSubjectType } from './provider';
 
 // 模組拒絕操作。status 與 message 就是對外的回應碼與訊息。
 export class SigningRefusal extends Error {
@@ -33,6 +33,7 @@ export interface SigningSubscriber {
   // 才不會在服務商多建一個用不到的任務。沒有這個檢查的訂閱者得不實作。
   beforeSend?(tx: OrgTx, subject: SigningSubject): Promise<void>;
   // 不帶服務商任務編號：訂閱者看不到它（ADR-0010）。
+  // sent 是物件，之後要多帶資訊（例如 MIL-70 的 context）時加欄位，已註冊的訂閱者不用改。
   onSent(tx: OrgTx, subject: SigningSubject, sent: { signers: Signer[] }): Promise<void>;
   onOutcome(tx: OrgTx, subject: SigningSubject, outcome: ProgressOutcome): Promise<void>;
   // 簽署標的沒有簽署任務時的撤回。不接受時拋 SigningRefusal。
@@ -41,3 +42,6 @@ export interface SigningSubscriber {
   // 交易提交後、模組保存文件之後呼叫，失敗不回滾狀態。需要寫資料庫時自己開交易。
   afterCompleted(subject: SigningSubject): Promise<void>;
 }
+
+// 簽署模組的訂閱者註冊：依 subject.type 分派。還沒有訂閱者的種類不註冊，模組對它回 404。
+export type SigningSubscribers = Partial<Record<SigningSubjectType, SigningSubscriber>>;

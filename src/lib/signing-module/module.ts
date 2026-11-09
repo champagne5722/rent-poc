@@ -40,7 +40,7 @@ import {
   type SignTaskRecord,
   type SigningProgress,
 } from './sign-task-store';
-import { SigningRefusal, type SigningSubscriber } from './subscriber';
+import { SigningRefusal, type SigningSubscriber, type SigningSubscribers } from './subscriber';
 
 // 簽署模組（ADR-0010）：route handler 只呼叫這裡，服務商細節都在 adapter，
 // 業務實體的細節都在訂閱者。介面一律回傳 Promise，呼叫端看不到服務商任務編號。
@@ -70,7 +70,7 @@ const SIMULATABLE_EVENTS: readonly SigningEventType[] = ['signed', 'completed', 
 export interface SigningModuleDeps {
   provider: SigningProvider;
   // 以 subject.type 為鍵
-  subscribers: Record<string, SigningSubscriber>;
+  subscribers: SigningSubscribers;
   // 文件本體的根目錄。文件紀錄的 rel_path 相對這裡，正式執行時是 data/。
   dataDir: string;
   // 模擬簽署事件（mock advance）的事件時間來源。真實 webhook 的事件時間由服務商提供。

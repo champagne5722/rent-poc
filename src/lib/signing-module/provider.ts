@@ -2,10 +2,21 @@ import type { ContractFileKind, SignatureField, SignerRole } from '../types';
 
 // 簽署模組與簽署服務商之間的 seam（ADR-0010）。adapter 只翻譯服務商 API，不含領域邏輯。
 
-// 簽署標的：送簽文件所屬的業務實體。type 對到一個訂閱者，目前只有合約。
+// 簽署標的的種類（ADR-0010 決議 2、ADR-0051 決議 1）。每種對到一個訂閱者，模組不依種類分支。
+// 後三種是 E 線的文件，識別字與簽章分流規則表的文件類型相同（signature-routing 的 DOCUMENT_TYPES）。
+// 新增一種標的：加進這裡、提供訂閱者、在 index.ts 註冊。
+export const SIGNING_SUBJECT_TYPES = [
+  'contract',
+  'handover_certificate',
+  'deposit_settlement',
+  'deposit_refund_certificate',
+] as const;
+export type SigningSubjectType = (typeof SIGNING_SUBJECT_TYPES)[number];
+
+// 簽署標的：送簽文件所屬的業務實體。
 export interface SigningSubject {
-  type: string;
-  // 業務實體的 ULID（合約）。簽署任務表的 subject_id 本來就是文字
+  type: SigningSubjectType;
+  // 業務實體的 ULID。簽署任務表的 subject_id 是文字，有 ULID 格式的 CHECK
   id: string;
 }
 

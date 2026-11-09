@@ -10,6 +10,7 @@ import {
   BellOutlined,
   BgColorsOutlined,
   SwapOutlined,
+  BankOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -20,6 +21,7 @@ const NAV_ICONS: Record<NavKey, React.ReactNode> = {
   workbench: <DashboardOutlined />,
   properties: <HomeOutlined />,
   contracts: <FileTextOutlined />,
+  'payment-accounts': <BankOutlined />,
   handovers: <SwapOutlined />,
   notifications: <BellOutlined />,
   design: <BgColorsOutlined />,

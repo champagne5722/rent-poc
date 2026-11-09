@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3';
 import dayjs from 'dayjs';
 import type { ContractFileKind } from '../types';
-import type { SigningProviderId, SigningSubject } from './provider';
+import type { SigningProviderId, SigningSubject, SigningSubjectType } from './provider';
 import {
   currentSignerOf,
   type NewSignTask,
@@ -97,7 +97,7 @@ export function findLegacySubjectByTaskRef(
 ): SigningSubject | null {
   const row = db
     .prepare('SELECT subject_type, subject_id FROM sign_tasks WHERE provider = ? AND provider_task_ref = ?')
-    .get(provider, taskRef) as { subject_type: string; subject_id: string } | undefined;
+    .get(provider, taskRef) as { subject_type: SigningSubjectType; subject_id: string } | undefined;
   return row ? { type: row.subject_type, id: row.subject_id } : null;
 }
 
