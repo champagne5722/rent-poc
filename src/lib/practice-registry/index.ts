@@ -1,6 +1,6 @@
 import { verifySignersEnabled } from '../dottedsign';
 import { REGISTRY_UNAVAILABLE_REASON } from '../send-preconditions';
-import { createLivePracticeRegistry, txRunner, type RegistryRunner } from './live-adapter';
+import { createLivePracticeRegistry, type RegistryRunner } from './live-adapter';
 import { requestOrgRunner } from './request-runner';
 import { createSeedPracticeRegistry } from './seed-adapter';
 import type { PracticeRegistry } from './types';
