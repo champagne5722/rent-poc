@@ -26,6 +26,10 @@ Issue 追蹤在 Linear（team **Miles-rent-poc**，前綴 `MIL`，此 repo 專�
 
 單一 context：repo 根目錄放一份 `GLOSSARY.md` 與 `docs/adr/`。詳見 `docs/agents/domain.md`。
 
+### 實作環境
+
+實作前讀 `docs/agents/implementing.md`：worktree 設定、重命令必須經記憶體排程、冒煙、真實 PostgreSQL 測試、commit 前檢查。
+
 ### UI/UX skills
 
 實作或修改任何前端畫面（頁面、元件、表單、空狀態、PDF 以外的視覺）時，必須先用 Skill tool 載入專案 `.claude/skills/impeccable`，照它的流程做，並以 `DESIGN.md` 為 token 單一來源（ADR-0009）。需要查設計決策（配色、字體配對、UX 準則、圖表類型）時用 `ui-ux-pro-max`。`design-taste-frontend` 只用於行銷網站，後台不用。純後端、資料層、測試的工作不受此限。
