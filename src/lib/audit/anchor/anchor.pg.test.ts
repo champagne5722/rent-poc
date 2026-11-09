@@ -88,7 +88,12 @@ describe.skipIf(!adminUrl)('稽核鏈錨定：真實 PostgreSQL', () => {
     const statuses = outcomes.map((o) => o.status).sort();
     expect(statuses.filter((s) => s === 'anchored')).toHaveLength(1);
     expect(statuses.every((s) => s === 'anchored' || s === 'superseded' || s === 'no_changes')).toBe(true);
-    const { rows } = await admin.query(`SELECT count(*)::int AS n FROM audit.anchor_leaves WHERE chain_id = $1 AND seq = 1`, [ORG_A]);
+    // 同一個資料庫裡前面的測試也寫過這條鏈，所以比對目前的鏈頭序號，不寫死 1
+    const { rows } = await admin.query(
+      `SELECT count(*)::int AS n FROM audit.anchor_leaves l
+        WHERE l.chain_id = $1 AND l.seq = (SELECT h.seq FROM audit.chain_heads h WHERE h.chain_id = $1)`,
+      [ORG_A],
+    );
     expect(rows[0].n).toBe(1);
   });
 
