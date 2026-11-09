@@ -1,3 +1,4 @@
+import { anchorProvidersFromEnv } from '../audit/anchor/providers-from-env';
 import { signing } from '../signing-module';
 import { type JobRouteDeps } from './handler';
 import { createJobs } from './jobs';
@@ -9,7 +10,7 @@ import { timerRegistry } from './timers';
 
 // dev 模式模組重載時，金鑰快取也跟著重建就好，不需要掛 globalThis
 const keys = createGoogleKeySource();
-const jobs = createJobs({ signing, timers: timerRegistry });
+const jobs = createJobs({ signing, timers: timerRegistry, audit: { providers: () => anchorProvidersFromEnv() } });
 
 export function productionJobDeps(): JobRouteDeps {
   return { config: oidcConfigFromEnv(), keys, jobs };

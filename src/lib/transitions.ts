@@ -56,10 +56,12 @@ export function decideTransition(status: ContractStatus, result: ContractSigning
 
 // 套用轉移：先鎖住合約再讀目前狀態，狀態與歷程事件在同一個交易寫入（任一失敗一起回滾）。
 // 合約不存在（含別的組織的合約）或不接受這個結果時回 null，不寫任何東西。
+// eventOverride：歷程事件的行為者與附註要改寫時才帶，例如系統自動撤回（MIL-75）。狀態轉移不受影響。
 export async function applySigningResult(
   tx: OrgTx,
   contractId: string,
-  result: ContractSigningResult
+  result: ContractSigningResult,
+  eventOverride?: Partial<Pick<ContractEventInput, 'actor' | 'note'>>
 ): Promise<ContractStatus | null> {
   const contract = await getContract(tx, contractId, 'update');
   if (!contract) return null;
@@ -68,7 +70,7 @@ export async function applySigningResult(
 
   await commitTransition(tx, contractId, {
     status: decision.status,
-    event: decision.event,
+    event: { ...decision.event, ...eventOverride },
     declinedReason: result.type === 'declined' ? (result.reason ?? null) : null,
   });
   return decision.status;

@@ -19,6 +19,11 @@ export interface PracticeEntity {
 /** 當事人簽署人候選：執業主體指派、代表當事人簽署的自然人，必須是該組織的成員（ADR-0018 決議 2）。 */
 export interface PartySignerCandidate {
   id: string;
+  /**
+   * 自然人的 party ID。同一個人以當事人簽署人與執業人員兩種身分出現時，兩邊的 partyId 相同。
+   * 簽署序列的合併靠它判定（ADR-0018 決議 9，MIL-76）。
+   */
+  partyId: string;
   entityId: string;
   name: string;
   email: string;
@@ -31,6 +36,8 @@ export interface PartySignerCandidate {
  */
 export interface PractitionerCandidate {
   id: string;
+  /** 自然人的 party ID，與同一個人的當事人簽署人候選相同（MIL-76）。 */
+  partyId: string;
   name: string;
   accountEmail: string;
   certificateKind: CertificateKind | null;

@@ -8,14 +8,18 @@ import {
   mergeEditableFields,
   partyFieldLabels,
   upgradeDraftFields,
+  type ContractAttachments,
   type EditableFieldValues,
 } from './contract-types';
+import type { MandateItem } from './mandate-schedule';
 import { entityPartyRoles, partyRoleOfEntitySource, type PractitionerAssignmentInput } from './practitioner-assignment/seats';
 import {
   countFieldsBySeat,
   evaluateRouting,
   hasPractitionerSeat,
   reconcileSignatureFields,
+  signerChainLabels,
+  type MergedSeats,
   type SeatView,
 } from './signature-routing';
 import type {
@@ -57,14 +61,24 @@ export interface WizardState {
   signatureFields: SignatureField[];
   /** 執業人員的指派（MIL-69）。沒有帶（舊用法）時不檢查指派。 */
   assignments?: readonly PractitionerAssignmentInput[];
+  /** 委託標的清單（MIL-74）。委託管理合約的清單存在子表，沒有載入（undefined）時不檢查。 */
+  mandateItems?: readonly MandateItem[];
+}
+
+function attachmentsOf(state: WizardState): ContractAttachments {
+  return state.mandateItems ? { mandateItems: state.mandateItems } : {};
 }
 
 /**
  * 第②步的必填欄位檢核，回傳缺漏欄位的標籤。依合約類型檢核，必填集合由類型定義決定。
  * @param contractType 沒有帶視為租賃合約。
  */
-export function missingFieldLabels(fields: ContractFields, contractType: ContractType = DEFAULT_CONTRACT_TYPE): string[] {
-  return contractTypeDefinition(contractType).missingFields(fields);
+export function missingFieldLabels(
+  fields: ContractFields,
+  contractType: ContractType = DEFAULT_CONTRACT_TYPE,
+  attachments?: ContractAttachments,
+): string[] {
+  return contractTypeDefinition(contractType).missingFields(fields, attachments);
 }
 
 export type SignatureCheck = Record<ContractPartyRole, number> & { ok: boolean };
@@ -82,14 +96,18 @@ export function isPartiesOnly(seats: readonly SeatView[]): boolean {
 }
 
 /** 分流條件的擋下理由：規則表沒有定義的組合、形狀不對的值。通過回 null。 */
-export function routingBlockReason(fields: ContractFields): string | null {
-  const evaluation = evaluateRouting(fields.routing);
+export function routingBlockReason(fields: ContractFields, contractType: ContractType = DEFAULT_CONTRACT_TYPE): string | null {
+  const evaluation = evaluateRouting(fields.routing, contractType);
   return evaluation.ok ? null : evaluation.reason;
 }
 
 /** 依簽署序列檢核簽署區：每個簽署席位至少一個簽署區域（ADR-0021 決議 5）。 */
-function signatureBlockReason(fields: ContractFields, signatureFields: SignatureField[]): string | null {
-  const evaluation = evaluateRouting(fields.routing);
+function signatureBlockReason(
+  fields: ContractFields,
+  signatureFields: SignatureField[],
+  contractType: ContractType,
+): string | null {
+  const evaluation = evaluateRouting(fields.routing, contractType);
   if (!evaluation.ok) return evaluation.reason;
   const counts = countFieldsBySeat(signatureFields, evaluation.seats);
   const missing = counts.filter((c) => c.count === 0);
@@ -105,8 +123,9 @@ function signatureBlockReason(fields: ContractFields, signatureFields: Signature
 function unassignedPartySigners(
   fields: ContractFields,
   assignments: readonly PractitionerAssignmentInput[],
+  contractType: ContractType,
 ): ContractPartyRole[] {
-  const evaluation = evaluateRouting(fields.routing);
+  const evaluation = evaluateRouting(fields.routing, contractType);
   if (!evaluation.ok) return [];
   return entityPartyRoles(evaluation.plan).filter((role) => {
     const seat = evaluation.plan.seats.find(
@@ -125,10 +144,11 @@ function fieldsBlockReason(
   contractType: ContractType,
   fields: ContractFields,
   assignments?: readonly PractitionerAssignmentInput[],
+  attachments?: ContractAttachments,
 ): string | null {
-  const unassigned = assignments ? unassignedPartySigners(fields, assignments) : [];
+  const unassigned = assignments ? unassignedPartySigners(fields, assignments, contractType) : [];
   const skipped = new Set(unassigned.flatMap((role) => partyFieldLabels(contractType, role)));
-  const missing = missingFieldLabels(fields, contractType).filter((label) => !skipped.has(label));
+  const missing = missingFieldLabels(fields, contractType, attachments).filter((label) => !skipped.has(label));
   if (missing.length) return `請先完成欄位：${missing.join('、')}`;
   if (unassigned.length) return `請先指派${SIGNER_ROLE_LABELS[unassigned[0]]}的當事人簽署人`;
   return null;
@@ -140,9 +160,12 @@ function typeOfState(state: WizardState): ContractType {
 
 /** 按「下一步」時的擋下理由；通過回 null。第①步的物件在建立草稿時已綁定，只檢查分流條件。 */
 export function nextStepBlockReason(stepIndex: number, state: WizardState): string | null {
-  if (stepIndex === STEP_PROPERTY) return routingBlockReason(state.fields);
-  if (stepIndex === STEP_FIELDS) return fieldsBlockReason(typeOfState(state), state.fields, state.assignments);
-  if (stepIndex === STEP_SIGNATURE) return signatureBlockReason(state.fields, state.signatureFields);
+  const contractType = typeOfState(state);
+  if (stepIndex === STEP_PROPERTY) return routingBlockReason(state.fields, contractType);
+  if (stepIndex === STEP_FIELDS) {
+    return fieldsBlockReason(contractType, state.fields, state.assignments, attachmentsOf(state));
+  }
+  if (stepIndex === STEP_SIGNATURE) return signatureBlockReason(state.fields, state.signatureFields, contractType);
   return null;
 }
 
@@ -150,8 +173,12 @@ export function nextStepBlockReason(stepIndex: number, state: WizardState): stri
  * 指派不完整的原因：每個執業人員席位要有指派，執業主體是甲方或乙方時還要有當事人簽署人。
  * 資格（可簽章、專任、證書種類）由伺服器的送簽前檢查判定，不在 wizard 重算。
  */
-function assignmentReasons(fields: ContractFields, assignments: readonly PractitionerAssignmentInput[]): string[] {
-  const evaluation = evaluateRouting(fields.routing);
+function assignmentReasons(
+  fields: ContractFields,
+  assignments: readonly PractitionerAssignmentInput[],
+  contractType: ContractType,
+): string[] {
+  const evaluation = evaluateRouting(fields.routing, contractType);
   if (!evaluation.ok) return [];
   const reasons: string[] = [];
   for (const seat of evaluation.plan.seats) {
@@ -175,17 +202,18 @@ function assignmentReasons(fields: ContractFields, assignments: readonly Practit
  */
 export function sendBlockReasons(state: WizardState): string[] {
   const reasons: string[] = [];
-  const fieldsReason = fieldsBlockReason(typeOfState(state), state.fields);
+  const contractType = typeOfState(state);
+  const fieldsReason = fieldsBlockReason(contractType, state.fields, undefined, attachmentsOf(state));
   if (fieldsReason) reasons.push(fieldsReason);
 
-  const evaluation = evaluateRouting(state.fields.routing);
+  const evaluation = evaluateRouting(state.fields.routing, contractType);
   if (!evaluation.ok) {
     reasons.push(evaluation.reason);
     return reasons;
   }
-  const signatureReason = signatureBlockReason(state.fields, state.signatureFields);
+  const signatureReason = signatureBlockReason(state.fields, state.signatureFields, contractType);
   if (signatureReason) reasons.push(signatureReason);
-  reasons.push(...assignmentReasons(state.fields, state.assignments ?? []));
+  reasons.push(...assignmentReasons(state.fields, state.assignments ?? [], contractType));
   return reasons;
 }
 
@@ -198,22 +226,28 @@ export function sendBlockReason(state: WizardState): string | null {
  * 中斷後續作要落在哪一步：分流條件有問題回第①步，再補未完成的欄位與簽署區，都齊全就直接到確認頁。
  * 分流條件正常時第①步只是物件與範本說明，續作不會停在那裡。
  */
-export function resumeStepIndex(contract: Contract): number {
-  if (routingBlockReason(contract.fields)) return STEP_PROPERTY;
-  if (missingFieldLabels(contract.fields, contract.contract_type).length) return STEP_FIELDS;
-  if (signatureBlockReason(contract.fields, contract.signature_fields)) return STEP_SIGNATURE;
+export function resumeStepIndex(contract: Contract, attachments?: ContractAttachments): number {
+  if (routingBlockReason(contract.fields, contract.contract_type)) return STEP_PROPERTY;
+  if (missingFieldLabels(contract.fields, contract.contract_type, attachments).length) return STEP_FIELDS;
+  if (signatureBlockReason(contract.fields, contract.signature_fields, contract.contract_type)) return STEP_SIGNATURE;
   return STEP_CONFIRM;
 }
 
 /** 確認頁的簽署順序說明。乙方先簽、甲方後簽的序列沿用原文字，其他序列由席位產生。 */
-export function signingSequenceNotice(fields: ContractFields, contractType: ContractType = DEFAULT_CONTRACT_TYPE): string {
-  const evaluation = evaluateRouting(fields.routing);
+export function signingSequenceNotice(
+  fields: ContractFields,
+  contractType: ContractType = DEFAULT_CONTRACT_TYPE,
+  /** 同一人兼任而合併的席位。合併後列出實際的簽署人（MIL-76）。 */
+  merges: ReadonlyArray<Pick<MergedSeats, 'practitionerRuleId' | 'partyRuleId'>> = [],
+): string {
+  const evaluation = evaluateRouting(fields.routing, contractType);
   const partiesOnlyNotice = contractTypeDefinition(contractType).partiesOnlyNotice;
   // 分流條件無效時沒有序列可說明，沿用類型定義的兩方說明
   if (!evaluation.ok) return partiesOnlyNotice ?? '';
   if (partiesOnlyNotice && isPartiesOnly(evaluation.seats)) return partiesOnlyNotice;
-  const order = evaluation.seats.map((seat) => seat.fullLabel).join('、');
-  return `送簽後依序簽署：${order}。每位簽完才輪到下一位，全部簽完合約才成立。`;
+  const order = signerChainLabels(evaluation.seats, merges).join('、');
+  const onlyOnce = merges.length > 0 ? '兼任者只簽一次，' : '';
+  return `送簽後依序簽署：${order}。每位簽完才輪到下一位，${onlyOnce}全部簽完合約才成立。`;
 }
 
 export interface RoutingChange {
@@ -231,9 +265,10 @@ export function applyRoutingChange(
   fields: ContractFields,
   signatureFields: SignatureField[],
   routing: ContractRoutingConditions,
+  contractType: ContractType = DEFAULT_CONTRACT_TYPE,
 ): RoutingChange {
   const next = { ...fields, routing };
-  const evaluation = evaluateRouting(routing);
+  const evaluation = evaluateRouting(routing, contractType);
   if (!evaluation.ok) return { fields: next, signatureFields, removed: 0 };
   const reconciled = reconcileSignatureFields(signatureFields, evaluation.seats);
   return { fields: next, signatureFields: reconciled.fields, removed: reconciled.removed };
@@ -243,8 +278,9 @@ export function applyRoutingChange(
 export function pruneAssignments(
   routing: ContractRoutingConditions | undefined,
   assignments: readonly PractitionerAssignmentInput[],
+  contractType: ContractType = DEFAULT_CONTRACT_TYPE,
 ): PractitionerAssignmentInput[] {
-  const evaluation = evaluateRouting(routing);
+  const evaluation = evaluateRouting(routing, contractType);
   if (!evaluation.ok) return [];
   const slots = new Set(evaluation.plan.seats.filter((s) => s.practitioner).map((s) => s.ruleId));
   return assignments.filter((a) => slots.has(a.slot));

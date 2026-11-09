@@ -12,10 +12,12 @@ import { GET as getAuditTrail } from './contracts/[id]/audit-trail/route';
 import { POST as copyContract } from './contracts/[id]/copy/route';
 import { GET as getEvents } from './contracts/[id]/events/route';
 import { GET as getFiles, POST as refetchFiles } from './contracts/[id]/files/route';
+import { GET as getMandateItems, PUT as putMandateItems } from './contracts/[id]/mandate-items/route';
 import { GET as getPdf } from './contracts/[id]/pdf/route';
 import { GET as getPractitioners, PUT as putPractitioners } from './contracts/[id]/practitioners/route';
 import { POST as resend } from './contracts/[id]/resend/route';
 import { POST as send } from './contracts/[id]/send/route';
+import { GET as getSigningLapses } from './contracts/[id]/signing-lapses/route';
 import { GET as getSignLink } from './contracts/[id]/sign-link/route';
 import { GET as getSignatureRecords } from './contracts/[id]/signature-records/route';
 import { GET as getSignedPdf } from './contracts/[id]/signed-pdf/route';
@@ -165,6 +167,76 @@ describe('viewer：寫入被拒（有 ID 的物件與「不存在」同一個回
   });
 });
 
+// MIL-74、MIL-75 帶進來的 route。委託管理合約沒有案件，權限走 uncased_contract.*（MIL-108）；租賃合約有案件，走案件事實
+describe('委託標的清單與簽署中失效紀錄', () => {
+  async function seedManagement(orgId: string): Promise<{ propertyId: string; contractId: string }> {
+    const { propertyId } = await seed(orgId);
+    actAsRole(orgId, 'admin');
+    const created = await createContract(req('POST', { contract_type: 'management' }));
+    expect(created.status).toBe(201);
+    return { propertyId, contractId: (await json(created)).data.id as string };
+  }
+
+  it('viewer 讀得到清單與失效紀錄，寫入與「不存在」同一個回應，清單沒被改', async () => {
+    const { propertyId, contractId } = await seedManagement(kit.orgA);
+    actAsRole(kit.orgA, 'admin');
+    const put = await putMandateItems(req('PUT', { items: [{ propertyId, scopes: ['rent_collection'] }] }), ctx(contractId));
+    expect(put.status).toBe(200);
+
+    actAsRole(kit.orgA, 'viewer');
+    const items = await json(await getMandateItems(req('GET'), ctx(contractId)));
+    expect(items.data.items).toHaveLength(1);
+    expect(await json(await getSigningLapses(req('GET'), ctx(contractId)))).toEqual({ data: [] });
+    expect(await snap(await putMandateItems(req('PUT', { items: [] }), ctx(contractId)))).toEqual(CONTRACT_NOT_FOUND);
+    expect(await snap(await putMandateItems(req('PUT', { items: [] }), ctx(newUlid())))).toEqual(CONTRACT_NOT_FOUND);
+
+    actAsRole(kit.orgA, 'staff');
+    expect((await json(await getMandateItems(req('GET'), ctx(contractId)))).data.items).toHaveLength(1);
+    expect((await putMandateItems(req('PUT', { items: [] }), ctx(contractId))).status).toBe(200);
+  });
+
+  it('複製委託管理合約為新草稿：委託標的清單跟著複製；複製租賃合約時留在同一案件', async () => {
+    const { propertyId, contractId } = await seedManagement(kit.orgA);
+    await putMandateItems(req('PUT', { items: [{ propertyId, scopes: ['repair', 'handover'] }] }), ctx(contractId));
+    const copied = await copyContract(req('POST'), ctx(contractId));
+    expect(copied.status).toBe(201);
+    const newId = (await json(copied)).data.id as string;
+    const items = (await json(await getMandateItems(req('GET'), ctx(newId)))).data.items;
+    expect(items).toEqual([expect.objectContaining({ propertyId, scopes: ['repair', 'handover'] })]);
+
+    const lease = await seed(kit.orgA);
+    const leaseCopy = await json(await copyContract(req('POST'), ctx(lease.contractId)));
+    const { withTx } = await import('@/lib/pg/database');
+    const caseOf = (id: string) =>
+      withTx({ kind: 'org', orgId: kit.orgA }, async (tx) => (await tx.query<{ case_id: string | null }>('SELECT case_id FROM org.contracts WHERE id = $1', [id])).rows[0].case_id);
+    const caseId = await caseOf(lease.contractId);
+    expect(caseId).not.toBeNull();
+    expect(await caseOf(leaseCopy.data.id)).toBe(caseId);
+  });
+
+  it('viewer 不能建委託管理合約（403），admin 與 staff 可以', async () => {
+    actAsRole(kit.orgA, 'viewer');
+    expect(await snap(await createContract(req('POST', { contract_type: 'management' })))).toEqual(FORBIDDEN);
+    actAsRole(kit.orgA, 'staff');
+    expect((await createContract(req('POST', { contract_type: 'management' }))).status).toBe(201);
+  });
+
+  it('租賃合約有案件：viewer 同樣讀得到失效紀錄，寫入被拒', async () => {
+    const { contractId } = await seed(kit.orgA);
+    actAsRole(kit.orgA, 'viewer');
+    expect((await getSigningLapses(req('GET'), ctx(contractId))).status).toBe(200);
+    expect(await snap(await putMandateItems(req('PUT', { items: [] }), ctx(contractId)))).toEqual(CONTRACT_NOT_FOUND);
+  });
+
+  it('管理合約不建租賃案件：org.contracts.case_id 是空的', async () => {
+    const { contractId } = await seedManagement(kit.orgA);
+    const { rows } = await (await import('@/lib/pg/database')).withTx({ kind: 'org', orgId: kit.orgA }, (tx) =>
+      tx.query<{ case_id: string | null }>('SELECT case_id FROM org.contracts WHERE id = $1', [contractId]),
+    );
+    expect(rows[0].case_id).toBeNull();
+  });
+});
+
 describe('staff：寫入成功', () => {
   it('修改物件與合約草稿、送簽前的複製與指派', async () => {
     const { propertyId, contractId } = await seed(kit.orgA);
@@ -198,6 +270,9 @@ describe('別的組織的資料與不存在的資料：回應逐位元相同（P
     ['GET 歷程', (id) => getEvents(req('GET'), ctx(id))],
     ['GET 簽署紀錄', (id) => getSignatureRecords(req('GET'), ctx(id))],
     ['GET PDF 預覽', (id) => getPdf(req('GET'), ctx(id))],
+    ['GET 委託標的清單', (id) => getMandateItems(req('GET'), ctx(id))],
+    ['PUT 委託標的清單', (id) => putMandateItems(req('PUT', { items: [] }), ctx(id))],
+    ['GET 簽署中失效紀錄', (id) => getSigningLapses(req('GET'), ctx(id))],
     ['GET 已簽 PDF', (id) => getSignedPdf(req('GET'), ctx(id))],
     ['GET Audit Trail', (id) => getAuditTrail(req('GET'), ctx(id))],
     ['POST 模擬簽署', (id) => advance(req('POST', { contract_id: id, event: 'signed' }))],

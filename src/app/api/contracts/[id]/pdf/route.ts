@@ -6,6 +6,7 @@ import { jsonError } from '@/lib/http';
 import { readInOrgTx } from '@/lib/org-route';
 import { contractPdfRenderer } from '@/lib/contract-pdf';
 import { getPracticeRegistry } from '@/lib/practice-registry';
+import { getMandateItems } from '@/lib/mandate-schedule/repository';
 import { getAssignments } from '@/lib/practitioner-assignment/repository';
 import { loadPrintedPractitioners } from '@/lib/practitioner-assignment/service';
 import { loadContractRoutingFacts } from '@/lib/signature-routing/repository';
@@ -19,18 +20,23 @@ export async function GET(_request: NextRequest, { params }: ContractRouteCtx) {
     await authorize(tx, 'contract.read', { type: 'contract', id });
     const found = await getContract(tx, id);
     if (!found) return null;
-    return { contract: found, routing: await loadContractRoutingFacts(tx, id), assignments: await getAssignments(tx, id) };
+    return {
+      contract: found,
+      routing: await loadContractRoutingFacts(tx, id),
+      assignments: await getAssignments(tx, id),
+      mandateItems: await getMandateItems(tx, id),
+    };
   });
   if (!read.ok) return read.response;
   if (!read.value) return contractNotFound();
-  const { contract, routing, assignments } = read.value;
+  const { contract, routing, assignments, mandateItems } = read.value;
 
   const renderer = contractPdfRenderer(contract.contract_type);
   if (!renderer) return jsonError(400, '這個合約類型尚未支援預覽');
 
   // 簽署欄印已指派的執業人員（姓名、法定稱謂、執業主體）。分流條件有問題或尚未指派時留底線
   const printed = routing.ok ? await loadPrintedPractitioners(routing.facts, assignments, getPracticeRegistry()) : {};
-  const pdf = await renderer.render(contract.fields, printed);
+  const pdf = await renderer.render(contract.fields, printed, { mandateItems });
   return new Response(Buffer.from(pdf), {
     headers: {
       'Content-Type': 'application/pdf',
