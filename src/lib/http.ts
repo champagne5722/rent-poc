@@ -29,12 +29,18 @@ export function jsonOk<T>(body: T & NoPromise<T>, init: JsonInit = {}): Response
   return Response.json(body, init);
 }
 
-/** 錯誤回應，本文固定是 { error: message }。 */
-export function jsonError(status: number, message: string): Response {
+/**
+ * 錯誤回應，本文是 { error: message }。需要多帶欄位（例如頻率限制的 retryAfterSec）或標頭（Retry-After）時用 init。
+ */
+export function jsonError(
+  status: number,
+  message: string,
+  init: { extra?: Record<string, string | number | boolean>; headers?: HeadersInit } = {},
+): Response {
   if (!Number.isInteger(status) || status < 400 || status > 599) {
     throw new RangeError(`jsonError 的狀態碼必須是 4xx 或 5xx，收到 ${status}`);
   }
-  return Response.json({ error: message }, { status });
+  return Response.json({ ...init.extra, error: message }, { status, headers: init.headers });
 }
 
 const MAX_DEPTH = 20;
@@ -49,4 +55,13 @@ function assertNoPromise(value: unknown, path: string, depth = 0): void {
     return;
   }
   for (const [key, item] of Object.entries(value)) assertNoPromise(item, `${path}.${key}`, depth + 1);
+}
+
+/** 讀 JSON 本文。不是合法的 JSON 時回 undefined，呼叫端回 400。 */
+export async function readJson(request: Request): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    return undefined;
+  }
 }

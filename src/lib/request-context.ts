@@ -1,10 +1,8 @@
 import type { DbContext, OperatorContext, OrgContext, PartyContext } from './pg/with-tx';
-import { isUlid } from './pg/ulid';
 
-// 請求脈絡（ADR-0022 決議 7，MIL-80）。
-// 過渡期：C 線完成登入（MIL-103）之前，org 脈絡取自環境變數指定的預設組織。
-// C 線只換 current-request-context.ts 的 requestContext()，這個檔案的型別與 toDbContext 不動。
-// 這個檔案只放純資料與純解析，讓規則可以直接測。
+// 請求脈絡（ADR-0022 決議 7，MIL-80、MIL-103）。
+// 型別與 toDbContext 在這裡，讀 session 的實作在 current-request-context.ts 與 auth/。
+// 這個檔案只放純資料，讓規則可以直接測。
 
 export type OrgKind = 'owner' | 'practice' | 'platform';
 export type OrgRole = 'admin' | 'staff' | 'viewer';
@@ -14,11 +12,20 @@ export type RequestContext =
   | { kind: 'party'; userId: string; partyId: string; requestId: string }
   | { kind: 'operator'; userId: string; partyId: string; requestId: string };
 
+/** Unauthenticated 的原因，供頁面決定導向哪裡。對外的訊息一律相同，不洩漏細節。 */
+export type UnauthenticatedReason =
+  | 'no_session' // 沒有 cookie，或 cookie 查不到 session
+  | 'expired' // session 已到期
+  | 'no_identity' // 登入了，但帳號還沒有任何可用身分（MIL-106 的建組織流程接手）
+  | 'membership_lost'; // 目前身分的成員資格已失效，session 已刪除並寫稽核
+
 /** 沒有登入，或成員資格失效。頁面導向登入，route 回 401。 */
 export class Unauthenticated extends Error {
-  constructor(message = '尚未登入或沒有存取權') {
+  readonly reason: UnauthenticatedReason;
+  constructor(message = '尚未登入或沒有存取權', reason: UnauthenticatedReason = 'no_session') {
     super(message);
     this.name = 'Unauthenticated';
+    this.reason = reason;
   }
 }
 
@@ -28,37 +35,6 @@ export class OrgContextRequired extends Error {
     super(message);
     this.name = 'OrgContextRequired';
   }
-}
-
-/** 預設組織的環境變數。值必須是 control.orgs 裡的組織 ID。種子見 db/migrations/0002_control_orgs.sql。 */
-export const DEFAULT_ORG_ENV = 'DEFAULT_ORG_ID';
-
-// 過渡期沒有帳號表，org 脈絡的使用者與 party 用固定的假 ID（時間部分全 0，不會和真實 ULID 撞號）。
-// C 線換成讀 session 後，這兩個值就不再使用。
-export const TRANSITIONAL_USER_ID = '00000000000000000000000003';
-export const TRANSITIONAL_PARTY_ID = '00000000000000000000000004';
-
-/**
- * 過渡期的解析：環境變數指定預設組織，以該組織的 admin 身分運作。
- * 沒有設定、或不是合法的 ULID 時丟 Unauthenticated，不開放存取（fail closed）。
- */
-export function resolveTransitionalContext(
-  env: Readonly<Record<string, string | undefined>>,
-  requestId: string,
-): RequestContext {
-  const orgId = env[DEFAULT_ORG_ENV]?.trim();
-  if (!orgId) throw new Unauthenticated(`沒有設定 ${DEFAULT_ORG_ENV}，不開放存取`);
-  if (!isUlid(orgId)) throw new Unauthenticated(`${DEFAULT_ORG_ENV} 不是合法的組織 ID`);
-  return {
-    kind: 'org',
-    orgId,
-    // 預設組織不寫死成執業主體；C 線把它轉成屋主組織（SEED_OWNER_EMAIL 指定的帳號是 admin）
-    orgKind: 'owner',
-    userId: TRANSITIONAL_USER_ID,
-    partyId: TRANSITIONAL_PARTY_ID,
-    role: 'admin',
-    requestId,
-  };
 }
 
 /** 平台營運者對目標組織做事時，呼叫端另外帶的資料（ADR-0022 決議 7）。 */

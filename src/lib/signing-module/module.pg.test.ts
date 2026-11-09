@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { createLocalFileStore } from '../file-store/local-file-store';
 import { createContractSubscriber } from '../contract-signing';
 import { getContract, listContractEvents } from '../contracts';
 import { pgDriver } from '../pg/drivers';
@@ -46,7 +47,7 @@ describe.skipIf(!adminUrl)('簽署模組（真實 PostgreSQL）', () => {
     inControl: (fn) => withTx({ kind: 'control' }, fn),
   };
   const moduleWith = (provider: SigningProvider) =>
-    createSigningModule({ provider, subscribers: { contract: createContractSubscriber() }, dataDir, db });
+    createSigningModule({ provider, subscribers: { contract: createContractSubscriber() }, files: createLocalFileStore(dataDir), db });
 
   const liveProvider = (overrides: Partial<SigningProvider> = {}): SigningProvider => ({
     ...createMockProvider(),
@@ -166,7 +167,7 @@ describe.skipIf(!adminUrl)('簽署模組（真實 PostgreSQL）', () => {
     const asB = createSigningModule({
       provider,
       subscribers: { contract: createContractSubscriber() },
-      dataDir,
+      files: createLocalFileStore(dataDir),
       db: { ...db, requestOrg: async () => ({ kind: 'org', orgId: orgB }) },
     });
     vi.spyOn(console, 'error').mockImplementation(() => {});

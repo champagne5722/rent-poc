@@ -1,4 +1,6 @@
+import os from 'node:os';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createLocalFileStore } from '../file-store/local-file-store';
 import { createMockMailer, type MockMailer } from '../mailer/mock-mailer';
 import { withTx } from '../pg/database';
 import { setupRouteDb, type RouteDb } from '../pg/route-test-kit';
@@ -279,7 +281,7 @@ describe('提交後派送 email', () => {
     const signing = createSigningModule({
       provider: createMockProvider(),
       subscribers: {},
-      dataDir: '/tmp/notifications-test-unused',
+      files: createLocalFileStore(os.tmpdir()),
       db: {
         requestOrg: async () => ({ kind: 'org', orgId: kit.orgA }),
         inOrg: (ctx, fn) => withTx(ctx, fn),

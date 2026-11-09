@@ -79,6 +79,8 @@ export type SendBlockCode =
   | 'practitioner_not_found'
   | 'party_signer_not_assigned'
   | 'party_signer_mismatch'
+  // 範本閘門（MIL-73），由送簽流程的 prepareContractSend 產生，不是七項檢查
+  | 'template_not_reviewed'
   | LeasingAuthorityBlockReason['code'];
 
 /** 正式金鑰下沒有真實 adapter 時，要求執業人員簽章的組合被擋下的原因（ADR-0021）。 */

@@ -7,9 +7,7 @@ import type { ContractFields } from '../types';
 import {
   copyAssignments,
   getAssignments,
-  listCredentialSnapshots,
   replaceAssignments,
-  saveCredentialSnapshots,
 } from './repository';
 
 // PGlite（app_rw），組織 A 與 B 各一份。介面第一個參數是 tx，合約 ID 是 ULID。
@@ -85,47 +83,15 @@ describe('指派的 repository：第一個參數是 tx，ID 是字串', () => {
 });
 
 describe('組織隔離', () => {
-  it('B 組織讀不到 A 組織合約的指派與快照', async () => {
+  it('B 組織讀不到 A 組織合約的指派', async () => {
     await inA((tx) => replaceAssignments(tx, contractId, [{ slot: SLOT, entityId: 'a', practitionerId: 'p1', partySignerId: null }]));
-    await inA((tx) => saveCredentialSnapshots(tx, contractId, [snapshot]));
     expect(await inB((tx) => getAssignments(tx, contractId))).toEqual([]);
-    expect(await inB((tx) => listCredentialSnapshots(tx, contractId))).toEqual([]);
   });
 
-  it('B 組織不能對 A 組織的合約寫入指派或快照（複合外鍵擋下）', async () => {
+  it('B 組織不能對 A 組織的合約寫入指派（複合外鍵擋下）', async () => {
     await expect(
       inB((tx) => replaceAssignments(tx, contractId, [{ slot: SLOT, entityId: 'x', practitionerId: 'p9', partySignerId: null }])),
     ).rejects.toThrow();
-    await expect(inB((tx) => saveCredentialSnapshots(tx, contractId, [snapshot]))).rejects.toThrow();
     expect(await inA((tx) => getAssignments(tx, contractId))).toEqual([]);
-  });
-});
-
-const snapshot = {
-  slot: SLOT,
-  practitionerId: 'pr-chen',
-  decidedAt: '2026-11-09T04:00:00.000Z',
-  facts: { certificateKind: 'rental_housing_manager', credential: { employment: { state: 'verified' } } },
-  result: { signable: true, renewalWindow: null },
-};
-
-describe('判定事實快照', () => {
-  it('事實與結果原樣保存並讀回', async () => {
-    await inA((tx) => saveCredentialSnapshots(tx, contractId, [snapshot]));
-    expect(await inA((tx) => listCredentialSnapshots(tx, contractId))).toEqual([snapshot]);
-  });
-
-  it('同一席位重複送簽時覆蓋舊的快照', async () => {
-    await inA((tx) => saveCredentialSnapshots(tx, contractId, [snapshot]));
-    await inA((tx) => saveCredentialSnapshots(tx, contractId, [{ ...snapshot, decidedAt: '2026-11-10T04:00:00.000Z' }]));
-    const list = await inA((tx) => listCredentialSnapshots(tx, contractId));
-    expect(list).toHaveLength(1);
-    expect(list[0].decidedAt).toBe('2026-11-10T04:00:00.000Z');
-  });
-
-  it('有快照的合約不能被刪除：判定依據不會無聲消失', async () => {
-    await inA((tx) => saveCredentialSnapshots(tx, contractId, [snapshot]));
-    await expect(inA((tx) => deleteDraftContract(tx, contractId))).rejects.toThrow();
-    expect(await inA((tx) => listCredentialSnapshots(tx, contractId))).toHaveLength(1);
   });
 });

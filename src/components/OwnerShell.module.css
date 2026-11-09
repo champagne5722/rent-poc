@@ -32,8 +32,8 @@
   max-width: 40%;
 }
 
-/* 顯示名稱過長時讓 Typography 的 ellipsis 生效 */
-.identity > :last-child {
+/* 顯示名稱過長時讓 Typography 的 ellipsis 生效（第 2 個子元素是名稱，後面是身分切換器、成員、登出鈕，MIL-103、MIL-106） */
+.identity > :nth-child(2) {
   min-width: 0;
 }
 
@@ -51,7 +51,9 @@
 
   .identity {
     order: 2;
-    max-width: 50%;
+    max-width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .nav {

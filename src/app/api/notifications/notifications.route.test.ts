@@ -4,9 +4,9 @@ import { listMockMail, setMailer } from '@/lib/mailer';
 import { createMockMailer } from '@/lib/mailer/mock-mailer';
 import { notify } from '@/lib/notifications';
 import { withTx } from '@/lib/pg/database';
-import { actAs, actAsError, actAsParty, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
+import { actAs, actAsError, actAsParty, setupRouteDb, TEST_PARTY_ID, type RouteDb } from '@/lib/pg/route-test-kit';
 import { newUlid } from '@/lib/pg/ulid';
-import { Unauthenticated, TRANSITIONAL_PARTY_ID } from '@/lib/request-context';
+import { Unauthenticated } from '@/lib/request-context';
 import { POST as demoNotify } from '../demo/notify/route';
 import { POST as markOne } from './[id]/read/route';
 import { GET as list } from './route';
@@ -17,7 +17,7 @@ vi.mock('@/lib/current-request-context', async () => ({
   requestContext: (await import('@/lib/pg/route-test-kit')).stubRequestContext,
 }));
 
-// MIL-120：通知 route 的 response body。連線是 PGlite 的 app_rw，RLS 生效。請求脈絡的成員是 TRANSITIONAL_PARTY_ID。
+// MIL-120：通知 route 的 response body。連線是 PGlite 的 app_rw，RLS 生效。請求脈絡的成員是 TEST_PARTY_ID。
 
 let kit: RouteDb;
 beforeAll(async () => {
@@ -70,7 +70,7 @@ describe('GET /api/notifications', () => {
 
   it('別的成員的個人通知不出現', async () => {
     await seed(kit.orgA, '給別人', newUlid());
-    await seed(kit.orgA, '給自己', TRANSITIONAL_PARTY_ID);
+    await seed(kit.orgA, '給自己', TEST_PARTY_ID);
     expect((await json(await getList())).data.items.map((n: { title: string }) => n.title)).toEqual(['給自己']);
   });
 

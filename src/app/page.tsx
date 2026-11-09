@@ -18,7 +18,7 @@ import type { Contract, ContractStatus, Property } from '@/lib/types';
 import { CONTRACT_STATUS_LABELS } from '@/lib/types';
 import { lastActionAt } from '@/lib/contract-list';
 import { shortUlid } from '@/lib/pg/ulid';
-import { TERMS } from '@/lib/labels';
+import { contractTypeDefinition, listSummaryOf } from '@/lib/contract-types';
 import {
   selectWorkbenchTodos,
   todoActionFor,
@@ -45,12 +45,13 @@ const TODO_ACTION_ICONS: Partial<Record<ContractStatus, React.ReactNode>> = {
 
 function TodoRow({ contract }: { contract: Contract }) {
   const action = todoActionFor(contract);
+  const summary = listSummaryOf(contract);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 500 }}>
-          {contract.fields.propertyName || '（未選物件）'} —{' '}
-          {contract.fields.tenantName || `（未填${TERMS.lessee}）`}
+          {summary.propertyName || '（未選物件）'} —{' '}
+          {summary.partyB.name || `（未填${contractTypeDefinition(contract.contract_type).labels.partyB}）`}
         </div>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           合約 #{shortUlid(contract.id)}・{dayjs(lastActionAt(contract)).format('MM-DD HH:mm')}

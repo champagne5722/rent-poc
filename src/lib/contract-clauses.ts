@@ -7,7 +7,7 @@
 
 import { clauseSnapshots } from './clause-library';
 import { contractEquipmentAnnex } from './equipment';
-import type { ContractFields, TemplateBinding } from './types';
+import type { LeaseContractFields, TemplateBinding } from './types';
 
 export interface ContractClause {
   /** 已含條號，例如「第八條　寵物飼養」。 */
@@ -64,7 +64,7 @@ export function blank(s: string | null | undefined): string {
  * v2（ADR-0008）：不在本文列舉品項，改引用附件頁，逐列的修繕責任與備註都在附件上。
  * v1：維持原本在本文列舉品項的寫法，既有合約與草稿的產出不因平台改版而改變。
  */
-function equipmentClauseBody(f: ContractFields): string {
+function equipmentClauseBody(f: LeaseContractFields): string {
   if (!usesEquipmentAnnex(f)) {
     const legacy = f.equipment ?? [];
     return legacy.length > 0
@@ -76,7 +76,7 @@ function equipmentClauseBody(f: ContractFields): string {
     : '本房屋無附屬設備。';
 }
 
-function leadingClauses(f: ContractFields): ContractClause[] {
+function leadingClauses(f: LeaseContractFields): ContractClause[] {
   return [
     {
       title: '租賃標的',
@@ -117,7 +117,7 @@ function leadingClauses(f: ContractFields): ContractClause[] {
   ];
 }
 
-function trailingClauses(f: ContractFields): ContractClause[] {
+function trailingClauses(f: LeaseContractFields): ContractClause[] {
   return [
     {
       title: '其他約定事項',
@@ -134,7 +134,7 @@ function trailingClauses(f: ContractFields): ContractClause[] {
  * 合約條款區的完整條文（含條號）。
  * 選用條款一律用合約自己的快照，不回頭查平台條款庫；勾了幾條，後面的條號就往後推幾號。
  */
-export function buildContractClauses(fields: ContractFields): ContractClause[] {
+export function buildContractClauses(fields: LeaseContractFields): ContractClause[] {
   const optional = clauseSnapshots(fields).map((clause) => ({ title: clause.title, body: clause.body }));
   return [...leadingClauses(fields), ...optional, ...trailingClauses(fields)].map((clause, index) => ({
     title: `第${clauseNumeral(index + 1)}條　${clause.title}`,

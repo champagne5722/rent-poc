@@ -1,36 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import {
-  DEFAULT_ORG_ENV,
-  resolveTransitionalContext,
-  toDbContext,
-  Unauthenticated,
-  type RequestContext,
-} from './request-context';
+import { toDbContext, Unauthenticated, type RequestContext } from './request-context';
 import { buildBeginSql } from './pg/with-tx';
 
 const SEED_DEFAULT_ORG = '00000000000000000000000002';
 
-describe('過渡期的 requestContext', () => {
-  it('回傳環境變數指定的預設組織，形狀照 ADR-0022 決議 7', () => {
-    const rc = resolveTransitionalContext({ [DEFAULT_ORG_ENV]: SEED_DEFAULT_ORG }, 'req-1');
-    expect(rc).toMatchObject({ kind: 'org', orgId: SEED_DEFAULT_ORG, orgKind: 'owner', role: 'admin', requestId: 'req-1' });
-    if (rc.kind !== 'org') throw new Error('應為 org');
-    expect(rc.userId).toBeTruthy();
-    expect(rc.partyId).toBeTruthy();
-  });
-
-  it.each([
-    ['沒有設定', {}],
-    ['空字串', { [DEFAULT_ORG_ENV]: '' }],
-    ['只有空白', { [DEFAULT_ORG_ENV]: '  ' }],
-    ['不是 ULID', { [DEFAULT_ORG_ENV]: 'default-org' }],
-  ])('%s：不開放存取，丟 Unauthenticated', (_name, env) => {
-    expect(() => resolveTransitionalContext(env, 'req-1')).toThrow(Unauthenticated);
+describe('Unauthenticated', () => {
+  it('預設原因是 no_session，可帶原因；訊息不洩漏細節', () => {
+    expect(new Unauthenticated().reason).toBe('no_session');
+    const e = new Unauthenticated(undefined, 'membership_lost');
+    expect(e.reason).toBe('membership_lost');
+    expect(e.message).toBe('尚未登入或沒有存取權');
+    expect(e).toBeInstanceOf(Error);
   });
 });
 
 describe('toDbContext', () => {
-  const org = resolveTransitionalContext({ [DEFAULT_ORG_ENV]: SEED_DEFAULT_ORG }, 'r');
+  const org: RequestContext = {
+    kind: 'org',
+    orgId: SEED_DEFAULT_ORG,
+    orgKind: 'owner',
+    userId: '00000000000000000000000003',
+    partyId: '00000000000000000000000004',
+    role: 'admin',
+    requestId: 'r',
+  };
 
   it('org 轉成帶 partyId 的 org 脈絡，可直接開交易', () => {
     const ctx = toDbContext(org as Extract<RequestContext, { kind: 'org' }>);

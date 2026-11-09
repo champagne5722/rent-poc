@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createLocalFileStore } from '../file-store/local-file-store';
 import { createContractSubscriber } from '../contract-signing';
 import { getContract, listContractEvents } from '../contracts';
 import { withTx } from '../pg/database';
@@ -96,7 +97,7 @@ const dbA = (): SigningDb => ({
 });
 
 const moduleWith = (provider: SigningProvider = createMockProvider()) =>
-  createSigningModule({ provider, subscribers: { contract: createContractSubscriber() }, dataDir, db: dbA() });
+  createSigningModule({ provider, subscribers: { contract: createContractSubscriber() }, files: createLocalFileStore(dataDir), db: dbA() });
 
 // 保存文件經 adapter 下載。監看下載次數，就能知道完成後保存了幾次。
 const watchedMock = () => {
@@ -399,9 +400,10 @@ describe('任務比對與當前簽署人讀簽署任務', () => {
     });
     const { subject, signing } = await sentThenLegacyColumnsChanged(liveProvider({ parseWebhook }));
 
+    // 對不到路由列的事件留在 inbox（MIL-86），回 2xx
     await expect(signing.ingestWebhook('stale-ref', new Headers())).resolves.toEqual({
       status: 200,
-      body: { ok: true, ignored: true },
+      body: { ok: true, queued: true },
     });
     expect((await statusOf(subject.id))).toBe('awaiting_tenant');
 
@@ -451,10 +453,10 @@ describe('接收 webhook', () => {
     expect((await statusOf(subject.id))).toBe('awaiting_tenant');
   });
 
-  it('找不到對應合約時回 200 ignored', async () => {
+  it('找不到對應合約時回 200 並留在 inbox 等重試', async () => {
     await expect(moduleWith().ingestWebhook(webhook('no-such-task', 'signed'), new Headers())).resolves.toEqual({
       status: 200,
-      body: { ok: true, ignored: true },
+      body: { ok: true, queued: true },
     });
   });
 
@@ -549,7 +551,7 @@ describe('模擬簽署事件（mock advance）', () => {
     const signing = createSigningModule({
       provider: createMockProvider(),
       subscribers: { contract: createContractSubscriber() },
-      dataDir,
+      files: createLocalFileStore(dataDir),
       now: () => instants.shift()!,
       db: dbA(),
     });
@@ -1092,7 +1094,7 @@ describe('簽署模組不依賴合約', () => {
     createSigningModule({
       provider: { ...createMockProvider(), ...provider },
       subscribers: { [FAKE.type]: subscriber },
-      dataDir,
+      files: createLocalFileStore(dataDir),
       db: dbA(),
     });
 
@@ -1161,7 +1163,7 @@ describe('簽署模組不依賴合約', () => {
 
     await expect(signing.ingestWebhook('{}', new Headers())).resolves.toEqual({
       status: 200,
-      body: { ok: true, ignored: true },
+      body: { ok: true, queued: true },
     });
     expect(info).toHaveBeenCalledWith(expect.stringContaining('no-such-task'));
     info.mockRestore();
@@ -1400,7 +1402,7 @@ describe('文件保存', () => {
     it('檔案被刪掉時當場補抓一次', async () => {
       const downloadFile = vi.fn(async (_ref: string, kind: string) => new TextEncoder().encode(kind));
       const { subject, signing } = await completeLive(liveProvider({ parseWebhook: completedWebhook(), downloadFile }));
-      fs.rmSync(path.join(dataDir, 'sign-task-files'), { recursive: true, force: true });
+      fs.rmSync(path.join(dataDir, 'org'), { recursive: true, force: true });
 
       expect(text((await signing.downloadFile(subject, 'signed_pdf')).bytes)).toBe('signed_pdf');
       expect(downloadFile).toHaveBeenCalledTimes(3);

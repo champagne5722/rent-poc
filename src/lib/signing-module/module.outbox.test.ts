@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createLocalFileStore } from '../file-store/local-file-store';
 import { createContractSubscriber } from '../contract-signing';
 import { getContract, listContractEvents } from '../contracts';
 import { withTx } from '../pg/database';
@@ -47,7 +48,7 @@ const moduleWith = (provider: SigningProvider = createMockProvider(), orgId = ki
   createSigningModule({
     provider,
     subscribers: { contract: createContractSubscriber() },
-    dataDir,
+    files: createLocalFileStore(dataDir),
     db: dbFor(orgId),
   });
 
@@ -302,7 +303,7 @@ describe('webhook：由路由列查出組織', () => {
     const webhookOnly = createSigningModule({
       provider,
       subscribers: { contract: createContractSubscriber() },
-      dataDir,
+      files: createLocalFileStore(dataDir),
       db: noRequest,
     });
 
@@ -311,9 +312,9 @@ describe('webhook：由路由列查出組織', () => {
     expect(await statusOf(subject.id)).toBe('awaiting_landlord');
   });
 
-  it('對不到路由列的事件回 2xx 並忽略', async () => {
+  it('對不到路由列的事件回 2xx，留在 inbox 等重試（MIL-86），不丟棄', async () => {
     const ack = await moduleWith(webhookProvider()).ingestWebhook(eventBody('nobody', 'a@example.com'), new Headers());
-    expect(ack).toEqual({ status: 200, body: { ok: true, ignored: true } });
+    expect(ack).toEqual({ status: 200, body: { ok: true, queued: true } });
   });
 
   it('同一個事件同時送來兩次：只套用一次，歷程只多一筆', async () => {

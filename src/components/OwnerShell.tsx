@@ -1,11 +1,13 @@
 'use client';
 
 import { Button, Empty, Flex, Layout, Menu, Typography, theme } from 'antd';
-import { UserOutlined } from '@ant-design/icons';
+import { TeamOutlined, UserOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { OWNER_NAV_ITEMS, OWNER_ROOT_HREF, resolveOwnerNavKey } from '@/lib/nav';
+import { MEMBERS_HREF, OWNER_NAV_ITEMS, OWNER_ROOT_HREF, resolveOwnerNavKey } from '@/lib/nav';
 import type { OwnerSession } from '@/lib/owner-session';
+import IdentitySwitcher from './IdentitySwitcher';
+import LogoutButton from './LogoutButton';
 import styles from './OwnerShell.module.css';
 
 // 屋主端殼層（MIL-94）：上方列，沒有側邊選單，也沒有「建立合約」。375px 寬時不得水平捲動。
@@ -52,6 +54,11 @@ export default function OwnerShell({
             <Typography.Text ellipsis={{ tooltip: session.displayName }}>
               {session.displayName}
             </Typography.Text>
+            <IdentitySwitcher />
+            <Button type="text" icon={<TeamOutlined />} href={MEMBERS_HREF}>
+              成員
+            </Button>
+            <LogoutButton />
           </div>
         )}
       </header>

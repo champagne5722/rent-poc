@@ -40,6 +40,13 @@ export interface PractitionerCandidate {
   isResponsiblePerson: boolean;
   /** 任職所屬的執業主體。 */
   entityId: string;
+  /** 任職的 ID。簽章紀錄存它（ADR-0018 決議 12）。 */
+  employmentId: string;
+  /**
+   * 證書號碼原文，沒有證書時為 null。只在登錄與送簽判定之間流動，
+   * 簽章紀錄的快照只存遮罩後的證號（`maskCertificateNo`）。
+   */
+  certificateNo: string | null;
   /** 判定事實。業別層是查詢時指定的那一種業別（執業主體得兼營多種業別）。 */
   credential: CredentialFacts;
 }

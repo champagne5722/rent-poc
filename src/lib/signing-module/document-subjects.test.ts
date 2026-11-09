@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createContractSubscriber } from '../contract-signing';
+import { createLocalFileStore } from '../file-store/local-file-store';
 import { withTx } from '../pg/database';
 import { setupRouteDb, type RouteDb } from '../pg/route-test-kit';
 import { newUlid } from '../pg/ulid';
@@ -81,7 +82,7 @@ function setup(provider: SigningProvider = createMockProvider()) {
       deposit_settlement: stubs.deposit_settlement.subscriber,
       deposit_refund_certificate: stubs.deposit_refund_certificate.subscriber,
     },
-    dataDir,
+    files: createLocalFileStore(dataDir),
     db: dbA(),
   });
   const subjectOf = (type: NewType): SigningSubject => {
@@ -256,7 +257,7 @@ describe('webhook 依任務找到標的種類', () => {
     const signing = createSigningModule({
       provider: createMockProvider(),
       subscribers: { contract: createContractSubscriber() },
-      dataDir,
+      files: createLocalFileStore(dataDir),
       db: dbA(),
     });
 

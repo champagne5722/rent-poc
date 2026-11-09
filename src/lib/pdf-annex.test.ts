@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { generateContractPdf } from './pdf';
 import { signatureStampBaselines } from './pdf-layout';
 import { bindTemplate } from './clause-library';
-import type { ContractFields, EquipmentAnnexRow } from './types';
+import type { LeaseContractFields, EquipmentAnnexRow } from './types';
 
 // 設備附件頁（MIL-29、ADR-0008）：另起一頁排在簽署欄之後，欄位為項目／數量／修繕責任／備註。
 // 沒有設備附件列就不產這一頁；有沒有附件頁都不得動到簽名框的預設落點。
@@ -12,7 +12,7 @@ const ANNEX: EquipmentAnnexRow[] = [
   { name: '洗衣機', quantity: 1, repair: 'tenant', note: '' },
 ];
 
-function fields(patch: Partial<ContractFields> = {}): ContractFields {
+function fields(patch: Partial<LeaseContractFields> = {}): LeaseContractFields {
   return {
     propertyName: '測試物件',
     propertyAddress: '台北市中正區測試路 1 號',
@@ -40,7 +40,7 @@ interface PdfDump {
 }
 
 /** 產 PDF 後讀回每頁文字與兩個「簽章：」的位置。 */
-async function dump(f: ContractFields): Promise<PdfDump> {
+async function dump(f: LeaseContractFields): Promise<PdfDump> {
   const bytes = await generateContractPdf(f);
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const doc = await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise;

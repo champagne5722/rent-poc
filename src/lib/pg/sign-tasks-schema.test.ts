@@ -115,9 +115,9 @@ describe('簽署任務相關的表', () => {
       const taskA = await inOrg(orgA, (tx) => insertTask(tx, orgA));
       const insertFile = (tx: OrgTx, orgId: string) =>
         tx.query(
-          `INSERT INTO org.sign_task_files (id, org_id, sign_task_id, kind, status, file_name)
-           VALUES ($1, $2, $3, 'signed_pdf', 'saved', 'a.pdf')`,
-          [newUlid(), orgId, taskA],
+          `INSERT INTO org.sign_task_files (id, org_id, sign_task_id, kind, status, file_name, object_key, sha256, byte_size)
+           VALUES ($1, $2, $3, 'signed_pdf', 'saved', 'a.pdf', $4, $5, 1)`,
+          [newUlid(), orgId, taskA, `org/${orgId}/sign-tasks/${taskA}/a.pdf`, 'a'.repeat(64)],
         );
       await inOrg(orgA, (tx) => insertFile(tx, orgA));
       await expect(inOrg(orgA, (tx) => insertFile(tx, orgA))).rejects.toThrow(/duplicate key/);

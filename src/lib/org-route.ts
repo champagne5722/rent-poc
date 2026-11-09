@@ -2,7 +2,7 @@ import { requestContext } from './current-request-context';
 import { jsonError, jsonOk } from './http';
 import { withTx } from './pg/database';
 import type { OrgTx } from './pg/with-tx';
-import { OrgContextRequired, Unauthenticated, toDbContext } from './request-context';
+import { OrgContextRequired, Unauthenticated, toDbContext, type RequestContext } from './request-context';
 
 // 組織範圍的 route handler 骨架（MIL-81 定下的寫法，之後的實體 route 照用）。
 //
@@ -28,6 +28,24 @@ export async function inOrgTx(handler: (tx: OrgTx) => Promise<Response>): Promis
 }
 
 /**
+ * 同 inOrgTx，但 handler 也拿到請求脈絡（組織角色、帳號 ID）。成員管理這類要看呼叫者是誰的 route 用（MIL-106）。
+ */
+export async function inOrgTxAs(
+  handler: (tx: OrgTx, rc: Extract<RequestContext, { kind: 'org' }>) => Promise<Response>,
+): Promise<Response> {
+  let rc;
+  try {
+    rc = await requestContext();
+  } catch (error) {
+    if (error instanceof Unauthenticated) return jsonError(401, error.message);
+    throw error;
+  }
+  if (rc.kind !== 'org') return jsonError(403, new OrgContextRequired().message);
+  const org = rc;
+  return withTx(toDbContext(org), (tx) => handler(tx, org));
+}
+
+/**
  * 在組織交易內只做讀取，把結果帶出交易再處理。要做交易外的事（例如過渡期寫 SQLite）時用這個，
  * 不要把它們塞進 inOrgTx 的 callback：交易內不得有 fs 與外部 I/O（ADR-0012 決議 10）。
  */
@@ -43,11 +61,4 @@ export async function readInOrgTx<R>(
   return result ? { ok: true, value: result.value } : { ok: false, response };
 }
 
-/** 讀 JSON 本文。不是合法的 JSON 時回 undefined，呼叫端回 400。 */
-export async function readJson(request: Request): Promise<unknown> {
-  try {
-    return await request.json();
-  } catch {
-    return undefined;
-  }
-}
+export { readJson } from './http';
