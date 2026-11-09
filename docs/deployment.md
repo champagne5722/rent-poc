@@ -40,6 +40,8 @@ Cloud Run 的環境變數：
 | `DOTTEDSIGN_CLIENT_SECRET` | Secret Manager `dottedsign-client-secret` | 同上 |
 | `DOTTEDSIGN_VERIFY_SIGNERS` | 目前 workflow 不注入，正式環境上線前手動設定 | 設為 `1` 時，送簽替每位簽署人帶 `email` 驗證。未設定時不送。sandbox 停用驗證，帶了會回 400428，所以 demo 必須維持未設定。正式環境的 `email` 驗證尚未實測。這個變數同時是「正式環境」的判定：設為 `1` 且 C 線的 `practiceRegistry` 真實 adapter 尚未註冊時，要求執業人員簽章的合約（包租、承租人是包租業者、居間）一律無法送簽（ADR-0021）。未設定時用 seed 假資料 |
 | `K_SERVICE` | Cloud Run 自動注入 | `src/proxy.ts` 用來判斷是否必須要求密碼 |
+| `JOBS_OIDC_AUDIENCE` | MIL-92 切換時設定 | 內部 job route 驗證 OIDC token 的 `aud`，值是服務網址。見「內部 job 與 Cloud Scheduler」 |
+| `JOBS_OIDC_SERVICE_ACCOUNT` | MIL-92 切換時設定 | Cloud Scheduler 的 service account email。token 的 `email` 必須等於它 |
 
 GitHub repo variables：
 
@@ -219,6 +221,122 @@ curl -s -o /dev/null -w '%{time_total}s\n' "https://rent-poc-demo-<專案編號>
 
    - 用 `verifyChain()` 驗證同一條鏈，結果必須通過。
    - 對不上時，當成資安事件處理。在工單記下缺漏，並補寫一筆說明原因的 `start` 或 `end` 紀錄。
+
+## 內部 job 與 Cloud Scheduler
+
+排程重試與每日工作走同一個服務內的內部 route，不開常駐程序。決策見 ADR-0020（`docs/adr/0020-worker-internal-routes-cloud-scheduler.md`）。這一節的步驟由 MIL-92 當天執行。MIL-92 是 demo 切到 Cloud SQL 的票。MIL-92 之前沒有 PostgreSQL，job 無法執行。
+
+### job 一覽
+
+入口只有一個：`POST /api/internal/jobs/:name`。Cloud Scheduler 帶 Google 簽發的 OIDC token 呼叫。
+
+| job | 內容 | demo 週期 | pilot 週期 |
+|---|---|---|---|
+| `drain-inbox` | 重試還沒處理完的 webhook 事件 | 每 60 分鐘 | 每 5 分鐘 |
+| `drain-outbox` | 重試未完成的撤回與重寄 | 每 60 分鐘 | 每 5 分鐘 |
+| `scan-timers` | 執行各線註冊的計時器 | 每日 00:10（台灣時間） | 每日 00:10（台灣時間） |
+
+`anchor-audit` 與 `verify-audit` 由 MIL-88 加入。加入時照下方「建立排程」的格式多建兩個排程。
+
+每次 job 的處理筆數有上限。`drain-inbox` 100 筆，`drain-outbox` 50 筆，`scan-timers` 500 項。回應的 `truncated` 為 `true` 時，剩下的留給下一次排程。
+
+週期只是排程設定，不寫在程式碼。pilot 上線時改排程，不用部署。
+
+### 呼叫者驗證
+
+route 驗證三項。三項都通過才執行 job。
+
+1. 簽章。用 Google 的公開金鑰驗證 RS256 簽章。
+2. `aud`。必須等於 `JOBS_OIDC_AUDIENCE`。
+3. service account。token 的 `email` 必須等於 `JOBS_OIDC_SERVICE_ACCOUNT`，而且 `email_verified` 為 `true`。
+
+驗證失敗回 401，job 不執行。兩個環境變數缺少時回 503，job 也不執行。取不到 Google 金鑰時回 503，Cloud Scheduler 會依重試設定再試。
+
+`src/proxy.ts` 的 Basic Auth 只放行 `/api/internal/jobs/:name` 這個形狀。其他內部路徑仍要求帳號密碼。
+
+### 建立排程
+
+1. 建立 Cloud Scheduler 專用的 service account：
+
+   ```bash
+   gcloud iam service-accounts create rent-poc-scheduler --project "$PROJECT" --display-name "rent-poc Cloud Scheduler"
+   ```
+
+2. 啟用 Cloud Scheduler API：
+
+   ```bash
+   gcloud services enable cloudscheduler.googleapis.com --project "$PROJECT"
+   ```
+
+3. 取得服務網址與 service account email，存成變數：
+
+   ```bash
+   URL=$(gcloud run services describe rent-poc-demo --region asia-east1 --project "$PROJECT" --format 'value(status.url)')
+   SA="rent-poc-scheduler@$PROJECT.iam.gserviceaccount.com"
+   ```
+
+4. 把兩個驗證設定加到 Cloud Run 服務。這會部署新 revision：
+
+   ```bash
+   gcloud run services update rent-poc-demo --region asia-east1 --project "$PROJECT" \
+     --update-env-vars "JOBS_OIDC_AUDIENCE=$URL,JOBS_OIDC_SERVICE_ACCOUNT=$SA"
+   ```
+
+   MIL-92 的部署 workflow 加入這兩個變數後，這一步得省略。
+
+5. 建立三個排程。demo 的 `drain-*` 用 `0 * * * *`（每小時）：
+
+   ```bash
+   for JOB in drain-inbox drain-outbox; do
+     gcloud scheduler jobs create http "rent-poc-$JOB" --location asia-east1 --project "$PROJECT" \
+       --schedule "0 * * * *" --time-zone "Asia/Taipei" \
+       --uri "$URL/api/internal/jobs/$JOB" --http-method POST \
+       --oidc-service-account-email "$SA" --oidc-token-audience "$URL" \
+       --attempt-deadline 300s --max-retry-attempts 3 --min-backoff 30s
+   done
+   gcloud scheduler jobs create http "rent-poc-scan-timers" --location asia-east1 --project "$PROJECT" \
+     --schedule "10 0 * * *" --time-zone "Asia/Taipei" \
+     --uri "$URL/api/internal/jobs/scan-timers" --http-method POST \
+     --oidc-service-account-email "$SA" --oidc-token-audience "$URL" \
+     --attempt-deadline 300s --max-retry-attempts 3 --min-backoff 30s
+   ```
+
+6. 手動觸發一次，確認回 200：
+
+   ```bash
+   gcloud scheduler jobs run rent-poc-drain-inbox --location asia-east1 --project "$PROJECT"
+   gcloud run services logs read rent-poc-demo --region asia-east1 --project "$PROJECT" --limit 20
+   ```
+
+7. 確認沒有 token 的請求被擋下。結果必須是 `401`：
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' -X POST "$URL/api/internal/jobs/drain-inbox"
+   ```
+
+   Basic Auth 擋不住這個路徑，所以 401 來自 route 自己的驗證。如果回 200，立刻停用排程並檢查環境變數。
+
+### pilot 改成每 5 分鐘
+
+```bash
+for JOB in drain-inbox drain-outbox; do
+  gcloud scheduler jobs update http "rent-poc-$JOB" --location asia-east1 --project "$PROJECT" --schedule "*/5 * * * *"
+done
+```
+
+### 人工處理清單
+
+重試超過 5 次的列轉成 `dead`，不再自動重試。job 結果的 `dead` 欄位標出筆數，並寫一筆 error log：`轉人工處理清單`。維運用這筆 log 設告警。
+
+- 查 inbox：用 `app_owner` 連線，執行 `SELECT id, provider_task_ref, event_type, attempts, last_error, received_at FROM control.inbox_messages WHERE status = 'dead' ORDER BY id;`
+- 查 outbox：`org.outbox` 有組織 RLS。用 break-glass 步驟進入該組織，查 `status = 'dead'` 的列。
+- 處理方式：確認原因後，手動把 `status` 改回 `pending` 並把 `attempts` 歸零。下一次排程會重試。
+
+### 註冊計時器（給各線）
+
+計時器註冊處是 `src/lib/jobs/timers/index.ts`。資料在組織內的計時器實作 `OrgTimer`。資料在 `registry` 的計時器實作 `GlobalTimer`。再加一行 `timerRegistry.register(...)`。介面與規則見 `src/lib/jobs/timers/registry.ts`。
+
+冪等鍵是主體、事件、日期。同一把鍵只執行一次，效果與冪等紀錄在同一個交易。
 
 ## 資料保存規則
 
