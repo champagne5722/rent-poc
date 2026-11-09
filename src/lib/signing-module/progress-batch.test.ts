@@ -37,7 +37,7 @@ afterEach(() => {
 const inA = <T,>(fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId: kit.orgA }, fn);
 const inB = <T,>(fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId: kit.orgB }, fn);
 
-const subject = (id: number, type = 'contract'): SigningSubject => ({ type, id: ulidOf(id) });
+const subject = (id: number, type: SigningSubject['type'] = 'contract'): SigningSubject => ({ type, id: ulidOf(id) });
 
 /** 包一層交易，數 query 呼叫次數。 */
 function counted(tx: OrgTx): { tx: OrgTx; count: () => number } {
@@ -58,7 +58,7 @@ function seedTask(
   tx: OrgTx,
   id: number,
   signers: SeedSigner[],
-  options: { type?: string; taskRef?: string } = {},
+  options: { type?: SigningSubject['type']; taskRef?: string } = {},
 ): Promise<boolean> {
   return insertSignTask(tx, {
     provider: 'mock',
