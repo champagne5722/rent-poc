@@ -69,10 +69,37 @@ describe('createLeaseCase', () => {
       businessType: 'self_managed',
       orgId: kit.orgA,
       title: '測試物件（台北市大安區）',
+      // MIL-123：新案件沒有社宅旗標，也沒有預設收款帳戶
+      socialHousing: false,
+      defaultRentAccountId: null,
+      defaultDepositAccountId: null,
     });
     expect(result.members.map((m) => [m.partyId, m.relation, m.validUntil])).toEqual([[lessor, 'lessor', null]]);
     expect(result.events.map((e) => e.type)).toEqual(['created', 'contract_attached']);
     expect(result.events[0]).toMatchObject({ toState: 'draft', actorPartyId: lessor });
+  });
+
+  it('自管案件沒有代管業者，社宅旗標即使傳 true 也記 false（MIL-123）', async () => {
+    const caseId = await withTx({ kind: 'org', orgId: kit.orgA }, async (tx) => {
+      const parsed = parsePropertyInput({ name: '社宅測試', address: '台北市大安區和平東路二段 100 號 4 樓', type: '整層住家' });
+      if (!parsed.ok) throw new Error(parsed.error);
+      const propertyId = await createProperty(tx, parsed.value);
+      const { rows } = await tx.query<{ rental_unit_id: string }>('SELECT rental_unit_id FROM org.properties WHERE id = $1', [propertyId]);
+      const lessor = await findOrCreateParty(tx, 'lessor2@example.com', '出租人');
+      return createLeaseCase(
+        tx,
+        {
+          orgId: kit.orgA,
+          orgKind: 'owner',
+          businessType: 'self_managed',
+          lessorPartyId: lessor,
+          property: { id: propertyId, name: '社宅測試', address: '台北市大安區', rental_unit_id: rows[0].rental_unit_id },
+          socialHousing: true,
+        },
+        NOW,
+      );
+    });
+    expect((await withTx({ kind: 'org', orgId: kit.orgA }, (tx) => getCase(tx, caseId)))?.socialHousing).toBe(false);
   });
 
   it('掛上合約後，案件的目前合約指向它，合約也指回案件', async () => {

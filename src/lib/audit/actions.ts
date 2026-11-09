@@ -80,6 +80,14 @@ export const AUDIT_ACTIONS = [
   'payment_account.update',
   'payment_account.deactivate',
 
+  // 接上案件的帳務設定（MIL-123）：payload 只放 ID、數量與旗標值，不放戶名、帳號與原因（原因存在修改紀錄表）
+  'case_ledger.open', // 合約全員完成，同交易建立押金台帳與應收期別
+  'case_ledger.cancel_periods', // 合約提前終止，終止日之後的期別改 cancelled
+  'case.social_housing_change', // 修改社宅旗標，原因存在 org.case_social_housing_changes
+  'case_remitter.add', // 登錄匯款識別，payload 只放種類
+  'case_remitter.remove',
+  'case.default_accounts_set', // 設定租金與押金的預設收款帳戶，payload 只放帳戶 ID
+
   // 帳務（鏡像帳與押金分錄、報表產生、手動繳租提醒）
   'ledger.entry',
   'ledger.reverse',

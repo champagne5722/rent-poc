@@ -29,6 +29,11 @@ export interface CaseRecord {
   leaseStart: string | null;
   leaseEnd: string | null;
   monthlyRent: number | null;
+  /** 社宅代管案件旗標（ADR-0050 決議 10）。修改走 changeSocialHousing，必須填原因。 */
+  socialHousing: boolean;
+  /** 租金與押金的預設收款帳戶，只用來預填入帳表單（MIL-123）。 */
+  defaultRentAccountId: string | null;
+  defaultDepositAccountId: string | null;
   createdAt: string;
   updatedAt: string | null;
 }

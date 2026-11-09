@@ -26,6 +26,9 @@ interface CaseRow {
   lease_start: string | null;
   lease_end: string | null;
   monthly_rent: number | null;
+  social_housing: boolean;
+  default_rent_account_id: string | null;
+  default_deposit_account_id: string | null;
   created_at: Date;
   updated_at: Date | null;
 }
@@ -33,7 +36,8 @@ interface CaseRow {
 const CASE_COLUMNS = `id, org_id, kind, state, state_version, business_type, title, rental_unit_id, property_id,
   current_contract_id, linked_mandate_case_id, predecessor_case_id, handover_id,
   to_char(valid_until, 'YYYY-MM-DD') AS valid_until, to_char(lease_start, 'YYYY-MM-DD') AS lease_start,
-  to_char(lease_end, 'YYYY-MM-DD') AS lease_end, monthly_rent, created_at, updated_at`;
+  to_char(lease_end, 'YYYY-MM-DD') AS lease_end, monthly_rent, social_housing, default_rent_account_id,
+  default_deposit_account_id, created_at, updated_at`;
 
 function toCase(row: CaseRow): CaseRecord {
   return {
@@ -54,6 +58,9 @@ function toCase(row: CaseRow): CaseRecord {
     leaseStart: row.lease_start,
     leaseEnd: row.lease_end,
     monthlyRent: row.monthly_rent,
+    socialHousing: row.social_housing,
+    defaultRentAccountId: row.default_rent_account_id,
+    defaultDepositAccountId: row.default_deposit_account_id,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at ? row.updated_at.toISOString() : null,
   };
@@ -76,6 +83,8 @@ export async function insertCase(
     leaseStart?: string | null;
     leaseEnd?: string | null;
     monthlyRent?: number | null;
+    /** 社宅代管案件旗標，預設 false（MIL-123）。 */
+    socialHousing?: boolean;
   },
   now: Date,
 ): Promise<void> {
@@ -84,8 +93,8 @@ export async function insertCase(
     `INSERT INTO org.cases
        (id, org_id, kind, state, state_version, business_type, title, rental_unit_id, property_id, current_contract_id,
         linked_mandate_case_id, predecessor_case_id, handover_id, valid_until, lease_start, lease_end, monthly_rent,
-        created_at)
-     VALUES ($1, current_setting('app.org_id', true), $2, $3, 0, $4, $5, $6, $7, NULL, $8, $9, $10, $11, $12, $13, $14, $15)`,
+        created_at, social_housing)
+     VALUES ($1, current_setting('app.org_id', true), $2, $3, 0, $4, $5, $6, $7, NULL, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
     [
       newCase.id,
       newCase.kind,
@@ -102,6 +111,7 @@ export async function insertCase(
       extra.leaseEnd ?? null,
       extra.monthlyRent ?? null,
       now.toISOString(),
+      extra.socialHousing ?? false,
     ],
   );
 }

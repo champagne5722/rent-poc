@@ -8,6 +8,7 @@ import {
   type CreationBlockReason,
   type OrgKind,
 } from '../cases';
+import { resolveSocialHousingDefault } from '../case-ledger/social-housing';
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
 import {
@@ -41,6 +42,13 @@ export interface NewLeaseCaseInput {
   /** 自管案件是出租人（建約的使用者），代管是屋主，包租是包租業者。 */
   lessorPartyId: string;
   property: { id: string; name: string; address: string; rental_unit_id: string };
+  /**
+   * 社宅代管案件旗標（ADR-0050 決議 10）。不傳或傳 null 時，有委託管理案件就帶入它的旗標，否則是 false。
+   * 自管案件沒有代管業者，旗標一律 false。事後修改走 changeSocialHousing。
+   */
+  socialHousing?: boolean | null;
+  /** 代管案件連到的委託管理案件。目前只用來決定社宅旗標的預設值，案件欄位由 MIL-116 寫入。 */
+  linkedMandateCaseId?: string | null;
 }
 
 /**
@@ -67,6 +75,10 @@ export async function createLeaseCase(tx: OrgTx, input: NewLeaseCaseInput, now: 
   );
   if (!result.ok) throw new CaseCreationBlocked(result.reasons);
 
+  const socialHousing =
+    input.businessType === 'self_managed'
+      ? false
+      : (input.socialHousing ?? (await resolveSocialHousingDefault(tx, input.linkedMandateCaseId ?? null)));
   await insertCase(
     tx,
     result.case,
@@ -74,6 +86,7 @@ export async function createLeaseCase(tx: OrgTx, input: NewLeaseCaseInput, now: 
       title: caseTitleOf(input.property),
       propertyId: input.property.id,
       rentalUnitId: input.property.rental_unit_id,
+      socialHousing,
     },
     now,
   );
