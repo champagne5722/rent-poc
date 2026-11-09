@@ -134,11 +134,11 @@ function fieldsBlockReason(
   return null;
 }
 
-/** 按「下一步」時的擋下理由；通過回 null。第①步的物件在建立草稿時已綁定，只檢查分流條件。 */
 function typeOfState(state: WizardState): ContractType {
   return state.contractType ?? DEFAULT_CONTRACT_TYPE;
 }
 
+/** 按「下一步」時的擋下理由；通過回 null。第①步的物件在建立草稿時已綁定，只檢查分流條件。 */
 export function nextStepBlockReason(stepIndex: number, state: WizardState): string | null {
   if (stepIndex === STEP_PROPERTY) return routingBlockReason(state.fields);
   if (stepIndex === STEP_FIELDS) return fieldsBlockReason(typeOfState(state), state.fields, state.assignments);

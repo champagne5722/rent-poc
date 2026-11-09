@@ -1,7 +1,7 @@
 // 合約列表的篩選、排序與進度計算，全部是純函式（見 docs/rental-contract-signing-spec.md §6）。
 // UI 只負責蒐集條件與畫畫面，判斷邏輯集中在這裡以便測試。
 
-import { contractTypeDefinition, listSummaryOf } from './contract-types';
+import { DEFAULT_CONTRACT_TYPE, contractTypeDefinition, listSummaryOf } from './contract-types';
 import { TERMS } from './labels';
 import type { Contract, ContractStatus, SignerRole } from './types';
 import { CONTRACT_STATUSES, SIGNER_ROLE_LABELS } from './types';
@@ -85,7 +85,7 @@ export function listPartyBColumn(contracts: readonly Contract[]): { title: strin
       },
     };
   }
-  const type = contracts.length > 0 ? contracts[0].contract_type : 'lease';
+  const type = contracts.length > 0 ? contracts[0].contract_type : DEFAULT_CONTRACT_TYPE;
   return {
     title: contractTypeDefinition(type).labels.partyBFull,
     cell: (c) => listSummaryOf(c).partyB.name || EMPTY_CELL,

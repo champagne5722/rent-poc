@@ -56,3 +56,10 @@ MIL-73 的成果。欄位、範本與檢核由合約類型決定，共用流程�
 6. 在 `src/components/contract-wizard/index.ts` 加畫面。
 
 `DEFINITIONS`、`TEMPLATES`、`RENDERERS` 與 `WIZARD_UI` 都是以 `ContractType` 為鍵的 `Record`，漏一個編譯不過。
+
+## 已知缺口（留給 MIL-74、MIL-77）
+
+- `src/lib/signature-routing/seats.ts` 的席位標籤（`fullLabel`）仍用租賃合約的稱謂。委託管理合約進 wizard 時，席位標籤要改依合約類型取字。
+- `src/app/contracts/[id]/page.tsx` 的型別是 `LeaseContract`，沒有執行期檢查。委託管理合約的詳情頁屬 MIL-77。
+- `WizardState.contractType`、`missingFieldLabels` 等函式沒帶類型時預設租賃合約（`DEFAULT_CONTRACT_TYPE`），為了讓既有呼叫端與測試不必改。新程式碼必須傳入類型。
+- 送簽前檢查的原因清單只在伺服器的送簽 route 帶 `template_not_reviewed`，wizard 第④步的預檢（`GET /api/contracts/[id]/practitioners`）不含它。使用者按下送簽後，由既有的錯誤提示顯示原因。

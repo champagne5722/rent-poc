@@ -209,7 +209,7 @@ function EquipmentAnnexEditor({
   );
 }
 
-/** 升版提示（規格 §12）：草稿綁的範本或已勾條款有新版時提示可重建，按不按由房東決定。 */
+/** 升版提示（規格 §12）：草稿綁的範本或已勾條款有新版時提示可重建，按不按由出租人決定。 */
 function TemplateUpgradeNotice({
   fields,
   onUpgrade,

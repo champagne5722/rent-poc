@@ -14,7 +14,7 @@ const seed: PracticeRegistryResolution = {
   available: true,
   registry: createSeedPracticeRegistry({ today: () => '2026-11-09' }),
 };
-const NOT_REVIEWED = '住宅租賃契約 v2 尚未經法務審閱，正式環境不得用它送簽';
+const NOT_REVIEWED = '住宅租賃契約 v2 尚未經法務審閱，正式環境無法用它送簽';
 
 let db: Database.Database;
 

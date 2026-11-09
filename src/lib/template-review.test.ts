@@ -13,7 +13,7 @@ describe('templateReviewBlock', () => {
     const block = templateReviewBlock('lease', BOUND, PRODUCTION);
     expect(block).toEqual({
       code: TEMPLATE_NOT_REVIEWED_CODE,
-      message: '住宅租賃契約 v2 尚未經法務審閱，正式環境不得用它送簽',
+      message: '住宅租賃契約 v2 尚未經法務審閱，正式環境無法用它送簽',
     });
   });
 
@@ -33,7 +33,7 @@ describe('templateReviewBlock', () => {
   it('沒綁範本版本的早期草稿，正式金鑰下一樣擋下，原因不寫版本', () => {
     const block = templateReviewBlock('lease', {}, PRODUCTION);
     expect(block?.code).toBe(TEMPLATE_NOT_REVIEWED_CODE);
-    expect(block?.message).toBe('這份合約綁定的範本版本沒有法務審閱紀錄，正式環境不得用它送簽');
+    expect(block?.message).toBe('這份合約綁定的範本版本沒有法務審閱紀錄，正式環境無法用它送簽');
   });
 
   it('範本已審閱就放行', () => {

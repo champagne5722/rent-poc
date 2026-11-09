@@ -8,8 +8,11 @@ import { DEFAULT_TEMPLATE, OPTIONAL_CLAUSES } from './clause-library';
 import type { ContractType } from './labels';
 import type { ContractTemplate, OptionalClause, TemplateBinding } from './types';
 
-/** 各合約類型提供的範本，版本由舊到新。委託管理合約在 MIL-74 之前沒有範本。 */
-export const TEMPLATES: Readonly<Record<ContractType, readonly ContractTemplate[]>> = {
+/** 各合約類型的範本，版本由舊到新。 */
+export type TemplateRegistry = Readonly<Record<ContractType, readonly ContractTemplate[]>>;
+
+/** 各合約類型提供的範本。委託管理合約在 MIL-74 之前沒有範本。 */
+export const TEMPLATES: TemplateRegistry = {
   lease: [DEFAULT_TEMPLATE],
   management: [],
 };
@@ -22,7 +25,7 @@ export const OPTIONAL_CLAUSE_LIBRARIES: Readonly<Record<ContractType, readonly O
 
 export function templatesFor(
   contractType: ContractType,
-  registry: Readonly<Record<ContractType, readonly ContractTemplate[]>> = TEMPLATES,
+  registry: TemplateRegistry = TEMPLATES,
 ): readonly ContractTemplate[] {
   return registry[contractType];
 }
@@ -30,7 +33,7 @@ export function templatesFor(
 /** 建約時綁定的範本：該類型最新的版本。沒有範本回 null。 */
 export function currentTemplate(
   contractType: ContractType,
-  registry: Readonly<Record<ContractType, readonly ContractTemplate[]>> = TEMPLATES,
+  registry: TemplateRegistry = TEMPLATES,
 ): ContractTemplate | null {
   const templates = templatesFor(contractType, registry);
   return templates.length ? templates[templates.length - 1] : null;
@@ -47,7 +50,7 @@ export function optionalClausesFor(contractType: ContractType): readonly Optiona
 export function boundTemplateOf(
   contractType: ContractType,
   binding: TemplateBinding,
-  registry: Readonly<Record<ContractType, readonly ContractTemplate[]>> = TEMPLATES,
+  registry: TemplateRegistry = TEMPLATES,
 ): ContractTemplate | null {
   if (binding.templateId === undefined || binding.templateVersion === undefined) return null;
   return (
@@ -61,7 +64,7 @@ export function boundTemplateOf(
 export function isLegalReviewed(
   contractType: ContractType,
   binding: TemplateBinding,
-  registry: Readonly<Record<ContractType, readonly ContractTemplate[]>> = TEMPLATES,
+  registry: TemplateRegistry = TEMPLATES,
 ): boolean {
   return boundTemplateOf(contractType, binding, registry)?.legalReviewed === true;
 }

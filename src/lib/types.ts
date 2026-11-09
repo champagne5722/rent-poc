@@ -107,7 +107,7 @@ export interface ContractTemplate {
   provider: string;
   note: string;
   // 法務審閱旗標（P0-10 AC5）：標記這個版本的條文是否經法務審閱。範本維護者審閱後才改成 true。
-  // 正式金鑰下，綁到未審閱範本的合約不得送簽（src/lib/template-review.ts）。
+  // 正式金鑰下，綁到未審閱範本的合約無法送簽（src/lib/template-review.ts）。
   legalReviewed: boolean;
 }
 
