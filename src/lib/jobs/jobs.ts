@@ -1,3 +1,4 @@
+import type { DispatchResult as EmailDispatchResult } from '../notifications';
 import { withTx } from '../pg/database';
 import type { DispatchResult, InboxResult } from '../signing-module/module';
 import { taipeiToday } from './dates';
@@ -35,8 +36,14 @@ export interface JobSigning {
   drainOutbox(orgId: string, limit: number): Promise<DispatchResult[]>;
 }
 
+/** job 需要的通知模組介面：重試到期的通知 email（MIL-120）。 */
+export interface JobNotifications {
+  drainEmails(orgId: string, limit: number): Promise<EmailDispatchResult[]>;
+}
+
 export interface JobDeps {
   signing: JobSigning;
+  notifications: JobNotifications;
   timers: TimerRegistry;
   limits?: { inbox?: number; outbox?: number; timers?: number };
 }
@@ -69,6 +76,17 @@ export function summarizeOutbox(results: DispatchResult[]) {
   };
 }
 
+export function summarizeEmails(results: EmailDispatchResult[]) {
+  const count = (kind: EmailDispatchResult['kind']) => results.filter((r) => r.kind === kind).length;
+  return {
+    processed: results.length,
+    sent: count('sent'),
+    skipped: count('skipped'),
+    failed: count('failed'),
+    dead: results.filter((r) => r.kind === 'failed' && r.status === 'dead').length,
+  };
+}
+
 /**
  * 轉人工處理清單的列要讓人看到：每次 job 結果有 dead 的筆數，這裡再記一筆 error log（維運的告警條件）。
  * 清單本身用 listDeadInbox（control）與 listDeadOutbox（逐組織）讀。
@@ -93,25 +111,47 @@ export function createJobs(deps: JobDeps): JobTable {
       return { ...summary, limit: limits.inbox, truncated: results.length >= limits.inbox };
     },
 
-    // outbox 在各組織內：從 control 取得組織清單，逐組織認領。總筆數受 limit 限制
+    // outbox 在各組織內：從 control 取得組織清單，逐組織認領。簽署動作與通知 email 各用一份筆數上限，
+    // 簽署動作多時不會餓死通知。寄信是至少一次：寄出後寫回失敗時，列會被視為中斷並重寄（MIL-120）
     async 'drain-outbox'() {
       const orgIds = await withTx({ kind: 'control' }, listWorkOrgIds);
       const results: DispatchResult[] = [];
+      const emails: EmailDispatchResult[] = [];
       let orgErrors = 0;
       for (const orgId of orgIds) {
-        const remaining = limits.outbox - results.length;
-        if (remaining <= 0) break;
-        try {
-          results.push(...(await deps.signing.drainOutbox(orgId, remaining)));
-        } catch (e) {
-          // 一個組織出錯不影響其他組織
-          orgErrors++;
-          console.error(`[jobs] drain-outbox 組織 ${orgId} 失敗：${errorMessage(e)}`);
+        // 一個組織、一種動作出錯不影響其他組織與其他動作
+        const signingRemaining = limits.outbox - results.length;
+        if (signingRemaining > 0) {
+          try {
+            results.push(...(await deps.signing.drainOutbox(orgId, signingRemaining)));
+          } catch (e) {
+            orgErrors++;
+            console.error(`[jobs] drain-outbox 組織 ${orgId} 失敗：${errorMessage(e)}`);
+          }
         }
+        const emailRemaining = limits.outbox - emails.length;
+        if (emailRemaining > 0) {
+          try {
+            emails.push(...(await deps.notifications.drainEmails(orgId, emailRemaining)));
+          } catch (e) {
+            orgErrors++;
+            console.error(`[jobs] drain-outbox 組織 ${orgId} 的通知 email 失敗：${errorMessage(e)}`);
+          }
+        }
+        if (results.length >= limits.outbox && emails.length >= limits.outbox) break;
       }
       const summary = summarizeOutbox(results);
+      const emailSummary = summarizeEmails(emails);
       alertDead('drain-outbox', summary.dead);
-      return { ...summary, orgs: orgIds.length, orgErrors, limit: limits.outbox, truncated: results.length >= limits.outbox };
+      alertDead('drain-outbox（通知 email）', emailSummary.dead);
+      return {
+        ...summary,
+        emails: emailSummary,
+        orgs: orgIds.length,
+        orgErrors,
+        limit: limits.outbox,
+        truncated: results.length >= limits.outbox || emails.length >= limits.outbox,
+      };
     },
 
     async 'scan-timers'(ctx) {
