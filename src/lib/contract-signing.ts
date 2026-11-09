@@ -38,7 +38,7 @@ export function createContractSubscriber({ registry = () => getPracticeRegistry(
     return contract;
   };
 
-  // 正在自動撤回的合約。撤回事件進交易時，歷程的行為者要記系統，不是出租方。
+  // 正在自動撤回的合約。撤回事件進交易時，歷程的行為者要記系統，不是出租人。
   const autoVoiding = new Set<number>();
 
   return {
@@ -92,7 +92,7 @@ export function createContractSubscriber({ registry = () => getPracticeRegistry(
       const autoVoid = outcome.type === 'voided' && autoVoiding.has(subject.id);
       applySigningResult(contractOf(subject), outcome, undefined, autoVoid ? { actor: 'system', note: AUTO_VOID_NOTE } : undefined);
       const written = completeSignSnapshots(subject, outcome, context.eventAt, context.prepared as PreparedSignSnapshots | undefined);
-      recordLapses(subject, outcome, context.eventAt, written);
+      recordLapsesFromSnapshots(subject, outcome, context.eventAt, written);
       settleLapses(subject, outcome);
     },
 
@@ -105,13 +105,16 @@ export function createContractSubscriber({ registry = () => getPracticeRegistry(
         await voidTask();
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        if (markVoidFailed(getDb(), subject.id, message)) {
+        // 失敗狀態與歷程同一個交易
+        const db = getDb();
+        db.transaction(() => {
+          if (!markVoidFailed(db, subject.id, message)) return;
           appendContractEvent(subject.id, {
             type: 'auto_void_failed',
             actor: 'system',
             note: `自動撤回失敗：${message}。請手動撤回。`,
           });
-        }
+        })();
         console.error(`[signing] 合約 ${subject.id} 簽署時不可簽章，自動撤回失敗：${message}`);
       } finally {
         autoVoiding.delete(subject.id);
@@ -166,9 +169,9 @@ interface WrittenSignSnapshot {
 // 判定沿用 prepareOutcome 用事件時間算出的快照，不重新查登錄。查不到登錄資料的快照無法判定，不當作失效。
 // 只看這次新補的快照，重複的事件不會再補快照，所以不會重複記錄。
 // - 任務未結束：記為等著自動撤回，由 afterOutcome 在交易提交後撤回。
-// - 全員完成：合約維持完成，只記事實，詳情頁顯示警示。
+// - 全員完成（含最後一位簽署人就是這位執業人員）：合約維持完成，只記事實，詳情頁顯示警示。
 // ADR-0021 決議 6：稽核事件與通知的過渡做法是寫合約歷程。上線前改寫稽核事件（P0-23）。
-function recordLapses(
+function recordLapsesFromSnapshots(
   subject: SigningSubject,
   outcome: ProgressOutcome,
   eventAt: string,
@@ -178,7 +181,8 @@ function recordLapses(
   for (const { ruleId, snapshot } of written) {
     if (isUnavailableSnapshot(snapshot) || snapshot.result.signable) continue;
     const reasons = snapshot.result.issues.map((issue) => issue.message);
-    const completed = outcome.type === 'completed';
+    // 最後一位簽完等於全員簽署，完成事件隨後就到，這時撤回只會與完成事件競態
+    const completed = outcome.type === 'completed' || (outcome.type === 'signer_signed' && outcome.next === null);
     const recorded = recordLapse(db, {
       contractId: subject.id,
       ruleId,

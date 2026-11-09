@@ -13,7 +13,7 @@ export interface NewLapse {
   contractId: number;
   ruleId: string;
   /** 任務未結束是 void_pending，任務已全員完成是 completed_lapsed。 */
-  state: 'void_pending' | 'completed_lapsed';
+  state: Extract<SigningLapseState, 'void_pending' | 'completed_lapsed'>;
   reasons: string[];
   eventAt: string;
 }

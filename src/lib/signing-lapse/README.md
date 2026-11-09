@@ -11,8 +11,9 @@
 | 任務未結束 | 照常推進 | 交易提交後自動撤回，成功後變已撤回 | `void_pending` → `voided` | `credential_lapsed`、`voided`（行為者系統） |
 | 任務未結束，自動撤回失敗 | 照常推進 | 維持簽署中，詳情頁顯示警示與撤回按鈕 | `void_failed` | `credential_lapsed`、`auto_void_failed` |
 | 任務已全員完成 | 照常推進 | 維持已完成，詳情頁顯示警示 | `completed_lapsed` | `completed`、`credential_lapsed` |
+| 執業人員是最後一位簽署人 | 照常推進 | 不撤回，等完成事件 | `completed_lapsed` | `credential_lapsed` |
 | 自動撤回失敗後才收到完成事件 | 照常推進 | 維持已完成 | `void_failed` → `completed_lapsed` | 再寫一筆 `credential_lapsed` |
-| 失敗後使用者手動撤回 | 照常推進 | 已撤回 | `void_failed` → `voided` | `voided`（行為者出租方） |
+| 失敗後使用者手動撤回 | 照常推進 | 已撤回 | `void_failed` → `voided` | `voided`（行為者出租人） |
 | 其他原因結束（拒簽） | 照常推進 | 已拒簽 | → `task_ended` | 無 |
 
 查不到登錄資料的快照（`unavailable`）無法判定，不當作失效。
@@ -28,6 +29,13 @@
 ## 重複事件
 
 簽署模組的 email 守門（ADR-0010 決議 9）拒絕重複的 `signed`，所以 `onOutcome` 不會再被呼叫。資料層另有兩道保險：`snapshot_at_sign` 只能補一次，`UNIQUE (contract_id, rule_id)` 讓同一席位只有一列。
+
+## 已知限制
+
+- 程序在提交後、撤回前中斷時，紀錄停在 `void_pending`。email 守門會擋掉重送的同一事件，所以不會自動補撤回。詳情頁仍顯示警示與撤回按鈕，由使用者手動撤回。
+- 完成事件比執業人員的 `signed` 事件先到時，判定時點是完成事件的時間（MIL-70 的決定），不是實際簽署時間。
+- `autoVoiding` 是行程內的記憶體集合。服務商的 `voided` webhook 搶在自動撤回的回應之前到達時，撤回事件的行為者會記出租人。
+- 同一位執業人員佔多個席位時，每個席位各記一筆失效紀錄與歷程。
 
 ## 簽署模組介面的改動
 

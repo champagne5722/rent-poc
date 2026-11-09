@@ -89,7 +89,8 @@ function spiedProvider() {
   return { provider, state };
 }
 
-async function setup(registry: PracticeRegistryResolution = seed) {
+// practitionerLast：測試用，把簽署序列改成乙方、甲方、執業人員，讓執業人員是最後一位
+async function setup(registry: PracticeRegistryResolution = seed, { practitionerLast = false } = {}) {
   const id = insertContractWithEvent(
     { property_id: null, fields: JSON.stringify(FIELDS), signature_fields: JSON.stringify(SIGNATURE_FIELDS) },
     { type: 'created', actor: 'landlord' },
@@ -116,7 +117,13 @@ async function setup(registry: PracticeRegistryResolution = seed) {
       JSON.stringify({ resource_id: taskRef(), resource_type: 'task', action_name: action, event_email: email, event_datetime: unixOf(at) }),
       new Headers(),
     );
-  await signing.send(subject, document, prepared.signers, prepared.sendContext);
+  if (practitionerLast) {
+    const [b, p, a] = prepared.signers;
+    const records = prepared.sendContext!.records.map((r) => ({ ...r, signerIndex: 2 }));
+    await signing.send(subject, document, [b, a, p], { ...prepared.sendContext!, records });
+  } else {
+    await signing.send(subject, document, prepared.signers, prepared.sendContext);
+  }
   return { id, signing, subject, deliver, voidSpy: state };
 }
 
@@ -229,6 +236,23 @@ describe('任務已全員完成：合約維持完成，留下事實', () => {
   });
 });
 
+describe('執業人員是最後一位簽署人', () => {
+  it('簽完就是全員簽署：不撤回，記為合約維持完成；完成事件到達後合約完成', async () => {
+    const { id, deliver, voidSpy } = await setup(seed, { practitionerLast: true });
+    await deliver('signed', TENANT_EMAIL, '2026-11-10T08:00:00+08:00');
+    await deliver('signed', LANDLORD_EMAIL, '2026-11-10T08:30:00+08:00');
+    const ack = await deliver('signed', PRACTITIONER_EMAIL, LAPSED_AT);
+    expect(ack).toEqual({ status: 200, body: { ok: true } });
+    expect(voidSpy.calls).toBe(0);
+    expect(await listSigningLapses(id, db)).toEqual([expect.objectContaining({ state: 'completed_lapsed' })]);
+
+    await deliver('completed', 'Server', '2029-06-01T10:00:05+08:00');
+    expect(getContract(id)?.status).toBe('completed');
+    expect(voidSpy.calls).toBe(0);
+    expect(eventTypes(id).filter((t) => t === 'credential_lapsed')).toHaveLength(1);
+  });
+});
+
 describe('自動撤回失敗：webhook 仍回 2xx，使用者手動撤回', () => {
   it('服務商撤回失敗：回 2xx、合約維持簽署中、記下失敗原因與歷程', async () => {
     const { id, deliver, voidSpy } = await setup();
@@ -255,7 +279,7 @@ describe('自動撤回失敗：webhook 仍回 2xx，使用者手動撤回', () =
     expect(voidSpy.calls).toBe(1);
   });
 
-  it('手動撤回走既有的撤回 route：合約已撤回、失效紀錄改記已撤回、行為者是出租方', async () => {
+  it('手動撤回走既有的撤回 route：合約已撤回、失效紀錄改記已撤回、行為者是出租人', async () => {
     const { id, deliver, voidSpy } = await setup();
     voidSpy.failWith = '點點簽暫時無法連線';
     vi.spyOn(console, 'error').mockImplementation(() => {});
