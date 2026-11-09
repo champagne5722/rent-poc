@@ -88,6 +88,8 @@ describe('GET /api/cases/[id]/ledger', () => {
     const data = (await json(res)).data;
     expect(data).toMatchObject({
       socialHousing: false,
+      canConfigure: true,
+      canSetSocialHousing: true,
       depositLedger: { caseId: id, expectedAmount: 60000, status: 'open' },
       depositBalance: 0,
       defaultAccounts: { rentAccountId: null, depositAccountId: null },
@@ -114,9 +116,14 @@ describe('GET /api/cases/[id]/ledger', () => {
     const lessee = await addMemberRow(kit.orgA, id, 'lessee', 'tenant@example.com', '王租客');
 
     asOrg(kit.orgA, TEST_PARTY_ID, 'viewer');
-    expect((await getLedger(req('GET'), ctx(id))).status).toBe(200);
+    const viewerRes = await getLedger(req('GET'), ctx(id));
+    expect(viewerRes.status).toBe(200);
+    // viewer 看得到，但編輯控制項關閉
+    expect((await json(viewerRes)).data).toMatchObject({ canConfigure: false, canSetSocialHousing: false });
     asOrg(kit.orgB, lessor);
-    expect((await getLedger(req('GET'), ctx(id))).status).toBe(200);
+    const lessorRes = await getLedger(req('GET'), ctx(id));
+    expect(lessorRes.status).toBe(200);
+    expect((await json(lessorRes)).data).toMatchObject({ canConfigure: false, canSetSocialHousing: false });
     asOrg(kit.orgB, lessee);
     expect(await snap(await getLedger(req('GET'), ctx(id)))).toEqual(NOT_FOUND);
     asOrg(kit.orgB, TEST_PARTY_ID);

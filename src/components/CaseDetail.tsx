@@ -7,6 +7,7 @@ import type { CaseContractRow, CaseEventRecord, CaseMemberRecord, CaseRecord } f
 import { isTenantRelation } from '@/lib/cases';
 import { eventDescription, formatTaipei, leasePeriodLabel, monthlyRentLabel } from '@/lib/case-display';
 import { BUSINESS_TYPE_LABELS } from '@/lib/labels';
+import CaseLedgerPanel from './CaseLedgerPanel';
 import { CASE_MEMBER_RELATION_LABELS, CASE_STATE_COLORS, CASE_STATE_LABELS } from '@/lib/labels/case-labels';
 import { shortUlid } from '@/lib/pg/ulid';
 import { CONTRACT_STATUS_LABELS, type ContractStatus } from '@/lib/types';
@@ -153,6 +154,7 @@ function CaseDetailBody({ caseId, readOnly, backHref }: { caseId: string; readOn
                   { key: 'state', label: '狀態', children: CASE_STATE_LABELS[record.state] },
                   { key: 'period', label: '租期', children: leasePeriodLabel(record.leaseStart, record.leaseEnd) },
                   { key: 'rent', label: '月租金', children: monthlyRentLabel(record.monthlyRent) },
+                  { key: 'social', label: '社宅代管', children: record.socialHousing ? '是' : '否' },
                   { key: 'org', label: '主辦', children: detail.isHost ? '本組織' : (detail.orgName ?? '—') },
                   { key: 'created', label: '建立時間', children: formatTaipei(record.createdAt) },
                 ]}
@@ -273,6 +275,10 @@ function CaseDetailBody({ caseId, readOnly, backHref }: { caseId: string; readOn
               />
             ),
           },
+          // 帳務設定（MIL-123）：主辦組織與唯讀的屋主版本看得到。能不能編輯由 API 回傳的旗標決定
+          ...(detail.isHost || readOnly
+            ? [{ key: 'ledger', label: '帳務設定', children: <CaseLedgerPanel caseId={caseId} /> }]
+            : []),
           {
             key: 'events',
             label: `案件事件 ${detail.events.length}`,

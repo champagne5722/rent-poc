@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { authorize } from '@/lib/authorize';
+import { authorize, checkAccess } from '@/lib/authorize';
 import {
   getDefaultAccounts,
   getDepositBalance,
@@ -24,7 +24,10 @@ export async function GET(_request: NextRequest, { params }: CaseRouteCtx) {
     await authorize(tx, 'ledger.read_case_setup', { type: 'case', id });
     const record = await getCase(tx, id);
     if (!record || record.kind !== 'lease') return caseNotFound();
-    const [depositLedger, depositBalance, periods, remitterIds, defaultAccounts, socialHousingChanges, holderConflicts] = await Promise.all([
+    const [configure, setSocialHousing, depositLedger, depositBalance, periods, remitterIds, defaultAccounts, socialHousingChanges, holderConflicts] =
+      await Promise.all([
+      checkAccess(tx, 'ledger.configure_case', { type: 'case', id }),
+      checkAccess(tx, 'case.set_social_housing', { type: 'case', id }),
       getDepositLedger(tx, id),
       getDepositBalance(tx, id),
       listPeriods(tx, id),
@@ -36,6 +39,9 @@ export async function GET(_request: NextRequest, { params }: CaseRouteCtx) {
     return jsonOk({
       data: {
         socialHousing: record.socialHousing,
+        // 畫面用它決定要不要顯示編輯控制項。真正的檢查在各個寫入的 route
+        canConfigure: configure.allowed,
+        canSetSocialHousing: setSocialHousing.allowed,
         depositLedger,
         depositBalance,
         periods,
