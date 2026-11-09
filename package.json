@@ -7,9 +7,13 @@
     "dev:3001": "NEXT_DIST_DIR=.next-dev3001 next dev -p 3001",
     "dev:preview": "NEXT_DIST_DIR=.next-preview next dev",
     "build": "next build",
+    "build:local": "scripts/heavy.sh build next build",
     "start": "next start",
-    "lint": "eslint",
-    "test": "vitest run",
+    "lint": "scripts/heavy.sh lint eslint",
+    "typecheck": "scripts/heavy.sh typecheck sh -c 'next typegen && tsc --noEmit'",
+    "test": "scripts/heavy.sh test vitest run",
+    "test:scripts": "node --test \"scripts/hooks/*.test.mjs\" && scripts/heavy.test.sh",
+    "verify": "scripts/verify.sh",
     "db:migrate": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/migrate.mjs"
   },
   "dependencies": {

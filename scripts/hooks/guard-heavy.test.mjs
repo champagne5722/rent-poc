@@ -29,7 +29,7 @@ const BLOCKED = [
   ['npx tsc --noEmit', 'npm run typecheck'],
   ['npx next dev', 'scripts/smoke/run-smoke.sh'],
   ['npx next dev --webpack -p 3192', 'scripts/smoke/run-smoke.sh'],
-  ['npx next build', 'npm run build'],
+  ['npx next build', 'npm run build:local'],
   // 串接
   ['cd app && npx vitest run', 'npm test'],
   ['git status; npx eslint src', 'npm run lint'],
@@ -77,6 +77,7 @@ const ALLOWED = [
   'npm run typecheck',
   'npm run verify',
   'npm run build',
+  'npm run build:local',
   'npm run test:scripts',
   // 只是提到這些字
   'git commit -m "修 vitest 設定"',

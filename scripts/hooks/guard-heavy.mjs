@@ -25,7 +25,7 @@ const MESSAGES = {
   vitest: '改用 `npm test`。指定檔案時用 `npm test -- <路徑>`。',
   eslint: '改用 `npm run lint`。',
   tsc: '改用 `npm run typecheck`。',
-  'next build': '改用 `npm run build`。',
+  'next build': '改用 `npm run build:local`。',
   'next dev':
     '把啟動 dev server、跑冒煙、關閉 dev server 寫在同一個腳本，用 `scripts/heavy.sh smoke scripts/smoke/run-smoke.sh <port> <冒煙腳本>` 執行。做法見 docs/agents/implementing.md。',
 };
