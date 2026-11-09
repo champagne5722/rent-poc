@@ -100,6 +100,26 @@ export function printOrder(seats: readonly SeatView[]): SeatView[] {
   );
 }
 
+/**
+ * 合併後實際的簽署人，依簽署順序，一位簽署人一句。兼任的當事人席位併入執業人員，寫成「執業人員（…）兼甲方（出租人）」。
+ * 確認頁用它列出簽署序列。沒有合併時與席位順序相同。
+ */
+export function signerChainLabels(
+  seats: readonly SeatView[],
+  merges: ReadonlyArray<{ practitionerRuleId: string; partyRuleId: string }>,
+): string[] {
+  const absorbed = new Set(merges.map((m) => m.partyRuleId));
+  return seats
+    .filter((seat) => !absorbed.has(seat.ruleId))
+    .map((seat) => {
+      const concurrent = merges
+        .filter((m) => m.practitionerRuleId === seat.ruleId)
+        .map((m) => seats.find((s) => s.ruleId === m.partyRuleId)?.fullLabel)
+        .filter((label): label is string => Boolean(label));
+      return [seat.fullLabel, ...concurrent].join('兼');
+    });
+}
+
 export function hasPractitionerSeat(seats: readonly SeatView[]): boolean {
   return seats.some((seat) => seat.role === 'practitioner');
 }

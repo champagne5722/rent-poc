@@ -116,7 +116,7 @@ describe('evaluateSend：由指派與登錄資料組出送簽前檢查的輸入'
     it('簽署人不屬於所選的執業主體：被擋下', async () => {
       expect(await codes({ assignments: [{ ...ASSIGNMENT, partySignerId: 'ps-su' }] })).toContain('party_signer_mismatch');
     });
-    it('簽署人與執業人員是同一人：email 重複，被擋下（兼任合併屬 MIL-76）', async () => {
+    it('簽署人與執業人員是同一人：合併成一位簽署人，不再因 email 重複被擋下（MIL-76，細節在 service.merge.test.ts）', async () => {
       const result = await evaluateSend(
         input({
           fields: { ...FIELDS, landlordName: '陳怡君', landlordEmail: 'chen.yijun@beichen.example.com' },
@@ -124,7 +124,7 @@ describe('evaluateSend：由指派與登錄資料組出送簽前檢查的輸入'
         }),
         seed,
       );
-      expect(result.reasons.map((r) => r.code)).toEqual(['duplicate_email']);
+      expect(result.reasons).toEqual([]);
     });
   });
 

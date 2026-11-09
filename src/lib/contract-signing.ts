@@ -14,7 +14,7 @@ import { normalizeEmail } from './signing-module/progress';
 import type { SigningSubject } from './signing-module/provider';
 import { SigningRefusal, type SigningSubscriber } from './signing-module/subscriber';
 import { applySigningResult } from './transitions';
-import type { Contract } from './types';
+import { SIGNER_ROLE_LABELS, type Contract } from './types';
 
 // prepareOutcome 的產出：簽署事件時間的證書判定，以席位 rule_id 為鍵（MIL-70）
 interface PreparedSignSnapshots {
@@ -51,6 +51,16 @@ export function createContractSubscriber({ registry = () => getPracticeRegistry(
       const { role, name, email } = signers[0];
       const next = applySigningResult(contractOf(subject), { type: 'sent', first: { role, name, email } });
       if (!next) throw new SigningRefusal(409, '僅草稿可送簽');
+
+      // 同一人兼任：簽署序列已合併成一位簽署人，歷程記下（ADR-0018 決議 9，系統不阻擋，只記錄）
+      for (const merged of signers.filter((s) => (s.concurrentRoles?.length ?? 0) > 0)) {
+        const roles = merged.concurrentRoles!.map((r) => SIGNER_ROLE_LABELS[r]).join('、');
+        appendContractEvent(subject.id, {
+          type: 'signers_merged',
+          actor: 'system',
+          note: `${merged.name}同時是${roles}的當事人簽署人與${SIGNER_ROLE_LABELS[merged.role]}，合併為一位簽署人，簽署一次。`,
+        });
+      }
 
       if (isContractSendContext(context)) {
         const records = context.records.map((record) => {

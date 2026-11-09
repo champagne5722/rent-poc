@@ -97,6 +97,22 @@ function runContract(name: string, factory: () => PracticeRegistry) {
       expect(zhang!.certificateNo).toBeNull();
     });
 
+    it('候選帶 partyId，同一個自然人在當事人簽署人與執業人員兩種身分的 partyId 相同（合併用，MIL-76）', async () => {
+      const registry = factory();
+      const chen = await registry.getPractitioner('pr-chen', { licenseKind: 'master_lease' });
+      const signers = await registry.listPartySigners('org-pe-beichen');
+      const chenAsSigner = signers.find((s) => s.email === chen!.accountEmail);
+      expect(chen!.partyId).toEqual(expect.any(String));
+      expect(chen!.partyId).not.toBe('');
+      expect(chenAsSigner?.partyId).toBe(chen!.partyId);
+      // 不同的人 partyId 不同，包含同一執業主體內的其他人
+      const others = signers.filter((s) => s.email !== chen!.accountEmail);
+      expect(others.length).toBeGreaterThan(0);
+      expect(others.every((s) => s.partyId !== chen!.partyId)).toBe(true);
+      const lin = await registry.getPractitioner('pr-lin', { licenseKind: 'master_lease' });
+      expect(lin!.partyId).not.toBe(chen!.partyId);
+    });
+
     it('getPractitioner 不套用資格條件，才能列出被拒的原因', async () => {
       const registry = factory();
       const wu = await registry.getPractitioner('pr-wu', { licenseKind: 'master_lease' });

@@ -8,11 +8,11 @@
 | -- | -- |
 | `rules.ts` | 規則表，ADR-0018 決議 5 的 13 列。`SIGNATURE_RULES_VERSION` 在這裡 |
 | `route.ts` | `routeSignatures(facts)`，純函式 |
-| `sequence.ts` | `buildSignerSequence(plan, assignees, signatureFields)`，純函式 |
+| `sequence.ts` | `buildSignerSequence(plan, assignees, signatureFields)`：組出簽署序列，同一人兼任時合併成一位簽署人（MIL-76）。另有 `findMergedSeats`、`seatSignerIndexes`、`fieldsOfSeat`。純函式 |
 | `facts.ts` | 由合約類型與 `fields.routing` 組出分流事實，純函式 |
 | `repository.ts` | `loadContractRoutingFacts(contractId)`，回傳 Promise。內部直接引用 `db.ts`，不在 `index.ts` 匯出 |
 | `types.ts` | `RoutingFacts`、`PlannedSeat`、`SignatureRoute` |
-| `seats.ts` | `evaluateRouting(stored, contractType = 'lease')`：分流條件換成畫面用的席位（`SeatView`）或擋下原因，稱謂依合約類型取字（MIL-74）。`printOrder`：簽署序列換成印列順序。`routingInputError(stored, contractType)`：存草稿時檢查形狀。`partyOnlySeats(contractType)`：退回的兩方席位。純函式，client 與 server 都能引用 |
+| `seats.ts` | `evaluateRouting(stored, contractType = 'lease')`：分流條件換成畫面用的席位（`SeatView`）或擋下原因，稱謂依合約類型取字（MIL-74）。`printOrder`：簽署序列換成印列順序。`routingInputError(stored, contractType)`：存草稿時檢查形狀。`partyOnlySeats(contractType)`：退回的兩方席位。`signerChainLabels(seats, merges)`：合併後實際的簽署人，確認頁用（MIL-76）。純函式，client 與 server 都能引用 |
 | `seat-fields.ts` | `seatOfField`、`countFieldsBySeat`、`reconcileSignatureFields`：簽署區域與席位的對應。有 `slot` 的歸該席位，沒有 `slot` 的舊資料歸同角色的第一個席位 |
 
 ## 規則表的 13 列
@@ -81,10 +81,33 @@ E 線不經過這個欄位。E 線自己組 `RoutingFacts`，直接呼叫 `route
 - 指派、`practiceRegistry`、送簽前檢查與判定事實快照見 `src/lib/practitioner-assignment/README.md`。
 - `prepareContractSigners(contract, facts, practitioners)` 的第三個參數是執業人員席位的簽署人，沒傳入時要求執業人員的組合仍會被擋下。資格檢查在 `checkSendPreconditions`，這裡不重複。
 
+## 同一人兼任的合併（MIL-76，ADR-0018 決議 9）
+
+判定條件：執業人員席位的執業主體是甲方或乙方，當事人簽署人與執業人員的 `partyId` 相同，而且當事人簽署人屬於同一執業主體。`partyId` 與 `entityId` 放在 `SeatAssignee.identity`，由登錄資料提供（`PartySignerCandidate.partyId`、`PractitionerCandidate.partyId`）。沒有帶身分資料的席位不合併。
+
+合併的結果：
+
+- 兩個席位成為一位簽署人，排在執業人員席位的位置，主要角色是 `practitioner`，`concurrentRoles` 放被併入的當事人角色。
+- email 與姓名取自執業人員。兩個席位的簽署區域都歸這位簽署人，一個 stage 帶多個 `field_settings`。
+- 其後的席位往前補。居間加包租合併後是三位：乙方、合併的簽署人、經紀人。
+- 經紀人席位的執業主體不是合約當事人，不合併。
+
+三個函式共用同一份判定，送簽前檢查與組簽署序列不會不一致：
+
+```ts
+findMergedSeats(plan, identities): MergedSeats[]
+// MergedSeats = { practitionerRuleId, partyRuleId, partyRole }
+seatSignerIndexes(plan, merged): Record<ruleId, number>
+// 席位在簽署序列中的位置。兼任的當事人席位與執業人員席位同一個位置
+fieldsOfSeat(plan, ruleId, signatureFields): SignatureField[]
+// 歸屬某個席位的簽署區域。送簽前逐席位檢查有沒有簽署區域
+```
+
+簽章紀錄的 `signerIndex` 用 `seatSignerIndexes`，所以紀錄參照的是合併後的簽署人。簽署中失效（MIL-75）以 `rule_id` 為鍵，每個執業人員席位一列，合併與四位都成立。
+
 ## 尚未做的事
 
 - `requiredFieldPages` 的 `status_annex` 檢查：MIL-71。
-- 同一人兼任的合併：MIL-76。`buildSignerSequence` 目前每個席位各是一位簽署人。
 
 ## 簽署欄與簽署區域（MIL-67）
 

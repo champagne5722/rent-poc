@@ -21,7 +21,7 @@ import type { MandateItem } from '@/lib/mandate-schedule';
 import { SIGNER_ROLE_LABELS } from '@/lib/types';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
 import RoutingConditionsPanel from '@/components/RoutingConditionsPanel';
-import PractitionerAssignmentPanel, { type PartySignerPick } from '@/components/PractitionerAssignmentPanel';
+import PractitionerAssignmentPanel, { type MergedSeatNotice, type PartySignerPick } from '@/components/PractitionerAssignmentPanel';
 import { wizardUiFor } from '@/components/contract-wizard';
 import type { PractitionerAssignmentInput, PrintedPractitioner } from '@/lib/practitioner-assignment/seats';
 import { entityPartyRoles } from '@/lib/practitioner-assignment/seats';
@@ -32,6 +32,7 @@ import {
   countFieldsBySeat,
   evaluateRouting,
   seatOfField,
+  signerChainLabels,
   type SeatView,
 } from '@/lib/signature-routing';
 import { contractTypeDefinition } from '@/lib/contract-types';
@@ -161,7 +162,7 @@ interface PractitionerData {
   options: SeatOptions;
   assignments: PractitionerAssignmentInput[];
   printed: Record<string, PrintedPractitioner>;
-  evaluation: { ok: boolean; reasons: SendBlockReason[]; notices: SendNotice[] };
+  evaluation: { ok: boolean; reasons: SendBlockReason[]; notices: SendNotice[]; merges: MergedSeatNotice[] };
 }
 
 export default function ContractWizard({ id }: { id: string }) {
@@ -419,6 +420,7 @@ export default function ContractWizard({ id }: { id: string }) {
                     assignments={assignments}
                     onChange={setAssignments}
                     onPartySigner={pickPartySigner}
+                    merges={practitionerData?.evaluation.merges}
                     disabled={saving}
                   />
                 </Flex>
@@ -475,7 +477,8 @@ export default function ContractWizard({ id }: { id: string }) {
             key: 'routing',
             label: '簽署序列',
             span: 2,
-            children: seats.map((seat) => seat.fullLabel).join(' → '),
+            // 同一人兼任時合併成一位簽署人，列出實際的簽署人（MIL-76）
+            children: signerChainLabels(seats, practitionerData?.evaluation.merges ?? []).join(' → '),
           },
         ]
       : []),
