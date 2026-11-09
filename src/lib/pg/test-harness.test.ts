@@ -81,7 +81,7 @@ describe('測試 harness', () => {
     }
   });
 
-  // MIL-163：副本不關會一路累積到測試檔結束。下面三個測試前後相接，驗證 harness 自己收副本。
+  // MIL-163：副本不關會一路累積到測試檔結束。下面幾個測試前後相接，驗證 harness 自己收副本。
   describe('副本的生命週期', () => {
     const leftovers: { fresh?: PGliteInterface; raw?: PGliteInterface; second?: PGliteInterface } = {};
 
@@ -98,6 +98,11 @@ describe('測試 harness', () => {
       expect(leftovers.fresh?.closed).toBe(true);
       expect(leftovers.second?.closed).toBe(true);
       expect(leftovers.raw?.closed).toBe(true);
+    });
+
+    it('已被 harness 關掉的副本，呼叫端稍後再 close() 不會丟錯', async () => {
+      await expect(leftovers.fresh?.close()).resolves.toBeUndefined();
+      await expect(leftovers.raw?.close()).resolves.toBeUndefined();
     });
 
     it('測試自己先關副本也可以，測試結束時 harness 不會再關一次而出錯', async () => {

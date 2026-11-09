@@ -14,7 +14,7 @@ import { migrate, quoteIdent } from './migrate';
  * 副本由 harness 追蹤並關閉，呼叫端不用各自記得關：
  * - 在 test 或 beforeEach 內取得的副本，測試結束後（afterEach 之後）自動關閉。
  * - 在 beforeAll 這類沒有目前測試的位置取得的副本，留到 testDb.close() 關閉。
- * - 呼叫端自己先 close() 也可以，harness 會略過已關閉的副本。
+ * - 呼叫端自己 close() 也可以，副本的 close() 可重複呼叫，已關閉就什麼都不做。
  * 一個測試內同時拿多個副本沒有限制。
  */
 
@@ -50,6 +50,11 @@ export async function createTestDb(): Promise<TestDb> {
   /** 登記副本。在測試內取得就掛到該測試的結尾，沒有目前測試就留給 close()。 */
   const track = <T extends PGliteInterface>(db: T): T => {
     copies.add(db);
+    // 副本可能已被 harness 在測試結束時關掉，呼叫端稍後（afterAll、kit.close()）再 close() 不該丟錯
+    const originalClose = db.close.bind(db);
+    db.close = async () => {
+      if (!db.closed) await originalClose();
+    };
     const release = async () => {
       copies.delete(db);
       await closeCopy(db);
