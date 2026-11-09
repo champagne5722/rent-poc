@@ -15,7 +15,7 @@ import {
 } from './repository';
 
 // MIL-118：收款帳戶 repository 經 withTx 寫進 PGlite。連線身分是 app_rw（fresh() 保證），RLS 生效。
-// 分錄用原始 SQL 寫入：postJournal 只准 ledger 目錄呼叫（post.guard.test.ts），這裡只需要「有分錄引用這個帳戶」。
+// 分錄用原始 SQL 寫入：鏡像帳的寫入入口只准 ledger 目錄呼叫（post.guard.test.ts），這裡只需要「有分錄引用這個帳戶」。
 
 const PARTY = newUlid();
 
