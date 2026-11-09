@@ -1,6 +1,6 @@
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
-import type { SigningSubject } from './provider';
+import type { SigningSubject, SigningSubjectType } from './provider';
 
 // outbox 的儲存（ADR-0020 決議 5、6，MIL-85）。表與狀態的意義見 db/migrations/0006_sign_tasks.sql。
 // 這裡只管資料列的狀態轉移，不呼叫服務商。派送在 module.ts，排程重試（drain-outbox）在 MIL-86。
@@ -34,7 +34,7 @@ export interface OutboxRow {
 interface Row {
   id: string;
   action: OutboxAction;
-  subject_type: string;
+  subject_type: SigningSubjectType;
   subject_id: string;
   status: OutboxStatus;
   attempts: number;

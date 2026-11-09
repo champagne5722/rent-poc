@@ -1,7 +1,7 @@
 import { newUlid } from '../pg/ulid';
 import type { ControlTx, OrgTx } from '../pg/with-tx';
 import type { SignerRole } from '../types';
-import type { CurrentSigner, SigningProviderId, SigningSubject } from './provider';
+import type { CurrentSigner, SigningProviderId, SigningSubject, SigningSubjectType } from './provider';
 
 // 簽署任務與簽署人的儲存（ADR-0010 決議 2，MIL-85 搬進 PostgreSQL）。表見 db/migrations/0006_sign_tasks.sql。
 //
@@ -45,7 +45,7 @@ interface TaskRow {
   id: string;
   provider: SigningProviderId;
   provider_task_ref: string;
-  subject_type: string;
+  subject_type: SigningSubjectType;
   subject_id: string;
   status: SignTaskStatus;
 }

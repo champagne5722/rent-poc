@@ -166,7 +166,7 @@ describe('簽署人驗證設定', () => {
     },
     { role: 'party_a', name: '林房東', email: 'landlord@example.com', signatureFields: [] },
   ];
-  const subject = { type: 'contract', id: ulidOf(7) };
+  const subject = { type: 'contract', id: ulidOf(7) } as const;
 
   function verifying(verifySigners: boolean | undefined, request: DottedSignRequest) {
     return createDottedSignProvider({ request, clientSecret: 'test-secret', verifySigners });
