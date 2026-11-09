@@ -34,7 +34,8 @@ export default defineConfig({
   timeout: 120_000,
   expect: {
     timeout: 20_000,
-    toHaveScreenshot: { maxDiffPixelRatio: 0.001, animations: 'disabled', caret: 'hide' },
+    // 同一台機器連跑兩次要一致，所以容許值只留給文字邊緣的抗鋸齒雜訊
+    toHaveScreenshot: { threshold: 0.1, maxDiffPixels: 50, animations: 'disabled', caret: 'hide' },
   },
   reporter: [['list']],
   // 基準檔不帶作業系統名稱，路徑固定
