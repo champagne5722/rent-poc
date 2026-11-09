@@ -10,6 +10,8 @@ import { loadSendInputs, prepareContractSend } from '@/lib/practitioner-assignme
 import { contractDocumentFileName } from '@/lib/signing';
 import { contractSubject, signing, signingErrorResponse } from '@/lib/signing-module';
 import { jsonOk, jsonError } from '@/lib/http';
+import { statusAnnexOf } from '@/lib/status-annex';
+import { statusAnnexPageMap } from '@/lib/status-annex/server';
 
 // 送簽：驗證欄位 → 產出 PDF → 交給簽署模組（建立簽署任務，合約進入「待乙方簽」）
 export async function POST(_request: NextRequest, { params }: ContractRouteCtx) {
@@ -39,12 +41,15 @@ export async function POST(_request: NextRequest, { params }: ContractRouteCtx) 
   }
   // 簽署序列由簽章分流規則表產生（ADR-0018）
   // 送簽前檢查（ADR-0018 決議 10）：分流、執業人員指派與資格。不符時列出全部原因，簽署人與簽章紀錄資料通過才產生
-  const prepared = await prepareContractSend(contract, inputs, getPracticeRegistry(), new Date().toISOString());
+  // 現況確認附件頁要有執業人員的簽署區域（MIL-71）：附件頁的頁碼由 PDF 版面算出，缺少時併入原因清單
+  const pages = await statusAnnexPageMap(contract);
+  const prepared = await prepareContractSend(contract, inputs, getPracticeRegistry(), new Date().toISOString(), { pages });
   if (!prepared.ok) {
     return jsonOk({ error: prepared.error, reasons: prepared.reasons }, { status: prepared.status });
   }
 
-  const pdf = await renderer.render(contract.fields, prepared.printed);
+  const statusAnnex = statusAnnexOf(contract.status, contract.contract_type, contract.fields);
+  const pdf = await renderer.render(contract.fields, prepared.printed, { statusAnnex });
   try {
     const task = await signing.send(
       contractSubject(contract.id),

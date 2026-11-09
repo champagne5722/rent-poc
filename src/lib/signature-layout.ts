@@ -10,6 +10,7 @@ import {
   PAGE_W,
   SIGN_STAMP_BLANK,
   signatureBlockLayout,
+  statusAnnexStampBaseline,
   type SignatureBlockSeat,
   type SignatureBlockSpot,
 } from './pdf-layout';
@@ -58,6 +59,16 @@ function stampRect(spot: SignatureBlockSpot): Rect {
   );
 }
 
+/** 現況確認附件頁頁底簽署欄「簽章：」旁的落點。位置固定，與表格長短無關（pdf-layout.ts 的 statusAnnexStampBaseline）。 */
+function annexStampRect(): Rect {
+  return toRatioRect(
+    MARGIN + STAMP_LABEL_W + STAMP_LABEL_GAP,
+    statusAnnexStampBaseline() + STAMP_BOX_RISE,
+    STAMP_BOX_W,
+    SIGN_STAMP_BLANK
+  );
+}
+
 /**
  * 不是簽名頁時的備援落點：靠右下角，依印列順序由上而下排，最後一個貼著下緣。
  * 兩方時甲方在上、乙方在下，與 N 列版面之前相同。
@@ -71,6 +82,14 @@ function fallbackRect(printIndex: number, count: number): Rect {
 /** 沒有給簽署序列時的席位：甲方、乙方兩列，與 N 列版面之前相同。 */
 const PARTY_ONLY_SEATS: readonly SignatureBlockSeat[] = [{ role: 'party_a' }, { role: 'party_b' }];
 
+/** 現況確認附件頁上，規則列要求簽章的席位（MIL-71）。 */
+export interface StatusAnnexTarget {
+  /** 附件頁的頁碼（0-based）。 */
+  page: number;
+  /** 要求在附件頁簽章的席位 rule_id。 */
+  slots: readonly string[];
+}
+
 export interface DefaultFieldRectInput {
   signer: SignerRole;
   /** 簽署席位（規則列的 rule_id）。沒有時以簽署角色對應該角色的第一個席位。 */
@@ -79,8 +98,10 @@ export interface DefaultFieldRectInput {
   seats?: readonly SignatureBlockSeat[];
   /** 要放框的頁碼（0-based）。 */
   page: number;
-  /** 範本簽名欄所在的頁碼（0-based），實務上是 PDF 最後一頁。 */
+  /** 範本簽名欄所在的頁碼（0-based）。有設備附件或現況確認附件時不是最後一頁，由 PDF 版面判定（MIL-162）。 */
   signaturePage: number;
+  /** 現況確認附件頁與要求在該頁簽章的席位。沒有附件頁時不帶。 */
+  statusAnnex?: StatusAnnexTarget;
   /** 目前已有的簽名框，用來避免新框正好疊在舊框上。 */
   existing: SignatureField[];
 }
@@ -90,7 +111,7 @@ function samePosition(a: Rect, b: Rect): boolean {
 }
 
 /**
- * 新增簽名框的預設落點：簽名頁落在對應的甲／乙簽名欄旁，其他頁用右下角的備援位置。
+ * 新增簽名框的預設落點：簽名頁落在對應的甲／乙簽名欄旁，現況確認附件頁的指定席位落在頁底簽署欄旁，其他頁用右下角的備援位置。
  * 同一落點已經有框時往右下錯開一格，避免新框整個蓋住舊框。
  */
 export function defaultFieldRect(input: DefaultFieldRectInput): Rect {
@@ -100,8 +121,16 @@ export function defaultFieldRect(input: DefaultFieldRectInput): Rect {
   );
   // 序列裡找不到這個席位時（不該發生）放在最後一列，不讓編輯器壞掉
   const index = found >= 0 ? found : spots.length - 1;
-  const base =
-    input.page === input.signaturePage ? stampRect(spots[index]) : fallbackRect(index, spots.length);
+  const onStatusAnnex =
+    input.statusAnnex !== undefined &&
+    input.page === input.statusAnnex.page &&
+    input.slot !== undefined &&
+    input.statusAnnex.slots.includes(input.slot);
+  const base = onStatusAnnex
+    ? annexStampRect()
+    : input.page === input.signaturePage
+      ? stampRect(spots[index])
+      : fallbackRect(index, spots.length);
   const samePage = input.existing.filter((f) => f.page === input.page);
   let candidate = clampRect(base);
   for (let step = 1; step <= STACK_MAX_TRIES; step++) {

@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { Contract, ContractFields, ContractRoutingConditions, SignatureField } from '@/lib/types';
 import type { MandateItem } from '@/lib/mandate-schedule';
+import type { PdfPageMap } from '@/lib/pdf-layout';
 import { SIGNER_ROLE_LABELS } from '@/lib/types';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
 import RoutingConditionsPanel from '@/components/RoutingConditionsPanel';
@@ -53,6 +54,7 @@ import {
   resumeStepIndex,
   sendBlockReasons,
   signingSequenceNotice,
+  signingSequenceTitle,
   stepStatuses,
 } from '@/lib/contract-wizard';
 
@@ -101,16 +103,19 @@ function SignatureChecklist({
   labels,
   contractType,
   withDetail,
+  pages,
 }: {
   fields: ContractFields;
   signatureFields: SignatureField[];
   labels: PartyLabels;
   contractType: ContractType;
   withDetail?: boolean;
+  /** 簽署區編輯器回報的頁面地圖。有現況確認附件頁時，另列附件頁的簽名框。 */
+  pages?: PdfPageMap | null;
 }) {
   const evaluation = evaluateRouting(fields.routing, contractType);
   if (evaluation.ok && !isPartiesOnly(evaluation.seats)) {
-    return <SeatChecklist seats={evaluation.seats} signatureFields={signatureFields} withDetail={withDetail} />;
+    return <SeatChecklist seats={evaluation.seats} signatureFields={signatureFields} withDetail={withDetail} pages={pages} />;
   }
   const check = checkSignatureFields(signatureFields);
   return (
@@ -135,16 +140,26 @@ function SeatChecklist({
   seats,
   signatureFields,
   withDetail,
+  pages,
 }: {
   seats: readonly SeatView[];
   signatureFields: SignatureField[];
   withDetail?: boolean;
+  pages?: PdfPageMap | null;
 }) {
+  const annexPage = pages?.statusAnnexPage ?? null;
   return (
     <Space orientation="vertical" size={4}>
       {countFieldsBySeat(signatureFields, seats).map(({ seat, count }) => (
         <CheckLine key={seat.ruleId} ok={count > 0} text={`${seat.fullLabel}簽名框 ${count} 個`} />
       ))}
+      {annexPage !== null &&
+        seats
+          .filter((seat) => seat.requiresStatusAnnex)
+          .map((seat) => {
+            const count = signatureFields.filter((f) => f.page === annexPage && seatOfField(f, seats)?.ruleId === seat.ruleId).length;
+            return <CheckLine key={`annex-${seat.ruleId}`} ok={count > 0} text={`現況確認附件頁：${seat.fullLabel}簽名框 ${count} 個`} />;
+          })}
       {withDetail && signatureFields.length > 0 && (
         <Space size={4} wrap style={{ marginTop: 4 }}>
           {signatureFields.map((f) => (
@@ -182,6 +197,8 @@ export default function ContractWizard({ id }: { id: string }) {
   const [practitionerData, setPractitionerData] = useState<PractitionerData | null>(null);
   // 委託標的清單（MIL-74）。只有委託管理合約有，載入前是 null
   const [mandateItems, setMandateItems] = useState<MandateItem[] | null>(null);
+  // 簽署區編輯器讀 PDF 後回報的頁面地圖（MIL-71）：附件頁在哪一頁。沒開過編輯器時是 null
+  const [pageMap, setPageMap] = useState<PdfPageMap | null>(null);
   const [form] = Form.useForm();
   const initialised = useRef(false);
   // 合約類型專屬的畫面（MIL-73）。沒有畫面的合約類型在載入後說明尚未支援
@@ -348,6 +365,7 @@ export default function ContractWizard({ id }: { id: string }) {
     signatureFields: sigFields,
     assignments: practitionerData ? assignments : undefined,
     mandateItems: mandateItems ?? undefined,
+    pages: pageMap ?? undefined,
   };
   const definition = contractTypeDefinition(contractType);
   const routingEvaluation = evaluateRouting(fields.routing, contractType);
@@ -368,6 +386,7 @@ export default function ContractWizard({ id }: { id: string }) {
       signatureFields: sigFields,
       assignments,
       mandateItems: mandateItems ?? undefined,
+      pages: pageMap ?? undefined,
     });
     if (blocked) {
       message.error(blocked);
@@ -488,7 +507,7 @@ export default function ContractWizard({ id }: { id: string }) {
       label: '簽署區',
       span: 2,
       children: (
-        <SignatureChecklist fields={fields} signatureFields={sigFields} labels={labels} contractType={contractType} withDetail />
+        <SignatureChecklist fields={fields} signatureFields={sigFields} labels={labels} contractType={contractType} withDetail pages={pageMap} />
       ),
     },
   ];
@@ -549,6 +568,7 @@ export default function ContractWizard({ id }: { id: string }) {
                 value={sigFields}
                 onChange={setSigFields}
                 seats={seats}
+                onPageMap={setPageMap}
               />
             </Card>
           </Col>
@@ -560,6 +580,7 @@ export default function ContractWizard({ id }: { id: string }) {
                 labels={labels}
                 contractType={contractType}
                 withDetail
+                pages={pageMap}
               />
             </Card>
           </Col>
@@ -572,7 +593,7 @@ export default function ContractWizard({ id }: { id: string }) {
             type="info"
             showIcon
             style={{ marginBottom: 12 }}
-            message={partiesOnly ? '乙方先簽' : '依序簽署'}
+            message={signingSequenceTitle(fields, contractType, practitionerData?.evaluation.merges)}
             description={signingSequenceNotice(fields, contractType, practitionerData?.evaluation.merges)}
           />
           <ui.ConfirmNotices fields={fields} />

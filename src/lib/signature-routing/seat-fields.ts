@@ -3,6 +3,8 @@
 
 import type { SignatureField } from '../types';
 import type { SeatView } from './seats';
+import { fieldsOfSeat } from './sequence';
+import type { PlannedSeat, SignaturePlan } from './types';
 
 /**
  * 簽署區域屬於哪個席位。slot 不在序列內時回傳 undefined，不退回角色，
@@ -56,4 +58,38 @@ export function reconcileSignatureFields(fields: readonly SignatureField[], seat
     }
   }
   return { fields: kept, removed };
+}
+
+/**
+ * 規則列要求在現況確認附件頁簽章、但附件頁沒有簽署區域的席位（MIL-71）。
+ * 只看 `requiredFieldPages` 含 `status_annex` 的席位。必附卻沒有附件頁（statusAnnexPage 為 null）時，這些席位都算缺少。
+ */
+export function missingStatusAnnexSeats(
+  plan: Pick<SignaturePlan, 'seats'>,
+  signatureFields: readonly SignatureField[],
+  statusAnnexPage: number | null,
+): PlannedSeat[] {
+  return plan.seats.filter(
+    (seat) =>
+      seat.requiredFieldPages.includes('status_annex') &&
+      (statusAnnexPage === null ||
+        !fieldsOfSeat(plan, seat.ruleId, signatureFields).some((f) => f.page === statusAnnexPage)),
+  );
+}
+
+/**
+ * 給簽署區編輯器與 wizard 用：規則列要求在附件頁簽章、但附件頁還沒有框的席位（席位畫面資料版）。
+ * 判定同 missingStatusAnnexSeats。沒有附件頁（null）時回空陣列，因為沒有地方可以放。
+ */
+export function seatViewsMissingStatusAnnex(
+  seats: readonly SeatView[],
+  signatureFields: readonly SignatureField[],
+  statusAnnexPage: number | null,
+): SeatView[] {
+  if (statusAnnexPage === null) return [];
+  return seats.filter(
+    (seat) =>
+      seat.requiresStatusAnnex &&
+      !signatureFields.some((f) => f.page === statusAnnexPage && seatOfField(f, seats)?.ruleId === seat.ruleId),
+  );
 }

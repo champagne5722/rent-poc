@@ -48,3 +48,4 @@ export async function signedFileResponse(subject: SigningSubject, kind: Contract
 }
 
 export { signingErrorResponse } from './module';
+export { signingSubjectKey } from './sign-task-store';

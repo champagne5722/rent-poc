@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { evaluateRouting } from './signature-routing';
+import { defaultStatusAnnex } from './status-annex';
 import type { LeaseContract, LeaseContractFields, ContractRoutingConditions, SignatureField } from './types';
 import {
   STEP_CONFIRM,
@@ -12,9 +14,15 @@ import {
   sendBlockReason,
   sendBlockReasons,
   signingSequenceNotice,
+  signingSequenceTitle,
   stepStatuses,
 } from './contract-wizard';
 import { ulidOf } from './test-ids';
+
+const FILLED_STATUS_ANNEX = (() => {
+  const annex = defaultStatusAnnex();
+  return { ...annex, rows: annex.rows.map((r) => ({ ...r, status: 'normal' as const })) };
+})();
 
 function fields(routing?: ContractRoutingConditions): LeaseContractFields {
   return {
@@ -28,6 +36,8 @@ function fields(routing?: ContractRoutingConditions): LeaseContractFields {
     propertyType: '整層住家',
     propertySize: 25,
     equipmentAnnex: [],
+    // 包租租賃合約必附現況確認附件（MIL-71）。夾具給填完的附件，這個檔案測的是指派與簽署區
+    statusAnnex: FILLED_STATUS_ANNEX,
     rent: 28000,
     deposit: 56000,
     startDate: '2026-09-01',
@@ -253,5 +263,40 @@ describe('signingSequenceNotice：同一人兼任合併後（MIL-76）', () => {
 
   it('沒有合併時文字不變', () => {
     expect(signingSequenceNotice(fields(MASTER), 'lease', [])).toBe(signingSequenceNotice(fields(MASTER)));
+  });
+});
+
+describe('確認頁的簽署順序由簽署序列產生（MIL-72）', () => {
+  const FOUR_ROUTING = routing({ businessType: 'master_lease', brokerMediated: true });
+
+  it('標題：兩方是「乙方先簽」，三位以上是「依序簽署」', () => {
+    expect(signingSequenceTitle(fields())).toBe('乙方先簽');
+    expect(signingSequenceTitle(fields(routing({ businessType: 'managed' })))).toBe('乙方先簽');
+    expect(signingSequenceTitle(fields(MASTER))).toBe('依序簽署');
+    expect(signingSequenceTitle(fields(FOUR_ROUTING))).toBe('依序簽署');
+  });
+
+  it('四位：居間加包租，依序列出四位，經紀人排最後', () => {
+    const notice = signingSequenceNotice(fields(FOUR_ROUTING));
+    expect(notice).toMatch(/^送簽後依序簽署：乙方（承租人）、執業人員（[^）]+）、甲方（出租人）、執業人員（[^）]+）。/);
+    expect(notice.split('、')).toHaveLength(4);
+  });
+
+  it('席位 4、簽署人 3：合併後列出三位', () => {
+    const evaluation = evaluateRouting(FOUR_ROUTING);
+    expect(evaluation.ok).toBe(true);
+    const seats = evaluation.ok ? evaluation.seats : [];
+    const [, practitioner, partyA] = seats;
+    const real = [{ practitionerRuleId: practitioner.ruleId, partyRuleId: partyA.ruleId }];
+    const notice = signingSequenceNotice(fields(FOUR_ROUTING), 'lease', real);
+    expect(notice.split('、')).toHaveLength(3);
+    expect(notice).toContain('兼甲方（出租人）');
+    expect(notice).toContain('兼任者只簽一次');
+  });
+
+  it('分流條件無效時退回兩方說明，不留空白', () => {
+    const undefinedCombo = routing({ businessType: 'managed', lesseeIsMasterLessor: true });
+    expect(signingSequenceNotice(fields(undefinedCombo))).toBe(TENANT_FIRST_NOTICE);
+    expect(signingSequenceTitle(fields(undefinedCombo))).toBe('乙方先簽');
   });
 });

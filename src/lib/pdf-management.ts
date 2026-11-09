@@ -10,6 +10,7 @@ import { buildManagementClauses } from './management-clauses';
 import { Writer, createPdfWriter, drawSignatureBlock, practitionerBlockLines } from './pdf';
 import type { PrintedPractitioner } from './practitioner-assignment/seats';
 import { evaluateRouting, partyOnlySeats, printOrder, type SeatView } from './signature-routing';
+import type { PdfPageMap } from './pdf-layout';
 import type { ManagementContractFields } from './types';
 
 const LABELS = partyLabels('management');
@@ -51,14 +52,15 @@ function drawMandateAnnex(w: Writer, items: readonly MandateItem[]): void {
 }
 
 /**
+ * 產出委託管理契約書，同時回報頁面地圖。頁序：條文、簽署欄、委託標的清單附件。
  * @param practitioners 已指派的執業人員，以席位 rule_id 為鍵。沒有的席位留底線。
  * @param mandateItems 委託標的清單。沒有列時不產附件頁。
  */
-export async function generateManagementPdf(
+export async function generateManagementPdfWithPages(
   fields: ManagementContractFields,
   practitioners: Readonly<Record<string, PrintedPractitioner>>,
   mandateItems: readonly MandateItem[],
-): Promise<Uint8Array> {
+): Promise<{ pdf: Uint8Array; pages: PdfPageMap }> {
   const w = await createPdfWriter();
 
   w.center('委託管理契約書', 20, 10);
@@ -82,8 +84,18 @@ export async function generateManagementPdf(
     if (seat.role === 'party_b') return [`${seat.fullLabel}：${blank(fields.mandataryName)}`, `Email：${blank(fields.mandataryEmail)}`];
     return practitionerBlockLines(seat, practitioners[seat.ruleId]);
   });
+  const signaturePage = w.doc.getPageCount() - 1;
 
   if (mandateItems.length > 0) drawMandateAnnex(w, mandateItems);
 
-  return w.doc.save();
+  const pdf = await w.doc.save();
+  return { pdf, pages: { pageCount: w.doc.getPageCount(), signaturePage, statusAnnexPage: null } };
+}
+
+export async function generateManagementPdf(
+  fields: ManagementContractFields,
+  practitioners: Readonly<Record<string, PrintedPractitioner>>,
+  mandateItems: readonly MandateItem[],
+): Promise<Uint8Array> {
+  return (await generateManagementPdfWithPages(fields, practitioners, mandateItems)).pdf;
 }
