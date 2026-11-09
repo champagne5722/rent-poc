@@ -14,6 +14,8 @@
     "test": "scripts/heavy.sh test vitest run",
     "test:scripts": "node --test \"scripts/hooks/*.test.mjs\" && scripts/heavy.test.sh",
     "verify": "scripts/verify.sh",
+    "e2e": "HEAVY_COST=3 scripts/heavy.sh e2e scripts/e2e/run-e2e.sh flows",
+    "e2e:visual": "HEAVY_COST=3 scripts/heavy.sh e2e-visual scripts/e2e/run-e2e.sh visual",
     "db:migrate": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/migrate.mjs"
   },
   "dependencies": {
@@ -36,6 +38,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.15",
+    "@playwright/test": "^1.65.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/pg": "^8.23.1",

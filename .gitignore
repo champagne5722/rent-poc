@@ -58,3 +58,8 @@ next-env.d.ts
 
 # 行銷網站用的 UI skill，assets 37 MB，不納入版控；後台用的 impeccable、ui-ux-pro-max、design-system 有 commit
 /.claude/skills/design-taste-frontend/
+
+# E2E（MIL-168）：dev server 的 dist dir、Playwright 的輸出與登入狀態
+/.next-e2e-*/
+/e2e-results/
+/playwright-report/
