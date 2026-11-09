@@ -10,7 +10,8 @@ import {
   type SignatureField,
   type SignerRole,
 } from '@/lib/types';
-import { printOrder, seatOfField, type SeatView } from '@/lib/signature-routing';
+import { printOrder, seatOfField, seatViewsMissingStatusAnnex, type SeatView } from '@/lib/signature-routing';
+import { pageMapFromTexts, type PdfPageMap } from '@/lib/pdf-layout';
 import {
   type AlignGuide,
   clampRect,
@@ -24,6 +25,8 @@ import {
 // 簽署區域編輯器：pdf.js 逐頁渲染 + react-rnd 拖放簽名框。
 // 新增按鈕由簽署序列的席位驅動（ADR-0021 決議 5），每個席位一顆，新增的框寫入 slot。
 // 沒有給 seats 時（舊用法）只有甲方、乙方兩顆，框不帶 slot。按鈕依印列順序（甲方、乙方、執業人員）排，與簽署順序無關。
+// 簽名頁與現況確認附件頁由 PDF 文字判定（pdf-layout.ts 的 pageMapFromTexts），不用「最後一頁」推測（MIL-162）。
+// 讀完 PDF 後把頁面地圖回報給呼叫端（onPageMap），wizard 用它檢查附件頁有沒有執業人員的簽名框。
 // 內部座標一律存「相對該頁的比例」（原點左上、y 向下）；
 // 送簽時才由後端轉成點點簽的 coord（原點左下），見 lib/signing-module/dottedsign-adapter.ts。
 // 預設落點、吸附／對齊線、出界夾回與重疊偵測都是 lib/signature-layout.ts 的純函式，這裡只做換算與畫面。
@@ -34,6 +37,8 @@ interface Props {
   readOnly?: boolean;
   /** 簽署序列的席位。沒有時是甲方、乙方兩個席位。 */
   seats?: readonly SeatView[];
+  /** PDF 載入完成後回報頁面地圖（簽名頁與現況確認附件頁的頁碼）。必須是穩定的函式（例如 useState 的 setter），否則每次繪製都會重新載入 PDF。 */
+  onPageMap?: (pages: PdfPageMap) => void;
 }
 
 interface RenderedPage {
@@ -67,8 +72,9 @@ const PARTY_ONLY_BUTTONS = CONTRACT_PARTY_ROLES.map((role) => ({
   label: SIGNER_ROLE_LABELS[role],
 }));
 
-export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly, seats }: Props) {
+export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly, seats, onPageMap }: Props) {
   const [pages, setPages] = useState<RenderedPage[] | null>(null);
+  const [pageMap, setPageMap] = useState<PdfPageMap | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeGuides, setActiveGuides] = useState<ActiveGuides | null>(null);
   const idSeq = useRef(0);
@@ -83,6 +89,7 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
   useEffect(() => {
     let cancelled = false;
     setPages(null);
+    setPageMap(null);
     setError(null);
     (async () => {
       try {
@@ -90,8 +97,10 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
         pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
         const doc = await pdfjs.getDocument({ url: pdfUrl }).promise;
         const rendered: RenderedPage[] = [];
+        const texts: string[] = [];
         for (let i = 1; i <= doc.numPages; i++) {
           const page = await doc.getPage(i);
+          texts.push(((await page.getTextContent()).items as { str?: string }[]).map((item) => item.str ?? '').join(''));
           const baseViewport = page.getViewport({ scale: 1 });
           const scale = RENDER_WIDTH / baseViewport.width;
           const viewport = page.getViewport({ scale: scale * 2 }); // 2x 供 retina
@@ -107,7 +116,12 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
           });
           if (cancelled) return;
         }
-        if (!cancelled) setPages(rendered);
+        if (!cancelled) {
+          const map = pageMapFromTexts(texts);
+          setPages(rendered);
+          setPageMap(map);
+          onPageMap?.(map);
+        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'PDF 載入失敗');
       }
@@ -115,10 +129,17 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
     return () => {
       cancelled = true;
     };
-  }, [pdfUrl]);
+  }, [pdfUrl, onPageMap]);
 
-  // 範本的簽名欄在最後一頁；新增框優先落在那一頁的甲／乙簽名欄旁。
-  const signaturePage = pages ? pages.length - 1 : 0;
+  // 範本的簽名欄在「立契約書人」所在的頁；新增框優先落在那一頁的簽名欄旁。有附件頁時它不是最後一頁。
+  const signaturePage = pageMap?.signaturePage ?? 0;
+  // 現況確認附件頁：規則列要求簽章的席位，預設落點在附件頁頁底的簽署欄旁（MIL-71）
+  const annexSeats = seats?.filter((seat) => seat.requiresStatusAnnex) ?? [];
+  const statusAnnex =
+    pageMap?.statusAnnexPage != null && annexSeats.length > 0
+      ? { page: pageMap.statusAnnexPage, slots: annexSeats.map((seat) => seat.ruleId) }
+      : undefined;
+  const annexMissing = seats && pageMap ? seatViewsMissingStatusAnnex(seats, value, pageMap.statusAnnexPage) : [];
 
   const layoutSeats = seats?.map((seat) => ({ role: seat.role, slot: seat.ruleId }));
   const buttons = seats
@@ -132,6 +153,7 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
       seats: layoutSeats,
       page,
       signaturePage,
+      statusAnnex,
       existing: valueRef.current,
     });
     const field: SignatureField = {
@@ -166,6 +188,15 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
       {warning && (
         <Alert type="warning" showIcon message={warning} style={{ marginBottom: 12 }} />
       )}
+      {!readOnly && annexMissing.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          title={`現況確認附件頁尚未放置${annexMissing.map((seat) => seat.label).join('、')}簽名框`}
+          description="包租租賃合約的現況確認附件必須由執業人員簽章。請在標示「現況確認附件頁」的那一頁新增簽名框。"
+          style={{ marginBottom: 12 }}
+        />
+      )}
       {pages.map((page) => {
         const pageSize = { width: page.cssWidth, height: page.cssHeight };
         const threshold = snapThresholdRatio(pageSize);
@@ -185,6 +216,7 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
             <Flex wrap align="center" justify="space-between" gap={8} style={{ marginBottom: 8 }}>
               <Typography.Text type="secondary">
                 第 {page.index + 1} 頁{page.index === signaturePage && '（範本簽名頁）'}
+                {page.index === pageMap?.statusAnnexPage && '（現況確認附件頁）'}
               </Typography.Text>
               {!readOnly && (
                 <Flex wrap gap={8} justify="flex-end">

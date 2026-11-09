@@ -27,6 +27,8 @@ import { DELETE as deleteInvitation } from './org/invitations/[id]/route';
 import { DELETE as removeMember, PATCH as patchMember } from './org/members/[userId]/route';
 import { GET as listMembers, POST as inviteMember } from './org/members/route';
 import { DELETE as deleteProperty, GET as getProperty, PUT as putProperty } from './properties/[id]/route';
+import { POST as setAnchorKey } from './properties/[id]/anchor-key/route';
+import { GET as listSubletUnits, POST as createSubletUnit } from './properties/[id]/sublet-units/route';
 import { GET as listProperties, POST as createProperty } from './properties/route';
 
 // MIL-108：物件、合約、成員管理 route 都經 authorize()。
@@ -92,6 +94,8 @@ describe('viewer：讀取成功', () => {
 
     expect((await listProperties()).status).toBe(200);
     expect((await getProperty(req('GET'), ctx(propertyId))).status).toBe(200);
+    // 同一產權的單位（MIL-145）：唯讀角色讀得到
+    expect((await listSubletUnits(req('GET'), ctx(propertyId))).status).toBe(200);
     expect((await getEquipment()).status).toBe(200);
     expect((await listContracts()).status).toBe(200);
     expect((await getContract(req('GET'), ctx(contractId))).status).toBe(200);
@@ -123,6 +127,22 @@ describe('viewer：寫入被拒（有 ID 的物件與「不存在」同一個回
     actAsRole(kit.orgA, 'admin');
     expect((await json(await listProperties())).data).toHaveLength(1);
     expect((await json(await getProperty(req('GET'), ctx(propertyId)))).data.name).toBe(PROPERTY_BODY.name);
+  });
+
+  it('補建號、新增分租單位（MIL-143、145）', async () => {
+    const { propertyId } = await seed(kit.orgA);
+    actAsRole(kit.orgA, 'viewer');
+    const key = { city: 'A', town: '01', section: '0001', buildingNo: '100', subNo: '0' };
+    const sublet = { label: '301' };
+
+    // 與不存在的物件同一個回應，且沒有任何資料被寫入
+    expect(await snap(await setAnchorKey(req('POST', key), ctx(propertyId)))).toEqual(PROPERTY_NOT_FOUND);
+    expect(await snap(await createSubletUnit(req('POST', sublet), ctx(propertyId)))).toEqual(PROPERTY_NOT_FOUND);
+    expect(await snap(await createSubletUnit(req('POST', sublet), ctx(newUlid())))).toEqual(PROPERTY_NOT_FOUND);
+
+    actAsRole(kit.orgA, 'admin');
+    expect((await json(await listProperties())).data).toHaveLength(1);
+    expect((await json(await listSubletUnits(req('GET'), ctx(propertyId)))).data).toHaveLength(1);
   });
 
   it('合約建立、修改、刪除、送簽、複製、指派、撤回、重寄、簽署連結、補抓文件、模擬簽署', async () => {
@@ -246,6 +266,13 @@ describe('staff：寫入成功', () => {
     expect((await copyContract(req('POST'), ctx(contractId))).status).toBe(201);
   });
 
+  it('新增分租單位（MIL-145）', async () => {
+    const { propertyId } = await seed(kit.orgA);
+    actAsRole(kit.orgA, 'staff');
+    expect((await createSubletUnit(req('POST', { label: '301' }), ctx(propertyId))).status).toBe(201);
+    expect((await json(await listSubletUnits(req('GET'), ctx(propertyId)))).data).toHaveLength(2);
+  });
+
   it('staff 管理成員仍被拒（只有 admin）', async () => {
     actAsRole(kit.orgA, 'staff');
     expect((await inviteMember(req('POST', { email: 'x@example.com', role: 'staff' }))).status).toBe(403);
@@ -296,6 +323,9 @@ describe('別的組織的資料與不存在的資料：回應逐位元相同（P
       ['GET', (id) => getProperty(req('GET'), ctx(id))],
       ['PUT', (id) => putProperty(req('PUT', PROPERTY_BODY), ctx(id))],
       ['DELETE', (id) => deleteProperty(req('DELETE'), ctx(id))],
+      ['GET 同產權單位', (id) => listSubletUnits(req('GET'), ctx(id))],
+      ['POST 新增分租單位', (id) => createSubletUnit(req('POST', { label: '301' }), ctx(id))],
+      ['POST 補建號', (id) => setAnchorKey(req('POST', { city: 'A', town: '01', section: '0001', buildingNo: '100', subNo: '0' }), ctx(id))],
     ];
     for (const [name, call] of calls) {
       const other = await snap(await call(propertyId));

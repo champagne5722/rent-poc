@@ -65,6 +65,11 @@ export const LEDGER_ERROR_CODES = [
   'reason_required',
   'cannot_reverse_reversal',
   'original_invalid',
+  // 以下四個由資料庫包裝（post.ts）回傳，純函式不會產生
+  'duplicate_event',
+  'journal_not_found',
+  'already_reversed',
+  'case_mismatch',
 ] as const;
 
 export type LedgerErrorCode = (typeof LEDGER_ERROR_CODES)[number];

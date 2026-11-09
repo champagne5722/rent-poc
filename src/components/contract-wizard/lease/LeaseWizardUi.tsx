@@ -45,6 +45,20 @@ import { extraClauseLabel, usesEquipmentAnnex } from '@/lib/contract-clauses';
 import { equipmentAnnexSummary } from '@/lib/contract-detail';
 import { mergeEditableFields, upgradeDraftFields } from '@/lib/contract-types';
 import { TERMS } from '@/lib/labels';
+import {
+  STATUS_ANNEX_NOTE_MAX,
+  STATUS_ANNEX_STATUSES,
+  STATUS_ANNEX_STATUS_LABELS,
+  STATUS_ANNEX_TITLE,
+  STATUS_ANNEX_LEGAL_NAME,
+  STATUS_ANNEX_VERSION,
+  defaultStatusAnnex,
+  statusAnnexOf,
+  statusAnnexRequired,
+  statusAnnexSummary,
+  type StatusAnnex,
+  type StatusAnnexRow,
+} from '@/lib/status-annex';
 import { optionalClausesFor } from '@/lib/template-registry';
 import type { FieldsStepProps, PropertyStepProps, SummaryContext, WizardTypeUi } from '../types';
 import { TemplateNotice } from '../TemplateNotice';
@@ -209,6 +223,58 @@ function EquipmentAnnexEditor({
   );
 }
 
+/**
+ * 現況確認附件編輯表格（MIL-71）：固定項目清單，每列選狀態、填備註。
+ * 項目清單是程式內常數（版本 v1，待法務確認），列的標籤在建立時快照進合約。
+ * 有瑕疵的項目必須填備註，備註有字數上限，附件才一定放得進 PDF 的一頁。
+ */
+function StatusAnnexEditor({ annex, onChange }: { annex: StatusAnnex; onChange: (annex: StatusAnnex) => void }) {
+  const patch = (index: number, values: Partial<StatusAnnexRow>) =>
+    onChange({ ...annex, rows: annex.rows.map((row, i) => (i === index ? { ...row, ...values } : row)) });
+  return (
+    <Table<StatusAnnexRow>
+      size="small"
+      rowKey="id"
+      dataSource={annex.rows}
+      pagination={false}
+      style={{ marginTop: 8 }}
+      columns={[
+        { title: '項目', dataIndex: 'label' },
+        {
+          title: '狀態',
+          width: 130,
+          render: (_, row, index) => (
+            <Select
+              size="small"
+              style={{ width: '100%' }}
+              placeholder="請選擇"
+              value={row.status}
+              onChange={(v) => patch(index, { status: v })}
+              options={STATUS_ANNEX_STATUSES.map((status) => ({ value: status, label: STATUS_ANNEX_STATUS_LABELS[status] }))}
+              aria-label={`${row.label}的狀態`}
+            />
+          ),
+        },
+        {
+          title: '備註',
+          width: 260,
+          render: (_, row, index) => (
+            <Input
+              size="small"
+              placeholder={row.status === 'defect' ? '必填' : '選填'}
+              maxLength={STATUS_ANNEX_NOTE_MAX}
+              status={row.status === 'defect' && row.note.trim() === '' ? 'error' : undefined}
+              value={row.note}
+              onChange={(e) => patch(index, { note: e.target.value })}
+              aria-label={`${row.label}的備註`}
+            />
+          ),
+        },
+      ]}
+    />
+  );
+}
+
 /** 升版提示（規格 §12）：草稿綁的範本或已勾條款有新版時提示可重建，按不按由出租人決定。 */
 function TemplateUpgradeNotice({
   fields,
@@ -305,6 +371,10 @@ function LeaseFieldsStep({
   practitionerSlot,
   onFieldsChange,
 }: FieldsStepProps<LeaseContractFields>) {
+  // 現況確認附件（MIL-71）：只有簽章分流規則表要求的組合（包租租賃合約）才顯示，其他組合沒有這個區塊
+  const statusAnnexShown = statusAnnexRequired(fields.routing, 'lease');
+  const statusAnnex = fields.statusAnnex ?? defaultStatusAnnex();
+  const changeStatusAnnex = (next: StatusAnnex) => onFieldsChange({ ...fields, statusAnnex: next });
   // 欄位步驟邊填邊判斷：表單的值還沒併回 fields 快照前，警告要跟著輸入即時更新
   const watchedRent = Form.useWatch('rent', form);
   const watchedDeposit = Form.useWatch('deposit', form);
@@ -438,6 +508,19 @@ function LeaseFieldsStep({
               }
             />
           )}
+
+          {statusAnnexShown && (
+            <>
+              <Typography.Text strong style={{ display: 'block', marginTop: 16 }}>
+                {STATUS_ANNEX_TITLE}（{STATUS_ANNEX_LEGAL_NAME}）
+              </Typography.Text>
+              <Typography.Paragraph type="secondary" style={{ margin: '4px 0 0', fontSize: 12 }}>
+                包租租賃合約必附。每一項選擇狀態，有瑕疵的項目要填備註。附件另成一頁排在簽署欄之後，
+                與合約同一份文件送簽，並由執業人員簽章。項目清單為第 {STATUS_ANNEX_VERSION} 版，待法務確認。
+              </Typography.Paragraph>
+              <StatusAnnexEditor annex={statusAnnex} onChange={changeStatusAnnex} />
+            </>
+          )}
     </>
   );
 }
@@ -451,6 +534,11 @@ function LeaseConfirmNotices({ fields }: { fields: LeaseContractFields }) {
 function leaseSummaryItems(fields: LeaseContractFields, { labels }: SummaryContext) {
   const selected = clauseSnapshots(fields);
   const annexSummary = equipmentAnnexSummary(fields);
+  // 確認頁都是草稿，必附時一定有內容（沒填過就是全部未填）
+  const statusAnnexLines = (() => {
+    const annex = statusAnnexOf('draft', 'lease', fields);
+    return annex ? statusAnnexSummary(annex) : [];
+  })();
   return [
     { key: 'property', label: '物件', span: 2, children: fields.propertyName || '—' },
     { key: 'address', label: '地址', span: 2, children: fields.propertyAddress || '—' },
@@ -499,6 +587,22 @@ function leaseSummaryItems(fields: LeaseContractFields, { labels }: SummaryConte
         '（無附屬設備）'
       ),
     },
+    ...(statusAnnexLines.length > 0
+      ? [
+          {
+            key: 'statusAnnex',
+            label: STATUS_ANNEX_TITLE,
+            span: 2,
+            children: (
+              <Space orientation="vertical" size={2}>
+                {statusAnnexLines.map((line) => (
+                  <Typography.Text key={line}>{line}</Typography.Text>
+                ))}
+              </Space>
+            ),
+          },
+        ]
+      : []),
     { key: 'extra', label: '其他約定事項', span: 2, children: fields.extra || '（無）' },
   ];
 }

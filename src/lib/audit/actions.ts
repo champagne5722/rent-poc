@@ -50,6 +50,9 @@ export const AUDIT_ACTIONS = [
   'property.create', // MIL-81：物件建立、修改、刪除，payload 只放租賃單位 ID 與被改的欄位名稱
   'property.update',
   'property.delete',
+  'property.anchor_key', // MIL-143：補建號，payload 只放租賃單位 ID，不放鍵與地址
+  'property.sublet_create', // MIL-145：新增分租單位，payload 只放租賃單位 ID 與單位後綴，不放房號與地址
+  'property.archive', // MIL-145：有合約的物件刪除時改為封存，payload 只放租賃單位 ID
   'contract.create', // MIL-83：合約的建立、複製、刪除。payload 只放 ID 與類型，不放姓名、地址、租金
   'contract.copy',
   'contract.delete',
@@ -71,6 +74,11 @@ export const AUDIT_ACTIONS = [
   'vault.read',
   'vault.upload', // MIL-109：證據檔登記，payload 放檔案 ID、對象與大小，不放檔名
   'vault.delete', // MIL-109：證據檔刪除，payload 放原因與刪除方式（ADR-0017 補充，P0-04 AC5）
+
+  // 收款帳戶（MIL-118）：payload 只放 ID、持有人種類與帳戶性質，不放姓名與銀行識別
+  'payment_account.register',
+  'payment_account.update',
+  'payment_account.deactivate',
 
   // 帳務（鏡像帳與押金分錄、報表產生、手動繳租提醒）
   'ledger.entry',

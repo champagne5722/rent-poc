@@ -1,7 +1,7 @@
 import { newUlid } from '../pg/ulid';
 import type { ControlTx, OrgTx } from '../pg/with-tx';
 import type { SignerRole } from '../types';
-import type { CurrentSigner, SigningProviderId, SigningSubject } from './provider';
+import type { CurrentSigner, SigningProviderId, SigningSubject, SigningSubjectType } from './provider';
 
 // 簽署任務與簽署人的儲存（ADR-0010 決議 2，MIL-85 搬進 PostgreSQL）。表見 db/migrations/0006_sign_tasks.sql。
 //
@@ -45,7 +45,7 @@ interface TaskRow {
   id: string;
   provider: SigningProviderId;
   provider_task_ref: string;
-  subject_type: string;
+  subject_type: SigningSubjectType;
   subject_id: string;
   status: SignTaskStatus;
 }
@@ -61,16 +61,12 @@ interface SignerRow {
 
 const TASK_COLUMNS = 'id, provider, provider_task_ref, subject_type, subject_id, status';
 
-async function toRecord(tx: OrgTx, row: TaskRow): Promise<SignTaskRecord> {
-  const { rows } = await tx.query<SignerRow>(
-    `SELECT role, name, email, status, signed_at, concurrent_roles FROM org.signers
-      WHERE sign_task_id = $1 ORDER BY position ASC`,
-    [row.id],
-  );
-  const signers = rows.map(({ concurrent_roles, signed_at, ...signer }): SignerRecord => {
-    const base = { ...signer, signedAt: signed_at ? signed_at.toISOString() : null };
-    return concurrent_roles && concurrent_roles.length > 0 ? { ...base, concurrentRoles: concurrent_roles } : base;
-  });
+function toSignerRecord({ concurrent_roles, signed_at, ...signer }: SignerRow): SignerRecord {
+  const base = { ...signer, signedAt: signed_at ? signed_at.toISOString() : null };
+  return concurrent_roles && concurrent_roles.length > 0 ? { ...base, concurrentRoles: concurrent_roles } : base;
+}
+
+function toTaskRecord(row: TaskRow, signers: SignerRecord[]): SignTaskRecord {
   return {
     id: row.id,
     provider: row.provider,
@@ -79,6 +75,15 @@ async function toRecord(tx: OrgTx, row: TaskRow): Promise<SignTaskRecord> {
     status: row.status,
     signers,
   };
+}
+
+async function toRecord(tx: OrgTx, row: TaskRow): Promise<SignTaskRecord> {
+  const { rows } = await tx.query<SignerRow>(
+    `SELECT role, name, email, status, signed_at, concurrent_roles FROM org.signers
+      WHERE sign_task_id = $1 ORDER BY position ASC`,
+    [row.id],
+  );
+  return toTaskRecord(row, rows.map(toSignerRecord));
 }
 
 /**
@@ -95,6 +100,48 @@ export async function findSignTask(
     [subject.type, subject.id],
   );
   return rows[0] ? toRecord(tx, rows[0]) : null;
+}
+
+/** 簽署標的在批次結果裡的鍵。編號當字串用，簽署標的的編號改字串時（MIL-131）鍵不變。 */
+export function signingSubjectKey(subject: { type: string; id: number | string }): string {
+  return `${subject.type}:${String(subject.id)}`;
+}
+
+/**
+ * 批次查簽署任務（MIL-72）：查詢次數與簽署標的數量無關，固定是任務一次、簽署人一次。
+ * 清單用它取回整頁合約的簽署進度，不逐列查詢。沒有簽署任務的簽署標的不在結果裡。
+ * 別的組織的簽署任務靠 RLS 篩掉，結果和不存在的沒有差別。
+ */
+export async function findSignTasks(
+  tx: OrgTx,
+  subjects: readonly SigningSubject[],
+): Promise<Map<string, SignTaskRecord>> {
+  const found = new Map<string, SignTaskRecord>();
+  if (subjects.length === 0) return found;
+
+  const keys = [...new Set(subjects.map(signingSubjectKey))];
+  const { rows: taskRows } = await tx.query<TaskRow>(
+    `SELECT ${TASK_COLUMNS} FROM org.sign_tasks WHERE (subject_type || ':' || subject_id) = ANY($1::text[])`,
+    [keys],
+  );
+  if (taskRows.length === 0) return found;
+
+  const { rows: signerRows } = await tx.query<SignerRow & { sign_task_id: string }>(
+    `SELECT sign_task_id, role, name, email, status, signed_at, concurrent_roles FROM org.signers
+      WHERE sign_task_id = ANY($1::text[]) ORDER BY sign_task_id ASC, position ASC`,
+    [taskRows.map((t) => t.id)],
+  );
+  const signersByTask = new Map<string, SignerRecord[]>();
+  for (const { sign_task_id, ...row } of signerRows) {
+    signersByTask.set(sign_task_id, [...(signersByTask.get(sign_task_id) ?? []), toSignerRecord(row)]);
+  }
+  for (const row of taskRows) {
+    found.set(
+      signingSubjectKey({ type: row.subject_type, id: row.subject_id }),
+      toTaskRecord(row, signersByTask.get(row.id) ?? []),
+    );
+  }
+  return found;
 }
 
 /** 服務商任務編號只在同一服務商內唯一，所以比對要帶服務商。webhook 查到組織之後用它找簽署任務。 */

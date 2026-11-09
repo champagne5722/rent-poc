@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   App as AntApp,
   Button,
@@ -12,16 +12,23 @@ import {
   Popconfirm,
   Select,
   Space,
+  Switch,
   Table,
   Tag,
+  theme,
   Typography,
 } from 'antd';
 import { PlusOutlined, FileAddOutlined } from '@ant-design/icons';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { EquipmentItem, EquipmentVocabularyItem, Property } from '@/lib/types';
 import { PROPERTY_TYPES } from '@/lib/types';
 import { formatEquipmentItem } from '@/lib/equipment';
-import { shortUlid } from '@/lib/pg/ulid';
+import { AnchorSection } from '@/components/AnchorFields';
+import { DisplayCode } from '@/components/DisplayCode';
+import { anchorSummary, ANCHOR_STATUS_COLORS, ANCHOR_STATUS_LABELS } from '@/lib/properties/anchor-display';
+import { buildAnchorPayload } from '@/lib/properties/anchor-form';
+import { unitShortText } from '@/lib/properties/unit-display';
 
 interface EquipmentPickerProps {
   vocabulary: EquipmentVocabularyItem[];
@@ -109,11 +116,16 @@ function EquipmentPicker({ vocabulary, value = [], onChange, onAddCustom }: Equi
 function PropertiesPage() {
   const { message } = AntApp.useApp();
   const router = useRouter();
+  const { token } = theme.useToken();
   const [items, setItems] = useState<Property[]>([]);
   const [vocabulary, setVocabulary] = useState<EquipmentVocabularyItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Property | 'new' | null>(null);
+  // 有案件（或未掛案件的合約）的物件刪除時改為封存（MIL-145）。封存的物件預設不列出，開關打開才看得到
+  const [showArchived, setShowArchived] = useState(false);
   const [form] = Form.useForm();
+  const archivedCount = useMemo(() => items.filter((p) => p.archived_at).length, [items]);
+  const visibleItems = useMemo(() => (showArchived ? items : items.filter((p) => !p.archived_at)), [items, showArchived]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -154,17 +166,24 @@ function PropertiesPage() {
     if (target === 'new') {
       form.resetFields();
     } else {
-      form.setFieldsValue(target);
+      // 產權不在這裡改：補建號在詳情頁，已建號的鍵由平台營運者更正
+      const { anchor: _anchor, unit: _unit, archived_at: _archivedAt, ...rest } = target;
+      void _anchor;
+      void _unit;
+      void _archivedAt;
+      form.setFieldsValue(rest);
     }
   };
 
   const save = async () => {
     const values = await form.validateFields();
     const isNew = editing === 'new';
+    // 只有建立時送產權；修改物件不動產權錨點
+    const payload = isNew ? { ...values, anchor: buildAnchorPayload(values.anchor) } : { ...values, anchor: undefined };
     const res = await fetch(isNew ? '/api/properties' : `/api/properties/${(editing as Property).id}`, {
       method: isNew ? 'POST' : 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(values),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       message.error((await res.json()).error ?? '儲存失敗');
@@ -177,8 +196,11 @@ function PropertiesPage() {
 
   const remove = async (id: string) => {
     const res = await fetch(`/api/properties/${id}`, { method: 'DELETE' });
+    const json = await res.json();
     if (!res.ok) {
-      message.error((await res.json()).error ?? '刪除失敗');
+      message.error(json.error ?? '刪除失敗');
+    } else if (json.data.result === 'archived') {
+      message.success('物件已有案件或合約，已改為封存');
     } else {
       message.success('物件已刪除');
     }
@@ -206,31 +228,61 @@ function PropertiesPage() {
         <Typography.Title level={4} style={{ margin: 0 }}>
           物件
         </Typography.Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor('new')}>
-          新增物件
-        </Button>
+        <Space size="middle">
+          {archivedCount > 0 && (
+            <Space size="small">
+              <Switch size="small" checked={showArchived} onChange={setShowArchived} aria-label="顯示已封存的物件" />
+              <Typography.Text type="secondary">顯示已封存（{archivedCount}）</Typography.Text>
+            </Space>
+          )}
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor('new')}>
+            新增物件
+          </Button>
+        </Space>
       </Space>
       <Table<Property>
         rowKey="id"
         loading={loading}
-        dataSource={items}
+        dataSource={visibleItems}
         pagination={false}
         scroll={{ x: 'max-content' }}
         columns={[
           {
-            // 物件 ID（ULID）的末 6 碼，口頭溝通與客服對照用，不保證唯一；系統內與網址一律用完整 ULID。
-            // 不叫「編號」：顯示編碼是租賃單位的詞（GLOSSARY），格式由 B 線定
-            title: 'ID 末碼',
-            dataIndex: 'id',
-            width: 110,
-            render: (id: string) => (
-              <Typography.Text type="secondary" code title={id} style={{ whiteSpace: 'nowrap' }}>
-                {shortUlid(id)}
-              </Typography.Text>
+            // 租賃單位的顯示編碼（GLOSSARY「顯示編碼」），不含建號，口頭溝通與客服對照用。不保證唯一
+            title: '顯示編碼',
+            width: 130,
+            render: (_, record) => <DisplayCode code={record.unit?.display_code} />,
+          },
+          {
+            title: '名稱',
+            dataIndex: 'name',
+            render: (name: string, record) => (
+              <Space size="small">
+                <Link href={`/properties/${record.id}`} style={{ color: token.colorPrimary }}>
+                  {name}
+                </Link>
+                {record.archived_at && <Tag>已封存</Tag>}
+              </Space>
             ),
           },
-          { title: '名稱', dataIndex: 'name' },
+          {
+            title: '單位',
+            width: 120,
+            render: (_, record) => (record.unit ? unitShortText(record.unit) : '—'),
+          },
           { title: '地址', dataIndex: 'address' },
+          {
+            title: '產權',
+            dataIndex: 'anchor',
+            render: (_: unknown, record) =>
+              record.anchor?.status === 'keyed' ? (
+                anchorSummary(record.anchor)
+              ) : (
+                <Tag color={ANCHOR_STATUS_COLORS[record.anchor?.status ?? 'pending_verification']}>
+                  {ANCHOR_STATUS_LABELS[record.anchor?.status ?? 'pending_verification']}
+                </Tag>
+              ),
+          },
           { title: '型態', dataIndex: 'type', width: 100 },
           { title: '坪數', dataIndex: 'size', width: 80, render: (v) => v ?? '—' },
           {
@@ -256,21 +308,24 @@ function PropertiesPage() {
           {
             title: '操作',
             width: 240,
-            render: (_, record) => (
-              <Space>
-                <Button size="small" icon={<FileAddOutlined />} onClick={() => createContract(record.id)}>
-                  建立合約
-                </Button>
-                <Button size="small" onClick={() => openEditor(record)}>
-                  編輯
-                </Button>
-                <Popconfirm title="確定刪除此物件？" onConfirm={() => remove(record.id)}>
-                  <Button size="small" danger>
-                    刪除
+            render: (_, record) =>
+              record.archived_at ? (
+                <Typography.Text type="secondary">已封存，唯讀</Typography.Text>
+              ) : (
+                <Space>
+                  <Button size="small" icon={<FileAddOutlined />} onClick={() => createContract(record.id)}>
+                    建立合約
                   </Button>
-                </Popconfirm>
-              </Space>
-            ),
+                  <Button size="small" onClick={() => openEditor(record)}>
+                    編輯
+                  </Button>
+                  <Popconfirm title="確定刪除此物件？" description="有案件或合約的物件會改為封存，不會刪除。" onConfirm={() => remove(record.id)}>
+                    <Button size="small" danger>
+                      刪除
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              ),
           },
         ]}
         locale={{ emptyText: '尚無物件，點右上角「新增物件」開始' }}
@@ -283,6 +338,7 @@ function PropertiesPage() {
         onCancel={() => setEditing(null)}
         okText="儲存"
         cancelText="取消"
+        width={720}
         forceRender
       >
         <Form form={form} layout="vertical" initialValues={{ type: '整層住家', equipment: [] }}>
@@ -309,6 +365,11 @@ function PropertiesPage() {
           <Form.Item name="note" label="備註">
             <Input.TextArea rows={2} />
           </Form.Item>
+          {editing === 'new' ? (
+            <AnchorSection form={form} />
+          ) : (
+            <Typography.Text type="secondary">產權在物件詳情頁查看與補建號。</Typography.Text>
+          )}
         </Form>
       </Modal>
     </>

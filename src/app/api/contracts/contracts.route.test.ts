@@ -146,7 +146,15 @@ describe('GET /api/contracts（清單）', () => {
   it('沒有合約時回空陣列', async () => {
     const res = await getList();
     expect(res.status).toBe(200);
-    expect(await json(res)).toEqual({ data: [] });
+    // 清單多回 signing_progress（MIL-72）。沒有簽署任務的合約不在裡面
+    expect(await json(res)).toEqual({ data: [], signing_progress: {} });
+  });
+
+  it('草稿沒有簽署任務，signing_progress 不含它', async () => {
+    await newContract();
+    const body = await json(await getList());
+    expect(body.data).toHaveLength(1);
+    expect(body.signing_progress).toEqual({});
   });
 
   it('新的在前，每筆有完整欄位（不是 {}），fields 是物件', async () => {
@@ -172,7 +180,7 @@ describe('GET /api/contracts（清單）', () => {
     actAs(kit.orgB);
     await newContract();
     actAs(kit.orgA);
-    expect(await json(await getList())).toEqual({ data: [] });
+    expect(await json(await getList())).toEqual({ data: [], signing_progress: {} });
   });
 });
 
@@ -387,15 +395,16 @@ describe('/api/contracts/[id]/files', () => {
   });
 });
 
-describe('刪除物件時有合約（ADR-0025 決議 14）', () => {
-  it('物件有合約回 409「只能封存」，物件與合約都還在；合約刪掉後可以刪物件', async () => {
+describe('刪除物件時有案件或合約（ADR-0025 決議 14，MIL-115）', () => {
+  it('物件有合約與案件時改為封存；合約刪掉後案件還在，仍是封存', async () => {
     const { id, propertyId } = await newContract();
     const res = await deleteProperty(req('DELETE'), ctx(propertyId));
-    expect(await snap(res)).toEqual({ status: 409, body: JSON.stringify({ error: '物件已有合約，不能刪除，只能封存' }) });
+    expect(await json(res)).toEqual({ data: { id: propertyId, result: 'archived' } });
     expect((await getOne(req('GET'), ctx(id))).status).toBe(200);
 
+    // 屋主組織建合約時同交易建租賃案件。合約刪掉後案件仍掛在物件上，物件不能刪除
     await DELETE(req('DELETE'), ctx(id));
-    const ok = await deleteProperty(req('DELETE'), ctx(propertyId));
-    expect(await json(ok)).toEqual({ data: { id: propertyId } });
+    const again = await deleteProperty(req('DELETE'), ctx(propertyId));
+    expect(await json(again)).toEqual({ data: { id: propertyId, result: 'archived' } });
   });
 });

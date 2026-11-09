@@ -1,3 +1,4 @@
+import type { PGliteInterface } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { asRole, createTestDb, type TestDb } from './test-harness';
 
@@ -78,5 +79,46 @@ describe('測試 harness', () => {
     } finally {
       await db.close();
     }
+  });
+
+  // MIL-163：副本不關會一路累積到測試檔結束。下面幾個測試前後相接，驗證 harness 自己收副本。
+  describe('副本的生命週期', () => {
+    const leftovers: { fresh?: PGliteInterface; raw?: PGliteInterface; second?: PGliteInterface } = {};
+
+    it('測試內取得的副本，測試期間可用', async () => {
+      leftovers.fresh = await testDb.fresh();
+      leftovers.second = await testDb.fresh();
+      leftovers.raw = await testDb.raw();
+      expect(leftovers.fresh.closed).toBe(false);
+      expect(leftovers.second.closed).toBe(false);
+      expect(leftovers.raw.closed).toBe(false);
+    });
+
+    it('上一個測試結束後，它取得的 fresh() 與 raw() 副本都已關閉', () => {
+      expect(leftovers.fresh?.closed).toBe(true);
+      expect(leftovers.second?.closed).toBe(true);
+      expect(leftovers.raw?.closed).toBe(true);
+    });
+
+    it('已被 harness 關掉的副本，呼叫端稍後再 close() 不會丟錯', async () => {
+      await expect(leftovers.fresh?.close()).resolves.toBeUndefined();
+      await expect(leftovers.raw?.close()).resolves.toBeUndefined();
+    });
+
+    it('測試自己先關副本也可以，測試結束時 harness 不會再關一次而出錯', async () => {
+      const db = await testDb.fresh();
+      await db.close();
+      expect(db.closed).toBe(true);
+    });
+
+    it('close() 關掉母體與所有還開著的副本', async () => {
+      const other = await createTestDb();
+      const a = await other.fresh();
+      const b = await other.raw();
+      await other.close();
+      expect(a.closed).toBe(true);
+      expect(b.closed).toBe(true);
+      expect(other.base.closed).toBe(true);
+    });
   });
 });

@@ -3,7 +3,7 @@ import { pgDriver } from '@/lib/pg/drivers';
 import { createPgTestDatabase, type PgTestDatabase } from '@/lib/pg/pg-database-kit';
 import { newUlid } from '@/lib/pg/ulid';
 import { createWithTx, type OrgTx, type WithTx } from '@/lib/pg/with-tx';
-import { createProperty, deleteProperty, parsePropertyInput } from '@/lib/properties';
+import { createProperty, parsePropertyInput, removeProperty } from '@/lib/properties';
 import { applySigningResult } from '@/lib/transitions';
 import type { ContractFields, LeaseContract } from '@/lib/types';
 import {
@@ -126,11 +126,11 @@ describe.skipIf(!adminUrl)('合約 repository（真實 PostgreSQL）', () => {
     expect((await inA((tx) => listContractEvents(tx, id))).map((e) => e.type)).toEqual(['created', 'sent', 'completed']);
   });
 
-  it('刪除物件與建立合約同時發生：不會留下指向已刪物件的合約', async () => {
+  it('刪除物件與建立合約同時發生：不會留下指向已刪物件的合約（刪除或封存二擇一，合約不孤兒）', async () => {
     for (let i = 0; i < 5; i++) {
       const propertyId = await newProperty();
       const outcomes = await Promise.allSettled([
-        inA((tx) => deleteProperty(tx, propertyId)),
+        inA((tx) => removeProperty(tx, propertyId)),
         inA((tx) => createContract(tx, { property_id: propertyId, fields: FIELDS })),
       ]);
       const orphans = await dbh.owner.query(

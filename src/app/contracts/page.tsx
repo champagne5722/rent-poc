@@ -22,9 +22,11 @@ import {
   RollbackOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
+import { DisplayCode, useDisplayCodes } from '@/components/DisplayCode';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { Contract, ContractStatus } from '@/lib/types';
 import { shortUlid } from '@/lib/pg/ulid';
+import type { SigningProgressById, SigningProgressInput } from '@/lib/signing-steps';
 import { CONTRACT_STATUS_LABELS, isSigningStatus } from '@/lib/types';
 import {
   countByStatus,
@@ -34,9 +36,8 @@ import {
   listPropertyLabel,
   listRentLabel,
   propertyNameOptions,
+  listSigningDots,
   selectContracts,
-  signingProgressLabels,
-  signingProgressStep,
   statusTabs,
   type ContractListFilter,
 } from '@/lib/contract-list';
@@ -55,10 +56,11 @@ const DOT_DONE = '#52c41a';
 const DOT_CURRENT = '#1677ff';
 const DOT_PENDING = 'rgba(5, 5, 5, 0.15)';
 
-// 簽署進度三點：乙方簽 → 甲方簽 → 完成；待執業人員簽時多一點；簽署流程外的狀態顯示「—」。
-function SigningProgress({ status }: { status: ContractStatus }) {
-  const step = signingProgressStep(status);
-  if (step == null) {
+// 簽署進度點：每位簽署人一點，最後多一點「完成」，由實際的簽署序列推導（MIL-72）。
+// 兩方合約是乙方簽、甲方簽、完成三點。簽署流程外的狀態顯示「—」。
+function SigningProgress({ contract, progress }: { contract: Contract; progress: SigningProgressInput | null }) {
+  const dots = listSigningDots(contract, progress);
+  if (dots == null) {
     return (
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         —
@@ -67,7 +69,7 @@ function SigningProgress({ status }: { status: ContractStatus }) {
   }
   return (
     <Space size={4}>
-      {signingProgressLabels(status).map((label, i) => (
+      {dots.map(({ label, state }) => (
         <Tooltip key={label} title={label}>
           <span
             style={{
@@ -75,7 +77,7 @@ function SigningProgress({ status }: { status: ContractStatus }) {
               width: 10,
               height: 10,
               borderRadius: '50%',
-              background: i < step ? DOT_DONE : i === step ? DOT_CURRENT : DOT_PENDING,
+              background: state === 'done' ? DOT_DONE : state === 'current' ? DOT_CURRENT : DOT_PENDING,
             }}
           />
         </Tooltip>
@@ -84,24 +86,34 @@ function SigningProgress({ status }: { status: ContractStatus }) {
   );
 }
 
-async function fetchContracts(): Promise<Contract[]> {
+interface ContractListData {
+  contracts: Contract[];
+  // 以合約編號為鍵。沒有簽署任務的合約不在裡面
+  progress: SigningProgressById;
+}
+
+async function fetchContracts(): Promise<ContractListData> {
   const res = await fetch('/api/contracts');
   const json = await res.json();
-  return json.data ?? [];
+  return { contracts: json.data ?? [], progress: json.signing_progress ?? {} };
 }
 
 function ContractList() {
   const { message } = AntApp.useApp();
   const [items, setItems] = useState<Contract[]>([]);
+  const [progress, setProgress] = useState<SigningProgressById>({});
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [status, setStatus] = useState<ContractStatus | 'all'>('all');
   const [propertyName, setPropertyName] = useState<string | null>(null);
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null);
+  // 物件的顯示編碼（MIL-145）。合約只存物件 ID，編碼從物件清單對照
+  const displayCodes = useDisplayCodes();
 
   useEffect(() => {
     fetchContracts().then((data) => {
-      setItems(data);
+      setItems(data.contracts);
+      setProgress(data.progress);
       setLoading(false);
     });
   }, []);
@@ -135,7 +147,9 @@ function ContractList() {
         return;
       }
       message.success(successText);
-      setItems(await fetchContracts());
+      const data = await fetchContracts();
+      setItems(data.contracts);
+      setProgress(data.progress);
     } finally {
       setBusyId(null);
     }
@@ -245,6 +259,12 @@ function ContractList() {
             ),
           },
           { title: '物件', render: (_, r) => listPropertyLabel(r) },
+          {
+            title: '顯示編碼',
+            width: 130,
+            render: (_, r) =>
+              r.property_id && displayCodes.has(r.property_id) ? <DisplayCode code={displayCodes.get(r.property_id)} /> : '—',
+          },
           { title: partyB.title, render: (_, r) => partyB.cell(r) },
           { title: '租金', width: 100, render: (_, r) => listRentLabel(r) },
           { title: '租期', width: 210, render: (_, r) => listPeriodLabel(r) },
@@ -253,7 +273,7 @@ function ContractList() {
             width: 100,
             render: (_, r) => <Tag color={STATUS_COLORS[r.status]}>{CONTRACT_STATUS_LABELS[r.status]}</Tag>,
           },
-          { title: '簽署進度', width: 100, render: (_, r) => <SigningProgress status={r.status} /> },
+          { title: '簽署進度', width: 100, render: (_, r) => <SigningProgress contract={r} progress={progress[String(r.id)] ?? null} /> },
           {
             title: '最後動作',
             width: 120,

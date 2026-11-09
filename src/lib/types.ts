@@ -2,6 +2,7 @@
 
 import type { BusinessType } from './cases';
 import { TERMS } from './labels';
+import type { StatusAnnex } from './status-annex/types';
 
 export const PROPERTY_TYPES = ['整層住家', '套房', '雅房'] as const;
 export type PropertyType = (typeof PROPERTY_TYPES)[number];
@@ -55,10 +56,67 @@ export interface EquipmentAnnexRow {
   note: string;
 }
 
+/** 錨點狀態（ADR-0013）。待驗證是還沒有建號、以門牌登錄。 */
+export const ANCHOR_STATUSES = ['pending_verification', 'keyed', 'merged', 'retired'] as const;
+export type AnchorStatus = (typeof ANCHOR_STATUSES)[number];
+
+/**
+ * 物件頁的「產權」區塊用的產權錨點摘要（MIL-143）。不含錨點 ID：錨點是跨組織的全域資料，畫面用不到。
+ * 待驗證的錨點五欄鍵與名稱都是 null。名稱一律是「臺」，來自 registry 的參照表。
+ */
+export interface PropertyAnchor {
+  status: AnchorStatus;
+  city_code: string | null;
+  town_code: string | null;
+  section_code: string | null;
+  building_no: string | null;
+  sub_no: string | null;
+  city_name: string | null;
+  town_name: string | null;
+  /** 段名加小段名，例如「龍泉 一」。 */
+  section_name: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+/** 租賃單位類型與狀態（ADR-0013 決議 5、6，ADR-0025 決議 14）。whole 是整戶，後綴固定 0000。 */
+export const RENTAL_UNIT_TYPES = ['whole', 'sublet'] as const;
+export type RentalUnitType = (typeof RENTAL_UNIT_TYPES)[number];
+export const RENTAL_UNIT_STATUSES = ['active', 'merged', 'retired'] as const;
+export type RentalUnitStatus = (typeof RENTAL_UNIT_STATUSES)[number];
+
+/**
+ * 物件持有的租賃單位摘要（MIL-145）。不含單位 ID 與錨點 ID 之外的跨組織資料。
+ * 顯示編碼不含段碼與建號（R13）。待驗證的錨點沒有縣市與鄉鎮編碼，顯示編碼是 null，補建號後才產生。
+ */
+export interface PropertyUnit {
+  /** 單位後綴 4 碼，整戶 `0000`，分租從 `0001` 起。房號不是後綴。 */
+  suffix: string;
+  /** 房號或顯示名稱，只是標籤。整戶通常是 null。 */
+  label: string | null;
+  floor: string | null;
+  unit_type: RentalUnitType;
+  status: RentalUnitStatus;
+  display_code: string | null;
+}
+
+/** 同一產權錨點下，自己組織的一個物件與它的單位（物件頁「單位」分頁）。 */
+export interface SiblingUnit extends PropertyUnit {
+  property_id: string;
+  name: string;
+  archived_at: string | null;
+}
+
 export interface Property {
   id: string; // ULID（ADR-0012 決議 9）
   // 物件持有的租賃單位，建物件時由 registry 同交易建立，不得為空（ADR-0013）
   rental_unit_id: string;
+  /** 租賃單位摘要。讀不到時是 null（不應發生，畫面照樣能顯示）。 */
+  unit: PropertyUnit | null;
+  /** 封存時間。有任何合約的物件刪除時改為封存（P0-06 AC8）。封存的物件不得編輯與建約。 */
+  archived_at: string | null;
+  /** 租賃單位所屬的產權錨點。讀不到時是 null（不應發生，畫面照樣能顯示）。 */
+  anchor: PropertyAnchor | null;
   name: string;
   address: string;
   type: PropertyType;
@@ -174,6 +232,11 @@ export interface ContractFieldsBase extends TemplateBinding {
 
 // 租賃合約欄位值：建立時由物件帶入快照，之後與物件脫鉤（見 docs/domain-model.md）
 export interface LeaseContractFields extends ContractFieldsBase, EquipmentAnnexSnapshot {
+  /**
+   * 現況確認附件的內容（MIL-71）。包租租賃合約必附，其他組合不顯示也不印。
+   * 選填：送簽前就存在的舊合約沒有這個鍵，讀入不報錯，送簽後的舊合約 PDF 也不會多出附件頁。
+   */
+  statusAnnex?: StatusAnnex;
   landlordName: string;
   landlordEmail: string;
   tenantName: string;

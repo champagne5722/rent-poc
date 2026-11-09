@@ -107,7 +107,7 @@ fieldsOfSeat(plan, ruleId, signatureFields): SignatureField[]
 
 ## 尚未做的事
 
-- `requiredFieldPages` 的 `status_annex` 檢查：MIL-71。
+- 無。`requiredFieldPages` 的 `status_annex` 檢查已在 MIL-71 完成，見下一節。
 
 ## 簽署欄與簽署區域（MIL-67）
 
@@ -115,3 +115,11 @@ fieldsOfSeat(plan, ruleId, signatureFields): SignatureField[]
 - 尚未指派的執業人員簽署欄印姓名與執業主體的底線。已指派時 `generateContractPdf(fields, practitioners)` 傳入姓名、法定稱謂與執業主體（MIL-69），不印證號。
 - 簽署區編輯器依 `SeatView[]` 提供新增按鈕，新增的框寫入 `slot`。按鈕依印列順序排，與簽署順序無關。
 - 送簽前的原因清單是 `contract-wizard.ts` 的 `sendBlockReasons`。沒有指派的執業人員席位列為「尚未指派」。資格由伺服器的 `checkSendPreconditions` 判定，確認頁併入列出。
+
+## 現況確認附件頁（MIL-71）
+
+- `requiredFieldPages` 含 `status_annex` 的席位必須在附件頁有簽署區域。第一版只有 `lease.master_lease.practitioner`。
+- `missingStatusAnnexSeats(plan, signatureFields, statusAnnexPage)`：伺服器用，回傳缺少的 `PlannedSeat`。`seatViewsMissingStatusAnnex(seats, signatureFields, statusAnnexPage)`：編輯器與 wizard 用。判定相同，沒有附件頁（null）時後者不提示，前者視為全部缺少。
+- `SeatView.requiresStatusAnnex`：規則列要求這個席位在附件頁簽章。
+- `body` 頁的要求維持原狀：席位至少一個簽署區域。不另檢查「本文頁」。
+- 附件頁的頁碼是 PDF 的 0-based 頁碼，與點點簽 `field_settings[].page`（從 0 起算）一致。

@@ -6,8 +6,9 @@
 
 import type { ContractType } from './labels';
 import type { ContractAttachments } from './contract-types';
-import { PDF_PAGE_SIZE, generateContractPdf } from './pdf';
-import { generateManagementPdf } from './pdf-management';
+import { PDF_PAGE_SIZE, generateContractPdfWithPages } from './pdf';
+import type { PdfPageMap } from './pdf-layout';
+import { generateManagementPdfWithPages } from './pdf-management';
 import type { PrintedPractitioner } from './practitioner-assignment/seats';
 import type { ContractFields, LeaseContractFields, ManagementContractFields } from './types';
 
@@ -22,17 +23,31 @@ export interface ContractPdfRenderer<F extends ContractFields = ContractFields> 
     practitioners: Readonly<Record<string, PrintedPractitioner>>,
     attachments?: ContractAttachments,
   ): Promise<Uint8Array>;
+  /**
+   * 同 render，另回報頁面地圖：簽名頁與現況確認附件頁的頁碼（0-based）。
+   * 送簽前檢查要知道附件頁在哪一頁，簽署區域的 `page` 就是這個頁碼。
+   */
+  renderWithPages(
+    fields: F,
+    practitioners: Readonly<Record<string, PrintedPractitioner>>,
+    attachments?: ContractAttachments,
+  ): Promise<{ pdf: Uint8Array; pages: PdfPageMap }>;
 }
 
 const leaseRenderer: ContractPdfRenderer<LeaseContractFields> = {
   pageSize: PDF_PAGE_SIZE,
-  render: (fields, practitioners) => generateContractPdf(fields, practitioners),
+  render: async (fields, practitioners, attachments) =>
+    (await generateContractPdfWithPages(fields, practitioners, { statusAnnex: attachments?.statusAnnex })).pdf,
+  renderWithPages: (fields, practitioners, attachments) =>
+    generateContractPdfWithPages(fields, practitioners, { statusAnnex: attachments?.statusAnnex }),
 };
 
 const managementRenderer: ContractPdfRenderer<ManagementContractFields> = {
   pageSize: PDF_PAGE_SIZE,
-  render: (fields, practitioners, attachments) =>
-    generateManagementPdf(fields, practitioners, attachments?.mandateItems ?? []),
+  render: async (fields, practitioners, attachments) =>
+    (await generateManagementPdfWithPages(fields, practitioners, attachments?.mandateItems ?? [])).pdf,
+  renderWithPages: (fields, practitioners, attachments) =>
+    generateManagementPdfWithPages(fields, practitioners, attachments?.mandateItems ?? []),
 };
 
 const RENDERERS: Readonly<Record<ContractType, ContractPdfRenderer | null>> = {

@@ -23,6 +23,9 @@ export const signing = createSigningModule({
         clientSecret: dsClientSecret(),
         verifySigners: verifySignersEnabled(),
       }),
+  // 一種簽署標的一個訂閱者。沒註冊的種類，模組回 404「不支援的簽署標的」。
+  // 點交證明、押金結算單、退還證明的訂閱者在 E 線 MIL-137、138、139 完成後加在這裡
+  // （handover_certificate、deposit_settlement、deposit_refund_certificate）。
   subscribers: { contract: createContractSubscriber() },
   // 已簽 PDF 與 Audit Trail File。本機是 data/files/signed-document/，demo 是 Cloud Storage（FILE_STORE=gcs）
   files: getFileStore('signed-document'),
@@ -48,3 +51,4 @@ export async function signedFileResponse(subject: SigningSubject, kind: Contract
 }
 
 export { signingErrorResponse } from './module';
+export { signingSubjectKey } from './sign-task-store';

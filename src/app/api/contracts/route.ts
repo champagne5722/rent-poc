@@ -10,17 +10,41 @@ import {
   type InitialFieldsInput,
 } from '@/lib/contract-types';
 import type { ContractType } from '@/lib/labels';
-import { inOrgTx, inOrgTxAs, readJson } from '@/lib/org-route';
+import { inOrgTx, inOrgTxAs, readInOrgTx, readJson } from '@/lib/org-route';
 import { isUlid } from '@/lib/pg/ulid';
 import { getProperty } from '@/lib/properties';
 import { routingInputError } from '@/lib/signature-routing';
 import { jsonOk, jsonError } from '@/lib/http';
+import { contractSubject, signing, signingSubjectKey } from '@/lib/signing-module';
+import type { SigningProgressById } from '@/lib/signing-steps';
 
+// 清單與工作台共用。簽署進度一次批次查回整頁合約，以合約編號為鍵（MIL-72）。
+// 沒有簽署任務的合約（草稿、沒有回填的舊合約）不在 signing_progress 裡。
+// 清單只需要角色、姓名與狀態，不回簽署人的 email。
 export async function GET() {
-  return inOrgTx(async (tx) => {
+  const read = await readInOrgTx(async (tx) => {
     await authorize(tx, 'contract.read', { type: 'org' });
-    return jsonOk({ data: await listContracts(tx) });
+    return listContracts(tx);
   });
+  if (!read.ok) return read.response;
+  const contracts = read.value;
+  // 簽署進度另開組織交易批次查，不佔著清單的連線。查詢次數與合約數量無關
+  const progress = await signing.getProgressBatch(contracts.map((c) => contractSubject(c.id)));
+  const signingProgress: Record<string, NonNullable<SigningProgressById[string]>> = {};
+  for (const c of contracts) {
+    const entry = progress.get(signingSubjectKey(contractSubject(c.id)));
+    if (!entry) continue;
+    signingProgress[c.id] = {
+      status: entry.status,
+      signers: entry.signers.map(({ role, name, status, concurrentRoles }) => ({
+        role,
+        name,
+        status,
+        ...(concurrentRoles ? { concurrentRoles } : {}),
+      })),
+    };
+  }
+  return jsonOk({ data: contracts, signing_progress: signingProgress });
 }
 
 // 建立合約草稿，欄位快照由合約類型定義產生（綁定範本版本，見 contract-types）。`contract_type` 沒帶是租賃合約。
@@ -64,6 +88,7 @@ export async function POST(request: NextRequest) {
     await authorize(tx, 'contract.draft_send', { type: 'org' });
     const property = await getProperty(tx, propertyId);
     if (!property) return jsonError(400, '請指定有效的物件');
+    if (property.archived_at) return jsonError(409, '物件已封存，不能建立合約');
     const routingError = routingInputError(routing, type);
     if (routingError) return jsonError(400, routingError);
 

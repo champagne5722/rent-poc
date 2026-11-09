@@ -34,7 +34,7 @@ describe('decideSessionGate（proxy 的樂觀檢查：只看 cookie 在不在）
     expect(decideSessionGate({ pathname, hasSessionCookie: false })).toBe('allow');
   });
 
-  it.each(['/login/extra', '/api/auth/me', '/api/auth/otp/x', '/demo', '/demo/other', '/loginx', '/api/webhooks/other', '/api/internal/jobs', '/api/internal/other'])(
+  it.each(['/login/extra', '/api/auth/me', '/api/auth/otp/x', '/demo', '/demo/other', '/demo/mail', '/api/demo/notify', '/loginx', '/api/webhooks/other', '/api/internal/jobs', '/api/internal/other'])(
     '%s 不在白名單：需要 session',
     (pathname) => {
       expect(isSessionExemptPath(pathname)).toBe(false);

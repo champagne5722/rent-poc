@@ -45,6 +45,7 @@ import type {
 } from '@/lib/types';
 import { CONTRACT_STATUS_LABELS, isSigningStatus, SIGNER_ROLE_LABELS } from '@/lib/types';
 import type { SigningProgress } from '@/lib/signing-module/sign-task-store';
+import { contractSigningSteps } from '@/lib/contract-list';
 import {
   contractChainNodes,
   contractEventEntries,
@@ -54,14 +55,17 @@ import {
   detailCurrentSigner,
   detailDeclinedTitle,
   detailSigningSteps,
+  detailStepDescriptions,
   equipmentAnnexSummary,
   mockAdvanceActions,
   type ContractFileRow,
   type DetailAction,
 } from '@/lib/contract-detail';
+import { DisplayCode, useDisplayCode } from '@/components/DisplayCode';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
 import { shortUlid } from '@/lib/pg/ulid';
 import { evaluateRouting } from '@/lib/signature-routing';
+import { STATUS_ANNEX_TITLE, statusAnnexOf, statusAnnexSummary } from '@/lib/status-annex';
 import type { PrintedPractitioner } from '@/lib/practitioner-assignment/seats';
 import type { SignatureRecordDetail } from '@/lib/signature-records/types';
 import { signatureRecordCards } from '@/lib/signature-records/view';
@@ -92,6 +96,8 @@ function ContractDetail({ id }: { id: string }) {
   const { message } = AntApp.useApp();
   const router = useRouter();
   const [contract, setContract] = useState<LeaseContract | null>(null);
+  // 物件的顯示編碼（MIL-145）。合約只存物件 ID，編碼從物件讀；讀不到時不顯示這一列
+  const displayCode = useDisplayCode(contract?.property_id);
   const [relations, setRelations] = useState<ContractRelations | null>(null);
   const [signingProgress, setSigningProgress] = useState<SigningProgress | null>(null);
   const [events, setEvents] = useState<ContractEvent[]>([]);
@@ -170,15 +176,25 @@ function ContractDetail({ id }: { id: string }) {
   if (!contract) return null;
   const isDraft = contract.status === 'draft';
   // 簽名框上的席位名稱（區分管理人員與經紀人）依簽署序列；分流條件有問題時退回角色名稱
-  const routing = evaluateRouting(contract.fields.routing);
+  const routing = evaluateRouting(contract.fields.routing, contract.contract_type);
   const isSigning = isSigningStatus(contract.status);
   const signer = detailCurrentSigner(signingProgress);
-  const signingSteps = detailSigningSteps(contract.status, signingProgress, contract.contract_type);
+  // 步驟由實際的簽署序列推導：有簽署進度時用簽署人，沒有時用規則表算出的序列（MIL-72）
+  const signingSteps = detailSigningSteps(
+    contract.status,
+    signingProgress,
+    contract.contract_type,
+    routing.ok ? routing.seats : null
+  );
+  const stepDescriptions = detailStepDescriptions(contractSigningSteps(contract, signingProgress));
   const mockActions = mockAdvanceActions(contract.status, signingProgress);
   const signLink = signLinkState?.forStatus === contract.status ? signLinkState.link : null;
   const eventEntries = contractEventEntries(events);
   const fileRows = contractFileRows(contract, files, { mock: mockMode });
   const annexSummary = equipmentAnnexSummary(contract.fields);
+  // 現況確認附件（MIL-71）：草稿依分流條件顯示，送簽後只顯示凍結的內容，舊的包租合約沒有就不顯示
+  const statusAnnex = statusAnnexOf(contract.status, contract.contract_type, contract.fields);
+  const statusAnnexLines = statusAnnex ? statusAnnexSummary(statusAnnex) : [];
   const chain = contractChainNodes(contract, relations);
   const recordCards = signatureRecordCards(signatureRecords);
   const lapseNotices = lapseAlerts(signingLapses, contract.status);
@@ -297,6 +313,7 @@ function ContractDetail({ id }: { id: string }) {
       size="small"
       items={[
         { key: 'property', label: '物件', children: contract.fields.propertyName },
+        ...(displayCode === undefined ? [] : [{ key: 'display-code', label: '顯示編碼', children: <DisplayCode code={displayCode} /> }]),
         { key: 'address', label: '地址', children: contract.fields.propertyAddress },
         {
           key: 'landlord',
@@ -368,6 +385,21 @@ function ContractDetail({ id }: { id: string }) {
             '無附屬設備'
           ),
         },
+        ...(statusAnnexLines.length > 0
+          ? [
+              {
+                key: 'statusAnnex',
+                label: STATUS_ANNEX_TITLE,
+                children: (
+                  <Space orientation="vertical" size={2}>
+                    {statusAnnexLines.map((line) => (
+                      <Typography.Text key={line}>{line}</Typography.Text>
+                    ))}
+                  </Space>
+                ),
+              },
+            ]
+          : []),
         {
           key: 'extra',
           label: '其他約定事項',
@@ -463,7 +495,7 @@ function ContractDetail({ id }: { id: string }) {
             <Steps
               size="small"
               current={signingSteps.current}
-              items={signingSteps.titles.map((title) => ({ title }))}
+              items={signingSteps.titles.map((title, i) => ({ title, description: stepDescriptions[i] }))}
             />
           )}
           {isSigning && signer && (

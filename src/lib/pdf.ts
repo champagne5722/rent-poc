@@ -11,6 +11,8 @@ import { blank, buildContractClauses, usesEquipmentAnnex } from './contract-clau
 import { contractEquipmentAnnex } from './equipment';
 import type { PrintedPractitioner } from './practitioner-assignment/seats';
 import { PARTY_ONLY_SEATS, evaluateRouting, printOrder, type SeatView } from './signature-routing';
+import { drawStatusAnnex } from './pdf-status-annex';
+import type { StatusAnnex } from './status-annex';
 // 版面常數集中在 pdf-layout.ts：簽署區編輯器要用同一組數字推簽名欄的預設落點。
 import {
   ANNEX_CELL_PAD_X,
@@ -30,6 +32,8 @@ import {
   SIGN_HEADING_SIZE,
   SIGN_ROW_GAP_AFTER,
   SIGN_STAMP_BLANK,
+  SIGNATURE_BLOCK_HEADING,
+  type PdfPageMap,
 } from './pdf-layout';
 
 // 兩方租賃合約的稱謂從標籤對照表取（MIL-122）。
@@ -187,6 +191,14 @@ function drawEquipmentAnnex(w: Writer, rows: EquipmentAnnexRow[]): void {
   }
 }
 
+/** 規則列沒有指定附件頁簽章席位時（不該發生）用的席位，只提供稱謂文字。 */
+const UNSPECIFIED_PRACTITIONER_SEAT: SeatView = {
+  ruleId: '',
+  role: 'practitioner',
+  label: SIGNER_ROLE_LABELS.practitioner,
+  fullLabel: SIGNER_ROLE_LABELS.practitioner,
+};
+
 /** 依簽署序列取要印的席位，順序是印列順序（甲方、乙方、執業人員），與簽署順序無關。 */
 function printedSeats(fields: LeaseContractFields): SeatView[] {
   const evaluation = evaluateRouting(fields.routing);
@@ -214,7 +226,7 @@ export function practitionerBlockLines(seat: SeatView, practitioner: PrintedPrac
 export function drawSignatureBlock(w: Writer, seats: readonly SeatView[], linesOf: (seat: SeatView) => [string, string]): void {
   w.addPage();
   w.y -= SIGN_BLOCK_TOP_GAP;
-  w.text('立契約書人', SIGN_HEADING_SIZE, { gapAfter: SIGN_HEADING_GAP_AFTER });
+  w.text(SIGNATURE_BLOCK_HEADING, SIGN_HEADING_SIZE, { gapAfter: SIGN_HEADING_GAP_AFTER });
   for (const seat of seats) {
     for (const line of linesOf(seat)) {
       w.text(line, BODY_SIZE, { gapAfter: SIGN_ROW_GAP_AFTER });
@@ -243,13 +255,23 @@ function signatureBlockLines(
   return practitionerBlockLines(seat, practitioner);
 }
 
+/** 另存於合約欄位以外的內容。現況確認附件存在合約欄位，由呼叫端決定要不要印（statusAnnexOf）。 */
+export interface LeasePdfAttachments {
+  /** 要印的現況確認附件。null 或沒有帶代表不印附件頁。 */
+  statusAnnex?: StatusAnnex | null;
+}
+
 /**
+ * 產出租賃契約書，同時回報頁面地圖（簽名頁與現況確認附件頁的頁碼）。
+ * 頁序：本文、簽署欄、設備附件、現況確認附件。附件都排在簽署欄之後，所以不影響簽署欄落點。
+ *
  * @param practitioners 已指派的執業人員，以席位 rule_id 為鍵。沒有的席位留底線。兩方合約不需要。
  */
-export async function generateContractPdf(
+export async function generateContractPdfWithPages(
   fields: LeaseContractFields,
-  practitioners: Readonly<Record<string, PrintedPractitioner>> = {}
-): Promise<Uint8Array> {
+  practitioners: Readonly<Record<string, PrintedPractitioner>> = {},
+  attachments: LeasePdfAttachments = {}
+): Promise<{ pdf: Uint8Array; pages: PdfPageMap }> {
   const w = await createPdfWriter();
 
   w.center('房屋租賃契約書', 20, 10);
@@ -272,7 +294,9 @@ export async function generateContractPdf(
   // 實際簽名位置由房東在簽署區域編輯器拖放決定（見 docs/adr/0004）。
   // 這段的排版順序被 pdf-layout.ts 的 signatureBlockLayout() 重走一遍以推出預設落點，改這裡要一起改。
   // 一律另起一頁：選用條款勾幾條會改變條款區長度，簽署欄若跟著浮動，預設落點就對不上了。
-  drawSignatureBlock(w, printedSeats(fields), (seat) => signatureBlockLines(seat, fields, practitioners[seat.ruleId]));
+  const seats = printedSeats(fields);
+  drawSignatureBlock(w, seats, (seat) => signatureBlockLines(seat, fields, practitioners[seat.ruleId]));
+  const signaturePage = w.doc.getPageCount() - 1;
 
   // 設備附件頁排在簽署欄之後（內政部慣例：附件在本文與簽章之後），所以附件多長都不影響簽名框落點；
   // 沒有設備附件列就不產這一頁（主約條文同步寫「本房屋無附屬設備」）。
@@ -280,7 +304,29 @@ export async function generateContractPdf(
   const annex = usesEquipmentAnnex(fields) ? contractEquipmentAnnex(fields) : [];
   if (annex.length > 0) drawEquipmentAnnex(w, annex);
 
-  return w.doc.save();
+  // 現況確認附件（MIL-71）排在設備附件之後，獨立一頁。頁底的簽署欄是規則列要求在附件頁簽章的席位。
+  let statusAnnexPage: number | null = null;
+  if (attachments.statusAnnex) {
+    const signer = seats.find((seat) => seat.requiresStatusAnnex);
+    drawStatusAnnex(
+      w,
+      attachments.statusAnnex,
+      signer ? practitionerBlockLines(signer, practitioners[signer.ruleId]) : practitionerBlockLines(UNSPECIFIED_PRACTITIONER_SEAT, undefined)
+    );
+    statusAnnexPage = w.doc.getPageCount() - 1;
+  }
+
+  const pdf = await w.doc.save();
+  return { pdf, pages: { pageCount: w.doc.getPageCount(), signaturePage, statusAnnexPage } };
+}
+
+/** 不含頁面地圖的簡寫，租賃契約書的既有呼叫端用。 */
+export async function generateContractPdf(
+  fields: LeaseContractFields,
+  practitioners: Readonly<Record<string, PrintedPractitioner>> = {},
+  attachments: LeasePdfAttachments = {}
+): Promise<Uint8Array> {
+  return (await generateContractPdfWithPages(fields, practitioners, attachments)).pdf;
 }
 
 export const PDF_PAGE_SIZE = { width: PAGE_W, height: PAGE_H };

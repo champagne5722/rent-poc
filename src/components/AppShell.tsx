@@ -1,18 +1,20 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Button, Layout, Menu, Tooltip, Typography, theme } from 'antd';
+import { Badge, Button, Flex, Layout, Menu, Tooltip, Typography, theme } from 'antd';
 import {
   DashboardOutlined,
   HomeOutlined,
   FileTextOutlined,
   PlusOutlined,
+  BellOutlined,
   BgColorsOutlined,
   SwapOutlined,
   ProfileOutlined,
   SafetyCertificateOutlined,
   AuditOutlined,
   IdcardOutlined,
+  BankOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -32,13 +34,16 @@ import {
   type NavKey,
   type PersonalNavKey,
 } from '@/lib/nav';
+import { NOTIFICATIONS_CHANGED_EVENT } from '@/lib/notifications/client-events';
 
 const NAV_ICONS: Record<NavKey, React.ReactNode> = {
   workbench: <DashboardOutlined />,
   properties: <HomeOutlined />,
   cases: <ProfileOutlined />,
   contracts: <FileTextOutlined />,
+  'payment-accounts': <BankOutlined />,
   handovers: <SwapOutlined />,
+  notifications: <BellOutlined />,
   design: <BgColorsOutlined />,
 };
 
@@ -62,6 +67,29 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return <AdminShell pathname={pathname}>{children}</AdminShell>;
 }
 
+// 未讀數（MIL-120）：換頁時重新讀，通知頁標已讀後靠事件通知殼層更新。讀不到（沒登入、網路錯誤）就不顯示徽章
+function useUnreadCount(pathname: string): number {
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      fetch('/api/notifications/unread-count')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((body: { data?: { unread?: number } } | null) => {
+          if (!cancelled) setUnread(body?.data?.unread ?? 0);
+        })
+        .catch(() => undefined);
+    const reload = () => void load();
+    reload();
+    window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, reload);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, reload);
+    };
+  }, [pathname]);
+  return unread;
+}
+
 // 登入由 MIL-103 提供：未登入的請求在 proxy 與根 layout 就被導向 /login，到這裡的都有 session
 // 後台殼層＝深色 collapsible side menu（規格 §4）：antd Layout＋Sider＋Menu mode="inline"，不引入 ProLayout
 function AdminShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
@@ -69,6 +97,7 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
   const [collapsed, setCollapsed] = useState(false);
   const { token } = theme.useToken();
 
+  const unread = useUnreadCount(pathname);
   const selected = resolveNavKey(pathname) ?? resolveIdentityNavKey(pathname) ?? resolvePersonalNavKey(pathname);
   const currentLabel = resolvePageTitle(pathname);
 
@@ -129,11 +158,22 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
           mode="inline"
           selectedKeys={selected ? [selected] : []}
           items={[
-            ...NAV_ITEMS.map((item) => ({
-              key: item.key,
-              icon: NAV_ICONS[item.key],
-              label: <Link href={item.href}>{item.label}</Link>,
-            })),
+            ...NAV_ITEMS.map((item) => {
+              const badge = item.key === 'notifications' ? unread : 0;
+              return {
+                key: item.key,
+                // 收合時只剩 icon，用小圓點提示有未讀
+                icon: badge > 0 && collapsed ? <Badge dot offset={[2, -2]}>{NAV_ICONS[item.key]}</Badge> : NAV_ICONS[item.key],
+                label: (
+                  <Link href={item.href}>
+                    <Flex gap={8 /* xs */} align="center" component="span">
+                      {item.label}
+                      {badge > 0 && !collapsed && <Badge count={badge} overflowCount={99} size="small" aria-label={`${badge} 則未讀`} />}
+                    </Flex>
+                  </Link>
+                ),
+              };
+            }),
             ...identityNavItems(identityKind).map((item) => ({
               key: item.key,
               icon: IDENTITY_NAV_ICONS[item.key],

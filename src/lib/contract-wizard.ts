@@ -12,13 +12,16 @@ import {
   type EditableFieldValues,
 } from './contract-types';
 import type { MandateItem } from './mandate-schedule';
+import type { PdfPageMap } from './pdf-layout';
+import { statusAnnexSignatureMissingMessage } from './status-annex';
+import { buildSigningSteps } from './signing-steps';
 import { entityPartyRoles, partyRoleOfEntitySource, type PractitionerAssignmentInput } from './practitioner-assignment/seats';
 import {
   countFieldsBySeat,
   evaluateRouting,
   hasPractitionerSeat,
   reconcileSignatureFields,
-  signerChainLabels,
+  seatViewsMissingStatusAnnex,
   type MergedSeats,
   type SeatView,
 } from './signature-routing';
@@ -63,6 +66,11 @@ export interface WizardState {
   assignments?: readonly PractitionerAssignmentInput[];
   /** 委託標的清單（MIL-74）。委託管理合約的清單存在子表，沒有載入（undefined）時不檢查。 */
   mandateItems?: readonly MandateItem[];
+  /**
+   * PDF 的頁面地圖，由簽署區編輯器讀預覽 PDF 後回報（MIL-71）。有附件頁時，第③步檢查規則列要求的席位在附件頁有簽名框。
+   * 沒有帶（還沒開過編輯器）時 wizard 不判斷，由伺服器的送簽前檢查擋下。
+   */
+  pages?: PdfPageMap;
 }
 
 function attachmentsOf(state: WizardState): ContractAttachments {
@@ -106,12 +114,17 @@ function signatureBlockReason(
   fields: ContractFields,
   signatureFields: SignatureField[],
   contractType: ContractType,
+  pages?: PdfPageMap,
 ): string | null {
   const evaluation = evaluateRouting(fields.routing, contractType);
   if (!evaluation.ok) return evaluation.reason;
   const counts = countFieldsBySeat(signatureFields, evaluation.seats);
   const missing = counts.filter((c) => c.count === 0);
-  if (missing.length === 0) return null;
+  if (missing.length === 0) {
+    // 每個席位都有框之後，再看規則列要求在現況確認附件頁簽章的席位（MIL-71）
+    const annexMissing = pages ? seatViewsMissingStatusAnnex(evaluation.seats, signatureFields, pages.statusAnnexPage) : [];
+    return annexMissing.length > 0 ? statusAnnexSignatureMissingMessage(annexMissing.map((s) => s.fullLabel).join('、')) : null;
+  }
   if (isPartiesOnly(evaluation.seats)) {
     const count = (role: ContractPartyRole) => counts.find((c) => c.seat.role === role)?.count ?? 0;
     return `請為甲乙雙方各設定至少一個簽名框（目前甲方 ${count('party_a')} 個、乙方 ${count('party_b')} 個）`;
@@ -165,7 +178,7 @@ export function nextStepBlockReason(stepIndex: number, state: WizardState): stri
   if (stepIndex === STEP_FIELDS) {
     return fieldsBlockReason(contractType, state.fields, state.assignments, attachmentsOf(state));
   }
-  if (stepIndex === STEP_SIGNATURE) return signatureBlockReason(state.fields, state.signatureFields, contractType);
+  if (stepIndex === STEP_SIGNATURE) return signatureBlockReason(state.fields, state.signatureFields, contractType, state.pages);
   return null;
 }
 
@@ -211,7 +224,7 @@ export function sendBlockReasons(state: WizardState): string[] {
     reasons.push(evaluation.reason);
     return reasons;
   }
-  const signatureReason = signatureBlockReason(state.fields, state.signatureFields, contractType);
+  const signatureReason = signatureBlockReason(state.fields, state.signatureFields, contractType, state.pages);
   if (signatureReason) reasons.push(signatureReason);
   reasons.push(...assignmentReasons(state.fields, state.assignments ?? [], contractType));
   return reasons;
@@ -233,21 +246,55 @@ export function resumeStepIndex(contract: Contract, attachments?: ContractAttach
   return STEP_CONFIRM;
 }
 
-/** 確認頁的簽署順序說明。乙方先簽、甲方後簽的序列沿用原文字，其他序列由席位產生。 */
+// 確認頁的簽署序列。草稿由規則表算出，兼任合併的席位併成一位簽署人。
+// 分流條件無效時沒有序列，退回兩方（乙方先簽），確認頁到不了這裡，只是不讓說明空白。
+function confirmSequence(
+  fields: ContractFields,
+  contractType: ContractType,
+  merges: ReadonlyArray<Pick<MergedSeats, 'practitionerRuleId' | 'partyRuleId'>>,
+) {
+  const evaluation = evaluateRouting(fields.routing, contractType);
+  return buildSigningSteps({
+    status: 'draft',
+    seats: evaluation.ok ? evaluation.seats : null,
+    merges: evaluation.ok ? merges : [],
+    contractType,
+  }).steps;
+}
+
+function isPartiesOnlySequence(steps: readonly { role: string }[]): boolean {
+  return steps.length === 2 && steps.every((step) => step.role !== 'practitioner');
+}
+
+/**
+ * 確認頁的簽署順序說明，由簽署序列產生（MIL-72）。
+ * 只有甲乙雙方時說誰先簽；有執業人員時依序列出簽署人，兼任的簽署人只列一次（MIL-76）。
+ * 自管租賃合約的序列是乙方、甲方，產生的文字與原本寫死的「乙方先簽」說明相同。
+ */
 export function signingSequenceNotice(
   fields: ContractFields,
   contractType: ContractType = DEFAULT_CONTRACT_TYPE,
   /** 同一人兼任而合併的席位。合併後列出實際的簽署人（MIL-76）。 */
   merges: ReadonlyArray<Pick<MergedSeats, 'practitionerRuleId' | 'partyRuleId'>> = [],
 ): string {
-  const evaluation = evaluateRouting(fields.routing, contractType);
-  const partiesOnlyNotice = contractTypeDefinition(contractType).partiesOnlyNotice;
-  // 分流條件無效時沒有序列可說明，沿用類型定義的兩方說明
-  if (!evaluation.ok) return partiesOnlyNotice ?? '';
-  if (partiesOnlyNotice && isPartiesOnly(evaluation.seats)) return partiesOnlyNotice;
-  const order = signerChainLabels(evaluation.seats, merges).join('、');
+  const steps = confirmSequence(fields, contractType, merges);
+  if (isPartiesOnlySequence(steps)) {
+    const [first, second] = steps;
+    return `送簽後由${first.fullLabel}先簽，${first.label}完成後才輪到${second.fullLabel}簽署，雙方都簽完合約才成立。`;
+  }
+  const order = steps.map((step) => step.fullLabel).join('、');
   const onlyOnce = merges.length > 0 ? '兼任者只簽一次，' : '';
   return `送簽後依序簽署：${order}。每位簽完才輪到下一位，${onlyOnce}全部簽完合約才成立。`;
+}
+
+/** 確認頁簽署順序說明的標題：兩方是「乙方先簽」，其餘是「依序簽署」。 */
+export function signingSequenceTitle(
+  fields: ContractFields,
+  contractType: ContractType = DEFAULT_CONTRACT_TYPE,
+  merges: ReadonlyArray<Pick<MergedSeats, 'practitionerRuleId' | 'partyRuleId'>> = [],
+): string {
+  const steps = confirmSequence(fields, contractType, merges);
+  return isPartiesOnlySequence(steps) ? `${steps[0].label}先簽` : '依序簽署';
 }
 
 export interface RoutingChange {
