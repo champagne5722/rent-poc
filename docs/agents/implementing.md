@@ -93,10 +93,13 @@ docker stop rentpoc-pg-verify
 
 ## 新增東西時的登記位置
 
-這裡只放指標。登記的細節看各 README，檔案搬動後以 README 為準。
+這裡只放指標。步驟寫在各彙總檔的檔頭，以檔頭為準。
 
-- 新的 org 表或 registry 表：登記到 `src/lib/pg/rls-cases.ts`。檔頭說明有清單名稱。缺登記時 `rls-penetration.test.ts` 會失敗。
-- 新的動作：加進 `src/lib/access/` 的動作表與矩陣測試。見 `src/lib/access/README.md`。
+登記檔已拆成每個模組一個檔。新增自己模組的檔，再在彙總檔加一行 import 與一行清單。既有模組的內容改自己模組的檔，不用動彙總檔。
+
+- 新的 org 表或 registry 表：新增 `src/lib/pg/rls-cases/<模組>.ts`，在彙總檔 `src/lib/pg/rls-cases.ts` 登記。缺登記時 `rls-penetration.test.ts` 會失敗。
+- 新的動作：新增 `src/lib/access/actions/<模組>.ts`，在彙總檔 `src/lib/access/actions.ts` 登記，再在 `decide-access.test.ts` 加預期列。細節見 `src/lib/access/README.md`。
+- 新的選單項目：新增 `src/lib/nav/<模組>.ts`，在彙總檔 `src/lib/nav.ts` 登記。新的 key 要在 `src/components/AppShell.tsx` 的 `NAV_ICONS` 補 icon。
 - 新的 route：在 `inOrgTx` 開頭呼叫 `authorize()`。見 `src/lib/authorize/README.md`。
 - 案件範圍的寫入：用 `withCaseMemberTx`。見 `src/lib/cases/README.md`。
 - 新的 migration：用派工單指定的編號區段，不改已存在的 migration 檔。
