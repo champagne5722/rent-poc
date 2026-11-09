@@ -155,6 +155,19 @@ export const ORG_TABLE_CASES: Record<string, OrgTableCase> = {
       return id;
     },
   },
+  // 收款帳戶（MIL-118）：可改（停用、改名），不可刪（觸發器擋下自己組織的列，別的組織的列 RLS 讓它刪不到）。
+  // 持有人是 other，不需要 party。現金收取帳戶的唯一鍵含 org_id，兩個組織用同一個持有人各寫一列都成功。
+  'org.payment_accounts': {
+    async seed(tx, orgId) {
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.payment_accounts (id, org_id, name, holder_kind, holder_name, account_kind)
+         VALUES ($1, $2, '滲透測試現金收取', 'other', '滲透測試持有人', 'cash')`,
+        [id, orgId],
+      );
+      return id;
+    },
+  },
   // 鏡像帳（MIL-117）：只增不改。直接 INSERT 而不用 ledger 模組，因為探測 4 要在 A 的脈絡寫入 B 的 org_id。
   // 業務鍵（案件、事件類型、事件 ID）固定：兩個組織寫同一組業務鍵都要成功。
   'org.ledger_journals': {
@@ -227,6 +240,10 @@ export const CONTROL_TABLE_EXCEPTIONS: Record<string, ControlTableException> = {
   'control.sign_task_routes': {
     reason: 'webhook 沒有組織脈絡，靠它由服務商任務編號查出 org_id（ADR-0012 決議 5）。與簽署任務同交易寫入，寫入後不變',
     appRw: ['SELECT', 'INSERT'],
+  },
+  'control.deposit_holder_rules': {
+    reason: '押金帳戶規則，平台層級，組織不得覆寫，只由 migration 改列。MIL-118，ADR-0014 決議 13',
+    appRw: ['SELECT'],
   },
 };
 
