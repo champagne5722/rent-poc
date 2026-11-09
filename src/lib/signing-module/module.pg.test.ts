@@ -146,7 +146,8 @@ describe.skipIf(!adminUrl)('簽署模組（真實 PostgreSQL）', () => {
     const voiding = signing.voidTask(subject);
     // 撤回卡在服務商呼叫時，完成事件先到
     await vi.waitFor(async () => expect((await inA((tx) => tx.query(`SELECT 1 FROM org.outbox WHERE status = 'sending'`))).rows).toHaveLength(1));
-    await signing.ingestWebhook('{}', new Headers());
+    // body 不能與前面的測試相同：inbox 以 body 雜湊去重，相同的 body 會被當成重送而略過
+    await signing.ingestWebhook(JSON.stringify({ action: 'completed', case: 'void-vs-completed' }), new Headers());
     release();
 
     await expect(voiding).rejects.toMatchObject({ status: 409 });
