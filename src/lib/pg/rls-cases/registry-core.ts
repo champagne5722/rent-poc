@@ -1,4 +1,5 @@
 // registry 的產權錨點、租賃單位、編碼參照表與相關函式（MIL-81、143、145）。
+// 這些函式處理產權資料，不回傳執業人員個資，disclosure 一律登記為「不揭露」（MIL-165）。
 import { newUlid } from '../ulid';
 import type { DefinerOnlyTable, RegistryFunctionCase, RegistryTableCase, RlsRegistration } from './types';
 
@@ -13,29 +14,35 @@ const registryFunctions: Record<string, RegistryFunctionCase> = {
   'registry.create_pending_anchor': {
     probe: null,
     reason: '呼叫端自己給新 ID，只建不讀，沒有可探測的目標',
+    disclosure: { kind: 'none', reason: '寫入函式，只回呼叫端自己給的錨點 ID 與單位 ID' },
   },
   'registry.assign_anchor_key': {
     probe: (tx, { anchorId }) =>
       tx.query('SELECT registry.assign_anchor_key($1, $2, $3, $4, $5, NULL)', [anchorId, 'A', '01', '0001', '1']),
     reason: '以錨點 ID 補建號',
+    disclosure: { kind: 'none', reason: '寫入函式，回傳錨點鍵字串。產權資料，與執業人員無關' },
   },
   'registry.get_anchors_for_units': {
     probe: async (tx, { unitId }) =>
       (await tx.query('SELECT * FROM registry.get_anchors_for_units($1::text[])', [[unitId]])).rows,
     reason: '以單位 ID 讀錨點',
+    disclosure: { kind: 'none', reason: '回傳呼叫者組織自己的產權錨點（地段、建號、座標），隔離由上面的 probe 驗證。不含執業人員資料' },
   },
   // MIL-145
   'registry.create_sublet_unit': {
     probe: (tx, { unitId }) => tx.query('SELECT * FROM registry.create_sublet_unit($1, $2, $3, NULL)', [unitId, newUlid(), '301']),
     reason: '以來源單位 ID 在同一錨點下新增分租單位，來源不是呼叫者組織的就失敗',
+    disclosure: { kind: 'none', reason: '寫入函式，回傳錨點 ID、單位 ID 與後綴' },
   },
   'registry.get_unit_details': {
     probe: async (tx, { unitId }) => (await tx.query('SELECT * FROM registry.get_unit_details($1::text[])', [[unitId]])).rows,
     reason: '以單位 ID 讀單位資料與顯示編碼要用的編碼',
+    disclosure: { kind: 'none', reason: '回傳呼叫者組織自己的租賃單位資料，隔離由上面的 probe 驗證。不含執業人員資料' },
   },
   'registry.get_sibling_units': {
     probe: async (tx, { unitId }) => (await tx.query('SELECT * FROM registry.get_sibling_units($1)', [unitId])).rows,
     reason: '以單位 ID 讀同一錨點下呼叫者組織的單位',
+    disclosure: { kind: 'none', reason: '回傳呼叫者組織自己的同錨點單位，隔離由上面的 probe 驗證。不含執業人員資料' },
   },
 };
 

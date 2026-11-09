@@ -15,7 +15,7 @@ MIL-111。依據：ADR-0017（三態、三層、專任四個判定點、核對�
 |---|---|---|
 | `my_practitioner()` | 組織成員 | 自己的證書，以及目前組織的任職，含補件原因 |
 | `org_employments()` | 組織成員 | 目前執業主體的任職清單 |
-| `employment_exclusivity_facts(key)` | 組織成員 | 同一證號的任職事實，只標 `self` 或 `other`，沒有別家的 ID |
+| `employment_exclusivity_facts(key)` | 組織成員 | 同一證號的任職事實，只標 `self` 或 `other`，沒有別家的 ID。`other` 只回已驗證的任職（0071，MIL-165） |
 | `submit_practitioner(...)` | 組織成員 | 本人登錄或補件證書，排 `certificate` 項目 |
 | `create_employment(...)` | 組織成員 | 本人建立待驗證任職，排 `employment` 項目 |
 | `submit_consent(...)` | 組織成員 | 本人送所屬業者同意書，排 `consent` 項目 |
