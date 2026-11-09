@@ -4,6 +4,7 @@ import { pgDriver } from '../pg/drivers';
 import { fromPgClient } from '../pg/executor';
 import { migrate } from '../pg/migrate';
 import { withClusterLock } from '../pg/pg-test-support';
+import { seedCases, testCaseId } from '../pg/test-cases';
 import { MIGRATIONS_DIR } from '../pg/test-harness';
 import { newUlid } from '../pg/ulid';
 import { createWithTx, type OrgTx, type WithTx } from '../pg/with-tx';
@@ -29,11 +30,14 @@ describe.skipIf(!adminUrl)('鏡像帳：真實 PostgreSQL', () => {
   let withTx: WithTx;
   const orgA = newUlid();
   const orgB = newUlid();
+  // 鏡像帳的 case_id 掛了 org.cases 的複合外鍵（MIL-123）。org.cases.id 全域唯一，所以兩個組織各有自己的案件
+  const CASE_A = testCaseId('CASEA1');
+  const CASE_B = testCaseId('CASEB1');
 
   const receipt = (over: Record<string, unknown> = {}) => ({
     eventType: 'receipt_confirmed',
     eventId: newUlid(),
-    caseId: 'CASE1',
+    caseId: CASE_A,
     effectiveDate: '2026-11-08',
     payload: { paymentAccountId: 'PA1', deposit: 60000, rent: 30000 },
     ...over,
@@ -54,6 +58,8 @@ describe.skipIf(!adminUrl)('鏡像帳：真實 PostgreSQL', () => {
     await admin.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, 'A', 'owner'), ($2, 'B', 'owner')`, [orgA, orgB]);
     pool = new Pool({ connectionString: urlFor('app_rw', 'rw-test', dbName), max: 8 });
     withTx = createWithTx(pgDriver(pool));
+    await seedCases(withTx, [orgA], [CASE_A]);
+    await seedCases(withTx, [orgB], [CASE_B]);
   });
   afterAll(async () => {
     await pool.end();
@@ -95,11 +101,11 @@ describe.skipIf(!adminUrl)('鏡像帳：真實 PostgreSQL', () => {
   it('不平衡分錄在提交時被擋下；提交前切換組織脈絡也被擋下', async () => {
     const insertSql = (orgId: string, journalId: string, credit: number) => [
       `INSERT INTO org.ledger_journals (id, org_id, case_id, business_event_type, business_event_id, effective_date)
-       VALUES ($1, $2, 'CASE1', 'receipt_confirmed', $3, '2026-11-08')`,
-      [journalId, orgId, newUlid()],
+       VALUES ($1, $2, $4, 'receipt_confirmed', $3, '2026-11-08')`,
+      [journalId, orgId, newUlid(), CASE_A],
       `INSERT INTO org.ledger_entries (id, org_id, case_id, journal_id, line_no, account, debit, credit) VALUES
-         ($1, $2, 'CASE1', $3, 1, 'asset.bank.PA1', 100, 0), ($4, $2, 'CASE1', $3, 2, 'liability.deposit.CASE1', 0, ${credit})`,
-      [newUlid(), orgId, journalId, newUlid()],
+         ($1, $2, $5, $3, 1, 'asset.bank.PA1', 100, 0), ($4, $2, $5, $3, 2, $6, 0, ${credit})`,
+      [newUlid(), orgId, journalId, newUlid(), CASE_A, `liability.deposit.${CASE_A}`],
     ] as const;
     const run = async (credit: number, switchTo?: string) =>
       inOrg(orgA, async (tx) => {
@@ -142,11 +148,13 @@ describe.skipIf(!adminUrl)('鏡像帳：真實 PostgreSQL', () => {
   it('併發：不同組織同時寫入互不影響，各自只看得到自己的分錄', async () => {
     await Promise.all([
       ...Array.from({ length: 5 }, () => inOrg(orgA, (tx) => postJournal(tx, receipt()))),
-      ...Array.from({ length: 5 }, () => inOrg(orgB, (tx) => postJournal(tx, receipt()))),
+      ...Array.from({ length: 5 }, () => inOrg(orgB, (tx) => postJournal(tx, receipt({ caseId: CASE_B })))),
     ]);
-    const countFor = async (orgId: string) =>
-      (await inOrg(orgId, (tx) => tx.query<{ n: number }>('SELECT count(*)::int AS n FROM org.ledger_journals WHERE case_id = $1', ['CASE1']))).rows[0].n;
-    expect(await countFor(orgB)).toBe(5);
-    expect(await countFor(orgA)).toBeGreaterThanOrEqual(5);
+    const countFor = async (orgId: string, caseId: string) =>
+      (await inOrg(orgId, (tx) => tx.query<{ n: number }>('SELECT count(*)::int AS n FROM org.ledger_journals WHERE case_id = $1', [caseId]))).rows[0].n;
+    expect(await countFor(orgB, CASE_B)).toBe(5);
+    expect(await countFor(orgA, CASE_A)).toBeGreaterThanOrEqual(5);
+    // 看不到別的組織的案件：A 的脈絡查 B 的案件是 0 列
+    expect(await countFor(orgA, CASE_B)).toBe(0);
   });
 });

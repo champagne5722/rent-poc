@@ -2,6 +2,7 @@ import type { PGliteInterface } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pgliteDriver } from '../pg/drivers';
 import { asRole, createTestDb, type TestDb } from '../pg/test-harness';
+import { seedCases, testCaseId } from '../pg/test-cases';
 import { newUlid } from '../pg/ulid';
 import { createWithTx, type OrgTx, type WithTx } from '../pg/with-tx';
 import { naturalBalance } from './accounts';
@@ -29,7 +30,8 @@ function makeRng(seed: number) {
   };
 }
 
-const CASES = ['CASE_A', 'CASE_B', 'CASE_C'];
+// 案件掛了複合外鍵（MIL-123），每個種子建自己的三個案件（org.cases.id 全域唯一）
+const CASE_LABELS = ['A', 'B', 'C'];
 const PAY = ['PAY_1', 'PAY_2', 'PAY_3'];
 const NUM_SEEDS = 30;
 const EVENTS_PER_SEED = 50;
@@ -66,6 +68,8 @@ describe('性質測試：隨機事件序列寫進資料庫', () => {
       await db.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, $2, 'owner')`, [orgId, `P${seed}`]);
     });
     const inOrg = <T>(fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId }, fn);
+    const CASES = CASE_LABELS.map((label) => testCaseId(`S${seed}${label}`));
+    await seedCases(withTx, [orgId], CASES);
 
     const applied: Applied[] = [];
     const expected: Delta = new Map();

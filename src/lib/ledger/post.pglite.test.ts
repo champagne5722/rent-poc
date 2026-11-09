@@ -2,6 +2,7 @@ import type { PGliteInterface } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pgliteDriver } from '../pg/drivers';
 import { asRole, createTestDb, type TestDb } from '../pg/test-harness';
+import { seedCases, testCaseId } from '../pg/test-cases';
 import { newUlid } from '../pg/ulid';
 import { createWithTx, type OrgTx, type WithTx } from '../pg/with-tx';
 import { depositAccount, bankAccount, rentIncomeAccount } from './accounts';
@@ -14,7 +15,10 @@ import { defineLedgerEvent, extendLedgerRegistry } from './registry';
 // 每個測試 fresh() 取得連線，一律 SET ROLE app_rw，控制組確認 current_user。
 // 查表只用在 ADR 明列要驗證的儲存結果（借貸、組織、原因）。其餘行為從回傳值與後續呼叫觀察。
 
-const CASE = 'CASE1';
+// 鏡像帳的 case_id 掛了 org.cases 的複合外鍵（MIL-123）。org.cases.id 全域唯一，所以組織 B 用自己的案件
+const CASE = testCaseId('CASE1');
+const CASE2 = testCaseId('CASE2');
+const CASE_OF_B = testCaseId('CASEB1');
 const receipt = (over: Record<string, unknown> = {}) => ({
   eventType: 'receipt_confirmed',
   eventId: newUlid(),
@@ -42,6 +46,8 @@ describe('postJournal 與 reverseJournal', () => {
     await asRole(db, 'app_owner', async () => {
       await db.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, 'A', 'owner'), ($2, 'B', 'owner')`, [orgA, orgB]);
     });
+    await seedCases(withTx, [orgA], [CASE, CASE2]);
+    await seedCases(withTx, [orgB], [CASE_OF_B]);
   });
 
   const inOrg = <T>(orgId: string, fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId }, fn);
@@ -97,7 +103,7 @@ describe('postJournal 與 reverseJournal', () => {
 
     it('別的組織用相同的業務事件 ID 可以寫入', async () => {
       await inOrg(orgA, (tx) => postJournal(tx, receipt({ eventId: 'SAME' })));
-      const other = await inOrg(orgB, (tx) => postJournal(tx, receipt({ eventId: 'SAME' })));
+      const other = await inOrg(orgB, (tx) => postJournal(tx, receipt({ eventId: 'SAME', caseId: CASE_OF_B })));
       expect(other.ok).toBe(true);
     });
 
@@ -205,7 +211,7 @@ describe('postJournal 與 reverseJournal', () => {
 
   describe('reverseJournal', () => {
     const post = async (orgId = orgA) => {
-      const result = await inOrg(orgId, (tx) => postJournal(tx, receipt()));
+      const result = await inOrg(orgId, (tx) => postJournal(tx, receipt({ caseId: orgId === orgB ? CASE_OF_B : CASE })));
       if (!result.ok) throw new Error('測試資料寫入失敗');
       return result.value;
     };
@@ -265,7 +271,7 @@ describe('postJournal 與 reverseJournal', () => {
 
     it('呼叫端帶了 caseId 時，必須與原分錄的案件相同', async () => {
       const original = await post();
-      const wrong = await reverse(orgA, { journalId: original.journalId, caseId: 'CASE2' });
+      const wrong = await reverse(orgA, { journalId: original.journalId, caseId: CASE2 });
       expect(wrong.ok).toBe(false);
       if (!wrong.ok) expect(wrong.errors.map((e) => e.code)).toEqual(['case_mismatch']);
       expect((await reverse(orgA, { journalId: original.journalId, caseId: CASE })).ok).toBe(true);

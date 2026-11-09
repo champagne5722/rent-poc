@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { bankAccount, depositAccount, rentIncomeAccount } from '../ledger';
 import { pgliteDriver } from './drivers';
 import { asRole, createTestDb, type TestDb } from './test-harness';
+import { seedCases, testCaseId } from './test-cases';
 import { newUlid } from './ulid';
 import { createWithTx, type OrgTx, type WithTx } from './with-tx';
 
@@ -12,9 +13,14 @@ import { createWithTx, type OrgTx, type WithTx } from './with-tx';
 // 情境 15（承租人讀自己案件的列）的轉換：案件成員讀取政策在 MIL-123，這裡只測沒有組織脈絡時讀到 0 列。
 // 每次 fresh() 都重新 SET ROLE app_rw，beforeEach 的控制組確認 current_user，避免 RLS 測試假通過（ADR-0012 Action Item 5）。
 
+// 鏡像帳的 case_id 掛了 org.cases 的複合外鍵（MIL-123）：兩個組織各有 CASE1、CASE2 兩個案件
+const CASE1 = testCaseId('CASE1');
+const CASE2 = testCaseId('CASE2');
+// org.cases.id 是全域唯一，所以組織 B 用自己的案件
+const CASE_OF_B = testCaseId('CASEB1');
 const BANK = bankAccount('PA1');
-const DEPOSIT = depositAccount('CASE1');
-const RENT = rentIncomeAccount('CASE1');
+const DEPOSIT = depositAccount(CASE1);
+const RENT = rentIncomeAccount(CASE1);
 
 interface Line {
   account: string;
@@ -59,8 +65,12 @@ describe('鏡像帳的表與觸發器', () => {
     await asRole(db, 'app_owner', async () => {
       await db.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, 'A', 'owner'), ($2, 'B', 'owner')`, [orgA, orgB]);
     });
+    await seedCases(withTx, [orgA], [CASE1, CASE2]);
+    await seedCases(withTx, [orgB], [CASE_OF_B]);
   });
 
+  /** 沒指定案件時，每個組織寫自己的案件。 */
+  const defaultCase = (orgId: string) => (orgId === orgB ? CASE_OF_B : CASE1);
   const inOrg = <T>(orgId: string, fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId }, fn);
 
   async function insertJournalOnly(tx: OrgTx, spec: JournalSpec): Promise<string> {
@@ -72,7 +82,7 @@ describe('鏡像帳的表與觸發器', () => {
       [
         id,
         spec.orgId,
-        spec.caseId ?? 'CASE1',
+        spec.caseId ?? defaultCase(spec.orgId),
         spec.eventType ?? (spec.reverses ? 'reversal' : 'receipt_confirmed'),
         spec.eventId ?? newUlid(),
         spec.reverses ?? null,
@@ -96,7 +106,7 @@ describe('鏡像帳的表與觸發器', () => {
 
   async function post(tx: OrgTx, spec: JournalSpec): Promise<string> {
     const id = await insertJournalOnly(tx, spec);
-    await insertEntries(tx, spec.orgId, spec.entryCaseId ?? spec.caseId ?? 'CASE1', id, spec.lines);
+    await insertEntries(tx, spec.orgId, spec.entryCaseId ?? spec.caseId ?? defaultCase(spec.orgId), id, spec.lines);
     return id;
   }
 
@@ -188,7 +198,7 @@ describe('鏡像帳的表與觸發器', () => {
     it('被 posted_txid 擋下', async () => {
       const id = await postInOrg({ orgId: orgA, lines: balanced() });
       await expect(
-        inOrg(orgA, (tx) => insertEntries(tx, orgA, 'CASE1', id, [{ account: BANK, debit: 5 }, { account: DEPOSIT, credit: 5 }], 3)),
+        inOrg(orgA, (tx) => insertEntries(tx, orgA, CASE1, id, [{ account: BANK, debit: 5 }, { account: DEPOSIT, credit: 5 }], 3)),
       ).rejects.toThrow(/不同交易/);
       expect(await count('ledger_entries')).toBe(2);
     });
@@ -197,8 +207,8 @@ describe('鏡像帳的表與觸發器', () => {
       await expect(
         inOrg(orgA, async (tx) => {
           const id = await insertJournalOnly(tx, { orgId: orgA, lines: [] });
-          await insertEntries(tx, orgA, 'CASE1', id, [{ account: BANK, debit: 7 }]);
-          await insertEntries(tx, orgA, 'CASE1', id, [{ account: DEPOSIT, credit: 7 }], 2);
+          await insertEntries(tx, orgA, CASE1, id, [{ account: BANK, debit: 7 }]);
+          await insertEntries(tx, orgA, CASE1, id, [{ account: DEPOSIT, credit: 7 }], 2);
         }),
       ).resolves.toBeUndefined();
     });
@@ -208,14 +218,14 @@ describe('鏡像帳的表與觸發器', () => {
         const journalId = newUlid();
         await tx.query(
           `INSERT INTO org.ledger_journals (id, org_id, case_id, business_event_type, business_event_id, effective_date, posted_txid)
-           VALUES ($1, $2, 'CASE1', 'receipt_confirmed', $3, '2026-11-08', 1)`,
-          [journalId, orgA, newUlid()],
+           VALUES ($1, $2, $4, 'receipt_confirmed', $3, '2026-11-08', 1)`,
+          [journalId, orgA, newUlid(), CASE1],
         );
-        await insertEntries(tx, orgA, 'CASE1', journalId, balanced());
+        await insertEntries(tx, orgA, CASE1, journalId, balanced());
         return journalId;
       });
       await expect(
-        inOrg(orgA, (tx) => insertEntries(tx, orgA, 'CASE1', id, [{ account: BANK, debit: 5 }, { account: DEPOSIT, credit: 5 }], 3)),
+        inOrg(orgA, (tx) => insertEntries(tx, orgA, CASE1, id, [{ account: BANK, debit: 5 }, { account: DEPOSIT, credit: 5 }], 3)),
       ).rejects.toThrow(/不同交易/);
     });
   });
@@ -327,7 +337,7 @@ describe('鏡像帳的表與觸發器', () => {
         { account: RENT, credit: 100 },
         { account: depositAccount('CASE9'), credit: 200 },
       ];
-      const original = await postInOrg({ orgId: orgA, caseId: 'CASE1', lines: four });
+      const original = await postInOrg({ orgId: orgA, caseId: CASE1, lines: four });
       // 只反轉第二與第四列：自己平衡，也完全落在「原分錄相反明細」之內，只有反方向比對抓得到少了兩列
       await expect(
         postInOrg(reversalOf(orgA, original, [{ account: DEPOSIT, credit: 200 }, { account: depositAccount('CASE9'), debit: 200 }])),
@@ -354,9 +364,9 @@ describe('鏡像帳的表與觸發器', () => {
     });
 
     it('沖銷的案件必須與原分錄相同', async () => {
-      const original = await postInOrg({ orgId: orgA, caseId: 'CASE1', lines: balanced() });
+      const original = await postInOrg({ orgId: orgA, caseId: CASE1, lines: balanced() });
       await expect(
-        postInOrg(reversalOf(orgA, original, opposite, { caseId: 'CASE2', entryCaseId: 'CASE2' })),
+        postInOrg(reversalOf(orgA, original, opposite, { caseId: CASE2, entryCaseId: CASE2 })),
       ).rejects.toThrow(/案件/);
     });
 
@@ -385,12 +395,12 @@ describe('鏡像帳的表與觸發器', () => {
       const bJournal = await postInOrg({ orgId: orgB, lines: balanced() });
       // 在 B 的脈絡下追加，org_id 寫 A：RLS 擋；在 A 的脈絡下寫 A 的 org_id 引用 B 的分錄：外鍵擋
       await expect(
-        inOrg(orgA, (tx) => insertEntries(tx, orgA, 'CASE1', bJournal, [{ account: BANK, debit: 1 }, { account: DEPOSIT, credit: 1 }])),
+        inOrg(orgA, (tx) => insertEntries(tx, orgA, CASE1, bJournal, [{ account: BANK, debit: 1 }, { account: DEPOSIT, credit: 1 }])),
       ).rejects.toThrow(/不同交易|foreign key|violates/i);
     });
 
     it('明細的案件與分錄的案件不同：複合外鍵擋下', async () => {
-      await expect(postInOrg({ orgId: orgA, caseId: 'CASE1', entryCaseId: 'CASE2', lines: balanced() })).rejects.toThrow(
+      await expect(postInOrg({ orgId: orgA, caseId: CASE1, entryCaseId: CASE2, lines: balanced() })).rejects.toThrow(
         /foreign key|violates/i,
       );
     });
@@ -482,8 +492,8 @@ describe('鏡像帳的表與觸發器', () => {
           const id = await insertJournalOnly(tx, { orgId: orgA, lines: [] });
           await tx.query(
             `INSERT INTO org.ledger_entries (id, org_id, case_id, journal_id, line_no, account, debit, credit)
-             VALUES ($1, $2, 'CASE1', $3, 1, $4, 9007199254740992, 0)`,
-            [newUlid(), orgA, id, BANK],
+             VALUES ($1, $2, $5, $3, 1, $4, 9007199254740992, 0)`,
+            [newUlid(), orgA, id, BANK, CASE1],
           );
         }),
       ).rejects.toThrow(/check constraint/i);
@@ -502,8 +512,8 @@ describe('鏡像帳的表與觸發器', () => {
       await expect(
         inOrg(orgA, async (tx) => {
           const id = await insertJournalOnly(tx, { orgId: orgA, lines: [] });
-          await insertEntries(tx, orgA, 'CASE1', id, [{ account: BANK, debit: 1 }], 1);
-          await insertEntries(tx, orgA, 'CASE1', id, [{ account: DEPOSIT, credit: 1 }], 1);
+          await insertEntries(tx, orgA, CASE1, id, [{ account: BANK, debit: 1 }], 1);
+          await insertEntries(tx, orgA, CASE1, id, [{ account: DEPOSIT, credit: 1 }], 1);
         }),
       ).rejects.toThrow(/unique|duplicate/i);
     });

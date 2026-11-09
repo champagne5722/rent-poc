@@ -159,10 +159,11 @@ describe('案件表的 schema 與純函式模組的常數一致', () => {
     expect(missing, '這些表有 case_id 但沒有登記成員可讀的關係，請到 src/lib/pg/rls-cases.ts 的 CASE_SCOPED_READS 補').toEqual([]);
   });
 
-  it('CASE_SCOPED_READS 只列出存在的表', async () => {
+  // view 也要登記（MIL-123 的 org.deposit_balances），所以比對時一併算入 view
+  it('CASE_SCOPED_READS 只列出存在的表或 view', async () => {
     const { rows } = await db.query<{ name: string }>(
       `SELECT n.nspname || '.' || c.relname AS name FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'org' AND c.relkind IN ('r', 'p')`,
+        WHERE n.nspname = 'org' AND c.relkind IN ('r', 'p', 'v')`,
     );
     const existing = new Set(rows.map((r) => r.name));
     expect(Object.keys(CASE_SCOPED_READS).filter((t) => !existing.has(t))).toEqual([]);
@@ -247,6 +248,29 @@ describe('成員讀取矩陣：每種關係讀得到哪些表', () => {
       await tx.query(
         `INSERT INTO org.contract_events (id, org_id, contract_id, type, actor) VALUES ($1, $2, $3, 'created', 'landlord')`,
         [newUlid(), host, contractId],
+      );
+      // 接上案件的表（MIL-123）：只種 caseId，otherCaseId 沒有列，驗證成員讀不到別的案件
+      const journalId = newUlid();
+      await tx.query(
+        `INSERT INTO org.ledger_journals (id, org_id, case_id, business_event_type, business_event_id, effective_date)
+         VALUES ($1, $2, $3, 'receipt_confirmed', 'RLS-MATRIX-1', '2026-11-08')`,
+        [journalId, host, caseId],
+      );
+      await tx.query(
+        `INSERT INTO org.ledger_entries (id, org_id, case_id, journal_id, line_no, account, debit, credit) VALUES
+           ($1, $2, $3, $4, 1, 'asset.bank.RLSMATRIX', 100, 0), ($5, $2, $3, $4, 2, $6, 0, 100)`,
+        [newUlid(), host, caseId, journalId, newUlid(), `liability.deposit.${caseId}`],
+      );
+      await tx.query(`INSERT INTO org.deposit_ledgers (id, org_id, case_id, expected_amount) VALUES ($1, $2, $3, 60000)`, [newUlid(), host, caseId]);
+      await tx.query(
+        `INSERT INTO org.receivable_periods (id, org_id, case_id, period_key, period_start, period_end, due_date, amount)
+         VALUES ($1, $2, $3, '2026-11', '2026-11-01', '2026-11-30', '2026-11-05', 30000)`,
+        [newUlid(), host, caseId],
+      );
+      await tx.query(`INSERT INTO org.case_remitter_ids (id, org_id, case_id, kind, value) VALUES ($1, $2, $3, 'account_last5', '12345')`, [newUlid(), host, caseId]);
+      await tx.query(
+        `INSERT INTO org.case_social_housing_changes (id, org_id, case_id, from_value, to_value, reason) VALUES ($1, $2, $3, false, true, '矩陣測試')`,
+        [newUlid(), host, caseId],
       );
       for (const relation of CASE_MEMBER_RELATIONS) {
         await tx.query(`INSERT INTO org.case_members (id, org_id, case_id, party_id, relation) VALUES ($1, $2, $3, $4, $5)`, [

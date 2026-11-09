@@ -108,16 +108,23 @@ describe('PUT /api/payment-accounts/[id]', () => {
   it('有分錄引用後改持有人回 409，訊息提示「停用並新增」；只改名稱仍成功', async () => {
     const { id } = await create();
     await withTx({ kind: 'org', orgId: kit.orgA }, async (tx) => {
+      // 鏡像帳的 case_id 掛了 org.cases 的複合外鍵（MIL-123），分錄需要一個真實的案件
+      const caseId = newUlid();
+      await tx.query(
+        `INSERT INTO org.cases (id, org_id, kind, state, business_type, title)
+         VALUES ($1, $2, 'lease', 'active', 'self_managed', '測試案件')`,
+        [caseId, kit.orgA],
+      );
       const journalId = newUlid();
       await tx.query(
         `INSERT INTO org.ledger_journals (id, org_id, case_id, business_event_type, business_event_id, effective_date)
-         VALUES ($1, $2, 'CASE1', 'receipt_confirmed', 'EVT1', '2026-11-08')`,
-        [journalId, kit.orgA],
+         VALUES ($1, $2, $3, 'receipt_confirmed', 'EVT1', '2026-11-08')`,
+        [journalId, kit.orgA, caseId],
       );
       await tx.query(
         `INSERT INTO org.ledger_entries (id, org_id, case_id, journal_id, line_no, account, debit, credit) VALUES
-           ($1, $2, 'CASE1', $3, 1, $4, 100, 0), ($5, $2, 'CASE1', $3, 2, 'liability.deposit.CASE1', 0, 100)`,
-        [newUlid(), kit.orgA, journalId, `asset.bank.${id}`, newUlid()],
+           ($1, $2, $3, $4, 1, $5, 100, 0), ($6, $2, $3, $4, 2, $7, 0, 100)`,
+        [newUlid(), kit.orgA, caseId, journalId, `asset.bank.${id}`, newUlid(), `liability.deposit.${caseId}`],
       );
     });
     const locked = await put(id, body({ holderName: '王小明' }));

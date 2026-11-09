@@ -64,17 +64,24 @@ describe('收款帳戶 repository', () => {
   /** 讓一筆分錄引用這個收款帳戶。 */
   async function referenceInLedger(accountId: string, orgId = orgA): Promise<void> {
     await inOrg(orgId, async (tx) => {
+      // 鏡像帳的 case_id 掛了 org.cases 的複合外鍵（MIL-123），分錄需要一個真實的案件
+      const caseId = newUlid();
+      await tx.query(
+        `INSERT INTO org.cases (id, org_id, kind, state, business_type, title)
+         VALUES ($1, $2, 'lease', 'active', 'self_managed', '測試案件')`,
+        [caseId, orgId],
+      );
       const journalId = newUlid();
       await tx.query(
         `INSERT INTO org.ledger_journals (id, org_id, case_id, business_event_type, business_event_id, effective_date)
-         VALUES ($1, $2, 'CASE1', 'receipt_confirmed', $3, '2026-11-08')`,
-        [journalId, orgId, newUlid()],
+         VALUES ($1, $2, $3, 'receipt_confirmed', $4, '2026-11-08')`,
+        [journalId, orgId, caseId, newUlid()],
       );
       await tx.query(
         `INSERT INTO org.ledger_entries (id, org_id, case_id, journal_id, line_no, account, debit, credit) VALUES
-           ($1, $2, 'CASE1', $3, 1, $4, 100, 0),
-           ($5, $2, 'CASE1', $3, 2, 'liability.deposit.CASE1', 0, 100)`,
-        [newUlid(), orgId, journalId, `asset.bank.${accountId}`, newUlid()],
+           ($1, $2, $3, $4, 1, $5, 100, 0),
+           ($6, $2, $3, $4, 2, $7, 0, 100)`,
+        [newUlid(), orgId, caseId, journalId, `asset.bank.${accountId}`, newUlid(), `liability.deposit.${caseId}`],
       );
     });
   }
