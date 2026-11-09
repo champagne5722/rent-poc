@@ -23,10 +23,10 @@ route 把 `Forbidden` 轉成 `caseNotFound()`：別人的案件、不存在的�
 
 ## 給 E 線（MIL-140、MIL-123）：怎麼加押金、點交、報修
 
-1. 動作：在 `src/lib/access/actions.ts` 的 `ACTIONS` 加一列（承租人報修 `repair.report`、點交 `inspection.confirm`、異議 `deposit.dispute` 已在表裡）。
+1. 動作：在 `src/lib/access/actions/<模組>.ts` 加一列，再依 `src/lib/access/README.md` 把模組接進 `actions.ts`（承租人報修 `repair.report`、點交 `inspection.confirm`、異議 `deposit.dispute` 已在表裡）。
 2. 資料：寫一個收 `CaseMemberTx` 的 repository 方法，查詢一律用 `tx.caseId` 過濾（見 `queries.ts`）。讀取加進 `loadTenantCaseDetail` 的回傳，寫入用 `withCaseMemberTx`（見 `src/lib/cases/README.md`）。
 3. 畫面：在 `src/app/tenant/cases/[id]/page.tsx` 讀資料，包成 `{ key, label, children }`，傳給 `TenantCaseView` 的 `extraTabs`。結案後所有寫入入口必須隱藏，`readOnly` 在 `TenantCaseView` 依案件狀態算好。
-4. 新的案件範圍表必須在 `CASE_SCOPED_READS`（`src/lib/pg/rls-cases.ts`）登記可讀的關係，並在 migration 補政策。
+4. 新的案件範圍表必須在自己模組檔 `src/lib/pg/rls-cases/<模組>.ts` 的 `caseScopedReads` 登記可讀的關係（彙總成 `CASE_SCOPED_READS`），並在 migration 補政策。
 
 ## 承租人換 email
 

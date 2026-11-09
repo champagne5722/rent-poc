@@ -9,7 +9,7 @@ import { partyContextOrResponse } from '@/lib/tenant/route';
 //
 // 給 E 線（MIL-140、MIL-123）：押金台帳、點交、報修的資料在這裡讀，再用 TenantCaseView 的 extraTabs 傳進去。
 // 1. 資料：寫一個收 CaseMemberTx 的 repository 方法，查詢一律用 tx.caseId 過濾（src/lib/tenant/queries.ts 的寫法），
-//    加進 loadTenantCaseDetail 的回傳，或另開 withCaseMemberTx 呼叫（動作要先加進 src/lib/access/actions.ts）。
+//    加進 loadTenantCaseDetail 的回傳，或另開 withCaseMemberTx 呼叫（動作要先加進 src/lib/access/actions/<模組>.ts）。
 // 2. 畫面：做成 server 或 client 元件，包成 { key, label, children } 傳給 extraTabs。結案後所有寫入入口必須隱藏，
 //    TenantCaseView 的 readOnly 已依案件狀態算好，extraTabs 的元件請自行接 readOnly（見 README）。
 export default async function TenantCasePage({ params }: { params: Promise<{ id: string }> }) {

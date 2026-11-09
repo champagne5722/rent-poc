@@ -26,7 +26,7 @@ MIL-111。依據：ADR-0017（三態、三層、專任四個判定點、核對�
 | `signing_facts(entity_id, party_ids)` | 該執業主體的組織、營運者 | 可簽章判定事實（MIL-113） |
 | `certificate_badges(party_ids)` | 任何組織脈絡 | 標章（F 線 MIL-102） |
 
-`app_rw` 對兩張表沒有任何權限。`rls-cases.ts` 的 `DEFINER_ONLY_TABLES` 登記，`rls-penetration.test.ts` 檢查。
+`app_rw` 對兩張表沒有任何權限。`src/lib/pg/rls-cases/practitioners.ts` 的 `definerOnlyTables` 登記（彙總成 `DEFINER_ONLY_TABLES`），`rls-penetration.test.ts` 檢查。
 
 ## 檔案
 

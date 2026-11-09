@@ -1,15 +1,53 @@
 // 後台殼層的導覽定義（規格 §4）：一級頁面＝工作台／物件／合約，層級少於三層，不用 breadcrumb。
 // 純資料＋純函式放這裡，讓高亮規則可以直接測（見 nav.test.ts）；icon 留在 AppShell.tsx。
+//
+// 選單項目登記在 `./nav/<模組>.ts`，每個模組一個檔。這個檔只負責組合與放判斷函式，不放項目內容。
+// 新模組登記選單項目的步驟（MIL-164）：
+//   1. 新增 `./nav/<模組>.ts`，匯出 `export const <模組>Nav = { admin: [...] } as const satisfies NavRegistration`。
+//      `admin` 是後台側邊選單，`owner` 是屋主端上方列，`identity` 與 `personal` 是依身分才出現的入口，四個欄位都可省略。
+//   2. 在下面加一行 import，再在 NAV_MODULES 加一行。
+//   3. NavKey 等型別由 NAV_MODULES 推出來，不用手寫。AppShell.tsx 的 NAV_ICONS 要補新 key 的 icon，tsc 會提醒。
+// NAV_MODULES 的排列順序就是畫面上的選單順序，所以依畫面順序插入，不依字母順序。
+// 兩個模組同時插在相鄰的兩行時，git 會要求手動解衝突；插在不相鄰的位置則自動合併。
 
-export type NavKey =
-  | 'workbench'
-  | 'properties'
-  | 'cases'
-  | 'contracts'
-  | 'payment-accounts'
-  | 'handovers'
-  | 'notifications'
-  | 'design';
+import { casesNav } from './nav/cases';
+import { contractsNav } from './nav/contracts';
+import { designNav } from './nav/design';
+import { handoversNav } from './nav/handovers';
+import { notificationsNav } from './nav/notifications';
+import { ownerOverviewNav } from './nav/owner-overview';
+import { paymentAccountsNav } from './nav/payment-accounts';
+import { DESK_HREF, PRACTICE_HREF, practiceNav } from './nav/practice';
+import { PRACTITIONER_HREF, practitionerNav } from './nav/practitioner';
+import { propertiesNav } from './nav/properties';
+import { OWNER_ROOT_HREF, type NavRegistration } from './nav/shared';
+import { workbenchNav } from './nav/workbench';
+
+export { DESK_HREF, OWNER_ROOT_HREF, PRACTICE_HREF, PRACTITIONER_HREF };
+
+const NAV_MODULES = [
+  workbenchNav,
+  propertiesNav,
+  casesNav,
+  contractsNav,
+  paymentAccountsNav,
+  ownerOverviewNav,
+  handoversNav,
+  notificationsNav,
+  designNav,
+  practiceNav,
+  practitionerNav,
+] as const;
+
+type NavModule = (typeof NAV_MODULES)[number];
+type ItemsOf<M, K extends keyof NavRegistration> = M extends { readonly [P in K]: readonly (infer I)[] } ? I : never;
+
+/** 依 NAV_MODULES 的順序，收集每個模組在某個位置登記的項目。 */
+function collect<K extends keyof NavRegistration>(position: K): readonly NonNullable<NavRegistration[K]>[number][] {
+  return NAV_MODULES.flatMap((m) => (m as NavRegistration)[position] ?? []);
+}
+
+export type NavKey = ItemsOf<NavModule, 'admin'>['key'];
 
 export type NavItem = {
   key: NavKey;
@@ -17,33 +55,16 @@ export type NavItem = {
   href: string;
 };
 
-export const NAV_ITEMS: readonly NavItem[] = [
-  // 工作台是登入後的預設落地頁，/ 直接渲染工作台（規格 §5）
-  { key: 'workbench', label: '工作台', href: '/' },
-  { key: 'properties', label: '物件', href: '/properties' },
-  // 案件（MIL-115）：建約先建案件，清單列出全部案件與狀態
-  { key: 'cases', label: '案件', href: '/cases' },
-  { key: 'contracts', label: '合約', href: '/contracts' },
-  // 收款帳戶（MIL-118）：登錄收款帳戶與持有人，只存遮罩識別
-  { key: 'payment-accounts', label: '收款帳戶', href: '/payment-accounts' },
-  // 移交（MIL-94）：接收方看移交給我的案件與我交出的案件，經理人視角
-  { key: 'handovers', label: '移交', href: '/handovers' },
-  // 通知（MIL-120）：站內通知清單，選單項帶未讀數
-  { key: 'notifications', label: '通知', href: '/notifications' },
-  // 設計樣式頁：呈現 DESIGN.md 目前的 token 與元件樣式，供調整佈局與字級時對照
-  { key: 'design', label: '設計', href: '/design' },
-];
+export const NAV_ITEMS: readonly NavItem[] = collect('admin') as readonly NavItem[];
 
 // 成員管理（MIL-106）：後台殼層與屋主端殼層的 header 各有一個入口，頁面用後台殼層。
 export const MEMBERS_HREF = '/settings/members';
 const MEMBERS_TITLE = '成員管理';
 
-// 執業主體與審核台（MIL-109）：依目前身分才出現的入口，不放進 NAV_ITEMS（它是所有身分共用的五項）。
-// 執業主體組織看得到「執業主體」，平台營運者看得到「審核台」。身分由殼層讀 /api/auth/identities 決定。
-export const PRACTICE_HREF = '/practice';
-export const DESK_HREF = '/desk';
+// 執業主體與審核台（MIL-109）：依目前身分才出現的入口，不放進 NAV_ITEMS（它是所有身分共用的項目）。
+// 項目登記在 ./nav/practice.ts。
 
-export type IdentityNavKey = 'practice' | 'desk';
+export type IdentityNavKey = ItemsOf<NavModule, 'identity'>['key'];
 
 export type IdentityNavItem = {
   key: IdentityNavKey;
@@ -53,10 +74,7 @@ export type IdentityNavItem = {
   identity: 'practice' | 'operator';
 };
 
-export const IDENTITY_NAV_ITEMS: readonly IdentityNavItem[] = [
-  { key: 'practice', label: '執業主體', href: PRACTICE_HREF, identity: 'practice' },
-  { key: 'desk', label: '審核台', href: DESK_HREF, identity: 'operator' },
-];
+export const IDENTITY_NAV_ITEMS: readonly IdentityNavItem[] = collect('identity') as readonly IdentityNavItem[];
 
 /** 目前身分該多看到哪些入口。身分還沒載入（null）或沒有專屬入口時是空陣列。 */
 export function identityNavItems(identityKind: string | null): readonly IdentityNavItem[] {
@@ -68,11 +86,9 @@ export function resolveIdentityNavKey(pathname: string): IdentityNavKey | null {
   return IDENTITY_NAV_ITEMS.find((item) => matches(pathname, item.href))?.key ?? null;
 }
 
-// 我的證書（MIL-111）：執業主體組織的成員登錄自己的證書與任職。入口跟著身分出現，與「執業主體」分開放，
-// 因為執業主體頁屬於組織，證書頁屬於成員本人。不併進 IDENTITY_NAV_ITEMS，以免改動既有身分入口的清單。
-export const PRACTITIONER_HREF = '/practitioner';
+// 我的證書（MIL-111）：執業主體組織的成員登錄自己的證書與任職。項目登記在 ./nav/practitioner.ts。
 
-export type PersonalNavKey = 'practitioner';
+export type PersonalNavKey = ItemsOf<NavModule, 'personal'>['key'];
 
 export type PersonalNavItem = {
   key: PersonalNavKey;
@@ -81,9 +97,7 @@ export type PersonalNavItem = {
   identity: 'practice';
 };
 
-export const PERSONAL_NAV_ITEMS: readonly PersonalNavItem[] = [
-  { key: 'practitioner', label: '我的證書', href: PRACTITIONER_HREF, identity: 'practice' },
-];
+export const PERSONAL_NAV_ITEMS: readonly PersonalNavItem[] = collect('personal') as readonly PersonalNavItem[];
 
 /** 目前身分該多看到哪些個人入口。身分還沒載入（null）或沒有時是空陣列。 */
 export function personalNavItems(identityKind: string | null): readonly PersonalNavItem[] {
@@ -105,7 +119,6 @@ function matches(pathname: string, href: string): boolean {
 // 殼層分派（MIL-94）：屋主端在 /owner 底下，其他路徑維持後台殼層。既有頁面不搬目錄。
 export type ShellKind = 'admin' | 'owner' | 'tenant';
 
-export const OWNER_ROOT_HREF = '/owner';
 // 承租人端（MIL-121）：與屋主端對稱，頁面都在 /tenant 底下，殼層由 src/app/tenant/layout.tsx 提供
 export const TENANT_ROOT_HREF = '/tenant';
 
@@ -115,8 +128,8 @@ export function shellFor(pathname: string): ShellKind {
   return 'admin';
 }
 
-// 屋主端選單：只有資產總覽與移交，不放「建立合約」（P0-09 不允許屋主替代管案件擬約）
-export type OwnerNavKey = 'overview' | 'handovers';
+// 屋主端選單項目登記在 ./nav/owner-overview.ts 與 ./nav/handovers.ts。
+export type OwnerNavKey = ItemsOf<NavModule, 'owner'>['key'];
 
 export type OwnerNavItem = {
   key: OwnerNavKey;
@@ -124,10 +137,7 @@ export type OwnerNavItem = {
   href: string;
 };
 
-export const OWNER_NAV_ITEMS: readonly OwnerNavItem[] = [
-  { key: 'overview', label: '資產總覽', href: OWNER_ROOT_HREF },
-  { key: 'handovers', label: '移交', href: `${OWNER_ROOT_HREF}/handovers` },
-];
+export const OWNER_NAV_ITEMS: readonly OwnerNavItem[] = collect('owner') as readonly OwnerNavItem[];
 
 /** 屋主端上方列的高亮；/owner 本身是資產總覽，其他子路徑比照後台的前綴規則。 */
 export function resolveOwnerNavKey(pathname: string): OwnerNavKey | null {

@@ -10,10 +10,19 @@
 
 | 檔案 | 內容 |
 |---|---|
-| `actions.ts` | `ACTIONS` 動作表、`ORG_ROLES`、`MANDATE_SCOPES`、`TERMINAL_CASE_STATES`、規則型別 |
+| `actions.ts` | 動作表彙總檔：組合 `actions/` 底下各模組的動作成 `ACTIONS`，再匯出 `ORG_ROLES`、`MANDATE_SCOPES`、`TERMINAL_CASE_STATES`、規則型別 |
+| `actions/<模組>.ts` | 一個模組一個檔，放該模組的動作。共用的規則型別與狀態、角色常數在 `actions/rules.ts` |
 | `facts.ts` | `AccessFacts` 與子型別、`AccessDecision`、`ACCESS_DENY_REASONS` |
 | `decide-access.ts` | `decideAccess(facts, action)` |
 | `decide-access.test.ts` | 全矩陣表格測試 |
+
+## 新模組怎麼登記動作
+
+1. 新增 `actions/<模組>.ts`，匯出 `<模組>Actions`，格式為 `{ ... } as const satisfies Record<string, ActionRule>`。型別與常數從 `actions/rules.ts` 取。
+2. 在 `actions.ts` 加一行 import，再在 `ACTIONS` 加一行 `...<模組>Actions`。兩處都依檔名字母順序排列，不要加在檔尾，這樣兩張票各自加模組時 git 能自動合併。
+3. 在 `decide-access.test.ts` 的預期表加對應列。
+
+動作 ID 必須在所有模組間唯一。已有模組的動作改自己模組的檔，不用動 `actions.ts`。
 
 ## `decideAccess(facts, action)`
 

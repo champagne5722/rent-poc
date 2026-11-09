@@ -14,7 +14,7 @@ MIL-109。依據：ADR-0017（核對管道、三態、核對紀錄、證據檔�
 | 批次查詢 `lookup_practice_entities()` | 同上 |
 | `vault.credential_evidence` 與 `register_`、`list_`、`open_`、`mark_..._deleted`、`confirm_..._file_removed`、`pending_file_removals`、`transfer_claim_evidence` | `db/migrations/0044_vault_credential_evidence.sql` |
 
-`app_rw` 對這些表沒有任何權限，只能呼叫上面的函式。審核台函式第一行呼叫 `assert_operator()`：`app.operator_id` 必須是平台組織的成員，`app.org_id` 必須是平台組織。`rls-cases.ts` 的 `DEFINER_ONLY_TABLES` 登記每張表，`rls-penetration.test.ts` 檢查權限、`SECURITY DEFINER`、固定 `search_path`。
+`app_rw` 對這些表沒有任何權限，只能呼叫上面的函式。審核台函式第一行呼叫 `assert_operator()`：`app.operator_id` 必須是平台組織的成員，`app.org_id` 必須是平台組織。`src/lib/pg/rls-cases/practice-entities.ts` 的 `definerOnlyTables` 登記每張表（彙總成 `DEFINER_ONLY_TABLES`），`rls-penetration.test.ts` 檢查權限、`SECURITY DEFINER`、固定 `search_path`。
 
 ## 檔案
 
