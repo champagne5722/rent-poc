@@ -3,8 +3,17 @@
 
 import { DEFAULT_CONTRACT_TYPE, contractTypeDefinition, listSummaryOf } from './contract-types';
 import { TERMS } from './labels';
-import type { Contract, ContractStatus, SignerRole } from './types';
-import { CONTRACT_STATUSES, SIGNER_ROLE_LABELS } from './types';
+import { evaluateRouting } from './signature-routing';
+import {
+  buildSigningSteps,
+  signingStepDots,
+  type SigningMerge,
+  type SigningProgressInput,
+  type SigningStepDot,
+  type SigningSteps,
+} from './signing-steps';
+import type { Contract, ContractStatus } from './types';
+import { CONTRACT_STATUSES } from './types';
 
 // 最後動作時間：更新時間為主，沒有則用建立時間。
 export function lastActionAt(contract: Contract): string {
@@ -130,33 +139,27 @@ export function selectContracts(items: Contract[], filter: ContractListFilter): 
   return items.filter((c) => matchesFilter(c, filter)).sort(compareByWorkPriority);
 }
 
-// 簽署進度三點：乙方簽 → 甲方簽 → 完成。
-// 回傳「目前停在第幾點」（0-based），小於此值的點視為已完成；
-// 已完成回 3（三點全亮）；簽署流程外的狀態回 null，UI 顯示「—」。
-export const SIGNING_PROGRESS_LABELS = ['乙方簽', '甲方簽', '完成'] as const;
-
-// 進度上的簽署人順序。待執業人員簽（第七態）時多一位。清單與詳情頁只有合約狀態，
-// 不知道簽署序列，所以假設執業人員排在乙方與甲方之間。依簽署進度畫步驟屬 MIL-72。
-const TWO_PARTY_SEQUENCE: readonly SignerRole[] = ['party_b', 'party_a'];
-const PRACTITIONER_SEQUENCE: readonly SignerRole[] = ['party_b', 'practitioner', 'party_a'];
-
-export function signingStepRoles(status: ContractStatus): readonly SignerRole[] {
-  return status === 'awaiting_practitioner' ? PRACTITIONER_SEQUENCE : TWO_PARTY_SEQUENCE;
+/**
+ * 合約的簽署進度步驟與目前位置（MIL-72）。簽署序列由規則表依合約的分流條件算出，沒有簽署任務時（草稿、舊合約）
+ * 步驟就用它，有簽署任務時只取稱謂，步驟取自實際的簽署人。規則表沒有定義的組合退回兩方，畫面不報錯。
+ * 清單、工作台、詳情頁與確認頁共用，F 線的資產總覽也能直接呼叫。
+ */
+export function contractSigningSteps(
+  contract: Pick<Contract, 'status' | 'fields' | 'contract_type'>,
+  progress?: SigningProgressInput | null,
+  merges?: readonly SigningMerge[]
+): SigningSteps {
+  const evaluation = evaluateRouting(contract.fields.routing, contract.contract_type);
+  return buildSigningSteps({
+    status: contract.status,
+    progress,
+    seats: evaluation.ok ? evaluation.seats : null,
+    merges,
+    contractType: contract.contract_type,
+  });
 }
 
-const CURRENT_ROLE: Partial<Record<ContractStatus, SignerRole>> = {
-  awaiting_tenant: 'party_b',
-  awaiting_practitioner: 'practitioner',
-  awaiting_landlord: 'party_a',
-};
-
-export function signingProgressStep(status: ContractStatus): number | null {
-  const roles = signingStepRoles(status);
-  if (status === 'completed') return roles.length + 1;
-  const role = CURRENT_ROLE[status];
-  return role ? roles.indexOf(role) : null;
-}
-
-export function signingProgressLabels(status: ContractStatus): readonly string[] {
-  return [...signingStepRoles(status).map((role) => `${SIGNER_ROLE_LABELS[role]}簽`), '完成'];
+/** 清單的簽署進度點。不在簽署流程（草稿、已拒簽、已撤回）回 null，畫面顯示「—」。 */
+export function listSigningDots(contract: Contract, progress?: SigningProgressInput | null): SigningStepDot[] | null {
+  return signingStepDots(contractSigningSteps(contract, progress));
 }

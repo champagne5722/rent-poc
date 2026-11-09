@@ -18,6 +18,7 @@ import type { Contract, ContractStatus, Property } from '@/lib/types';
 import { CONTRACT_STATUS_LABELS } from '@/lib/types';
 import { lastActionAt } from '@/lib/contract-list';
 import { contractTypeDefinition, listSummaryOf } from '@/lib/contract-types';
+import type { SigningProgressById, SigningProgressInput } from '@/lib/signing-steps';
 import {
   selectWorkbenchTodos,
   todoActionFor,
@@ -26,9 +27,11 @@ import {
   type WorkbenchQuickLink,
 } from '@/lib/workbench';
 
+// 待辦只有草稿與輪到甲方簽的合約。輪到甲方簽的合約，狀態可能是待甲方簽，或兼任甲方的簽署人輪到時的待執業人員簽
 const STATUS_COLORS: Partial<Record<ContractStatus, string>> = {
   draft: 'default',
   awaiting_landlord: 'processing',
+  awaiting_practitioner: 'processing',
 };
 
 const QUICK_LINK_ICONS: Record<WorkbenchQuickLink['key'], React.ReactNode> = {
@@ -37,13 +40,9 @@ const QUICK_LINK_ICONS: Record<WorkbenchQuickLink['key'], React.ReactNode> = {
   properties: <HomeOutlined />,
 };
 
-const TODO_ACTION_ICONS: Partial<Record<ContractStatus, React.ReactNode>> = {
-  awaiting_landlord: <SignatureOutlined />,
-  draft: <EditOutlined />,
-};
-
-function TodoRow({ contract }: { contract: Contract }) {
-  const action = todoActionFor(contract);
+function TodoRow({ contract, progress }: { contract: Contract; progress: SigningProgressInput | null }) {
+  const action = todoActionFor(contract, progress);
+  const isDraft = contract.status === 'draft';
   const summary = listSummaryOf(contract);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
@@ -61,8 +60,8 @@ function TodoRow({ contract }: { contract: Contract }) {
         <Link href={action.href}>
           <Button
             size="small"
-            type={contract.status === 'awaiting_landlord' ? 'primary' : 'default'}
-            icon={TODO_ACTION_ICONS[contract.status]}
+            type={isDraft ? 'default' : 'primary'}
+            icon={isDraft ? <EditOutlined /> : <SignatureOutlined />}
           >
             {action.label}
           </Button>
@@ -74,6 +73,8 @@ function TodoRow({ contract }: { contract: Contract }) {
 
 export default function WorkbenchPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
+  // 以合約編號為鍵的簽署進度，待辦依當前簽署人判斷（MIL-72）
+  const [progress, setProgress] = useState<SigningProgressById>({});
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -83,16 +84,17 @@ export default function WorkbenchPage() {
       fetch('/api/properties').then((r) => r.json()),
     ]).then(([contractsJson, propertiesJson]) => {
       setContracts(contractsJson.data ?? []);
+      setProgress(contractsJson.signing_progress ?? {});
       setProperties(propertiesJson.data ?? []);
       setLoading(false);
     });
   }, []);
 
   const stats = useMemo(
-    () => workbenchStats(contracts, properties.length),
-    [contracts, properties.length]
+    () => workbenchStats(contracts, properties.length, progress),
+    [contracts, properties.length, progress]
   );
-  const todos = useMemo(() => selectWorkbenchTodos(contracts), [contracts]);
+  const todos = useMemo(() => selectWorkbenchTodos(contracts, progress), [contracts, progress]);
 
   return (
     <>
@@ -115,7 +117,7 @@ export default function WorkbenchPage() {
         </Row>
 
         <Row gutter={[16, 16]}>
-          {/* 模組二：待辦（窄規則）——只收等房東動作、流程才會前進的合約 */}
+          {/* 模組二：待辦（窄規則）——只收等出租人動作、流程才會前進的合約，依當前簽署人判斷 */}
           <Col xs={24} lg={16}>
             <Card
               title="待辦（等我動作，流程才會前進）"
@@ -131,7 +133,7 @@ export default function WorkbenchPage() {
                       key={contract.id}
                       style={{ borderTop: i === 0 ? 'none' : '1px solid rgba(5,5,5,0.06)' }}
                     >
-                      <TodoRow contract={contract} />
+                      <TodoRow contract={contract} progress={progress[String(contract.id)] ?? null} />
                     </div>
                   ))}
                 </div>

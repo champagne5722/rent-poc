@@ -13,7 +13,6 @@ import type {
   ContractRelations,
   ContractStatus,
   EquipmentAnnexSnapshot,
-  SignerRole,
 } from './types';
 import {
   CONTRACT_EVENT_ACTOR_LABELS,
@@ -24,8 +23,16 @@ import {
   SIGNER_ROLE_LABELS,
 } from './types';
 import { contractEquipmentAnnex, formatEquipmentItem } from './equipment';
-import { signingProgressStep, signingStepRoles } from './contract-list';
-import { partyLabels, type ContractType } from './labels';
+import type { ContractType } from './labels';
+import {
+  buildSigningSteps,
+  signerRoleOfStatus,
+  signingStepStateLabel,
+  stepsShowSignerDetail,
+  type SigningProgressInput,
+  type SigningSeat,
+  type SigningSteps,
+} from './signing-steps';
 import type { CurrentSigner } from './signing-module/provider';
 import type { SigningProgress } from './signing-module/sign-task-store';
 
@@ -89,31 +96,33 @@ export interface DetailSigningSteps {
   current: number;
 }
 
-/** 狀態列每一步的標題。甲乙方稱謂依合約類型從標籤對照表取（MIL-122）。 */
-function stepTitle(role: SignerRole, contractType: ContractType): string {
-  const labels = partyLabels(contractType);
-  if (role === 'party_a') return `待${labels.partyAFull}簽署`;
-  if (role === 'party_b') return `待${labels.partyBFull}簽署`;
-  return `待${SIGNER_ROLE_LABELS.practitioner}簽署`;
-}
-
 /**
- * 狀態列的簽署步驟。有簽署進度時依實際的簽署序列畫，順序與人數由序列決定（MIL-69）：
- * 包租是乙方、執業人員、甲方，承租人是包租業者時是甲方、執業人員、乙方。
- * 沒有簽署進度（舊資料）時沿用清單的簽署人順序（signingStepRoles）。清單與確認頁的進度屬 MIL-72。
+ * 狀態列的簽署步驟，每位簽署人一步，最後是「完成」。步驟由實際的簽署序列推導（MIL-72）：
+ * 有簽署進度時，順序與人數由簽署人決定，兼任的簽署人標示兼任角色。
+ * 沒有簽署進度（舊資料）時用規則表算出的序列（seats），再沒有就退回兩方。
+ * 稱謂依合約類型從標籤對照表取（MIL-122）。
  */
 export function detailSigningSteps(
   status: ContractStatus,
-  progress?: Pick<SigningProgress, 'signers'> | null,
-  contractType: ContractType = 'lease'
+  progress?: SigningProgressInput | null,
+  contractType: ContractType = 'lease',
+  seats?: readonly SigningSeat[] | null
 ): DetailSigningSteps {
-  if (progress && progress.signers.length > 0) {
-    const titles = [...progress.signers.map((s) => stepTitle(s.role, contractType)), '完成'];
-    const pending = progress.signers.findIndex((s) => s.status === 'pending');
-    return { titles, current: status === 'completed' || pending === -1 ? titles.length - 1 : pending };
-  }
-  const titles = [...signingStepRoles(status).map((role) => stepTitle(role, contractType)), '完成'];
-  return { titles, current: Math.min(signingProgressStep(status) ?? 0, titles.length - 1) };
+  const { steps, position } = buildSigningSteps({ status, progress, seats, contractType });
+  const titles = [...steps.map((step) => `待${step.fullLabel}簽署`), '完成'];
+  return { titles, current: Math.min(position ?? 0, titles.length - 1) };
+}
+
+/**
+ * 每一步下方的簽署人姓名與狀態。兩方合約不列，畫面維持原樣；
+ * 三位以上或有兼任時列出每位簽署人的姓名與狀態，最後的「完成」沒有說明。
+ */
+export function detailStepDescriptions(result: SigningSteps): Array<string | undefined> {
+  if (!stepsShowSignerDetail(result)) return [];
+  return [
+    ...result.steps.map((step) => `${step.name ?? '（尚未指定）'}・${signingStepStateLabel(step.state)}`),
+    undefined,
+  ];
 }
 
 export interface MockAdvanceAction {
@@ -124,12 +133,6 @@ export interface MockAdvanceAction {
   danger?: boolean;
 }
 
-const MOCK_ROLE_BY_STATUS: Partial<Record<ContractStatus, SignerRole>> = {
-  awaiting_tenant: 'party_b',
-  awaiting_practitioner: 'practitioner',
-  awaiting_landlord: 'party_a',
-};
-
 /**
  * mock 模式的模擬 webhook 按鈕，依當前簽署人決定。
  * 當前簽署人是最後一位時，簽署就是合約完成，事件用 completed；否則用 signed。
@@ -139,7 +142,7 @@ export function mockAdvanceActions(
   status: ContractStatus,
   progress: Pick<SigningProgress, 'signers'> | null
 ): MockAdvanceAction[] {
-  const role = MOCK_ROLE_BY_STATUS[status];
+  const role = signerRoleOfStatus(status);
   if (!role) return [];
   const label = SIGNER_ROLE_LABELS[role];
   const pendingCount = progress ? progress.signers.filter((s) => s.status === 'pending').length : null;

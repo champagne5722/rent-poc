@@ -52,6 +52,7 @@ import {
   resumeStepIndex,
   sendBlockReasons,
   signingSequenceNotice,
+  signingSequenceTitle,
   stepStatuses,
 } from '@/lib/contract-wizard';
 
@@ -571,7 +572,7 @@ export default function ContractWizard({ id }: { id: string }) {
             type="info"
             showIcon
             style={{ marginBottom: 12 }}
-            message={partiesOnly ? '乙方先簽' : '依序簽署'}
+            message={signingSequenceTitle(fields, contractType, practitionerData?.evaluation.merges)}
             description={signingSequenceNotice(fields, contractType, practitionerData?.evaluation.merges)}
           />
           <ui.ConfirmNotices fields={fields} />

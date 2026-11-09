@@ -8,8 +8,8 @@ import {
   todoActionFor,
   workbenchStats,
   WORKBENCH_QUICK_LINKS,
-  WORKBENCH_TODO_STATUSES,
 } from './workbench';
+import type { SigningProgressById, SigningProgressInput } from './signing-steps';
 
 interface MakeOptions {
   id?: number;
@@ -49,30 +49,104 @@ function makeContract(o: MakeOptions = {}): Contract {
   };
 }
 
-describe('待辦的窄規則', () => {
-  it('只收待甲方簽與草稿', () => {
-    expect([...WORKBENCH_TODO_STATUSES]).toEqual(['awaiting_landlord', 'draft']);
+// 簽署進度：依序給角色與狀態，兼任的角色放第三個元素
+function signing(
+  signers: Array<['party_a' | 'party_b' | 'practitioner', 'signed' | 'pending', ('party_a' | 'party_b')[]?]>
+): SigningProgressInput {
+  return {
+    status: 'in_progress',
+    signers: signers.map(([role, status, concurrentRoles], i) => ({
+      role,
+      name: `${role}-${i}`,
+      status,
+      ...(concurrentRoles ? { concurrentRoles } : {}),
+    })),
+  };
+}
+
+describe('待辦的窄規則（MIL-72：依當前簽署人，不依合約狀態）', () => {
+  const todo = (status: ContractStatus, progress?: SigningProgressInput | null) =>
+    isWorkbenchTodo(makeContract({ status }), progress);
+
+  it('草稿算待辦', () => {
+    expect(todo('draft')).toBe(true);
   });
 
-  it('待乙方簽不算待辦：球在租客手上', () => {
-    expect(isWorkbenchTodo('awaiting_tenant')).toBe(false);
+  it('輪到甲方簽算待辦', () => {
+    expect(todo('awaiting_landlord', signing([['party_b', 'signed'], ['party_a', 'pending']]))).toBe(true);
   });
 
-  it('待執業人員簽不算待辦：球在執業人員手上', () => {
-    expect(isWorkbenchTodo('awaiting_practitioner')).toBe(false);
+  it('待乙方簽不算待辦：球在承租人手上', () => {
+    expect(todo('awaiting_tenant', signing([['party_b', 'pending'], ['party_a', 'pending']]))).toBe(false);
+  });
+
+  it('輪到執業人員簽不算待辦：球在執業人員手上', () => {
+    const progress = signing([['party_b', 'signed'], ['practitioner', 'pending'], ['party_a', 'pending']]);
+    expect(todo('awaiting_practitioner', progress)).toBe(false);
+  });
+
+  it('輪到經紀人簽不算待辦，即使甲方已經簽完', () => {
+    const progress = signing([
+      ['party_b', 'signed'],
+      ['practitioner', 'signed'],
+      ['party_a', 'signed'],
+      ['practitioner', 'pending'],
+    ]);
+    expect(todo('awaiting_practitioner', progress)).toBe(false);
+  });
+
+  it('甲方先簽的序列：甲方簽完後輪到執業人員，就不再是待辦', () => {
+    const start = signing([['party_a', 'pending'], ['practitioner', 'pending'], ['party_b', 'pending']]);
+    expect(todo('awaiting_landlord', start)).toBe(true);
+    const next = signing([['party_a', 'signed'], ['practitioner', 'pending'], ['party_b', 'pending']]);
+    expect(todo('awaiting_practitioner', next)).toBe(false);
+  });
+
+  it('兼任甲方的簽署人輪到時算待辦：合併不改變輪到誰', () => {
+    expect(todo('awaiting_practitioner', signing([['party_b', 'signed'], ['practitioner', 'pending', ['party_a']]]))).toBe(true);
+  });
+
+  it('沒有簽署任務的舊合約依合約狀態', () => {
+    expect(todo('awaiting_landlord')).toBe(true);
+    expect(todo('awaiting_tenant')).toBe(false);
+    expect(todo('awaiting_practitioner')).toBe(false);
   });
 
   it('已拒簽與已撤回不入待辦：那是決定要不要重來，由合約列表承接', () => {
-    expect(isWorkbenchTodo('declined')).toBe(false);
-    expect(isWorkbenchTodo('voided')).toBe(false);
+    expect(todo('declined')).toBe(false);
+    expect(todo('voided')).toBe(false);
   });
 
   it('已完成不入待辦', () => {
-    expect(isWorkbenchTodo('completed')).toBe(false);
+    expect(todo('completed')).toBe(false);
   });
 
-  it('七個狀態中只有兩個算待辦', () => {
-    expect(CONTRACT_STATUSES.filter(isWorkbenchTodo)).toEqual(['draft', 'awaiting_landlord']);
+  it('沒有簽署進度時，七個狀態中只有兩個算待辦', () => {
+    expect(CONTRACT_STATUSES.filter((status) => todo(status))).toEqual(['draft', 'awaiting_landlord']);
+  });
+});
+
+describe('依簽署進度挑待辦與計數', () => {
+  const merged = makeContract({ id: 1, status: 'awaiting_practitioner' });
+  const practitionerTurn = makeContract({ id: 2, status: 'awaiting_practitioner' });
+  const progress: SigningProgressById = {
+    '1': signing([['party_b', 'signed'], ['practitioner', 'pending', ['party_a']]]),
+    '2': signing([['party_b', 'signed'], ['practitioner', 'pending'], ['party_a', 'pending']]),
+  };
+
+  it('三位簽署人輪到執業人員時不進待辦，兼任甲方時進待辦', () => {
+    expect(selectWorkbenchTodos([merged, practitionerTurn], progress).map((c) => c.id)).toEqual([1]);
+  });
+
+  it('待我處理與待辦筆數一致，簽署中兩份都算', () => {
+    const stats = workbenchStats([merged, practitionerTurn], 0, progress);
+    expect(stats[1].value).toBe(2);
+    expect(stats[2].value).toBe(1);
+  });
+
+  it('行動依當前簽署人：輪到甲方的合約是去簽署，輪到執業人員的沒有行動', () => {
+    expect(todoActionFor(merged, progress['1'])).toEqual({ label: '去簽署', href: '/contracts/1' });
+    expect(todoActionFor(practitionerTurn, progress['2'])).toBeNull();
   });
 });
 
