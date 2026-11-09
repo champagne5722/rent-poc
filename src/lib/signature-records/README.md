@@ -56,6 +56,10 @@
 
 簽署事件的判定結果已在 `snapshot_at_sign.result`（`signable: false` 與 `issues`）。決議 11 情況 B 的自動撤回，可以在 `onOutcome` 之後讀它，也可以在 `prepareOutcome` 的判定上加判斷。
 
-## 給 MIL-76（同一人兼任）
+## 同一人兼任與四位簽署人（MIL-76）已完成
 
-`concurrent_roles` 取自簽署序列的 `Signer.concurrentRoles`。合併後訂閱者自動寫入，不必改。`signerIndex` 目前等於席位在簽署序列的位置（每席一位簽署人）。合併後席位與簽署人的位置不再一一對應，`evaluateSend` 產生 `signerIndex` 的地方要改成合併後的位置。`onSent` 會檢查該位置的簽署人角色是 `practitioner`，對不上時整個送簽回滾。
+- `concurrent_roles` 取自簽署序列的 `Signer.concurrentRoles`。合併後訂閱者自動寫入，不必改。
+- `signerIndex` 是合併後的位置，由 `seatSignerIndexes`（`signature-routing/sequence.ts`）算出，`evaluateSend` 使用。`onSent` 仍檢查該位置的簽署人角色是 `practitioner`，對不上時整個送簽回滾。
+- 合併只減少簽署人，不減少簽章紀錄。紀錄只為執業人員席位寫，所以合併的簽署人仍是一筆，兼任的當事人角色在 `concurrent_roles`。
+- 居間加包租時有兩筆紀錄，各參照自己的簽署人，`statute_ref` 不同：專任管理人員是「§32 第 2、3 款」，經紀人是「經紀條例 §22」。
+- 合併後 `listPendingSignRecords` 仍用簽署人的 email 對應簽署事件，合併的簽署人用執業人員的 email，所以簽一次就補上快照。

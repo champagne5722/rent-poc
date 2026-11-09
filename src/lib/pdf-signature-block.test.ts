@@ -186,3 +186,42 @@ describe('簽署欄依簽署序列印 N 列', () => {
     });
   });
 });
+
+describe('同一人兼任與四位簽署人：簽署欄仍一個席位一列（MIL-76，ADR-0018 決議 14）', () => {
+  const managerPrinted = {
+    name: '陳怡君',
+    title: '租賃住宅管理人員',
+    entityName: '北辰租賃住宅管理股份有限公司',
+  };
+  const brokerPrinted = { name: '趙經紀', title: '不動產經紀人', entityName: '雲頂不動產經紀有限公司' };
+  const stamps = (items: TextItem[]) => items.filter((item) => item.str.startsWith('簽章：')).map((item) => item.y);
+
+  it('合併時兩個席位各印一列：甲方一列，執業人員一列，簽署人合併不影響簽署欄', async () => {
+    const merged = withRouting({ businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: false });
+    const items = await signaturePage({ ...merged, landlordName: '陳怡君' }, { 'lease.master_lease.practitioner': managerPrinted });
+    expect(headingsOf(items)).toEqual(['甲方', '乙方', '執業人員']);
+    expect(stamps(items)).toHaveLength(3);
+    const texts = items.map((item) => item.str);
+    expect(texts).toContain('執業人員：陳怡君（租賃住宅管理人員）');
+    expect(texts.filter((t) => t.includes('陳怡君'))).toHaveLength(2);
+  });
+
+  it('合併的簽署欄與沒有合併時落點相同', async () => {
+    const same = await signaturePage({ ...MASTER_LEASE, landlordName: '陳怡君' }, { 'lease.master_lease.practitioner': managerPrinted });
+    const other = await signaturePage(MASTER_LEASE, { 'lease.master_lease.practitioner': managerPrinted });
+    expect(stamps(same)).toEqual(stamps(other));
+  });
+
+  it('居間加包租四位：印四列，兩位執業人員各印自己的稱謂與執業主體', async () => {
+    const items = await signaturePage(MASTER_LEASE_BROKER, {
+      'lease.master_lease.practitioner': managerPrinted,
+      'lease.broker': brokerPrinted,
+    });
+    expect(headingsOf(items)).toEqual(['甲方', '乙方', '執業人員', '執業人員']);
+    expect(stamps(items)).toHaveLength(4);
+    const texts = items.map((item) => item.str);
+    expect(texts).toContain('執業人員：陳怡君（租賃住宅管理人員）');
+    expect(texts).toContain('執業人員：趙經紀（不動產經紀人）');
+    expect(texts).toContain('執業主體：雲頂不動產經紀有限公司');
+  });
+});

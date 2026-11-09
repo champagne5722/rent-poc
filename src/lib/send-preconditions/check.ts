@@ -10,7 +10,8 @@
 //   4. 證書種類與專任要求符合規則。經紀營業員不得簽章。
 //   5. 任職屬於規則指定的執業主體。
 //   6. 執業人員的 email 取自其帳號。
-//   7. 合併後 email 不重複。MIL-76 做合併之前，同一人兼任會因 email 重複被擋下。
+//   7. 合併後 email 不重複。同一人兼任時先合併成一位簽署人（ADR-0018 決議 9），再檢查 email。
+//      合併的判定在 signature-routing 的 findMergedSeats，這裡與 buildSignerSequence 用同一個函式，兩邊不會不一致。
 //
 // 另外併入 B 線的出租權源送簽前提（MIL-150）。呼叫端有權源事實才傳 `leasingAuthority`。
 // 本函式不檢查簽署區域與範本審閱，那兩項由 wizard 與送簽流程各自處理。
@@ -24,7 +25,14 @@ import {
   type LeasingAuthoritySendFacts,
 } from '../leasing-authority/preconditions';
 import { normalizeEmail } from '../signing-module/progress';
-import { routeSignatures, type PlannedSeat, type PractitionerEntitySource, type RoutingFacts } from '../signature-routing';
+import {
+  findMergedSeats,
+  routeSignatures,
+  type PlannedSeat,
+  type PractitionerEntitySource,
+  type RoutingFacts,
+  type SeatIdentity,
+} from '../signature-routing';
 import { SIGNER_ROLE_LABELS } from '../types';
 
 /** 已指派的執業人員，以及判定用的事實。`accountEmail` 是其帳號的 email。 */
@@ -48,6 +56,11 @@ export interface SeatSigner {
   name: string;
   email: string;
   practitioner?: AssignedPractitionerFacts;
+  /**
+   * 簽署人是誰，合併的判定依據。當事人簽署人與執業人員的 `partyId` 相同，
+   * 而且屬於同一執業主體時，兩個席位合併成一位簽署人。沒有帶的席位不合併。
+   */
+  identity?: SeatIdentity;
 }
 
 export interface SendPreconditionFacts {
@@ -184,8 +197,12 @@ function checkDuplicateEmails(
   signers: readonly SeatSigner[],
   reasons: SendBlockReason[],
 ): void {
+  // 同一人兼任的當事人席位已併入執業人員席位，不再單獨算一位簽署人
+  const identities = Object.fromEntries(signers.map((s) => [s.seatRuleId, s.identity]));
+  const absorbed = new Set(findMergedSeats({ seats: plannedSeats }, identities).map((m) => m.partyRuleId));
   const byEmail = new Map<string, string[]>();
   for (const seat of plannedSeats) {
+    if (absorbed.has(seat.ruleId)) continue;
     const signer = signers.find((s) => s.seatRuleId === seat.ruleId);
     if (!signer || signer.email.trim() === '') continue;
     const key = normalizeEmail(signer.email);
