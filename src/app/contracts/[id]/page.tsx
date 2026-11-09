@@ -54,12 +54,14 @@ import {
   detailDeclinedTitle,
   detailSigningSteps,
   equipmentAnnexSummary,
+  mockAdvanceActions,
   type ContractFileRow,
   type DetailAction,
 } from '@/lib/contract-detail';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
 import { shortUlid } from '@/lib/pg/ulid';
 import { evaluateRouting } from '@/lib/signature-routing';
+import type { PrintedPractitioner } from '@/lib/practitioner-assignment/seats';
 
 const STATUS_COLORS: Record<ContractStatus, string> = {
   draft: 'default',
@@ -89,6 +91,8 @@ function ContractDetail({ id }: { id: string }) {
   const [signingProgress, setSigningProgress] = useState<SigningProgress | null>(null);
   const [events, setEvents] = useState<ContractEvent[]>([]);
   const [files, setFiles] = useState<ContractFile[]>([]);
+  // 已指派的執業人員（姓名、法定稱謂、執業主體），以席位 rule_id 為鍵
+  const [practitioners, setPractitioners] = useState<Record<string, PrintedPractitioner>>({});
   const [mockMode, setMockMode] = useState(false);
   // 連同取得當下的狀態一起存：狀態轉移後舊連結不再屬於當前待簽方，直接失效
   const [signLinkState, setSignLinkState] = useState<{ forStatus: ContractStatus; link: string } | null>(null);
@@ -109,12 +113,14 @@ function ContractDetail({ id }: { id: string }) {
     setSigningProgress(json.signing_progress ?? null);
 
     // 歷程與文件跟著合約一起更新，webhook 推進狀態後三者才會一致
-    const [eventsJson, filesJson] = await Promise.all([
+    const [eventsJson, filesJson, practitionersJson] = await Promise.all([
       fetch(`/api/contracts/${id}/events`).then((r) => (r.ok ? r.json() : { data: [] })),
       fetch(`/api/contracts/${id}/files`).then((r) => (r.ok ? r.json() : { data: [] })),
+      fetch(`/api/contracts/${id}/practitioners?only=printed`).then((r) => (r.ok ? r.json() : { data: null })),
     ]);
     setEvents(eventsJson.data ?? []);
     setFiles(filesJson.data ?? []);
+    setPractitioners(practitionersJson.data?.printed ?? {});
   }, [id, message, router]);
 
   useEffect(() => {
@@ -154,7 +160,8 @@ function ContractDetail({ id }: { id: string }) {
   const routing = evaluateRouting(contract.fields.routing);
   const isSigning = isSigningStatus(contract.status);
   const signer = detailCurrentSigner(signingProgress);
-  const signingSteps = detailSigningSteps(contract.status);
+  const signingSteps = detailSigningSteps(contract.status, signingProgress, contract.contract_type);
+  const mockActions = mockAdvanceActions(contract.status, signingProgress);
   const signLink = signLinkState?.forStatus === contract.status ? signLinkState.link : null;
   const eventEntries = contractEventEntries(events);
   const fileRows = contractFileRows(contract, files, { mock: mockMode });
@@ -285,6 +292,24 @@ function ContractDetail({ id }: { id: string }) {
           label: '乙方',
           children: `${contract.fields.tenantName}（${contract.fields.tenantEmail}）`,
         },
+        ...(Object.keys(practitioners).length > 0
+          ? [
+              {
+                key: 'practitioners',
+                label: '執業人員',
+                children: (
+                  <Space orientation="vertical" size={2}>
+                    {Object.entries(practitioners).map(([slot, p]) => (
+                      <Typography.Text key={slot}>
+                        {p.name}
+                        {p.title ? `（${p.title}）` : ''}・{p.entityName}
+                      </Typography.Text>
+                    ))}
+                  </Space>
+                ),
+              },
+            ]
+          : []),
         {
           key: 'rent',
           label: '月租金',
@@ -402,18 +427,22 @@ function ContractDetail({ id }: { id: string }) {
               items={signingSteps.titles.map((title) => ({ title }))}
             />
           )}
-          {!mockMode && isSigning && signer && (
+          {isSigning && signer && (
             <div style={{ marginTop: 12 }}>
               <Space wrap>
                 <Typography.Text type="secondary">
                   目前待簽：{SIGNER_ROLE_LABELS[signer.role]} {signer.name}（{signer.email}）
                 </Typography.Text>
-                <Button size="small" loading={linkLoading} onClick={fetchSignLink}>
-                  取得簽署連結
-                </Button>
-                <Button size="small" loading={resending} onClick={resend}>
-                  重寄簽署通知
-                </Button>
+                {!mockMode && (
+                  <>
+                    <Button size="small" loading={linkLoading} onClick={fetchSignLink}>
+                      取得簽署連結
+                    </Button>
+                    <Button size="small" loading={resending} onClick={resend}>
+                      重寄簽署通知
+                    </Button>
+                  </>
+                )}
               </Space>
               {signLink && (
                 <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4, maxWidth: 720 }}>
@@ -428,31 +457,16 @@ function ContractDetail({ id }: { id: string }) {
           {mockMode && isSigning && (
             <Space style={{ marginTop: 12 }} wrap>
               <Typography.Text type="secondary">模擬 webhook：</Typography.Text>
-              {contract.status === 'awaiting_tenant' && (
-                <>
-                  <Button size="small" onClick={() => mockAdvance('signed', '已模擬乙方簽署')}>
-                    模擬乙方簽署
-                  </Button>
-                  <Button size="small" danger onClick={() => mockAdvance('declined', '已模擬乙方拒簽')}>
-                    模擬乙方拒簽
-                  </Button>
-                </>
-              )}
-              {contract.status === 'awaiting_practitioner' && (
-                <>
-                  <Button size="small" onClick={() => mockAdvance('signed', '已模擬執業人員簽署')}>
-                    模擬執業人員簽署
-                  </Button>
-                  <Button size="small" danger onClick={() => mockAdvance('declined', '已模擬執業人員拒簽')}>
-                    模擬執業人員拒簽
-                  </Button>
-                </>
-              )}
-              {contract.status === 'awaiting_landlord' && (
-                <Button size="small" onClick={() => mockAdvance('completed', '已模擬甲方簽署，合約完成')}>
-                  模擬甲方簽署完成
+              {mockActions.map((action) => (
+                <Button
+                  key={`${action.event}-${action.label}`}
+                  size="small"
+                  danger={action.danger}
+                  onClick={() => mockAdvance(action.event, action.message)}
+                >
+                  {action.label}
                 </Button>
-              )}
+              ))}
             </Space>
           )}
         </Card>

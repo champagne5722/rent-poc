@@ -1,12 +1,16 @@
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureSchema } from '../db';
 import type { ContractStatus } from '../types';
 import { migrateLegacyContractSigning } from './contract-backfill';
 import { createLegacyContractTables } from './legacy-schema.fixture';
 import type { SigningSubject } from './provider';
-import { listSignTaskFiles } from './sign-task-files';
-import { findSignTask, findSubjectByTaskRef, toSigningProgress } from './sign-task-store';
+import {
+  ensureLegacySignTaskTables,
+  findLegacySignTask as findSignTask,
+  findLegacySubjectByTaskRef as findSubjectByTaskRef,
+  legacyProgressOf as toSigningProgress,
+  listLegacySignTaskFiles as listSignTaskFiles,
+} from './legacy-sign-task-sqlite';
 
 // 舊 SQLite 資料的回填（MIL-56、MIL-58）與舊形式移除（MIL-60）。
 // 合約搬到 PostgreSQL 後（MIL-83），ensureSchema() 不再呼叫它，合約表也不在 SQLite 裡。
@@ -17,7 +21,7 @@ let db: Database.Database;
 
 beforeEach(() => {
   db = new Database(':memory:');
-  ensureSchema(db);
+  ensureLegacySignTaskTables(db);
   createLegacyContractTables(db);
 });
 
@@ -93,7 +97,7 @@ describe('回填後移除舊形式', () => {
 
   it('沒有舊形式的資料庫，重複執行是 no-op', () => {
     const fresh = new Database(':memory:');
-    ensureSchema(fresh);
+    ensureLegacySignTaskTables(fresh);
 
     expect(() => migrateLegacyContractSigning(fresh)).not.toThrow();
     expect(() => migrateLegacyContractSigning(fresh)).not.toThrow();

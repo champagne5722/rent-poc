@@ -191,6 +191,13 @@ describe('signingSequenceNotice（確認頁的簽署順序說明）', () => {
     expect(signingSequenceNotice(fields(routing({ businessType: 'managed' })))).toBe(TENANT_FIRST_NOTICE);
   });
 
+  it('說明用承租人、出租人的稱謂，不再寫租客與甲方（您）', () => {
+    expect(TENANT_FIRST_NOTICE).toBe(
+      '送簽後由乙方（承租人）先簽，乙方完成後才輪到甲方（出租人）簽署，雙方都簽完合約才成立。',
+    );
+    expect(TENANT_FIRST_NOTICE).not.toMatch(/租客|房東|您/);
+  });
+
   it('其他序列由席位產生', () => {
     expect(signingSequenceNotice(fields(MASTER))).toBe(
       '送簽後依序簽署：乙方（承租人）、執業人員（租賃住宅管理人員）、甲方（出租人）。每位簽完才輪到下一位，全部簽完合約才成立。',

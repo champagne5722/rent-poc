@@ -74,6 +74,72 @@ export const ORG_TABLE_CASES: Record<string, OrgTableCase> = {
       return id;
     },
   },
+  'org.contract_practitioner_assignments': {
+    async seed(tx, orgId) {
+      const contractId = newUlid();
+      await tx.query('INSERT INTO org.contracts (id, org_id) VALUES ($1, $2)', [contractId, orgId]);
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.contract_practitioner_assignments (id, org_id, contract_id, slot, entity_id, practitioner_id)
+         VALUES ($1, $2, $3, 'penetration.slot', 'entity', 'practitioner')`,
+        [id, orgId, contractId],
+      );
+      return id;
+    },
+  },
+  'org.contract_credential_snapshots': {
+    async seed(tx, orgId) {
+      const contractId = newUlid();
+      await tx.query('INSERT INTO org.contracts (id, org_id) VALUES ($1, $2)', [contractId, orgId]);
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.contract_credential_snapshots (id, org_id, contract_id, slot, practitioner_id, decided_at, facts, result)
+         VALUES ($1, $2, $3, 'penetration.slot', 'practitioner', now(), '{}'::jsonb, '{}'::jsonb)`,
+        [id, orgId, contractId],
+      );
+      return id;
+    },
+  },
+  'org.sign_tasks': {
+    async seed(tx, orgId) {
+      return seedSignTask(tx, orgId);
+    },
+  },
+  'org.signers': {
+    async seed(tx, orgId) {
+      const signTaskId = await seedSignTask(tx, orgId);
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.signers (id, org_id, sign_task_id, position, role, name, email)
+         VALUES ($1, $2, $3, 0, 'party_b', '滲透測試簽署人', 'penetration@example.com')`,
+        [id, orgId, signTaskId],
+      );
+      return id;
+    },
+  },
+  'org.sign_task_files': {
+    async seed(tx, orgId) {
+      const signTaskId = await seedSignTask(tx, orgId);
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.sign_task_files (id, org_id, sign_task_id, kind, status, file_name)
+         VALUES ($1, $2, $3, 'signed_pdf', 'failed', 'penetration.pdf')`,
+        [id, orgId, signTaskId],
+      );
+      return id;
+    },
+  },
+  'org.outbox': {
+    async seed(tx, orgId) {
+      const id = newUlid();
+      await tx.query(
+        `INSERT INTO org.outbox (id, org_id, action, subject_type, subject_id, status)
+         VALUES ($1, $2, 'void_sign_task', 'contract', $3, 'pending')`,
+        [id, orgId, newUlid()],
+      );
+      return id;
+    },
+  },
   'org.consent_records': {
     appendOnly: true,
     // 直接 INSERT 而不用 recordConsent：探測 4 要在 A 的脈絡寫入 B 的 org_id，recordConsent 沒有這個參數。
@@ -132,33 +198,56 @@ async function seedLedgerJournal(tx: OrgTx, orgId: string): Promise<{ journalId:
   return { journalId, entryId };
 }
 
+// 簽署任務。服務商任務編號固定：兩個組織各寫一列都要成功（陷阱 6）；
+// 跨組織的唯一性由 control.sign_task_routes 保證，那張表在下面的例外清單。
+async function seedSignTask(tx: OrgTx, orgId: string): Promise<string> {
+  const id = newUlid();
+  await tx.query(
+    `INSERT INTO org.sign_tasks (id, org_id, provider, provider_task_ref, subject_type, subject_id)
+     VALUES ($1, $2, 'mock', 'penetration-ref', 'contract', $3)`,
+    [id, orgId, newUlid()],
+  );
+  return id;
+}
+
 /** 傳入系統目錄列出的 org 表名（schema.table），回傳沒有登記案例的表。 */
 export function tablesWithoutCase(tables: readonly string[]): string[] {
   return tables.filter((t) => !(t in ORG_TABLE_CASES));
 }
 
-// control schema 的表不掛組織 RLS（ADR-0012 決議 3），所以不進 ORG_TABLE_CASES。
-// 規則：control 的每張表必須在這裡登記「為什麼不掛 RLS」與「app_rw 拿到哪些權限」，
-// rls-penetration.test.ts 從系統目錄列出 control 的所有表，缺登記就讓測試失敗。
-// 這些表的資料不屬於任何一個組織，權限逐表授予，不靠 RLS。
-// 形狀與 integration/line-c（MIL-103）相同，兩條線合併時各自的登記列併在一起。
+// control schema 的表不掛組織 RLS，也不需要滲透案例（ADR-0012 決議 3）。
+// 取而代之的是這份例外清單：每張 control 表必須登記，並寫明 app_rw 的直接 DML 權限。
+// 不在清單內的 control 表讓 rls-penetration.test.ts 失敗，權限與清單不符也會失敗。
+// 之後新增 control 表的人（inbox 屬 MIL-86、F 線的 control.handovers）自己加進來。
+// MIL-89 會擴充成完整的系統目錄檢查，沿用這份清單。
+
 export interface ControlTableException {
+  /** 為什麼這張表不掛組織 RLS，讀寫該怎麼走。 */
   reason: string;
-  /** app_rw 在這張表上的權限，測試會比對系統目錄。空陣列代表 app_rw 沒有任何權限。 */
-  appRwPrivileges: readonly ('SELECT' | 'INSERT' | 'UPDATE' | 'DELETE')[];
+  /** app_rw 允許的直接 DML。沒有列出的動作一律不得有權限。 */
+  appRw: ReadonlyArray<'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE'>;
 }
 
 export const CONTROL_TABLE_EXCEPTIONS: Record<string, ControlTableException> = {
   'control.schema_migrations': {
-    reason: 'migration runner 的紀錄表，只給 app_owner（0001）',
-    appRwPrivileges: [],
+    reason: 'migration runner 的版本紀錄，只有 app_owner 讀寫',
+    appRw: [],
   },
   'control.orgs': {
-    reason: '組織目錄，所有組織的名稱與種類。MIL-79',
-    appRwPrivileges: ['SELECT'],
+    reason: '組織目錄，登入與 withTx 設定脈絡之前就要查。應用程式只讀，新增組織走維運',
+    appRw: ['SELECT'],
+  },
+  'control.sign_task_routes': {
+    reason: 'webhook 沒有組織脈絡，靠它由服務商任務編號查出 org_id（ADR-0012 決議 5）。與簽署任務同交易寫入，寫入後不變',
+    appRw: ['SELECT', 'INSERT'],
   },
   'control.deposit_holder_rules': {
     reason: '押金帳戶規則，平台層級，組織不得覆寫，只由 migration 改列。MIL-118，ADR-0014 決議 13',
-    appRwPrivileges: ['SELECT'],
+    appRw: ['SELECT'],
   },
 };
+
+/** 傳入系統目錄列出的 control 表名（schema.table），回傳沒有登記的表。 */
+export function controlTablesWithoutException(tables: readonly string[]): string[] {
+  return tables.filter((t) => !(t in CONTROL_TABLE_EXCEPTIONS));
+}

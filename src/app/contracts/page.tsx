@@ -26,6 +26,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import type { Contract, ContractStatus } from '@/lib/types';
 import { shortUlid } from '@/lib/pg/ulid';
 import { CONTRACT_STATUS_LABELS, isSigningStatus } from '@/lib/types';
+import { partyLabels } from '@/lib/labels';
 import {
   countByStatus,
   lastActionAt,
@@ -239,7 +240,7 @@ function ContractList() {
             ),
           },
           { title: '物件', render: (_, r) => r.fields.propertyName || '—' },
-          { title: '乙方（租客）', render: (_, r) => r.fields.tenantName || '—' },
+          { title: partyLabels('lease').partyBFull, render: (_, r) => r.fields.tenantName || '—' },
           {
             title: '租金',
             width: 100,
