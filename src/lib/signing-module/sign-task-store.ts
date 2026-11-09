@@ -105,8 +105,8 @@ function toSignerRecord({ concurrentRoles, ...signer }: SignerRow): SignerRecord
   return roles.length > 0 ? { ...signer, concurrentRoles: roles } : signer;
 }
 
-/** 簽署標的在批次結果裡的鍵。編號轉成字串，簽署標的的編號改字串時（MIL-131）鍵不變。 */
-export function signingSubjectKey(subject: SigningSubject): string {
+/** 簽署標的在批次結果裡的鍵。編號當字串用，簽署標的的編號改字串時（MIL-131）鍵不變。 */
+export function signingSubjectKey(subject: { type: string; id: number | string }): string {
   return `${subject.type}:${String(subject.id)}`;
 }
 
@@ -148,7 +148,7 @@ export function findSignTasks(db: Database.Database, subjects: readonly SigningS
       signersByTask.set(signTaskId, [...(signersByTask.get(signTaskId) ?? []), toSignerRecord(row)]);
     }
     for (const t of taskRows) {
-      found.set(signingSubjectKey({ type: t.subject_type, id: Number(t.subject_id) }), {
+      found.set(signingSubjectKey({ type: t.subject_type, id: t.subject_id }), {
         id: t.id,
         taskRef: t.provider_task_ref,
         status: t.status,

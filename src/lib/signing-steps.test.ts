@@ -309,6 +309,11 @@ describe('isPartyATurn：球在甲方手上（工作台的待辦）', () => {
     const p = progress([['party_b', 'signed'], ['practitioner', 'pending', ['party_a']]]);
     expect(isPartyATurn('awaiting_practitioner', p)).toBe(true);
   });
+  it('簽署任務已結束時沒有人輪到，與步驟的位置一致', () => {
+    const ended = progress([['party_b', 'signed'], ['party_a', 'pending']], 'voided');
+    expect(isPartyATurn('awaiting_landlord', ended)).toBe(false);
+    expect(buildSigningSteps({ status: 'awaiting_landlord', progress: ended, seats: TWO }).position).toBeNull();
+  });
   it('沒有簽署任務的舊合約依合約狀態', () => {
     expect(isPartyATurn('awaiting_landlord', null)).toBe(true);
     expect(isPartyATurn('awaiting_tenant', null)).toBe(false);

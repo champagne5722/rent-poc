@@ -8,9 +8,8 @@ import {
   todoActionFor,
   workbenchStats,
   WORKBENCH_QUICK_LINKS,
-  type SigningProgressById,
 } from './workbench';
-import type { SigningProgressInput } from './signing-steps';
+import type { SigningProgressById, SigningProgressInput } from './signing-steps';
 
 interface MakeOptions {
   id?: number;

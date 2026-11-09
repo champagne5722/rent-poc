@@ -1,7 +1,7 @@
 // 工作台（登入後預設落地頁）的挑選與計數邏輯，全部是純函式（見 docs/rental-contract-signing-spec.md §5）。
 // 頁面只負責取資料與畫畫面，什麼進待辦、怎麼排、卡片算什麼數字都集中在這裡以便測試。
 
-import { isPartyATurn, type SigningProgressInput } from './signing-steps';
+import { isPartyATurn, type SigningProgressById, type SigningProgressInput } from './signing-steps';
 import type { Contract } from './types';
 import { isSigningStatus } from './types';
 import { lastActionAt } from './contract-list';
@@ -12,10 +12,7 @@ import { CREATE_CONTRACT_HREF } from './nav';
 // 輪到乙方、執業人員或經紀人時，球不在甲方手上。兼任甲方的簽署人輪到時算甲方，合併不改變輪到誰。
 // 已拒簽／已撤回是「決定要不要重來」，由合約列表承接，工作台不重複。
 
-/** 以合約編號為鍵的簽署進度，沒有簽署任務的合約不在裡面。清單 API 一次回傳整頁。 */
-export type SigningProgressById = Readonly<Record<string, SigningProgressInput | undefined>>;
-
-export function isWorkbenchTodo(contract: Pick<Contract, 'id' | 'status'>, progress?: SigningProgressInput | null): boolean {
+export function isWorkbenchTodo(contract: Pick<Contract, 'status'>, progress?: SigningProgressInput | null): boolean {
   return contract.status === 'draft' || isPartyATurn(contract.status, progress);
 }
 

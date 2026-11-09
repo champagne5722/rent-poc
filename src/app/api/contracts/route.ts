@@ -4,20 +4,29 @@ import { CONTRACT_TYPES, DEFAULT_CONTRACT_TYPE, contractTypeDefinition, initialF
 import type { ContractFields } from '@/lib/types';
 import type { ContractType } from '@/lib/labels';
 import { routingInputError } from '@/lib/signature-routing';
-import { contractSubject, signing } from '@/lib/signing-module';
-import { signingSubjectKey } from '@/lib/signing-module/sign-task-store';
+import { contractSubject, signing, signingSubjectKey } from '@/lib/signing-module';
+import type { SigningProgressById } from '@/lib/signing-steps';
 
 // 清單與工作台共用。簽署進度一次批次查回整頁合約，以合約編號為鍵（MIL-72）。
 // 沒有簽署任務的合約（草稿、沒有回填的舊合約）不在 signing_progress 裡。
+// 清單只需要角色、姓名與狀態，不回簽署人的 email。
 export async function GET() {
   const contracts = listContracts();
   const progress = await signing.getProgressBatch(contracts.map((c) => contractSubject(c.id)));
-  const signingProgress = Object.fromEntries(
-    contracts.flatMap((c) => {
-      const entry = progress.get(signingSubjectKey(contractSubject(c.id)));
-      return entry ? [[String(c.id), entry] as const] : [];
-    })
-  );
+  const signingProgress: Record<string, NonNullable<SigningProgressById[string]>> = {};
+  for (const c of contracts) {
+    const entry = progress.get(signingSubjectKey(contractSubject(c.id)));
+    if (!entry) continue;
+    signingProgress[String(c.id)] = {
+      status: entry.status,
+      signers: entry.signers.map(({ role, name, status, concurrentRoles }) => ({
+        role,
+        name,
+        status,
+        ...(concurrentRoles ? { concurrentRoles } : {}),
+      })),
+    };
+  }
   return Response.json({ data: contracts, signing_progress: signingProgress });
 }
 

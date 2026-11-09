@@ -18,7 +18,7 @@ import type { Contract, ContractStatus, Property } from '@/lib/types';
 import { CONTRACT_STATUS_LABELS } from '@/lib/types';
 import { lastActionAt } from '@/lib/contract-list';
 import { contractTypeDefinition, listSummaryOf } from '@/lib/contract-types';
-import type { SigningProgress } from '@/lib/signing-module/sign-task-store';
+import type { SigningProgressById, SigningProgressInput } from '@/lib/signing-steps';
 import {
   selectWorkbenchTodos,
   todoActionFor,
@@ -40,7 +40,7 @@ const QUICK_LINK_ICONS: Record<WorkbenchQuickLink['key'], React.ReactNode> = {
   properties: <HomeOutlined />,
 };
 
-function TodoRow({ contract, progress }: { contract: Contract; progress: SigningProgress | null }) {
+function TodoRow({ contract, progress }: { contract: Contract; progress: SigningProgressInput | null }) {
   const action = todoActionFor(contract, progress);
   const isDraft = contract.status === 'draft';
   const summary = listSummaryOf(contract);
@@ -74,7 +74,7 @@ function TodoRow({ contract, progress }: { contract: Contract; progress: Signing
 export default function WorkbenchPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   // 以合約編號為鍵的簽署進度，待辦依當前簽署人判斷（MIL-72）
-  const [progress, setProgress] = useState<Record<string, SigningProgress>>({});
+  const [progress, setProgress] = useState<SigningProgressById>({});
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -117,7 +117,7 @@ export default function WorkbenchPage() {
         </Row>
 
         <Row gutter={[16, 16]}>
-          {/* 模組二：待辦（窄規則）——只收等房東動作、流程才會前進的合約，依當前簽署人判斷 */}
+          {/* 模組二：待辦（窄規則）——只收等出租人動作、流程才會前進的合約，依當前簽署人判斷 */}
           <Col xs={24} lg={16}>
             <Card
               title="待辦（等我動作，流程才會前進）"

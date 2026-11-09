@@ -31,6 +31,9 @@ export interface SigningProgressInput {
   signers: ReadonlyArray<Pick<SignerRecord, 'role' | 'name' | 'status'> & { concurrentRoles?: readonly SignerRole[] }>;
 }
 
+/** 以合約編號為鍵的簽署進度，沒有簽署任務的合約不在裡面。清單 API 一次回傳整頁。 */
+export type SigningProgressById = Readonly<Record<string, SigningProgressInput | undefined>>;
+
 export type SigningStepState = 'signed' | 'current' | 'waiting' | 'declined';
 
 export interface SigningStep {
@@ -212,7 +215,9 @@ export function buildSigningSteps(input: BuildSigningStepsInput): SigningSteps {
  */
 export function isPartyATurn(status: ContractStatus, progress?: SigningProgressInput | null): boolean {
   if (!isSigningStatus(status)) return false;
-  if (progress && progress.signers.length > 0 && (progress.status ?? 'in_progress') === 'in_progress') {
+  if (progress && progress.signers.length > 0) {
+    // 有簽署任務時只看任務：任務已結束（拒簽、撤回）就沒有人輪到，與 buildSigningSteps 的位置一致
+    if ((progress.status ?? 'in_progress') !== 'in_progress') return false;
     const current = progress.signers.find((s) => s.status === 'pending');
     return Boolean(current && (current.role === 'party_a' || current.concurrentRoles?.includes('party_a')));
   }

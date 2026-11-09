@@ -24,7 +24,7 @@ import {
 import Link from 'next/link';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { Contract, ContractStatus } from '@/lib/types';
-import type { SigningProgress as SigningProgressRecord } from '@/lib/signing-module/sign-task-store';
+import type { SigningProgressById, SigningProgressInput } from '@/lib/signing-steps';
 import { CONTRACT_STATUS_LABELS, isSigningStatus } from '@/lib/types';
 import {
   countByStatus,
@@ -56,7 +56,7 @@ const DOT_PENDING = 'rgba(5, 5, 5, 0.15)';
 
 // 簽署進度點：每位簽署人一點，最後多一點「完成」，由實際的簽署序列推導（MIL-72）。
 // 兩方合約是乙方簽、甲方簽、完成三點。簽署流程外的狀態顯示「—」。
-function SigningProgress({ contract, progress }: { contract: Contract; progress: SigningProgressRecord | null }) {
+function SigningProgress({ contract, progress }: { contract: Contract; progress: SigningProgressInput | null }) {
   const dots = listSigningDots(contract, progress);
   if (dots == null) {
     return (
@@ -87,7 +87,7 @@ function SigningProgress({ contract, progress }: { contract: Contract; progress:
 interface ContractListData {
   contracts: Contract[];
   // 以合約編號為鍵。沒有簽署任務的合約不在裡面
-  progress: Record<string, SigningProgressRecord>;
+  progress: SigningProgressById;
 }
 
 async function fetchContracts(): Promise<ContractListData> {
@@ -99,7 +99,7 @@ async function fetchContracts(): Promise<ContractListData> {
 function ContractList() {
   const { message } = AntApp.useApp();
   const [items, setItems] = useState<Contract[]>([]);
-  const [progress, setProgress] = useState<Record<string, SigningProgressRecord>>({});
+  const [progress, setProgress] = useState<SigningProgressById>({});
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [status, setStatus] = useState<ContractStatus | 'all'>('all');
