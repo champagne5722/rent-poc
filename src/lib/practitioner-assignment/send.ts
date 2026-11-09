@@ -5,6 +5,7 @@ import type Database from 'better-sqlite3';
 import { getDb } from '../db';
 import type { PracticeRegistryResolution } from '../practice-registry';
 import type { SendBlockReason, SendNotice } from '../send-preconditions';
+import { templateReviewBlock } from '../template-review';
 import { loadContractRoutingFacts } from '../signature-routing/repository';
 import { prepareContractSigners } from '../signing';
 import type { Signer } from '../signing-module/provider';
@@ -44,12 +45,14 @@ export async function prepareContractSend(
 
   const assignments = await getAssignments(contract.id, db);
   const evaluation = await evaluateSend(
-    { routing: routing.facts, fields: contract.fields, assignments, at },
+    { routing: routing.facts, contractType: contract.contract_type, fields: contract.fields, assignments, at },
     resolution,
   );
-  if (!evaluation.ok) {
-    const messages = evaluation.reasons.map((r) => r.message);
-    return { ok: false, status: 400, error: `無法送簽：${messages.join('。')}`, reasons: evaluation.reasons };
+  // 未審閱範本的閘門（P0-10 AC5）：正式金鑰下擋下，與送簽前檢查的原因一起列出
+  const templateBlock = templateReviewBlock(contract.contract_type, contract.fields, process.env);
+  if (!evaluation.ok || templateBlock) {
+    const reasons: SendBlockReason[] = [...(evaluation.ok ? [] : evaluation.reasons), ...(templateBlock ? [templateBlock] : [])];
+    return { ok: false, status: 400, error: `無法送簽：${reasons.map((r) => r.message).join('。')}`, reasons };
   }
 
   const prepared = prepareContractSigners(contract, routing.facts, evaluation.assignees);

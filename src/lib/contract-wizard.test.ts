@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Contract, ContractFields, SignatureField } from './types';
+import type { LeaseContract, LeaseContractFields, SignatureField } from './types';
 import { CONTRACT_PARTY_ROLES, SIGNER_ROLE_LABELS } from './types';
 import {
   WIZARD_STEPS,
@@ -18,7 +18,7 @@ import {
 } from './contract-wizard';
 import { DEFAULT_TEMPLATE, findClause, upgradeNotice } from './clause-library';
 
-function fields(patch: Partial<ContractFields> = {}): ContractFields {
+function fields(patch: Partial<LeaseContractFields> = {}): LeaseContractFields {
   return {
     landlordName: '王大明',
     landlordEmail: 'landlord@example.com',
@@ -43,7 +43,7 @@ function sig(signer: SignatureField['signer'], id: string = signer): SignatureFi
   return { id, signer, page: 0, x: 0.5, y: 0.7, w: 0.3, h: 0.07 };
 }
 
-function contract(patch: Partial<Contract> = {}): Contract {
+function contract(patch: Partial<LeaseContract> = {}): LeaseContract {
   return {
     id: 1,
     property_id: 3,

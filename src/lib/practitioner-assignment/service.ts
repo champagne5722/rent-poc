@@ -32,7 +32,9 @@ import {
 import { buildCredentialSnapshot } from '../signature-records/snapshot';
 import type { ContractSendRecord } from '../signature-records/types';
 import { normalizeEmail } from '../signing-module/progress';
-import { SIGNER_ROLE_LABELS, type ContractFields, type ContractPartyRole } from '../types';
+import { DEFAULT_CONTRACT_TYPE, partyOfFields, type PartyFields } from '../contract-types';
+import type { ContractType } from '../labels';
+import { SIGNER_ROLE_LABELS, type ContractPartyRole } from '../types';
 import {
   licenseKindForSeat,
   partyRoleOfEntitySource,
@@ -44,7 +46,10 @@ import {
 
 export interface EvaluateSendInput {
   routing: RoutingFacts;
-  fields: Pick<ContractFields, 'landlordName' | 'landlordEmail' | 'tenantName' | 'tenantEmail'>;
+  /** 合約類型，決定當事人取自哪些欄位。沒有帶視為租賃合約。 */
+  contractType?: ContractType;
+  /** 當事人姓名與 email 所在的欄位，形狀由 `contractType` 決定。 */
+  fields: PartyFields;
   assignments: readonly PractitionerAssignmentInput[];
   /** 判定時點，ISO 8601。 */
   at: string;
@@ -67,10 +72,8 @@ interface ResolvedSeat {
   partySigner: PartySignerCandidate | null;
 }
 
-function partyField(fields: EvaluateSendInput['fields'], role: ContractPartyRole) {
-  return role === 'party_a'
-    ? { name: fields.landlordName, email: fields.landlordEmail }
-    : { name: fields.tenantName, email: fields.tenantEmail };
+function partyField(input: EvaluateSendInput, role: ContractPartyRole) {
+  return partyOfFields(input.contractType ?? DEFAULT_CONTRACT_TYPE, input.fields, role);
 }
 
 async function resolveSeat(
@@ -111,7 +114,7 @@ export async function evaluateSend(
   input: EvaluateSendInput,
   resolution: PracticeRegistryResolution,
 ): Promise<SendEvaluation> {
-  const { routing, fields, assignments, at } = input;
+  const { routing, assignments, at } = input;
   const route = routeSignatures(routing);
   const base = { assignees: {}, printed: {}, records: [] };
   if (route.kind !== 'sequence') {
@@ -136,7 +139,7 @@ export async function evaluateSend(
 
   for (const [seatIndex, seat] of route.plan.seats.entries()) {
     if (seat.role === 'party_a' || seat.role === 'party_b') {
-      signers.push({ seatRuleId: seat.ruleId, ...partyField(fields, seat.role) });
+      signers.push({ seatRuleId: seat.ruleId, ...partyField(input, seat.role) });
       continue;
     }
     const r = resolvedBySeat.get(seat.ruleId);
@@ -190,7 +193,7 @@ export async function evaluateSend(
     } else if (!r.partySigner || r.partySigner.entityId !== r.assignment.entityId) {
       reason('party_signer_mismatch', `${label}的當事人簽署人必須是所選執業主體的成員`);
     } else {
-      const current = partyField(fields, partyRole);
+      const current = partyField(input, partyRole);
       if (current.name !== r.partySigner.name || normalizeEmail(current.email) !== normalizeEmail(r.partySigner.email)) {
         reason('party_signer_mismatch', `${label}的姓名與 email 必須與所選的當事人簽署人相同，請重新選擇`);
       }
