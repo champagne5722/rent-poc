@@ -36,6 +36,7 @@ function KindCheckboxes({ value = [], onChange, firmSelected }: { value?: Licens
       {KIND_OPTIONS.map((option) => (
         <Checkbox
           key={option.value}
+          value={option.value}
           checked={value.includes(option.value)}
           disabled={option.companyOnly && firmSelected}
           onChange={(e) => onChange?.(e.target.checked ? [...value, option.value] : value.filter((k) => k !== option.value))}
