@@ -33,7 +33,7 @@
 -- 即使被誤授權，開頭仍檢查呼叫者是執業主體組織的成員（assert_practice_member）。
 -- 回傳什麼：blocked、consent_required、clear 三選一。
 -- 規則：別家（entity_id 不是 p_entity_id）有一筆狀態是 verified、任職期間涵蓋今天的任職時，
---   管理人員（rental_housing_manager）得 blocked，其他證書種類得 consent_required。沒有時得 clear。
+--   管理人員（rental_housing_manager）的結論是 blocked，其他證書種類是 consent_required。沒有這樣的任職時是 clear。
 --   已驗證代表進行中，任職結束時轉已失效（0047），所以待驗證與已失效的別家任職不影響結論。
 -- p_entity_id 為 NULL 時，所有已驗證的任職都算別家。
 CREATE FUNCTION registry.exclusivity_verdict(p_certificate_key text, p_certificate_kind text, p_entity_id text)

@@ -98,7 +98,7 @@ describe('單獨的專任事實入口已不存在', () => {
     for (const [label, ctx] of await everyContext()) {
       const real = await call(ctx, sql, [...args(KEYS.verifiedManager)]);
       const missing = await call(ctx, sql, [...args(KEYS.missing)]);
-      expect(real.failed, `${label} 不得成功`).toBe(true);
+      expect(real.failed, `${label} 必須失敗`).toBe(true);
       expect(normalize(real), label).toEqual(normalize(missing));
     }
   });
@@ -120,7 +120,7 @@ describe('寫入路徑：不能到達判定的呼叫者，真實與不存在的�
   it('create_employment：不是自己的證書一律被拒，與證書鍵無關', async () => {
     for (const [label, ctx] of await everyContext()) {
       const real = await call(ctx, createSql, [newUlid(), newUlid(), '2026-11-10', newUlid()]);
-      expect(real.failed, `${label} 不得成功`).toBe(true);
+      expect(real.failed, `${label} 必須失敗`).toBe(true);
       expect((real as Failure).code, label).toBe('42501');
     }
   });

@@ -259,7 +259,7 @@ describe('直接查詢某個證書鍵在別家有沒有在職（MIL-186）：一
   it.each(CALLER_RELATIONS.map((r) => [r.name, r.label] as const))('%s（%s）', async (relation) => {
     const ctx = relationByName(relation).context(world);
     const verified = await probe(ctx, key('1234567'));
-    expect(verified.rejected, '已驗證在職的證書鍵不得查得到').toBe(true);
+    expect(verified.rejected, '已驗證在職的證書鍵必須查不到').toBe(true);
     expect(verified).toEqual(await probe(ctx, key('9999999')));
   });
 
