@@ -46,6 +46,10 @@ const management: Contract = {
     mandatorEmail: 'owner@example.com',
     mandataryName: '北辰管理',
     mandataryEmail: 'manager@example.com',
+    termStart: '',
+    termEnd: '',
+    feeMode: null,
+    feeValue: null,
     extra: '',
   },
 };

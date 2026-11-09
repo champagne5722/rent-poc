@@ -1,23 +1,23 @@
 // 範本登錄（MIL-73、ADR-0005）：平台提供的範本依合約類型查詢，法務審閱旗標也在這裡。
 // 只有純資料與純函式，沒有 fs，client 端的 wizard 也能引用。
 //
-// 新增合約類型的範本時，只在 TEMPLATES 與 OPTIONAL_CLAUSE_LIBRARIES 加一列（委託管理合約屬 MIL-74）。
+// 新增合約類型的範本時，只在 TEMPLATES 與 OPTIONAL_CLAUSE_LIBRARIES 加一列。
 // 範本與選用條款的版本、快照與升版機制仍在 clause-library.ts，這裡不重寫。
 
-import { DEFAULT_TEMPLATE, OPTIONAL_CLAUSES } from './clause-library';
+import { DEFAULT_TEMPLATE, MANAGEMENT_TEMPLATE, OPTIONAL_CLAUSES } from './clause-library';
 import type { ContractType } from './labels';
 import type { ContractTemplate, OptionalClause, TemplateBinding } from './types';
 
 /** 各合約類型的範本，版本由舊到新。 */
 export type TemplateRegistry = Readonly<Record<ContractType, readonly ContractTemplate[]>>;
 
-/** 各合約類型提供的範本。委託管理合約在 MIL-74 之前沒有範本。 */
+/** 各合約類型提供的範本。 */
 export const TEMPLATES: TemplateRegistry = {
   lease: [DEFAULT_TEMPLATE],
-  management: [],
+  management: [MANAGEMENT_TEMPLATE],
 };
 
-/** 各合約類型的選用條款庫。 */
+/** 各合約類型的選用條款庫。委託管理合約沒有選用條款。 */
 export const OPTIONAL_CLAUSE_LIBRARIES: Readonly<Record<ContractType, readonly OptionalClause[]>> = {
   lease: OPTIONAL_CLAUSES,
   management: [],

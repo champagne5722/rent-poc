@@ -6,6 +6,7 @@
 import type { ReactNode } from 'react';
 import type { DescriptionsProps, FormInstance } from 'antd';
 import type { PartyLabels } from '@/lib/labels';
+import type { MandateItem } from '@/lib/mandate-schedule';
 import type { ContractFields, ContractPartyRole } from '@/lib/types';
 
 export interface PropertyStepProps<F extends ContractFields = ContractFields> {
@@ -28,13 +29,21 @@ export interface FieldsStepProps<F extends ContractFields = ContractFields> {
   /** 執業人員指派區（共用，簽署序列有執業人員席位時才有），放在雙方資訊與其他欄位之間。 */
   practitionerSlot: ReactNode;
   onFieldsChange(next: F): void;
+  /** 委託標的清單（委託管理合約，MIL-74）。其他合約類型不看。清單改動隨草稿一起存。 */
+  mandateItems: readonly MandateItem[];
+  onMandateItemsChange(next: MandateItem[]): void;
 }
 
 export interface SummaryContext {
   labels: PartyLabels;
+  contractId: number;
+  /** 委託管理合約的委託標的清單。其他合約類型不看。 */
+  mandateItems: readonly MandateItem[];
 }
 
 export interface WizardTypeUi<F extends ContractFields = ContractFields> {
+  /** 這個類型的草稿有委託標的清單：wizard 載入時讀、按下一步時一併存。 */
+  readonly hasMandateItems?: boolean;
   PropertyStep(props: PropertyStepProps<F>): ReactNode;
   FieldsStep(props: FieldsStepProps<F>): ReactNode;
   /** 確認頁在簽署順序說明之下的提醒，例如押金警告。 */

@@ -3,6 +3,7 @@
 // 不直接判斷「是租賃合約還是委託管理合約」。只有純資料與純函式，沒有 fs，client 端也能引用。
 
 import type { ContractType, PartyLabels } from '../labels';
+import type { MandateItem } from '../mandate-schedule';
 import type {
   ContractFields,
   ContractPartyRole,
@@ -39,8 +40,17 @@ export interface ContractListSummary {
   period: readonly [string, string] | null;
 }
 
+/**
+ * 欄位以外、另存於子表的合約內容。委託管理合約的委託標的清單存在 contract_mandate_items（MIL-74），
+ * 檢核必填時要一起看。沒有帶（undefined）代表呼叫端沒有載入，這一項就不檢查。
+ */
+export interface ContractAttachments {
+  mandateItems?: readonly MandateItem[];
+}
+
 export interface InitialFieldsInput {
-  property: Property;
+  /** 租賃合約從物件建立草稿，必須帶。委託管理合約的租賃單位在委託標的清單，不帶。 */
+  property?: Property;
   routing?: ContractRoutingConditions;
 }
 
@@ -64,9 +74,18 @@ export interface ContractTypeDefinition<F extends ContractFields = ContractField
   /** 當事人姓名與 email 欄位的標籤。執業主體是這一方時，這兩個欄位由簽署人帶入。 */
   partyFieldLabels(role: ContractPartyRole): readonly [string, string];
   /** 建約 wizard 第②步的必填欄位檢核，回傳缺漏欄位的標籤。 */
-  missingFields(fields: F): string[];
+  missingFields(fields: F, attachments?: ContractAttachments): string[];
   /** 送簽前伺服器端的必填欄位檢核，回傳缺漏欄位的標籤。 */
-  missingFieldsForSend(fields: F): string[];
+  missingFieldsForSend(fields: F, attachments?: ContractAttachments): string[];
+  /**
+   * 這個類型能不能送簽。委託管理合約的送簽屬 MIL-77，在那之前只做到草稿與 PDF 預覽。
+   * 送簽 route 與 wizard 第④步都看它，不判斷具體類型。
+   */
+  readonly sendSupported: boolean;
+  /** 建立草稿時要不要選物件。租賃合約從物件建立，委託管理合約的租賃單位在委託標的清單。 */
+  readonly requiresProperty: boolean;
+  /** 不需要選物件的類型，在建約入口與第①步顯示的說明。 */
+  readonly draftNotice?: { title: string; description: string };
   /**
    * 兩方簽署序列（沒有執業人員席位）在確認頁的說明。沒有定義就用依簽署序列產生的通用說明。
    * 規則表沒有兩方的委託管理序列，所以委託管理合約不定義。

@@ -27,7 +27,7 @@ export async function PUT(request: NextRequest, { params }: Ctx) {
   }
 
   const body = await request.json();
-  const routingError = routingInputError(body.fields?.routing);
+  const routingError = routingInputError(body.fields?.routing, contract.contract_type);
   if (routingError) return Response.json({ error: routingError }, { status: 400 });
   const fields = { ...contract.fields, ...(body.fields ?? {}) };
   const signatureFields = body.signature_fields ?? contract.signature_fields;

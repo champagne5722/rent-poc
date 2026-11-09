@@ -44,11 +44,11 @@ export function usesEquipmentAnnex(binding: TemplateBinding): boolean {
   return boundTemplateVersion(binding) >= 2;
 }
 
-function fmtMoney(n: number | null): string {
+export function fmtMoney(n: number | null): string {
   return n == null ? '＿＿＿＿' : `新臺幣 ${n.toLocaleString('zh-TW')} 元整`;
 }
 
-function fmtDate(d: string): string {
+export function fmtDate(d: string): string {
   if (!d) return '＿＿年＿＿月＿＿日';
   const [y, m, day] = d.split('-');
   return `${y} 年 ${m} 月 ${day} 日`;
