@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createLocalFileStore } from '../file-store/local-file-store';
 import { createContractSubscriber } from '../contract-signing';
 import { getContract } from '../contracts';
 import { withTx } from '../pg/database';
@@ -66,7 +67,7 @@ const provider = (taskRef: string): SigningProvider => ({
 });
 
 const moduleFor = (orgId: string, taskRef = 'unused') =>
-  createSigningModule({ provider: provider(taskRef), subscribers: { contract: createContractSubscriber() }, dataDir, db: dbFor(orgId) });
+  createSigningModule({ provider: provider(taskRef), subscribers: { contract: createContractSubscriber() }, files: createLocalFileStore(dataDir), db: dbFor(orgId) });
 
 const document: SignableDocument = { fileName: '合約', pdf: new Uint8Array([37, 80, 68, 70]), pageSize: { width: 595, height: 842 } };
 const signers: Signer[] = [
@@ -154,6 +155,42 @@ describe('drain-outbox', () => {
     const dead = await inOrg(kit.orgA, (tx) => listDeadOutbox(tx));
     expect(dead.map((r) => r.subject.id)).toEqual([subject.id]);
     expect(await jobs['drain-outbox']({ now: NOW })).toMatchObject({ processed: 0 });
+  });
+});
+
+describe('drain-outbox：保存文件（MIL-87）', () => {
+  it('全員完成時下載失敗的文件，由排程補上並標完成', async () => {
+    let downloadOk = false;
+    const completing: SigningProvider = {
+      ...provider('tf'),
+      downloadFile: async (ref, kind) => {
+        if (!downloadOk) throw new Error('下載連結回應 503');
+        return new TextEncoder().encode(`${kind}-of-${ref}`);
+      },
+      parseWebhook: () => ({ kind: 'event', taskRef: 'tf', event: { type: 'completed' } }),
+    };
+    const signing = createSigningModule({
+      provider: completing,
+      subscribers: { contract: createContractSubscriber() },
+      files: createLocalFileStore(dataDir),
+      db: dbFor(kit.orgA),
+    });
+    const id = newUlid();
+    await inOrg(kit.orgA, (tx) =>
+      tx.query(`INSERT INTO org.contracts (id, org_id, fields) VALUES ($1, current_setting('app.org_id', true), $2::jsonb)`, [id, JSON.stringify(FIELDS)]),
+    );
+    const subject = { type: 'contract', id } as const;
+    await signing.send(subject, document, signers);
+    const ack = await signing.ingestWebhook('{}', new Headers());
+    expect(ack.status).toBe(200);
+    expect(await statusOf(kit.orgA, id)).toBe('completed');
+    expect((await signing.listFiles(subject)).map((f) => f.status)).toEqual(['failed', 'failed']);
+
+    downloadOk = true;
+    const result = await jobsWith(signing)['drain-outbox']({ now: NOW });
+
+    expect(result).toMatchObject({ processed: 1, done: 1, failed: 0, dead: 0 });
+    expect((await signing.listFiles(subject)).map((f) => f.status)).toEqual(['saved', 'saved']);
   });
 });
 

@@ -225,7 +225,7 @@ export interface ContractFile {
   kind: ContractFileKind;
   status: ContractFileStatus;
   file_name: string;
-  rel_path: string | null; // 相對 data/ 的路徑，失敗時為 null
+  sha256: string | null; // 檔案內容的 SHA-256，失敗時為 null
   byte_size: number | null;
   content_type: string | null;
   error: string | null;

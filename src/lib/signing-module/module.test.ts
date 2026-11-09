@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createLocalFileStore } from '../file-store/local-file-store';
 import { createContractSubscriber } from '../contract-signing';
 import { getContract, listContractEvents } from '../contracts';
 import { withTx } from '../pg/database';
@@ -96,7 +97,7 @@ const dbA = (): SigningDb => ({
 });
 
 const moduleWith = (provider: SigningProvider = createMockProvider()) =>
-  createSigningModule({ provider, subscribers: { contract: createContractSubscriber() }, dataDir, db: dbA() });
+  createSigningModule({ provider, subscribers: { contract: createContractSubscriber() }, files: createLocalFileStore(dataDir), db: dbA() });
 
 // 保存文件經 adapter 下載。監看下載次數，就能知道完成後保存了幾次。
 const watchedMock = () => {
@@ -550,7 +551,7 @@ describe('模擬簽署事件（mock advance）', () => {
     const signing = createSigningModule({
       provider: createMockProvider(),
       subscribers: { contract: createContractSubscriber() },
-      dataDir,
+      files: createLocalFileStore(dataDir),
       now: () => instants.shift()!,
       db: dbA(),
     });
@@ -1093,7 +1094,7 @@ describe('簽署模組不依賴合約', () => {
     createSigningModule({
       provider: { ...createMockProvider(), ...provider },
       subscribers: { [FAKE.type]: subscriber },
-      dataDir,
+      files: createLocalFileStore(dataDir),
       db: dbA(),
     });
 
@@ -1400,7 +1401,7 @@ describe('文件保存', () => {
     it('檔案被刪掉時當場補抓一次', async () => {
       const downloadFile = vi.fn(async (_ref: string, kind: string) => new TextEncoder().encode(kind));
       const { subject, signing } = await completeLive(liveProvider({ parseWebhook: completedWebhook(), downloadFile }));
-      fs.rmSync(path.join(dataDir, 'sign-task-files'), { recursive: true, force: true });
+      fs.rmSync(path.join(dataDir, 'org'), { recursive: true, force: true });
 
       expect(text((await signing.downloadFile(subject, 'signed_pdf')).bytes)).toBe('signed_pdf');
       expect(downloadFile).toHaveBeenCalledTimes(3);

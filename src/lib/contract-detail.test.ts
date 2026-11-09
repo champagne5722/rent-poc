@@ -63,7 +63,7 @@ function makeFile(o: Partial<ContractFile> & { kind: ContractFile['kind'] }): Co
     contract_id: ulidOf(1),
     status: 'saved',
     file_name: 'contract-1-signed.pdf',
-    rel_path: 'contract-files/1/contract-1-signed.pdf',
+    sha256: 'a'.repeat(64),
     byte_size: 1024,
     content_type: 'application/pdf',
     error: null,
@@ -182,7 +182,7 @@ describe('contractFileRows', () => {
   it('保存失敗帶出錯誤訊息供補抓', () => {
     const rows = contractFileRows(
       makeContract({ status: 'completed' }),
-      [makeFile({ kind: 'audit_trail', status: 'failed', rel_path: null, error: '下載連結回應 500' })],
+      [makeFile({ kind: 'audit_trail', status: 'failed', sha256: null, error: '下載連結回應 500' })],
       { mock: false }
     );
     expect(rows[1]).toMatchObject({ state: 'failed', error: '下載連結回應 500' });

@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createLocalFileStore } from '../file-store/local-file-store';
 import { createContractSubscriber } from '../contract-signing';
 import { createContract, getContract, listContractEvents } from '../contracts';
 import { withTx } from '../pg/database';
@@ -95,7 +96,7 @@ function moduleWith(provider: SigningProvider = createMockProvider()) {
     inOrg: (ctx, fn) => withTx(ctx, fn),
     inControl: (fn) => withTx({ kind: 'control' }, fn),
   };
-  return createSigningModule({ provider, subscribers: { contract: createContractSubscriber() }, dataDir, db });
+  return createSigningModule({ provider, subscribers: { contract: createContractSubscriber() }, files: createLocalFileStore(dataDir), db });
 }
 
 async function prepare(id: string, resolution = seed) {

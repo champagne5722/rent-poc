@@ -161,8 +161,17 @@ describe('簽署流程：mock advance 推進、撤回、下載', () => {
     expect(await eventTypes(id)).toEqual(['created', 'sent', 'signer_signed', 'completed']);
     const files = await json(await getFiles(req('GET'), ctx(id)));
     expect(files.data).toEqual([
-      expect.objectContaining({ kind: 'signed_pdf', status: 'saved', contract_id: id, file_name: `contract-${id}-signed.pdf` }),
+      expect.objectContaining({
+        kind: 'signed_pdf',
+        status: 'saved',
+        contract_id: id,
+        file_name: `contract-${id}-signed.pdf`,
+        sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+      }),
     ]);
+    // 物件 key 與本機路徑是儲存層的位置，不對外
+    expect(files.data[0]).not.toHaveProperty('object_key');
+    expect(files.data[0]).not.toHaveProperty('rel_path');
     const pdf = await getSignedPdf(req('GET'), ctx(id));
     expect(pdf.status).toBe(200);
     expect(pdf.headers.get('content-type')).toBe('application/pdf');

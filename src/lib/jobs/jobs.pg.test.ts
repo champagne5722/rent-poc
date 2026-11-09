@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { createLocalFileStore } from '../file-store/local-file-store';
 import { createContractSubscriber } from '../contract-signing';
 import { getContract } from '../contracts';
 import { pgDriver } from '../pg/drivers';
@@ -70,7 +71,7 @@ describe.skipIf(!adminUrl)('job 的認領（真實 PostgreSQL）', () => {
     },
   });
   const moduleWith = (createTask: SigningProvider['createTask'] = async () => ({ taskRef: newUlid() })) =>
-    createSigningModule({ provider: provider(createTask), subscribers: { contract: createContractSubscriber() }, dataDir, db });
+    createSigningModule({ provider: provider(createTask), subscribers: { contract: createContractSubscriber() }, files: createLocalFileStore(dataDir), db });
 
   async function sentContract(taskRef: string) {
     const id = newUlid();

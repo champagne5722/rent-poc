@@ -5,7 +5,7 @@ import type { SigningSubject } from './provider';
 // outbox 的儲存（ADR-0020 決議 5、6，MIL-85）。表與狀態的意義見 db/migrations/0006_sign_tasks.sql。
 // 這裡只管資料列的狀態轉移，不呼叫服務商。派送在 module.ts，排程重試（drain-outbox）在 src/lib/jobs/jobs.ts（MIL-86）。
 
-export type OutboxAction = 'create_sign_task' | 'void_sign_task' | 'resend_sign_task';
+export type OutboxAction = 'create_sign_task' | 'void_sign_task' | 'resend_sign_task' | 'save_sign_task_files';
 export type OutboxStatus = 'pending' | 'sending' | 'done' | 'failed' | 'dead' | 'skipped';
 
 /** 首次派送之外最多再重試的次數。用完轉 dead，進人工處理清單（ADR-0020 決議 6）。 */
@@ -19,6 +19,8 @@ const RETRYABLE: Record<OutboxAction, boolean> = {
   create_sign_task: false,
   void_sign_task: true,
   resend_sign_task: true,
+  // 保存文件是向服務商下載再寫入 FileStore，重做不會有副作用（已保存的種類會略過）
+  save_sign_task_files: true,
 };
 
 export interface OutboxRow {
@@ -91,6 +93,16 @@ export async function claimOutbox(tx: OrgTx, id: string): Promise<OutboxRow | nu
       WHERE id = (SELECT id FROM org.outbox WHERE id = $1 AND status = 'pending' FOR UPDATE SKIP LOCKED)
       RETURNING ${COLUMNS}`,
     [id],
+  );
+  return rows[0] ? toRow(rows[0]) : null;
+}
+
+/** 同一個簽署標的、同一種動作正在進行（pending 或 sending）的列。沒有時回 null。 */
+export async function findOpenOutbox(tx: OrgTx, subject: SigningSubject, action: OutboxAction): Promise<OutboxRow | null> {
+  const { rows } = await tx.query<Row>(
+    `SELECT ${COLUMNS} FROM org.outbox
+      WHERE subject_type = $1 AND subject_id = $2 AND action = $3 AND status IN ('pending', 'sending')`,
+    [subject.type, subject.id, action],
   );
   return rows[0] ? toRow(rows[0]) : null;
 }

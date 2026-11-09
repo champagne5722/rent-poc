@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createLocalFileStore } from '../file-store/local-file-store';
 import { createContractSubscriber } from '../contract-signing';
 import { getContract, listContractEvents } from '../contracts';
 import { withTx } from '../pg/database';
@@ -47,7 +48,7 @@ const moduleWith = (provider: SigningProvider = createMockProvider(), orgId = ki
   createSigningModule({
     provider,
     subscribers: { contract: createContractSubscriber() },
-    dataDir,
+    files: createLocalFileStore(dataDir),
     db: dbFor(orgId),
   });
 
@@ -302,7 +303,7 @@ describe('webhook：由路由列查出組織', () => {
     const webhookOnly = createSigningModule({
       provider,
       subscribers: { contract: createContractSubscriber() },
-      dataDir,
+      files: createLocalFileStore(dataDir),
       db: noRequest,
     });
 

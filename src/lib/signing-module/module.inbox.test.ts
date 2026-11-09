@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createLocalFileStore } from '../file-store/local-file-store';
 import { createContractSubscriber } from '../contract-signing';
 import { getContract, listContractEvents } from '../contracts';
 import { withTx } from '../pg/database';
@@ -46,7 +47,7 @@ const dbFor = (orgId: string): SigningDb => ({
 });
 
 const moduleWith = (provider: SigningProvider, subscriber: SigningSubscriber = createContractSubscriber()) =>
-  createSigningModule({ provider, subscribers: { contract: subscriber }, dataDir, db: dbFor(kit.orgA) });
+  createSigningModule({ provider, subscribers: { contract: subscriber }, files: createLocalFileStore(dataDir), db: dbFor(kit.orgA) });
 
 // body 是 JSON：{ taskRef, email, type, ...其他欄位 }。其他欄位用來驗證 inbox 不存原始 body
 function bodyOf(taskRef: string, email: string, type: SigningEventType = 'signed', extra: Record<string, unknown> = {}) {
@@ -186,7 +187,7 @@ describe('寫入 inbox 再處理一次', () => {
     const down = createSigningModule({
       provider: providerWith(),
       subscribers: { contract: createContractSubscriber() },
-      dataDir,
+      files: createLocalFileStore(dataDir),
       db: broken,
     });
 
@@ -279,7 +280,7 @@ describe('路由列還不存在', () => {
     const otherOrg = createSigningModule({
       provider: providerWith(),
       subscribers: { contract: createContractSubscriber() },
-      dataDir,
+      files: createLocalFileStore(dataDir),
       db: dbFor(kit.orgB),
     });
 
