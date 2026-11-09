@@ -61,6 +61,9 @@ describe.skipIf(!adminUrl)('稽核鏈：真實 PostgreSQL', () => {
         WHERE c.relnamespace = 'audit'::regnamespace AND c.relkind = 'r' ORDER BY 1`,
     );
     expect(owners.rows).toEqual([
+      { relname: 'anchor_batches', owner: 'audit_owner', rolbypassrls: false },
+      { relname: 'anchor_leaves', owner: 'audit_owner', rolbypassrls: false },
+      { relname: 'anchor_runs', owner: 'audit_owner', rolbypassrls: false },
       { relname: 'chain_heads', owner: 'audit_owner', rolbypassrls: false },
       { relname: 'events', owner: 'audit_owner', rolbypassrls: false },
     ]);

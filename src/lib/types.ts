@@ -2,6 +2,7 @@
 
 import type { BusinessType } from './cases';
 import { TERMS } from './labels';
+import type { StatusAnnex } from './status-annex/types';
 
 export const PROPERTY_TYPES = ['整層住家', '套房', '雅房'] as const;
 export type PropertyType = (typeof PROPERTY_TYPES)[number];
@@ -231,6 +232,11 @@ export interface ContractFieldsBase extends TemplateBinding {
 
 // 租賃合約欄位值：建立時由物件帶入快照，之後與物件脫鉤（見 docs/domain-model.md）
 export interface LeaseContractFields extends ContractFieldsBase, EquipmentAnnexSnapshot {
+  /**
+   * 現況確認附件的內容（MIL-71）。包租租賃合約必附，其他組合不顯示也不印。
+   * 選填：送簽前就存在的舊合約沒有這個鍵，讀入不報錯，送簽後的舊合約 PDF 也不會多出附件頁。
+   */
+  statusAnnex?: StatusAnnex;
   landlordName: string;
   landlordEmail: string;
   tenantName: string;

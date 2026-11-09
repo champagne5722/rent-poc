@@ -10,6 +10,7 @@ import { getMandateItems } from '@/lib/mandate-schedule/repository';
 import { getAssignments } from '@/lib/practitioner-assignment/repository';
 import { loadPrintedPractitioners } from '@/lib/practitioner-assignment/service';
 import { loadContractRoutingFacts } from '@/lib/signature-routing/repository';
+import { statusAnnexOf } from '@/lib/status-annex';
 
 // 以目前欄位值即時產出合約 PDF（預覽與簽署區域編輯器共用）
 export async function GET(_request: NextRequest, { params }: ContractRouteCtx) {
@@ -36,7 +37,9 @@ export async function GET(_request: NextRequest, { params }: ContractRouteCtx) {
 
   // 簽署欄印已指派的執業人員（姓名、法定稱謂、執業主體）。分流條件有問題或尚未指派時留底線
   const printed = routing.ok ? await loadPrintedPractitioners(routing.facts, assignments, getPracticeRegistry()) : {};
-  const pdf = await renderer.render(contract.fields, printed, { mandateItems });
+  // 現況確認附件：草稿依分流條件印，送簽後只印凍結的內容（舊的包租合約沒有內容就不印）
+  const statusAnnex = statusAnnexOf(contract.status, contract.contract_type, contract.fields);
+  const pdf = await renderer.render(contract.fields, printed, { mandateItems, statusAnnex });
   return new Response(Buffer.from(pdf), {
     headers: {
       'Content-Type': 'application/pdf',

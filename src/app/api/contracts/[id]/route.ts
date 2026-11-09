@@ -13,6 +13,7 @@ import { contractSubject, signing } from '@/lib/signing-module';
 import { jsonOk, jsonError } from '@/lib/http';
 import { inOrgTx, inOrgTxAs, readInOrgTx, readJson } from '@/lib/org-route';
 import { routingInputError } from '@/lib/signature-routing';
+import { statusAnnexInputError } from '@/lib/status-annex';
 import type { ContractFields, SignatureField } from '@/lib/types';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -58,6 +59,9 @@ export async function PUT(request: NextRequest, { params }: ContractRouteCtx) {
     }
     const routingError = routingInputError(isRecord(body.fields) ? body.fields.routing : undefined, contract.contract_type);
     if (routingError) return jsonError(400, routingError);
+    // 現況確認附件隨草稿保存（MIL-71）。只檢查形狀，填沒填完由送簽前的必填檢核擋
+    const annexError = statusAnnexInputError(isRecord(body.fields) ? body.fields.statusAnnex : undefined);
+    if (annexError) return jsonError(400, annexError);
 
     const fields = { ...contract.fields, ...((body.fields as Partial<ContractFields> | undefined) ?? {}) };
     const signatureFields = (body.signature_fields as SignatureField[] | undefined) ?? contract.signature_fields;

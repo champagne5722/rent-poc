@@ -44,6 +44,7 @@ import {
   findSignTask,
   findSignTaskByRef,
   findSignTaskRoute,
+  findSignTasks,
   insertSignTask,
   saveProgress,
   toSigningProgress,
@@ -507,6 +508,13 @@ export function createSigningModule({
       const ctx = await db.requestOrg();
       const task = await db.inOrg(ctx, (tx) => findSignTask(tx, subject));
       return task ? toSigningProgress(task) : null;
+    },
+
+    // 批次取簽署進度，清單用（MIL-72）。回傳以 signingSubjectKey 為鍵的 Map，沒有簽署任務的簽署標的不在裡面。
+    async getProgressBatch(subjects: readonly SigningSubject[]): Promise<Map<string, SigningProgress>> {
+      const ctx = await db.requestOrg();
+      const tasks = await db.inOrg(ctx, (tx) => findSignTasks(tx, subjects));
+      return new Map([...tasks].map(([key, task]) => [key, toSigningProgress(task)]));
     },
 
     async getSignLink(subject: SigningSubject, redirectUrl?: string): Promise<{ signer: CurrentSigner; url: string }> {

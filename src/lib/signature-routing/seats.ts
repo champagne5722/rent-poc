@@ -20,6 +20,8 @@ export interface SeatView {
   fullLabel: string;
   /** 執業人員席位的法定稱謂，印在簽署欄。 */
   practitionerTitle?: string;
+  /** 規則列要求這個席位在現況確認附件頁也有簽署區域（MIL-71）。沒有要求時省略。 */
+  requiresStatusAnnex?: true;
 }
 
 export type RoutingEvaluation =
@@ -45,7 +47,14 @@ function seatView(seat: SignaturePlan['seats'][number], labels: PartyLabels): Se
   if (seat.role === 'practitioner') {
     const title = seat.practitioner ? practitionerTitle(seat.practitioner.certificateKinds[0]) : undefined;
     const label = title ? `${SIGNER_ROLE_LABELS.practitioner}（${title}）` : SIGNER_ROLE_LABELS.practitioner;
-    return { ruleId: seat.ruleId, role: seat.role, label, fullLabel: label, practitionerTitle: title };
+    return {
+      ruleId: seat.ruleId,
+      role: seat.role,
+      label,
+      fullLabel: label,
+      practitionerTitle: title,
+      ...(seat.requiredFieldPages.includes('status_annex') ? { requiresStatusAnnex: true as const } : {}),
+    };
   }
   return {
     ruleId: seat.ruleId,

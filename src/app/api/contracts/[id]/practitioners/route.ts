@@ -10,6 +10,7 @@ import { getAssignments, replaceAssignments } from '@/lib/practitioner-assignmen
 import type { PractitionerAssignmentInput } from '@/lib/practitioner-assignment/seats';
 import { evaluateSend, loadPrintedPractitioners, loadSeatOptions, validateAssignments } from '@/lib/practitioner-assignment/service';
 import { loadContractRoutingFacts } from '@/lib/signature-routing/repository';
+import { statusAnnexSendReasons } from '@/lib/status-annex/server';
 
 // 執業人員的指派（MIL-69）。人選一律來自 practiceRegistry，不接受手動輸入（ADR-0018 決議 10 第 6 項）。
 // 登錄查詢在交易外（ADR-0012 決議 10）：先在交易內讀合約、分流條件與指派，再算選項與檢查。
@@ -44,10 +45,12 @@ export async function GET(request: NextRequest, { params }: ContractRouteCtx) {
   if (request.nextUrl.searchParams.get('only') === 'printed') {
     return jsonOk({ data: { printed: await loadPrintedPractitioners(routing.facts, assignments, resolution) } });
   }
-  const [options, printed, evaluation] = await Promise.all([
+  const [options, printed, evaluation, annexReasons] = await Promise.all([
     loadSeatOptions(routing.facts, resolution, at),
     loadPrintedPractitioners(routing.facts, assignments, resolution),
     evaluateSend({ routing: routing.facts, contractType: contract.contract_type, fields: contract.fields, assignments, at }, resolution),
+    // 現況確認附件頁缺少執業人員的簽署區域（MIL-71）。確認頁併入原因清單，與送簽時的檢查一致
+    statusAnnexSendReasons(contract),
   ]);
   return jsonOk({
     data: {
@@ -55,8 +58,8 @@ export async function GET(request: NextRequest, { params }: ContractRouteCtx) {
       assignments,
       printed,
       evaluation: {
-        ok: evaluation.ok,
-        reasons: evaluation.reasons,
+        ok: evaluation.ok && annexReasons.length === 0,
+        reasons: [...evaluation.reasons, ...annexReasons],
         notices: evaluation.notices,
         // 同一人兼任而合併的席位，附上姓名給畫面提示（MIL-76）
         merges: evaluation.merges.map((m) => ({ ...m, name: printed[m.practitionerRuleId]?.name ?? '' })),

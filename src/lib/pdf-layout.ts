@@ -36,6 +36,17 @@ export const MANDATE_ANNEX_TITLE = '委託標的清單';
 export const MANDATE_ANNEX_COLUMNS = ['租賃單位', '地址', '委託範圍'] as const;
 export const MANDATE_ANNEX_COLUMN_WIDTHS = [110, 203.28, 170] as const;
 
+/**
+ * 現況確認附件頁（MIL-71）的版面參數。附件排在簽署欄與設備附件之後，獨立一頁。
+ * 表格三欄：項目、狀態、備註，寬度合計＝版心寬。備註字數有上限（STATUS_ANNEX_NOTE_MAX），所以表格一定放得進一頁。
+ */
+export const STATUS_ANNEX_PAGE_TITLE = '現況確認附件';
+export const STATUS_ANNEX_COLUMNS = ['項目', '狀態', '備註'] as const;
+export const STATUS_ANNEX_COLUMN_WIDTHS = [200, 70, 213.28] as const;
+
+/** 簽署欄（簽名頁）的標題文字。簽署區編輯器與頁面地圖都用它找出簽名頁。 */
+export const SIGNATURE_BLOCK_HEADING = '立契約書人';
+
 /** 一行文字往下推進的距離（字級＋行距＋段後空白）。 */
 function lineAdvance(size: number, gapAfter = 0): number {
   return size + LINE_GAP + gapAfter;
@@ -91,4 +102,58 @@ export function signatureBlockLayout(seats: readonly SignatureBlockSeat[]): Sign
     y -= lineAdvance(BODY_SIZE, SIGN_STAMP_BLANK);
     return { ...seat, stampBaseline };
   });
+}
+
+/**
+ * 現況確認附件頁底部的執業人員簽署欄：固定在頁底，不隨表格長短移動。
+ * 版面是兩行資料加「簽章：」與簽名空白，高度與簽署欄的一列相同。
+ * 回傳整塊的頂端 y（PDF 座標，原點左下）。表格的底部必須高於它。
+ */
+export function statusAnnexSignTop(): number {
+  return MARGIN + lineAdvance(BODY_SIZE, SIGN_ROW_GAP_AFTER) * 2 + lineAdvance(BODY_SIZE, SIGN_STAMP_BLANK);
+}
+
+/** 現況確認附件頁「簽章：」的 baseline y（PDF 座標）。 */
+export function statusAnnexStampBaseline(): number {
+  return statusAnnexSignTop() - lineAdvance(BODY_SIZE, SIGN_ROW_GAP_AFTER) * 2 - BODY_SIZE;
+}
+
+/**
+ * 產出的 PDF 的頁面地圖（0-based 頁碼）。簽署區域的 `page` 就是這個頁碼。
+ * 簽名頁與附件頁的位置隨本文長度而變，所以由產生 PDF 的函式回報，不用「最後一頁」推測（MIL-162）。
+ */
+export interface PdfPageMap {
+  pageCount: number;
+  /** 簽署欄（「立契約書人」）所在的頁。 */
+  signaturePage: number;
+  /** 現況確認附件所在的頁。沒有附件時為 null。 */
+  statusAnnexPage: number | null;
+}
+
+function squash(text: string): string {
+  return text.replace(/\s+/g, '');
+}
+
+/**
+ * 由各頁的文字找出簽名頁：第一個含「立契約書人」的頁。找不到時退回最後一頁（MIL-162）。
+ * 簽署區編輯器用 pdf.js 讀出每頁文字後呼叫它。
+ */
+export function findSignaturePage(pageTexts: readonly string[]): number {
+  const found = pageTexts.findIndex((text) => squash(text).includes(SIGNATURE_BLOCK_HEADING));
+  return found >= 0 ? found : Math.max(pageTexts.length - 1, 0);
+}
+
+/** 由各頁的文字找出現況確認附件頁：標題「附件　現況確認附件」所在的頁。沒有時回 null。 */
+export function findStatusAnnexPage(pageTexts: readonly string[]): number | null {
+  const found = pageTexts.findIndex((text) => squash(text).includes(`附件${STATUS_ANNEX_PAGE_TITLE}`));
+  return found >= 0 ? found : null;
+}
+
+/** 由各頁文字推出頁面地圖。編輯器沒有伺服器的地圖時用它。 */
+export function pageMapFromTexts(pageTexts: readonly string[]): PdfPageMap {
+  return {
+    pageCount: pageTexts.length,
+    signaturePage: findSignaturePage(pageTexts),
+    statusAnnexPage: findStatusAnnexPage(pageTexts),
+  };
 }

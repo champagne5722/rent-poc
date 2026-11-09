@@ -26,7 +26,6 @@ MIL-73 的成果。欄位、範本與檢核由合約類型決定，共用流程�
 | `missingFields(fields, attachments?)` | 建約 wizard 第②步的必填檢核。`attachments` 帶欄位以外、另存子表的內容（委託標的清單），沒帶就不檢查那一項 |
 | `missingFieldsForSend(fields, attachments?)` | 送簽 route 的必填檢核，回應文字沿用原本的 |
 | `sendSupported` | 這個類型能不能送簽。送簽 route 與 wizard 第④步都看它，不判斷具體類型 |
-| `partiesOnlyNotice` | 兩方序列的確認頁說明。沒有定義就用依簽署序列產生的通用說明 |
 | `initialFields({ property?, routing? })` | 建立草稿的欄位快照。租賃合約必須帶物件，委託管理合約不帶 |
 | `listSummary(fields)` | 清單與工作台一列的摘要：物件、租金、乙方、期間 |
 
@@ -64,7 +63,7 @@ MIL-73 的成果。欄位、範本與檢核由合約類型決定，共用流程�
 ## 已知缺口（留給 MIL-76、MIL-77）
 
 - MIL-74 已讓 `evaluateRouting(stored, contractType)` 依類型取稱謂，簽署欄與席位檢核用「甲方（委託人）」「乙方（受託人）」。`pruneAssignments`、`applyRoutingChange` 等 wizard 函式也帶類型，沒帶時是租賃合約。MIL-76 改同一人合併時要留意這個簽名。
-- 簽署區編輯器把「最後一頁」當範本簽名頁（`SignatureFieldEditor` 的 `signaturePage`）。有附件頁的合約（租賃合約的設備附件、委託管理合約的委託標的清單）最後一頁是附件，簽名框的預設落點對不到簽署欄，要手動拖。
+- 簽署區編輯器的簽名頁已改由 PDF 版面判定（`pdf-layout.ts` 的 `pageMapFromTexts`，找「立契約書人」所在的頁，找不到才退回最後一頁），有設備附件、現況確認附件或委託標的清單附件的合約，預設落點都在簽名頁（MIL-162、MIL-71）。
 - 委託管理合約的送簽、詳情頁與簽署模組的訂閱者屬 MIL-77。`sendSupported` 在那時改成 `true`。
 - `src/app/contracts/[id]/page.tsx` 的型別是 `LeaseContract`，沒有執行期檢查。委託管理合約的詳情頁屬 MIL-77。
 - `WizardState.contractType`、`missingFieldLabels` 等函式沒帶類型時預設租賃合約（`DEFAULT_CONTRACT_TYPE`），為了讓既有呼叫端與測試不必改。新程式碼必須傳入類型。

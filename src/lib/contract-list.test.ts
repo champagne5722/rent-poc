@@ -7,9 +7,9 @@ import {
   matchesFilter,
   overlapsLeaseRange,
   propertyNameOptions,
+  contractSigningSteps,
+  listSigningDots,
   selectContracts,
-  signingProgressLabels,
-  signingProgressStep,
   statusTabs,
   EMPTY_CONTRACT_LIST_FILTER,
 } from './contract-list';
@@ -18,6 +18,7 @@ import { ulidOf } from './test-ids';
 interface MakeOptions {
   id?: number;
   status?: ContractStatus;
+  routing?: Contract['fields']['routing'];
   propertyName?: string;
   startDate?: string;
   endDate?: string;
@@ -32,6 +33,7 @@ function makeContract(o: MakeOptions = {}): Contract {
     contract_type: 'lease',
     status: o.status ?? 'draft',
     fields: {
+      ...(o.routing ? { routing: o.routing } : {}),
       landlordName: '林房東',
       landlordEmail: 'landlord@example.com',
       tenantName: '王租客',
@@ -233,36 +235,80 @@ describe('selectContracts（篩選＋排序）', () => {
   });
 });
 
-describe('signingProgressStep（簽署進度三點）', () => {
+const dots = (c: Contract, progress?: Parameters<typeof listSigningDots>[1]) =>
+  listSigningDots(c, progress)?.map((d) => `${d.label}:${d.state}`) ?? null;
+
+describe('listSigningDots（簽署進度點，由簽署序列推導）', () => {
   it('待乙方簽時停在第 1 點', () => {
-    expect(signingProgressStep('awaiting_tenant')).toBe(0);
+    expect(contractSigningSteps(makeContract({ status: 'awaiting_tenant' })).position).toBe(0);
+    expect(dots(makeContract({ status: 'awaiting_tenant' }))).toEqual(['乙方簽:current', '甲方簽:pending', '完成:pending']);
   });
 
   it('待甲方簽時停在第 2 點', () => {
-    expect(signingProgressStep('awaiting_landlord')).toBe(1);
+    expect(contractSigningSteps(makeContract({ status: 'awaiting_landlord' })).position).toBe(1);
+    expect(dots(makeContract({ status: 'awaiting_landlord' }))).toEqual(['乙方簽:done', '甲方簽:current', '完成:pending']);
   });
 
   it('已完成時三點全亮', () => {
-    expect(signingProgressStep('completed')).toBe(3);
+    expect(dots(makeContract({ status: 'completed' }))).toEqual(['乙方簽:done', '甲方簽:done', '完成:done']);
   });
 
   it('簽署流程外的狀態沒有進度', () => {
-    expect(signingProgressStep('draft')).toBeNull();
-    expect(signingProgressStep('declined')).toBeNull();
-    expect(signingProgressStep('voided')).toBeNull();
+    for (const status of ['draft', 'declined', 'voided'] as const) {
+      expect(contractSigningSteps(makeContract({ status })).position).toBeNull();
+      expect(listSigningDots(makeContract({ status }))).toBeNull();
+    }
   });
 });
 
-describe('第七態待執業人員簽的簽署進度', () => {
-  it('兩方合約的進度維持三點', () => {
-    expect(signingProgressLabels('awaiting_tenant')).toEqual(['乙方簽', '甲方簽', '完成']);
-    expect(signingProgressLabels('awaiting_landlord')).toEqual(['乙方簽', '甲方簽', '完成']);
-    expect(signingProgressLabels('completed')).toEqual(['乙方簽', '甲方簽', '完成']);
+describe('簽署進度點：三位以上與合併後的簽署序列', () => {
+  const master = { businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: false } as const;
+  const signer = (role: 'party_a' | 'party_b' | 'practitioner', status: 'signed' | 'pending', concurrentRoles?: ('party_a' | 'party_b')[]) => ({
+    role,
+    name: role,
+    status,
+    ...(concurrentRoles ? { concurrentRoles } : {}),
   });
 
-  it('待執業人員簽時多一點執業人員簽，停在第 2 點', () => {
-    expect(signingProgressLabels('awaiting_practitioner')).toEqual(['乙方簽', '執業人員簽', '甲方簽', '完成']);
-    expect(signingProgressStep('awaiting_practitioner')).toBe(1);
+  it('兩方合約的進度維持三點', () => {
+    for (const status of ['awaiting_tenant', 'awaiting_landlord', 'completed'] as const) {
+      expect(listSigningDots(makeContract({ status }))?.map((d) => d.label)).toEqual(['乙方簽', '甲方簽', '完成']);
+    }
+  });
+
+  it('包租：待執業人員簽時多一點執業人員簽，停在第 2 點', () => {
+    const contract = makeContract({ status: 'awaiting_practitioner', routing: master });
+    const progress = { signers: [signer('party_b', 'signed'), signer('practitioner', 'pending'), signer('party_a', 'pending')] };
+    expect(dots(contract, progress)).toEqual([
+      '乙方簽:done',
+      '執業人員（租賃住宅管理人員）簽:current',
+      '甲方簽:pending',
+      '完成:pending',
+    ]);
+    expect(contractSigningSteps(contract, progress).position).toBe(1);
+  });
+
+  it('沒有簽署任務的包租合約，依分流條件算出的序列與合約狀態', () => {
+    expect(contractSigningSteps(makeContract({ status: 'awaiting_practitioner', routing: master })).position).toBe(1);
+  });
+
+  it('同一人兼任：簽署人兩位，進度兩點加完成', () => {
+    const contract = makeContract({ status: 'awaiting_practitioner', routing: master });
+    const progress = { signers: [signer('party_b', 'signed'), signer('practitioner', 'pending', ['party_a'])] };
+    expect(dots(contract, progress)).toEqual([
+      '乙方簽:done',
+      '執業人員（租賃住宅管理人員）兼甲方簽:current',
+      '完成:pending',
+    ]);
+  });
+
+  it('規則表沒有定義的分流條件退回兩方，不報錯', () => {
+    const undefinedRule = { businessType: 'managed', lesseeIsMasterLessor: true, brokerMediated: false } as const;
+    expect(listSigningDots(makeContract({ status: 'awaiting_tenant', routing: undefinedRule }))?.map((d) => d.label)).toEqual([
+      '乙方簽',
+      '甲方簽',
+      '完成',
+    ]);
   });
 
   it('待執業人員簽與其他簽署中的合約同組排在最前', () => {
