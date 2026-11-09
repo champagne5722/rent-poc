@@ -1,7 +1,7 @@
 // 後台殼層的導覽定義（規格 §4）：一級頁面＝工作台／物件／合約，層級少於三層，不用 breadcrumb。
 // 純資料＋純函式放這裡，讓高亮規則可以直接測（見 nav.test.ts）；icon 留在 AppShell.tsx。
 
-export type NavKey = 'workbench' | 'properties' | 'contracts' | 'handovers' | 'design';
+export type NavKey = 'workbench' | 'properties' | 'contracts' | 'payment-accounts' | 'handovers' | 'design';
 
 export type NavItem = {
   key: NavKey;
@@ -14,6 +14,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { key: 'workbench', label: '工作台', href: '/' },
   { key: 'properties', label: '物件', href: '/properties' },
   { key: 'contracts', label: '合約', href: '/contracts' },
+  // 收款帳戶（MIL-118）：登錄收款帳戶與持有人，只存遮罩識別
+  { key: 'payment-accounts', label: '收款帳戶', href: '/payment-accounts' },
   // 移交（MIL-94）：接收方看移交給我的案件與我交出的案件，經理人視角
   { key: 'handovers', label: '移交', href: '/handovers' },
   // 設計樣式頁：呈現 DESIGN.md 目前的 token 與元件樣式，供調整佈局與字級時對照
