@@ -47,7 +47,7 @@ spacing:
 - **YAML front matter**：機器可讀的 design token。由 `src/lib/design-theme.ts` 解析、映射為 antd Seed Token 注入 `ConfigProvider`。改 token 存檔即生效，不改程式。
 - **本文（以下章節）**：給寫 UI 的人與 coding agent 讀的使用慣例。token 給精確值，本文說怎麼用。
 
-元件原則：**一律優先用 antd 元件，非不得已不自訂元件**。視覺客製透過 token 派生完成，不覆寫元件內部樣式。
+元件原則：**一律優先用 antd 元件，非不得已不自訂元件**。視覺客製透過 token 派生完成，不覆寫元件內部樣式。允許組合元件：只組合 antd 元件、不改外觀，例如頁首、狀態標籤、空狀態（ADR-0090）。
 
 ## Colors
 
@@ -83,5 +83,5 @@ antd 元件使用慣例：
 - Do：新頁面先找既有頁面的相同 pattern 沿用，維持一致性優先於局部最佳。
 - Do：色彩、圓角、間距一律引用 token 名稱思考，需要新值先回這份檔案加 token。
 - Don't：不要 inline style 寫死色碼與 px 間距（版面 gap 引用 spacing 值除外）。
-- Don't：不要為了觀感自訂元件或覆寫 antd 內部 class；覺得醜先回報，評估加 token 或元件級覆寫（走 ADR-0009 的重評程序）。
+- Don't：不要為了觀感自訂元件或覆寫 antd 內部 class；覺得醜先回報，評估加 token 或元件級覆寫（ADR-0090 已允許元件層 token，值必須寫在本檔）。
 - 注意：`colors.*` 一律用 hex 色值；深淺色判斷只認 hex，rgb()/oklch() 會被當成淺色。
