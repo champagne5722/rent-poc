@@ -10,7 +10,8 @@ import { loadContractRoutingFacts } from '../signature-routing/repository';
 import { prepareContractSigners } from '../signing';
 import type { Signer } from '../signing-module/provider';
 import type { Contract } from '../types';
-import { getAssignments, saveCredentialSnapshots, type CredentialSnapshotInput } from './repository';
+import type { ContractSendContext } from '../signature-records/types';
+import { getAssignments } from './repository';
 import type { PrintedPractitioner } from './seats';
 import { evaluateSend } from './service';
 
@@ -22,8 +23,11 @@ export type PreparedContractSend =
       printed: Record<string, PrintedPractitioner>;
       /** 換證窗口內的提醒。仍得送簽，畫面顯示期限。 */
       notices: SendNotice[];
-      /** 判定事實快照。簽署任務建立成功後用 `recordSendSnapshots` 保存。 */
-      snapshots: CredentialSnapshotInput[];
+      /**
+       * 簽章紀錄的送簽資料。呼叫 `signing.send` 時當第四個參數，合約訂閱者在送簽交易內寫入（MIL-70）。
+       * 沒有執業人員席位時不帶。
+       */
+      sendContext?: ContractSendContext;
     }
   | { ok: false; status: 400; error: string; reasons: SendBlockReason[] };
 
@@ -59,18 +63,6 @@ export async function prepareContractSend(
     signers: prepared.signers,
     printed: evaluation.printed,
     notices: evaluation.notices,
-    snapshots: evaluation.snapshots,
+    ...(evaluation.records.length > 0 ? { sendContext: { kind: 'contract_send' as const, records: evaluation.records } } : {}),
   };
-}
-
-/**
- * 簽署任務建立成功後保存判定事實快照，送簽失敗時不留快照。重複送簽時覆蓋。
- * 簽章紀錄（MIL-70）之後改成與簽署進度同交易的 `snapshot_at_send`。
- */
-export async function recordSendSnapshots(
-  contractId: number,
-  prepared: Extract<PreparedContractSend, { ok: true }>,
-  db: Database.Database = getDb(),
-): Promise<void> {
-  await saveCredentialSnapshots(contractId, prepared.snapshots, db);
 }

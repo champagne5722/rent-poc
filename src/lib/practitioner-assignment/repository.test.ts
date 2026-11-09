@@ -4,9 +4,7 @@ import { deleteContractWithEvents, ensureSchema, insertContractWithEvent } from 
 import {
   copyAssignments,
   getAssignments,
-  listCredentialSnapshots,
   replaceAssignments,
-  saveCredentialSnapshots,
 } from './repository';
 
 let db: Database.Database;
@@ -64,34 +62,9 @@ describe('指派的 repository：介面回傳 Promise，ID 是字串', () => {
     expect(await getAssignments(contractId, db)).toHaveLength(1);
   });
 
-  it('刪除草稿時指派與快照一起刪除', async () => {
+  it('刪除草稿時指派一起刪除', async () => {
     await replaceAssignments(contractId, [{ slot: SLOT, entityId: 'a', practitionerId: 'p1', partySignerId: null }], db);
-    await saveCredentialSnapshots(contractId, [{ slot: SLOT, practitionerId: 'p1', decidedAt: '2026-11-09T04:00:00.000Z', facts: { a: 1 }, result: { signable: true } }], db);
     deleteContractWithEvents(contractId, db);
     expect(await getAssignments(contractId, db)).toEqual([]);
-    expect(await listCredentialSnapshots(contractId, db)).toEqual([]);
-  });
-});
-
-describe('判定事實快照', () => {
-  const snapshot = {
-    slot: SLOT,
-    practitionerId: 'pr-chen',
-    decidedAt: '2026-11-09T04:00:00.000Z',
-    facts: { certificateKind: 'rental_housing_manager', credential: { employment: { state: 'verified' } } },
-    result: { signable: true, renewalWindow: null },
-  };
-
-  it('事實與結果原樣保存並讀回', async () => {
-    await saveCredentialSnapshots(contractId, [snapshot], db);
-    expect(await listCredentialSnapshots(contractId, db)).toEqual([snapshot]);
-  });
-
-  it('同一席位重複送簽時覆蓋舊的快照', async () => {
-    await saveCredentialSnapshots(contractId, [snapshot], db);
-    await saveCredentialSnapshots(contractId, [{ ...snapshot, decidedAt: '2026-11-10T04:00:00.000Z' }], db);
-    const list = await listCredentialSnapshots(contractId, db);
-    expect(list).toHaveLength(1);
-    expect(list[0].decidedAt).toBe('2026-11-10T04:00:00.000Z');
   });
 });

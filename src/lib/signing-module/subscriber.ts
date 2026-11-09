@@ -1,5 +1,5 @@
 import type { ProgressOutcome } from './progress';
-import type { Signer, SigningSubject } from './provider';
+import type { Signer, SigningEvent, SigningSubject } from './provider';
 
 // 模組拒絕操作。status 與 message 就是對外的回應碼與訊息。
 export class SigningRefusal extends Error {
@@ -10,6 +10,18 @@ export class SigningRefusal extends Error {
   ) {
     super(message);
   }
+}
+
+// 送簽時，呼叫端交給訂閱者的業務資料。簽署模組不讀、不改，原樣傳給 onSent。
+// 型別由訂閱者自己定義並檢查（例如合約的 ContractSendContext）。
+export type SendContext = unknown;
+
+// 簽署事件進交易時，模組交給 onOutcome 的資料
+export interface OutcomeContext {
+  // 事件時間，ISO 8601。服務商沒有提供時用模組的現在時間。簽署當下的判定用它（ADR-0018 決議 11）。
+  eventAt: string;
+  // prepareOutcome 的回傳值，沒有實作 prepareOutcome 時是 undefined
+  prepared?: unknown;
 }
 
 // 簽署標的的訂閱者：簽署模組透過它通知業務實體，所以模組不依賴合約（ADR-0010 決議 7）。
@@ -25,8 +37,13 @@ export interface SigningSubscriber {
 
   // 下面兩個在交易內被呼叫，不得呼叫外部 API。拋例外時簽署進度一起回滾（ADR-0010 決議 8）。
   // 不帶服務商任務編號：訂閱者看不到它（ADR-0010）。
-  onSent(subject: SigningSubject, sent: { signers: Signer[] }): void;
-  onOutcome(subject: SigningSubject, outcome: ProgressOutcome): void;
+  // context 是 signing.send 第四個參數，原樣傳入
+  onSent(subject: SigningSubject, sent: { signers: Signer[]; context?: SendContext }): void;
+  onOutcome(subject: SigningSubject, outcome: ProgressOutcome, context: OutcomeContext): void;
+
+  // 選填。簽署事件進交易之前呼叫，可以呼叫外部來源（例如登錄資料）。
+  // 回傳值放進 onOutcome 的 context.prepared。拋例外時模組記 log 並當作沒有準備，不影響簽署進度。
+  prepareOutcome?(subject: SigningSubject, event: SigningEvent, eventAt: string): Promise<unknown>;
 
   // 交易提交後、模組保存文件之後呼叫，失敗不回滾狀態
   afterCompleted(subject: SigningSubject): Promise<void>;
