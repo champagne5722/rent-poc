@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "root=$(git rev-parse --show-toplevel 2>/dev/null || echo \"$CLAUDE_PROJECT_DIR\"); [ -x \"$root/scripts/hooks/guard-heavy.sh\" ] || exit 0; exec \"$root/scripts/hooks/guard-heavy.sh\"",
+            "timeout": 10,
+            "statusMessage": "檢查是否經過記憶體排程"
+          }
+        ]
+      }
+    ]
+  }
+}
