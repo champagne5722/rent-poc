@@ -90,7 +90,7 @@ function EvidenceList({ evidence }: { evidence: EvidenceMeta[] }) {
   );
 }
 
-function ChecksTable({ checks }: { checks: DeskCheck[] }) {
+function ChecksTable({ checks, kindOf }: { checks: DeskCheck[]; kindOf: (licenseId: string) => string }) {
   if (checks.length === 0) return null;
   return (
     <Flex vertical gap="small">
@@ -105,6 +105,7 @@ function ChecksTable({ checks }: { checks: DeskCheck[] }) {
         scroll={{ x: 'max-content' }}
         columns={[
           { title: '時間', dataIndex: 'checkedAt', width: 180, render: formatDate },
+          { title: '業別', dataIndex: 'licenseId', render: (id: string) => kindOf(id) },
           { title: '管道', dataIndex: 'channel', render: (c: string) => CHANNEL_LABEL[c] ?? c },
           { title: '查詢頁別', dataIndex: 'querySource' },
           { title: '結果', dataIndex: 'result', width: 100, render: (r: string) => resolutionLabel(r) },
@@ -115,7 +116,7 @@ function ChecksTable({ checks }: { checks: DeskCheck[] }) {
   );
 }
 
-export default function DeskItemPanel({ itemId }: { itemId: string }) {
+function DeskItemPanelInner({ itemId }: { itemId: string }) {
   const { message } = AntApp.useApp();
   const router = useRouter();
   const [detail, setDetail] = useState<ReviewDetail | null>(null);
@@ -274,13 +275,20 @@ export default function DeskItemPanel({ itemId }: { itemId: string }) {
         <EvidenceList evidence={detail.evidence} />
       </Flex>
 
-      <ChecksTable checks={detail.checks} />
+      <ChecksTable
+        checks={detail.checks}
+        kindOf={(licenseId) => {
+          const kind = entity?.licenses.find((l) => l.id === licenseId)?.kind;
+          return kind ? statutoryTitle(kind) : '—';
+        }}
+      />
 
       {open && item.type === 'license' && license && (
         <Form<CheckFormValues>
           form={checkForm}
           layout="vertical"
           requiredMark={false}
+          onValuesChange={() => setShortfalls(null)}
           initialValues={{ channel: 'gcis_manual', registrationStatus: '核准設立', result: 'match', businessItemCodes: entity?.businessItemCodes ?? [] }}
           onFinish={(values) =>
             void submit(
@@ -395,5 +403,14 @@ export default function DeskItemPanel({ itemId }: { itemId: string }) {
         </Form>
       )}
     </Flex>
+  );
+}
+
+// 沿用成員管理頁的做法：頁面自己包 AntApp，message 才吃得到主題
+export default function DeskItemPanel({ itemId }: { itemId: string }) {
+  return (
+    <AntApp>
+      <DeskItemPanelInner itemId={itemId} />
+    </AntApp>
   );
 }

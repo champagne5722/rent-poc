@@ -32,7 +32,7 @@ interface FormValues {
 
 const formatDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString('zh-TW', { hour12: false }) : '—');
 
-export default function PracticePanel() {
+function PracticePanelInner() {
   const { message } = AntApp.useApp();
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -200,5 +200,14 @@ export default function PracticePanel() {
         <Typography.Text type="secondary">你的角色是唯讀，不能送件。</Typography.Text>
       )}
     </Flex>
+  );
+}
+
+// 沿用成員管理頁的做法：頁面自己包 AntApp，message 才吃得到主題
+export default function PracticePanel() {
+  return (
+    <AntApp>
+      <PracticePanelInner />
+    </AntApp>
   );
 }
