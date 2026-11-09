@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Layout, Menu, Tooltip, Typography, theme } from 'antd';
 import {
   DashboardOutlined,
@@ -9,36 +9,78 @@ import {
   PlusOutlined,
   BgColorsOutlined,
   SwapOutlined,
+  ProfileOutlined,
+  SafetyCertificateOutlined,
+  AuditOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { NAV_ITEMS, CREATE_CONTRACT_HREF, resolveNavKey, shellFor, type NavKey } from '@/lib/nav';
+import AccountBar from './AccountBar';
+import { isAuthScreen } from '@/lib/auth/auth-screens';
+import {
+  NAV_ITEMS,
+  CREATE_CONTRACT_HREF,
+  identityNavItems,
+  resolveIdentityNavKey,
+  resolveNavKey,
+  resolvePageTitle,
+  shellFor,
+  type IdentityNavKey,
+  type NavKey,
+} from '@/lib/nav';
 
 const NAV_ICONS: Record<NavKey, React.ReactNode> = {
   workbench: <DashboardOutlined />,
   properties: <HomeOutlined />,
+  cases: <ProfileOutlined />,
   contracts: <FileTextOutlined />,
   handovers: <SwapOutlined />,
   design: <BgColorsOutlined />,
+};
+
+const IDENTITY_NAV_ICONS: Record<IdentityNavKey, React.ReactNode> = {
+  practice: <SafetyCertificateOutlined />,
+  desk: <AuditOutlined />,
 };
 
 // 殼層依路徑分派（MIL-94）：/owner 底下交給 src/app/owner/layout.tsx 掛 OwnerShell，
 // 因為屋主身分要在 server 端讀，只限屋主端的請求；其他路徑用後台殼層。
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  // 登入頁與 demo 驗證碼頁還沒有登入身分，不套任何殼層（MIL-103）
+  if (isAuthScreen(pathname)) return children;
   if (shellFor(pathname) === 'owner') return children;
   return <AdminShell pathname={pathname}>{children}</AdminShell>;
 }
 
-// 不做登入：打開即屋主視角（見 GLOSSARY.md）
+// 登入由 MIL-103 提供：未登入的請求在 proxy 與根 layout 就被導向 /login，到這裡的都有 session
 // 後台殼層＝深色 collapsible side menu（規格 §4）：antd Layout＋Sider＋Menu mode="inline"，不引入 ProLayout
 function AdminShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const { token } = theme.useToken();
 
-  const selected = resolveNavKey(pathname);
-  const currentLabel = NAV_ITEMS.find((item) => item.key === selected)?.label ?? '';
+  const selected = resolveNavKey(pathname) ?? resolveIdentityNavKey(pathname);
+  const currentLabel = resolvePageTitle(pathname);
+
+  // 執業主體與審核台的入口依目前身分顯示（MIL-109）。身分載入前不顯示，抓不到也不顯示
+  const [identityKind, setIdentityKind] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch('/api/auth/identities');
+        if (!response.ok) return;
+        const body = (await response.json()) as { data?: { current?: { kind?: string } | null } };
+        if (!cancelled) setIdentityKind(body.data?.current?.kind ?? null);
+      } catch {
+        // 入口只是方便，抓不到就不顯示
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -77,11 +119,18 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
           theme="dark"
           mode="inline"
           selectedKeys={selected ? [selected] : []}
-          items={NAV_ITEMS.map((item) => ({
-            key: item.key,
-            icon: NAV_ICONS[item.key],
-            label: <Link href={item.href}>{item.label}</Link>,
-          }))}
+          items={[
+            ...NAV_ITEMS.map((item) => ({
+              key: item.key,
+              icon: NAV_ICONS[item.key],
+              label: <Link href={item.href}>{item.label}</Link>,
+            })),
+            ...identityNavItems(identityKind).map((item) => ({
+              key: item.key,
+              icon: IDENTITY_NAV_ICONS[item.key],
+              label: <Link href={item.href}>{item.label}</Link>,
+            })),
+          ]}
         />
       </Layout.Sider>
 
@@ -98,6 +147,7 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
           <Typography.Title level={5} style={{ margin: 0 }}>
             {currentLabel}
           </Typography.Title>
+          <AccountBar />
         </Layout.Header>
         <Layout.Content style={{ padding: 24 }}>{children}</Layout.Content>
       </Layout>

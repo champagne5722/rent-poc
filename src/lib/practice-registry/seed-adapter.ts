@@ -162,6 +162,19 @@ const SEED_PRACTITIONERS: readonly SeedPractitioner[] = [
   },
 ];
 
+// 假證號：種類代碼加固定序號，只用於 seed 資料
+const CERT_PREFIX: Record<CertificateKind, string> = {
+  rental_housing_manager: 'RHM',
+  real_estate_broker: 'BRK',
+  real_estate_sales_agent: 'SLS',
+};
+
+function seedCertificateNo(seed: SeedPractitioner): string | null {
+  if (!seed.certificateKind) return null;
+  const index = SEED_PRACTITIONERS.findIndex((p) => p.id === seed.id);
+  return `${CERT_PREFIX[seed.certificateKind]}-${String(100200 + index * 37).padStart(7, '0')}`;
+}
+
 function todayInTaiwan(): string {
   return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
@@ -201,6 +214,8 @@ export function createSeedPracticeRegistry({ today = todayInTaiwan }: SeedRegist
       fullTime: seed.fullTime,
       isResponsiblePerson: seed.isResponsiblePerson ?? false,
       entityId: seed.entityId,
+      employmentId: `emp-${seed.id}`,
+      certificateNo: seedCertificateNo(seed),
       credential,
     };
   }

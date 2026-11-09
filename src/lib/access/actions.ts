@@ -59,9 +59,52 @@ export interface CaseActionRule {
   readonly hostRoles: Readonly<Partial<Record<CaseVariant, readonly OrgRole[]>>>;
   readonly relations: Readonly<Partial<Record<CaseVariant, readonly CaseMemberRelation[]>>>;
   readonly onBehalfScope: MandateScope | null;
+  /**
+   * 物件還沒歸屬任何案件時，改用哪個組織層動作判斷（MIL-108 剩餘範圍）。沒有這個欄位的動作，
+   * 物件沒有案件就拒絕（`no_case`）。只給合約動作用：MIL-115 建案件表並遷移既有合約後，
+   * 所有合約都有案件，這條路徑不再被走到。
+   */
+  readonly uncased?: 'uncased_contract.read' | 'uncased_contract.write';
 }
 
 export type ActionRule = OrgActionRule | CaseActionRule;
+
+/**
+ * 合約生命週期動作：與擬約送簽同一批人（主辦組織的 admin、staff，自管與包租的出租人），
+ * 差別只在允許的案件狀態。送簽後撤回或拒簽，案件回 `draft`（cases README），所以複製為新草稿在 `draft`。
+ * 代管案件的屋主不在內（P0-09：代管案件的屋主不得擬約與送簽）。
+ */
+function contractLifecycle(states: readonly CaseState[]): CaseActionRule {
+  return {
+    scope: 'case',
+    effect: 'write',
+    states,
+    hostRoles: {
+      self_managed: WRITE_ROLES,
+      managed: WRITE_ROLES,
+      master_lease: WRITE_ROLES,
+      management: WRITE_ROLES,
+    },
+    relations: { self_managed: ['lessor'], master_lease: ['lessor'] },
+    onBehalfScope: null,
+    uncased: 'uncased_contract.write',
+  };
+}
+
+const CONTRACT_LIFECYCLE = {
+  // 甲方撤回簽署中的合約。
+  'contract.void': contractLifecycle(['signing']),
+  // 撤回或拒簽後複製為新草稿，新草稿留在同一案件（P0-09 AC7）。
+  'contract.copy': contractLifecycle(['draft']),
+  // 重寄簽署通知給當前待簽方。
+  'contract.resend': contractLifecycle(['signing']),
+  // 向簽署服務商現查當前簽署人的連結。連結能代簽，視同寫入，唯讀角色不得取得。
+  'contract.sign_link': contractLifecycle(['signing']),
+  // 手動補抓簽署文件。完成當下保存失敗時的補救（簽署中與剛生效的案件）。
+  'contract.refetch_files': contractLifecycle(['signing', 'active']),
+  // 僅 mock 模式：模擬簽署服務商事件推進狀態。
+  'contract.simulate_signing': contractLifecycle(['signing']),
+} as const satisfies Record<string, CaseActionRule>;
 
 /**
  * 動作表。鍵是動作 ID，對照 PRD P0-09 的權限表：
@@ -105,6 +148,7 @@ export const ACTIONS = {
       management: ['mandator', 'mandatary', 'practitioner'],
     },
     onBehalfScope: null,
+    uncased: 'uncased_contract.read',
   },
   // 讀帳務：不含經紀業者、簽章人員、所有權人。
   'ledger.read': {
@@ -145,7 +189,9 @@ export const ACTIONS = {
     },
     relations: { self_managed: ['lessor'], master_lease: ['lessor'] },
     onBehalfScope: null,
+    uncased: 'uncased_contract.write',
   },
+  ...CONTRACT_LIFECYCLE,
   // 登錄入帳確認：代管業者限委託範圍收租。
   'ledger.record_payment': {
     scope: 'case',
@@ -256,10 +302,38 @@ export const ACTIONS = {
   },
   // 組織成員管理：只有 admin（P0-02、MIL-100 組織角色）。
   'org_member.manage': { scope: 'org', effect: 'write', orgRoles: ['admin'] },
+  // 組織成員列表：所有角色。待處理邀請只給 admin，由載入資料的人過濾。
+  'org_member.read': { scope: 'org', effect: 'read', orgRoles: ALL_ROLES },
+  // 物件在組織層，沒有案件：讀取所有角色，寫入 admin 與 staff，viewer 被拒。
+  'property.read': { scope: 'org', effect: 'read', orgRoles: ALL_ROLES },
+  'property.manage': { scope: 'org', effect: 'write', orgRoles: WRITE_ROLES },
+  // 案件清單（MIL-115）：列出目前組織主辦的案件，加上自己是成員的別組織案件。所有角色可讀。
+  // 清單內每一列能看到什麼，由 RLS 的成員讀取政策決定；進入單一案件另走 case.read_summary。
+  'case.list': { scope: 'org', effect: 'read', orgRoles: ALL_ROLES },
+  // 還沒歸屬案件的合約（MIL-115 遷移前）：依組織角色。案件動作的 `uncased` 欄位指向這兩列。
+  'uncased_contract.read': { scope: 'org', effect: 'read', orgRoles: ALL_ROLES },
+  'uncased_contract.write': { scope: 'org', effect: 'write', orgRoles: WRITE_ROLES },
   // 稽核紀錄匯出：只限 admin（P0-23 AC6）。
   'audit.export': { scope: 'org', effect: 'read', orgRoles: ['admin'] },
+  // 執業主體端（MIL-109）：看自己的登錄進度，所有角色。送件與補件是寫入，admin 與 staff，viewer 被拒。
+  // 組織型態必須是 practice 由呼叫端另外檢查，動作表只看組織角色。審核台不走這裡：它靠平台營運者身分，不是組織角色。
+  'practice_registry.read': { scope: 'org', effect: 'read', orgRoles: ALL_ROLES },
+  'practice_registry.submit': { scope: 'org', effect: 'write', orgRoles: WRITE_ROLES },
+  // 執業主體批次查詢（F 線資產總覽，MIL-94）：任何組織成員，只回名稱、稱謂與驗證狀態。
+  'practice_entity.lookup': { scope: 'org', effect: 'read', orgRoles: ALL_ROLES },
 } as const satisfies Record<string, ActionRule>;
 
 export type ActionId = keyof typeof ACTIONS;
 
 export const ACTION_IDS = Object.keys(ACTIONS) as readonly ActionId[];
+
+/**
+ * 物件還沒歸屬案件時，這個動作改用哪個組織層動作判斷。
+ * 組織層動作原樣回傳。案件動作有 `uncased` 欄位時回傳該欄位，其餘回 `null`，載入者必須拒絕。
+ * 帳務、修繕、點交這類動作一定要有案件，不得因為沒有案件而放行。
+ */
+export function actionForUncasedObject(action: ActionId): ActionId | null {
+  const rule: ActionRule = ACTIONS[action];
+  if (rule.scope === 'org') return action;
+  return rule.uncased ?? null;
+}

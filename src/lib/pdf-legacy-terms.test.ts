@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { bindTemplate } from './clause-library';
 import { LEGACY_TERMS } from './labels';
 import { generateContractPdf } from './pdf';
-import type { ContractFields, ContractRoutingConditions } from './types';
+import type { LeaseContractFields, ContractRoutingConditions } from './types';
 
 // 合約 PDF 的全文不含舊用詞，也不出現「經理人」（MIL-122 AC，P0-01 AC6）。
 // 從真的產出的 PDF 讀回全文檢查，不看原始碼。
 
-const fields: ContractFields = {
+const fields: LeaseContractFields = {
   propertyName: '測試物件',
   propertyAddress: '台北市中正區測試路 1 號',
   propertyType: '整層住家',
@@ -36,7 +36,7 @@ const masterLease: ContractRoutingConditions = {
 };
 
 async function pdfText(
-  f: ContractFields,
+  f: LeaseContractFields,
   practitioners: Parameters<typeof generateContractPdf>[1] = {}
 ): Promise<string> {
   const bytes = await generateContractPdf(f, practitioners);
@@ -58,7 +58,7 @@ function withoutExemptPhrases(text: string): string {
 const banned = [...LEGACY_TERMS.everywhere, ...LEGACY_TERMS.contractPdfAndLessee];
 
 describe('合約 PDF 不含舊用詞', () => {
-  const cases: [string, ContractFields, Parameters<typeof generateContractPdf>[1]][] = [
+  const cases: [string, LeaseContractFields, Parameters<typeof generateContractPdf>[1]][] = [
     ['兩方合約', fields, {}],
     [
       '包租加經紀業者居間，執業人員已指派',

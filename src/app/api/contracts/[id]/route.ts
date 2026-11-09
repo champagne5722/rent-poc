@@ -1,6 +1,9 @@
 import { NextRequest } from 'next/server';
+import { authorize, authorizeIgnoringState } from '@/lib/authorize';
+import { caseHasContracts, dispatch } from '@/lib/case-store';
 import {
   deleteDraftContract,
+  getContractCaseId,
   getContract,
   getContractRelations,
   saveDraft,
@@ -8,7 +11,7 @@ import {
 import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/contracts/route';
 import { contractSubject, signing } from '@/lib/signing-module';
 import { jsonOk, jsonError } from '@/lib/http';
-import { inOrgTx, readInOrgTx, readJson } from '@/lib/org-route';
+import { inOrgTx, inOrgTxAs, readInOrgTx, readJson } from '@/lib/org-route';
 import { routingInputError } from '@/lib/signature-routing';
 import type { ContractFields, SignatureField } from '@/lib/types';
 
@@ -21,6 +24,7 @@ export async function GET(_request: NextRequest, { params }: ContractRouteCtx) {
   const id = await contractIdOf(params);
   if (!id) return contractNotFound();
   const read = await readInOrgTx(async (tx) => {
+    await authorize(tx, 'contract.read', { type: 'contract', id });
     const contract = await getContract(tx, id);
     return contract ? { contract, relations: await getContractRelations(tx, contract) } : null;
   });
@@ -39,6 +43,7 @@ export async function PUT(request: NextRequest, { params }: ContractRouteCtx) {
   if (!id) return contractNotFound();
   const body = await readJson(request);
   return inOrgTx(async (tx) => {
+    await authorizeIgnoringState(tx, 'contract.draft_send', { type: 'contract', id });
     // 鎖住這一列再讀：狀態檢查和寫入之間，送簽不能插進來
     const contract = await getContract(tx, id, 'update');
     if (!contract) return contractNotFound();
@@ -65,10 +70,17 @@ export async function DELETE(_request: NextRequest, { params }: ContractRouteCtx
   const id = await contractIdOf(params);
   if (!id) return contractNotFound();
   // 歷程隨合約保存，草稿刪除時一併移除；合約、歷程、稽核事件同交易
-  return inOrgTx(async (tx) => {
+  return inOrgTxAs(async (tx, rc) => {
+    await authorizeIgnoringState(tx, 'contract.draft_send', { type: 'contract', id });
+    const caseId = await getContractCaseId(tx, id);
     const result = await deleteDraftContract(tx, id);
     if (result === 'not_found') return contractNotFound();
     if (result === 'not_draft') return jsonError(409, '僅草稿可刪除');
+    // 草稿刪除後，案件下已經沒有任何合約（沒有撤回或拒簽留下的舊合約）時，放棄這個 draft 案件，不留下空的草稿案件。
+    // 還有舊合約的案件保留：使用者可以再複製舊合約為新草稿
+    if (caseId && !(await caseHasContracts(tx, caseId))) {
+      await dispatch(tx, caseId, { type: 'abandon' }, { actor: { partyId: rc.partyId } });
+    }
     return jsonOk({ data: { id } });
   });
 }

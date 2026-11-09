@@ -1,7 +1,7 @@
 // 領域型別與詞彙，術語定義見 repo 根目錄 GLOSSARY.md
 
 import type { BusinessType } from './cases';
-import { TERMS, type ContractType } from './labels';
+import { TERMS } from './labels';
 
 export const PROPERTY_TYPES = ['整層住家', '套房', '雅房'] as const;
 export type PropertyType = (typeof PROPERTY_TYPES)[number];
@@ -165,6 +165,9 @@ export interface ContractTemplate {
   version: number;
   provider: string;
   note: string;
+  // 法務審閱旗標（P0-10 AC5）：標記這個版本的條文是否經法務審閱。範本維護者審閱後才改成 true。
+  // 正式金鑰下，綁到未審閱範本的合約無法送簽（src/lib/template-review.ts）。
+  legalReviewed: boolean;
 }
 
 // 選用條款（Optional Clause）：平台提供、經法務審閱的可勾選附加條款，逐約勾選後併入合約產出。
@@ -216,9 +219,18 @@ export interface ContractRoutingConditions {
   brokerMediated: boolean;
 }
 
-// 合約欄位值：建立時由物件帶入快照，之後與物件脫鉤（見 docs/domain-model.md）
-export interface ContractFields extends TemplateBinding, EquipmentAnnexSnapshot {
+// 合約欄位依合約類型（`contract_type`）分成兩種形狀，共用部分放在 ContractFieldsBase（MIL-73）。
+// 欄位形狀由 `Contract` 的 `contract_type` 判別，欄位物件本身不帶類型，既有合約（沒有類型欄位前建立）
+// 一律讀成租賃合約。依類型取值、檢核與建立草稿都經 src/lib/contract-types，共用流程不直接讀具體欄位。
+
+/** 各合約類型共用的欄位：分流條件、範本綁定與條款快照、其他約定事項。 */
+export interface ContractFieldsBase extends TemplateBinding {
   routing?: ContractRoutingConditions;
+  extra: string; // 其他約定事項
+}
+
+// 租賃合約欄位值：建立時由物件帶入快照，之後與物件脫鉤（見 docs/domain-model.md）
+export interface LeaseContractFields extends ContractFieldsBase, EquipmentAnnexSnapshot {
   landlordName: string;
   landlordEmail: string;
   tenantName: string;
@@ -232,8 +244,21 @@ export interface ContractFields extends TemplateBinding, EquipmentAnnexSnapshot 
   startDate: string; // YYYY-MM-DD
   endDate: string;
   payDay: number | null; // 每月付款日
-  extra: string; // 其他約定事項
 }
+
+/**
+ * 委託管理合約欄位值。目前只有共用基底與兩方當事人的姓名與 email，
+ * 讓共用送簽流程能取得簽署人。委託標的清單、委託範圍、期間與報酬由 MIL-74 加入。
+ */
+export interface ManagementContractFields extends ContractFieldsBase {
+  mandatorName: string; // 委託人（甲方）
+  mandatorEmail: string;
+  mandataryName: string; // 受託人（乙方）
+  mandataryEmail: string;
+}
+
+/** 合約欄位：以合約的 `contract_type` 判別（見 `Contract`）。 */
+export type ContractFields = LeaseContractFields | ManagementContractFields;
 
 // 簽署角色（ADR-0010）：簽署人在文件上的地位。畫面文字一律從 SIGNER_ROLE_LABELS 取。
 export const SIGNER_ROLES = ['party_a', 'party_b', 'practitioner'] as const;
@@ -282,21 +307,18 @@ export interface ContractFile {
   kind: ContractFileKind;
   status: ContractFileStatus;
   file_name: string;
-  rel_path: string | null; // 相對 data/ 的路徑，失敗時為 null
+  sha256: string | null; // 檔案內容的 SHA-256，失敗時為 null
   byte_size: number | null;
   content_type: string | null;
   error: string | null;
   saved_at: string;
 }
 
-export interface Contract {
+interface ContractBase {
   id: string; // ULID（ADR-0012 決議 9）。畫面顯示末 6 碼，用 shortUlid
   // 物件的 ULID，與合約同組織（複合外鍵 (org_id, property_id)）
   property_id: string | null;
-  // 合約類型（ADR-0021 決議 2）：決定簽章分流的文件類型。既有合約一律是 lease。
-  contract_type: ContractType;
   status: ContractStatus;
-  fields: ContractFields;
   signature_fields: SignatureField[];
   declined_reason: string | null;
   // 衍生自哪份合約（ADR-0006）：只有「撤回後複製為新草稿」的修約路徑會記錄，拒簽後的複製為 null
@@ -304,6 +326,20 @@ export interface Contract {
   created_at: string;
   updated_at: string | null;
 }
+
+// 合約類型（ADR-0021 決議 2）：決定簽章分流的文件類型與欄位形狀。既有合約一律是 lease。
+export interface LeaseContract extends ContractBase {
+  contract_type: 'lease';
+  fields: LeaseContractFields;
+}
+
+export interface ManagementContract extends ContractBase {
+  contract_type: 'management';
+  fields: ManagementContractFields;
+}
+
+/** 合約：以 `contract_type` 判別的聯集，欄位形狀跟著類型走。 */
+export type Contract = LeaseContract | ManagementContract;
 
 // 衍生鏈上的一份合約（詳情頁「關聯合約」分頁只需編號與狀態）
 export interface ContractRelationRef {

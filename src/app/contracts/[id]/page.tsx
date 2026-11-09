@@ -18,6 +18,7 @@ import {
   Row,
   Space,
   Steps,
+  Table,
   Tabs,
   Tag,
   Timeline,
@@ -36,7 +37,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type {
-  Contract,
+  LeaseContract,
   ContractEvent,
   ContractFile,
   ContractRelations,
@@ -63,6 +64,8 @@ import SignatureFieldEditor from '@/components/SignatureFieldEditor';
 import { shortUlid } from '@/lib/pg/ulid';
 import { evaluateRouting } from '@/lib/signature-routing';
 import type { PrintedPractitioner } from '@/lib/practitioner-assignment/seats';
+import type { SignatureRecordDetail } from '@/lib/signature-records/types';
+import { signatureRecordCards } from '@/lib/signature-records/view';
 
 const STATUS_COLORS: Record<ContractStatus, string> = {
   draft: 'default',
@@ -87,7 +90,7 @@ function formatSize(bytes: number | null): string {
 function ContractDetail({ id }: { id: string }) {
   const { message } = AntApp.useApp();
   const router = useRouter();
-  const [contract, setContract] = useState<Contract | null>(null);
+  const [contract, setContract] = useState<LeaseContract | null>(null);
   // 物件的顯示編碼（MIL-145）。合約只存物件 ID，編碼從物件讀；讀不到時不顯示這一列
   const displayCode = useDisplayCode(contract?.property_id);
   const [relations, setRelations] = useState<ContractRelations | null>(null);
@@ -96,6 +99,8 @@ function ContractDetail({ id }: { id: string }) {
   const [files, setFiles] = useState<ContractFile[]>([]);
   // 已指派的執業人員（姓名、法定稱謂、執業主體），以席位 rule_id 為鍵
   const [practitioners, setPractitioners] = useState<Record<string, PrintedPractitioner>>({});
+  // 簽章紀錄（MIL-70）：唯讀。兩方合約沒有，整個分頁不顯示
+  const [signatureRecords, setSignatureRecords] = useState<SignatureRecordDetail[]>([]);
   const [mockMode, setMockMode] = useState(false);
   // 連同取得當下的狀態一起存：狀態轉移後舊連結不再屬於當前待簽方，直接失效
   const [signLinkState, setSignLinkState] = useState<{ forStatus: ContractStatus; link: string } | null>(null);
@@ -116,14 +121,16 @@ function ContractDetail({ id }: { id: string }) {
     setSigningProgress(json.signing_progress ?? null);
 
     // 歷程與文件跟著合約一起更新，webhook 推進狀態後三者才會一致
-    const [eventsJson, filesJson, practitionersJson] = await Promise.all([
+    const [eventsJson, filesJson, practitionersJson, recordsJson] = await Promise.all([
       fetch(`/api/contracts/${id}/events`).then((r) => (r.ok ? r.json() : { data: [] })),
       fetch(`/api/contracts/${id}/files`).then((r) => (r.ok ? r.json() : { data: [] })),
       fetch(`/api/contracts/${id}/practitioners?only=printed`).then((r) => (r.ok ? r.json() : { data: null })),
+      fetch(`/api/contracts/${id}/signature-records`).then((r) => (r.ok ? r.json() : { data: [] })),
     ]);
     setEvents(eventsJson.data ?? []);
     setFiles(filesJson.data ?? []);
     setPractitioners(practitionersJson.data?.printed ?? {});
+    setSignatureRecords(recordsJson.data ?? []);
   }, [id, message, router]);
 
   useEffect(() => {
@@ -170,6 +177,7 @@ function ContractDetail({ id }: { id: string }) {
   const fileRows = contractFileRows(contract, files, { mock: mockMode });
   const annexSummary = equipmentAnnexSummary(contract.fields);
   const chain = contractChainNodes(contract, relations);
+  const recordCards = signatureRecordCards(signatureRecords);
 
   const voidContract = async () => {
     const data = await act(`/api/contracts/${id}/void`);
@@ -552,6 +560,44 @@ function ContractDetail({ id }: { id: string }) {
               </Row>
             ),
           },
+          ...(recordCards.length > 0
+            ? [
+                {
+                  key: 'signature-records',
+                  label: '簽章紀錄',
+                  children: (
+                    <Space orientation="vertical" size={24} style={{ width: '100%' }}>
+                      <Typography.Text type="secondary">
+                        送簽與簽署當下的執業人員資料留存，只供查看。法律舉證以點點簽的 Audit Trail File 為準。
+                      </Typography.Text>
+                      {recordCards.map((card) => (
+                        <Card key={card.key} title={card.title} size="small">
+                          <Space orientation="vertical" size={16} style={{ width: '100%' }}>
+                            <Descriptions
+                              column={{ xs: 1, md: 2, xl: 3 }}
+                              size="small"
+                              items={card.summary.map((item) => ({ key: item.label, label: item.label, children: item.value }))}
+                            />
+                            <Table
+                              size="middle"
+                              rowKey="key"
+                              pagination={false}
+                              scroll={{ x: 'max-content' }}
+                              dataSource={card.snapshotRows}
+                              columns={[
+                                { title: '證書快照', dataIndex: 'label' },
+                                { title: '送簽時', dataIndex: 'atSend', width: '38%' },
+                                { title: '簽署時', dataIndex: 'atSign', width: '38%' },
+                              ]}
+                            />
+                          </Space>
+                        </Card>
+                      ))}
+                    </Space>
+                  ),
+                },
+              ]
+            : []),
           {
             key: 'files',
             label: '文件',

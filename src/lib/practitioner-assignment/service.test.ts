@@ -52,15 +52,22 @@ describe('evaluateSend：由指派與登錄資料組出送簽前檢查的輸入'
     });
   });
 
-  it('留下判定事實快照：事實與結果原樣', async () => {
+  it('算出簽章紀錄的送簽資料：款次、規則、執業人員、任職、執業主體與當時的證書快照（MIL-70）', async () => {
     const result = await evaluateSend(input(), seed);
-    expect(result.snapshots).toHaveLength(1);
-    expect(result.snapshots[0]).toMatchObject({
-      slot: PRACTITIONER_SLOT,
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0]).toMatchObject({
+      ruleId: PRACTITIONER_SLOT,
+      statuteRef: expect.stringContaining('§32'),
+      ruleVersion: expect.any(Number),
       practitionerId: 'pr-chen',
-      decidedAt: AT,
-      result: { signable: true, renewalWindow: null },
-      facts: { certificateKind: 'rental_housing_manager', fullTime: true, employmentEntityId: 'org-pe-beichen' },
+      employmentId: 'emp-pr-chen',
+      entityId: 'org-pe-beichen',
+      licenseKind: 'master_lease',
+      snapshotAtSend: {
+        decidedAt: AT,
+        certificateKind: 'rental_housing_manager',
+        result: { signable: true, renewalWindow: null },
+      },
     });
   });
 
@@ -163,7 +170,7 @@ describe('evaluateSend：由指派與登錄資料組出送簽前檢查的輸入'
   it('兩方合約不需要執業人員：不查登錄，指派可以是空的', async () => {
     const selfManaged: RoutingFacts = { documentType: 'lease', businessType: 'self_managed', lesseeIsMasterLessor: false, brokerMediated: false };
     const result = await evaluateSend(input({ routing: selfManaged, assignments: [] }), { available: false, reason: 'x' });
-    expect(result).toMatchObject({ ok: true, reasons: [], assignees: {}, snapshots: [] });
+    expect(result).toMatchObject({ ok: true, reasons: [], assignees: {}, records: [] });
   });
 
   it('正式金鑰下沒有真實 adapter：要求執業人員的組合被擋下', async () => {

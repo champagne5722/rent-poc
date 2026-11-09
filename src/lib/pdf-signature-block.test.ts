@@ -3,12 +3,12 @@ import { bindTemplate } from './clause-library';
 import { generateContractPdf } from './pdf';
 import { signatureBlockLayout } from './pdf-layout';
 import goldenTwoParty from './pdf-two-party.golden.json';
-import type { ContractFields, ContractRoutingConditions } from './types';
+import type { LeaseContractFields, ContractRoutingConditions } from './types';
 
 // 簽署欄依簽署序列印 N 列（ADR-0018 決議 14）。
 // goldenTwoParty 是改動前在 main 上以同一份欄位產出的 PDF 逐字位置，用來證明兩方合約的 PDF 不動（ADR-0006）。
 
-const baseFields: ContractFields = {
+const baseFields: LeaseContractFields = {
   propertyName: '測試物件',
   propertyAddress: '台北市中正區測試路 1 號',
   propertyType: '整層住家',
@@ -30,7 +30,7 @@ const baseFields: ContractFields = {
   ...bindTemplate(),
 };
 
-const withRouting = (routing: ContractRoutingConditions): ContractFields => ({ ...baseFields, routing });
+const withRouting = (routing: ContractRoutingConditions): LeaseContractFields => ({ ...baseFields, routing });
 const MASTER_LEASE = withRouting({ businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: false });
 const MASTER_LEASE_BROKER = withRouting({
   businessType: 'master_lease',
@@ -45,7 +45,7 @@ interface TextItem {
 }
 
 async function readPages(
-  f: ContractFields,
+  f: LeaseContractFields,
   practitioners: Parameters<typeof generateContractPdf>[1] = {}
 ): Promise<TextItem[][]> {
   const bytes = await generateContractPdf(f, practitioners);
@@ -69,7 +69,7 @@ async function readPages(
 
 /** 簽署欄所在頁：有「立契約書人」的那一頁。 */
 async function signaturePage(
-  f: ContractFields,
+  f: LeaseContractFields,
   practitioners: Parameters<typeof generateContractPdf>[1] = {}
 ): Promise<TextItem[]> {
   const page = (await readPages(f, practitioners)).find((items) => items.some((item) => item.str === '立契約書人'));

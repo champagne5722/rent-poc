@@ -20,6 +20,37 @@ describe('isPublicPath', () => {
   });
 });
 
+describe('內部 job 的路徑（ADR-0020）', () => {
+  it('只放行 /api/internal/jobs/:name，名稱是小寫英數與連字號', () => {
+    for (const name of ['drain-inbox', 'drain-outbox', 'scan-timers', 'anchor-audit', 'verify-audit']) {
+      expect(isPublicPath(`/api/internal/jobs/${name}`)).toBe(true);
+    }
+  });
+
+  it('其他內部路徑不放行', () => {
+    expect(isPublicPath('/api/internal')).toBe(false);
+    expect(isPublicPath('/api/internal/')).toBe(false);
+    expect(isPublicPath('/api/internal/jobs')).toBe(false);
+    expect(isPublicPath('/api/internal/jobs/')).toBe(false);
+    expect(isPublicPath('/api/internal/other')).toBe(false);
+    expect(isPublicPath('/api/internal/admin/reset')).toBe(false);
+    expect(isPublicPath('/api/internal/jobs-extra/x')).toBe(false);
+  });
+
+  it('job 名稱後面不能再接路徑，也不能夾帶路徑穿越', () => {
+    expect(isPublicPath('/api/internal/jobs/drain-inbox/extra')).toBe(false);
+    expect(isPublicPath('/api/internal/jobs/../secret')).toBe(false);
+    expect(isPublicPath('/api/internal/jobs/%2e%2e')).toBe(false);
+    expect(isPublicPath('/api/internal/jobs/Drain_Inbox')).toBe(false);
+    expect(isPublicPath('/api/internal/jobs/')).toBe(false);
+  });
+
+  it('job 路徑不需要帳號密碼，其他內部路徑仍要求登入', () => {
+    expect(decideDemoAccess({ ...configured, pathname: '/api/internal/jobs/drain-inbox', authorization: 'Bearer token' })).toBe('allow');
+    expect(decideDemoAccess({ ...configured, pathname: '/api/internal/other', authorization: 'Bearer token' })).toBe('challenge');
+  });
+});
+
 describe('decideDemoAccess', () => {
   it('公開路徑不需要帳號密碼', () => {
     expect(decideDemoAccess({ ...configured, pathname: '/api/health', authorization: null })).toBe('allow');

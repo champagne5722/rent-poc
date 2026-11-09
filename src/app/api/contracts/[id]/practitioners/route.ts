@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { authorize } from '@/lib/authorize';
 import { getContract } from '@/lib/contracts';
 import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/contracts/route';
 import { jsonError, jsonOk } from '@/lib/http';
@@ -15,7 +16,8 @@ import { loadContractRoutingFacts } from '@/lib/signature-routing/repository';
 // GET 回指派選項、目前的指派與送簽前檢查的結果，wizard 的指派欄位與確認頁共用。
 // GET ?only=printed 只回簽署欄要印的執業人員，詳情頁用。
 
-async function loadForAssignment(tx: OrgTx, id: string) {
+async function loadForAssignment(tx: OrgTx, id: string, action: 'contract.read' | 'contract.draft_send') {
+  await authorize(tx, action, { type: 'contract', id });
   const contract = await getContract(tx, id);
   if (!contract) return null;
   return { contract, routing: await loadContractRoutingFacts(tx, id), stored: await getAssignments(tx, id) };
@@ -24,7 +26,7 @@ async function loadForAssignment(tx: OrgTx, id: string) {
 export async function GET(request: NextRequest, { params }: ContractRouteCtx) {
   const id = await contractIdOf(params);
   if (!id) return contractNotFound();
-  const read = await readInOrgTx((tx) => loadForAssignment(tx, id));
+  const read = await readInOrgTx((tx) => loadForAssignment(tx, id, 'contract.read'));
   if (!read.ok) return read.response;
   if (!read.value) return contractNotFound();
   const { contract, routing, stored } = read.value;
@@ -45,7 +47,7 @@ export async function GET(request: NextRequest, { params }: ContractRouteCtx) {
   const [options, printed, evaluation] = await Promise.all([
     loadSeatOptions(routing.facts, resolution, at),
     loadPrintedPractitioners(routing.facts, assignments, resolution),
-    evaluateSend({ routing: routing.facts, fields: contract.fields, assignments, at }, resolution),
+    evaluateSend({ routing: routing.facts, contractType: contract.contract_type, fields: contract.fields, assignments, at }, resolution),
   ]);
   return jsonOk({
     data: {
@@ -79,7 +81,7 @@ export async function PUT(request: NextRequest, { params }: ContractRouteCtx) {
   if (!id) return contractNotFound();
   const assignments = parseAssignments(await readJson(request));
 
-  const read = await readInOrgTx((tx) => loadForAssignment(tx, id));
+  const read = await readInOrgTx((tx) => loadForAssignment(tx, id, 'contract.draft_send'));
   if (!read.ok) return read.response;
   if (!read.value) return contractNotFound();
   const { contract, routing, stored } = read.value;

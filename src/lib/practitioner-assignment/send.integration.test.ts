@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createLocalFileStore } from '../file-store/local-file-store';
 import { createContractSubscriber } from '../contract-signing';
 import { createContract, getContract, listContractEvents } from '../contracts';
 import { withTx } from '../pg/database';
@@ -13,8 +14,9 @@ import { createMockProvider } from '../signing-module/mock-adapter';
 import type { SigningDb } from '../signing-module/db';
 import { createSigningModule } from '../signing-module/module';
 import type { SigningProvider } from '../signing-module/provider';
-import { listCredentialSnapshots, replaceAssignments } from './repository';
-import { loadSendInputs, prepareContractSend, recordSendSnapshots } from './send';
+import { listSignatureRecords } from '../signature-records/repository';
+import { replaceAssignments } from './repository';
+import { loadSendInputs, prepareContractSend } from './send';
 
 // 整合測試：走簽署模組介面，配 Mock adapter，三位簽署人從送簽走到完成（MIL-69）。
 // 資料庫是 PGlite（MIL-85），執業人員資料來自 seed adapter。
@@ -87,7 +89,7 @@ function newContract(fields: object, signatureFields: SignatureField[]): Promise
 const statusOf = async (id: string) => (await inA((tx) => getContract(tx, id)))?.status;
 const eventsOf = (id: string) => inA((tx) => listContractEvents(tx, id));
 const assign = (id: string, list: Parameters<typeof replaceAssignments>[2]) => inA((tx) => replaceAssignments(tx, id, list));
-const snapshotsOf = (id: string) => inA((tx) => listCredentialSnapshots(tx, id));
+const recordsOf = (id: string) => inA((tx) => listSignatureRecords(tx, id));
 
 function moduleWith(provider: SigningProvider = createMockProvider()) {
   const db: SigningDb = {
@@ -95,7 +97,7 @@ function moduleWith(provider: SigningProvider = createMockProvider()) {
     inOrg: (ctx, fn) => withTx(ctx, fn),
     inControl: (fn) => withTx({ kind: 'control' }, fn),
   };
-  return createSigningModule({ provider, subscribers: { contract: createContractSubscriber() }, dataDir, db });
+  return createSigningModule({ provider, subscribers: { contract: createContractSubscriber() }, files: createLocalFileStore(dataDir), db });
 }
 
 async function prepare(id: string, resolution = seed) {
@@ -116,9 +118,7 @@ describe('包租租賃合約：乙方、執業人員、甲方三位走到完成'
     if (!prepared.ok) throw new Error(prepared.error);
     const signing = moduleWith(provider);
     const subject = { type: 'contract', id } as const;
-    await signing.send(subject, document, prepared.signers, {
-      alsoInTx: (tx) => recordSendSnapshots(tx, id, prepared),
-    });
+    await signing.send(subject, document, prepared.signers, { context: prepared.sendContext });
     return { id, subject, signing, prepared };
   }
 
@@ -169,22 +169,21 @@ describe('包租租賃合約：乙方、執業人員、甲方三位走到完成'
     expect(prepared.signers.map((s) => s.signatureFields.map((f) => f.id))).toEqual([['b'], ['p'], ['a']]);
   });
 
-  it('送簽前只算出快照，建立簽署任務之後才保存', async () => {
+  it('送簽前只算出簽章紀錄的資料，建立簽署任務之後才保存', async () => {
     const id = await newContract(MASTER_LEASE_FIELDS, MASTER_LEASE_FIELDS_ON_PAGE);
     await assign(id, [ASSIGN_CHEN(MASTER_LEASE_SLOT)]);
     const prepared = await prepare(id);
-    expect(prepared.ok && prepared.snapshots).toHaveLength(1);
-    expect(await snapshotsOf(id)).toEqual([]);
+    expect(prepared.ok && prepared.sendContext?.records).toHaveLength(1);
+    expect(await recordsOf(id)).toEqual([]);
   });
 
-  it('送簽時留下判定事實快照', async () => {
+  it('送簽時留下簽章紀錄與當時的證書快照', async () => {
     const { id } = await sendMasterLease();
-    const [snapshot] = await snapshotsOf(id);
-    expect(snapshot).toMatchObject({
-      slot: MASTER_LEASE_SLOT,
+    const [record] = await recordsOf(id);
+    expect(record).toMatchObject({
+      ruleId: MASTER_LEASE_SLOT,
       practitionerId: 'pr-chen',
-      decidedAt: new Date(AT).toISOString(),
-      result: { signable: true, renewalWindow: null },
+      snapshotAtSend: { decidedAt: AT, result: { signable: true, renewalWindow: null } },
     });
   });
 
@@ -261,7 +260,7 @@ describe('擋下送簽', () => {
     if (prepared.ok) return;
     expect(prepared.reasons.map((r) => r.code)).toContain('practitioner_not_assigned');
     expect(await moduleWith().getProgress({ type: 'contract', id })).toBeNull();
-    expect(await snapshotsOf(id)).toEqual([]);
+    expect(await recordsOf(id)).toEqual([]);
   });
 
   it('候選人專任旗標為否：被擋下，原因說明', async () => {

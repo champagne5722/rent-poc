@@ -2,7 +2,7 @@ import { PDFDocument, PDFFont, PDFPage, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import fs from 'fs';
 import path from 'path';
-import type { ContractFields, EquipmentAnnexRow } from './types';
+import type { EquipmentAnnexRow, LeaseContractFields } from './types';
 import { REPAIR_RESPONSIBILITY_LABELS, SIGNER_ROLE_LABELS } from './types';
 import { TERMS, partyLabels } from './labels';
 
@@ -179,7 +179,7 @@ function drawEquipmentAnnex(w: Writer, rows: EquipmentAnnexRow[]): void {
 }
 
 /** 依簽署序列取要印的席位，順序是印列順序（甲方、乙方、執業人員），與簽署順序無關。 */
-function printedSeats(fields: ContractFields): SeatView[] {
+function printedSeats(fields: LeaseContractFields): SeatView[] {
   const evaluation = evaluateRouting(fields.routing);
   return printOrder(evaluation.ok ? evaluation.seats : PARTY_ONLY_SEATS);
 }
@@ -191,7 +191,7 @@ function printedSeats(fields: ContractFields): SeatView[] {
  */
 function signatureBlockLines(
   seat: SeatView,
-  fields: ContractFields,
+  fields: LeaseContractFields,
   practitioner: PrintedPractitioner | undefined
 ): [string, string] {
   if (seat.role === 'party_a') {
@@ -212,7 +212,7 @@ function signatureBlockLines(
  * @param practitioners 已指派的執業人員，以席位 rule_id 為鍵。沒有的席位留底線。兩方合約不需要。
  */
 export async function generateContractPdf(
-  fields: ContractFields,
+  fields: LeaseContractFields,
   practitioners: Readonly<Record<string, PrintedPractitioner>> = {}
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.create();

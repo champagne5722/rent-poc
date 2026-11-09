@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   NAV_ITEMS,
   CREATE_CONTRACT_HREF,
+  MEMBERS_HREF,
   OWNER_NAV_ITEMS,
   resolveNavKey,
+  resolvePageTitle,
   resolveOwnerNavKey,
   shellFor,
 } from './nav';
@@ -38,10 +40,11 @@ describe('resolveNavKey（側邊選單高亮）', () => {
 });
 
 describe('殼層導覽定義', () => {
-  it('選單是工作台、物件、合約、移交、設計五項', () => {
+  it('選單是工作台、物件、案件、合約、移交、設計六項', () => {
     expect(NAV_ITEMS.map((i) => i.key)).toEqual([
       'workbench',
       'properties',
+      'cases',
       'contracts',
       'handovers',
       'design',
@@ -49,6 +52,7 @@ describe('殼層導覽定義', () => {
     expect(NAV_ITEMS.map((i) => i.href)).toEqual([
       '/',
       '/properties',
+      '/cases',
       '/contracts',
       '/handovers',
       '/design',
@@ -117,5 +121,42 @@ describe('resolveOwnerNavKey（屋主端選單高亮）', () => {
       expect(shellFor(item.href)).toBe('owner');
       expect(resolveOwnerNavKey(item.href)).toBe(item.key);
     }
+  });
+});
+
+describe('resolvePageTitle（後台 header 標題，MIL-106）', () => {
+  it('一級頁面用選單標籤', () => {
+    expect(resolvePageTitle('/')).toBe('工作台');
+    expect(resolvePageTitle('/contracts/new')).toBe('合約');
+  });
+
+  it('成員管理頁不在選單內，另有標題，且用後台殼層', () => {
+    expect(resolvePageTitle(MEMBERS_HREF)).toBe('成員管理');
+    expect(resolveNavKey(MEMBERS_HREF)).toBeNull();
+    expect(shellFor(MEMBERS_HREF)).toBe('admin');
+  });
+
+  it('不認得的路徑沒有標題', () => {
+    expect(resolvePageTitle('/nowhere')).toBe('');
+  });
+});
+
+describe('依身分出現的入口（MIL-109）', () => {
+  it('執業主體組織看到「執業主體」，平台營運者看到「審核台」，其他身分沒有專屬入口', async () => {
+    const { identityNavItems } = await import('./nav');
+    expect(identityNavItems('practice').map((i) => [i.label, i.href])).toEqual([['執業主體', '/practice']]);
+    expect(identityNavItems('operator').map((i) => [i.label, i.href])).toEqual([['審核台', '/desk']]);
+    expect(identityNavItems('owner')).toEqual([]);
+    expect(identityNavItems(null)).toEqual([]);
+  });
+
+  it('子頁面沿用高亮與標題；只是前綴相同的路徑不算', async () => {
+    const { resolveIdentityNavKey } = await import('./nav');
+    expect(resolveIdentityNavKey('/desk')).toBe('desk');
+    expect(resolveIdentityNavKey('/desk/items/01ABC')).toBe('desk');
+    expect(resolveIdentityNavKey('/practice')).toBe('practice');
+    expect(resolveIdentityNavKey('/desktop')).toBeNull();
+    expect(resolvePageTitle('/desk/items/01ABC')).toBe('審核台');
+    expect(resolvePageTitle('/practice')).toBe('執業主體');
   });
 });

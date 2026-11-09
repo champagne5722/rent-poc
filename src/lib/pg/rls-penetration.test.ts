@@ -4,6 +4,8 @@ import { pgliteDriver } from './drivers';
 import {
   CONTROL_TABLE_EXCEPTIONS,
   controlTablesWithoutException,
+  DEFINER_ONLY_TABLES,
+  definerOnlyTablesWithoutEntry,
   ORG_TABLE_CASES,
   REGISTRY_FUNCTION_CASES,
   REGISTRY_TABLE_CASES,
@@ -127,6 +129,89 @@ describe('每張 org 表的 RLS 設定', () => {
   });
 });
 
+// control 的表不掛組織 RLS（ADR-0012 決議 3）。這裡確認「不掛」是登記過的決定，而且權限逐表授予、沒有多給。
+describe('control schema 的表（不掛組織 RLS，登記為例外）', () => {
+  const CONTROL_TABLES_SQL = `SELECT n.nspname || '.' || c.relname AS name, c.relrowsecurity AS rls
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'control' AND c.relkind IN ('r', 'p') ORDER BY 1`;
+
+  it('control 的每張表都登記了例外與理由（沒登記就失敗）', async () => {
+    const { rows } = await testDb.base.query<{ name: string }>(CONTROL_TABLES_SQL);
+    const missing = rows.map((r) => r.name).filter((t) => !(t in CONTROL_TABLE_EXCEPTIONS));
+    expect(missing, `這些 control 表沒有登記，請到 src/lib/pg/rls-cases.ts 的 CONTROL_TABLE_EXCEPTIONS 登記：${missing.join('、')}`).toEqual([]);
+  });
+
+  it('登記的表都存在（表改名或刪除時要同步清單）', async () => {
+    const { rows } = await testDb.base.query<{ name: string }>(CONTROL_TABLES_SQL);
+    const tables = new Set(rows.map((r) => r.name));
+    expect(Object.keys(CONTROL_TABLE_EXCEPTIONS).filter((t) => !tables.has(t))).toEqual([]);
+  });
+
+  it('沒有任何 control 表掛了 RLS：掛了就不是例外，要改進 ORG_TABLE_CASES', async () => {
+    const { rows } = await testDb.base.query<{ name: string; rls: boolean }>(CONTROL_TABLES_SQL);
+    expect(rows.filter((r) => r.rls).map((r) => r.name)).toEqual([]);
+  });
+
+  it('app_rw 的權限和登記的一模一樣，不多給（登入表尤其不得有 TRUNCATE 與 REFERENCES）', async () => {
+    for (const [table, exception] of Object.entries(CONTROL_TABLE_EXCEPTIONS)) {
+      const { rows } = await testDb.base.query<{ p: string }>(
+        `SELECT p FROM unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) AS p
+          WHERE has_table_privilege('app_rw', $1, p) ORDER BY 1`,
+        [table],
+      );
+      expect({ table, privileges: rows.map((r) => r.p) }).toEqual({ table, privileges: [...exception.appRw].sort() });
+    }
+  });
+});
+
+describe('registry 與 vault 的表（只經定義者函式，MIL-109）', () => {
+  const TABLES_SQL = `SELECT n.nspname || '.' || c.relname AS name, c.relrowsecurity AS rls
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname IN ('registry', 'vault') AND c.relkind IN ('r', 'p') ORDER BY 1`;
+
+  it('每張表都登記了（沒登記就失敗），清單裡沒有不存在的表', async () => {
+    const { rows } = await testDb.base.query<{ name: string }>(TABLES_SQL);
+    const names = rows.map((r) => r.name);
+    const missing = definerOnlyTablesWithoutEntry(names);
+    expect(missing, `這些表沒有登記，請到 src/lib/pg/rls-cases.ts 的 DEFINER_ONLY_TABLES 登記：${missing.join('、')}`).toEqual([]);
+    expect(Object.keys(DEFINER_ONLY_TABLES).filter((t) => !names.includes(t))).toEqual([]);
+  });
+
+  it('app_rw 與 PUBLIC 對這些表沒有任何權限，直接查會被拒', async () => {
+    for (const table of Object.keys(DEFINER_ONLY_TABLES)) {
+      const { rows } = await testDb.base.query<{ p: string; who: string }>(
+        `SELECT p, who FROM unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) AS p,
+                unnest(ARRAY['app_rw']) AS who WHERE has_table_privilege(who, $1, p)`,
+        [table],
+      );
+      expect({ table, privileges: rows.map((r) => r.p) }).toEqual({ table, privileges: [] });
+      const acl = await testDb.base.query<{ acl: string | null }>('SELECT relacl::text AS acl FROM pg_class WHERE oid = $1::regclass', [table]);
+      expect({ table, publicGrant: /(^|[{,])=/.test(acl.rows[0].acl ?? '') }).toEqual({ table, publicGrant: false });
+    }
+  });
+
+  it('app_rw 能執行的 registry 與 vault 函式都是 SECURITY DEFINER、固定 search_path、PUBLIC 不能執行（ADR-0012 決議 8）', async () => {
+    const { rows } = await testDb.base.query<{ name: string; secdef: boolean; has_path: boolean; public_exec: boolean }>(
+      `SELECT n.nspname || '.' || p.proname AS name, p.prosecdef AS secdef,
+              coalesce(p.proconfig::text ~ 'search_path=', false) AS has_path,
+              has_function_privilege('public', p.oid, 'EXECUTE') AS public_exec
+         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname IN ('registry', 'vault') AND has_function_privilege('app_rw', p.oid, 'EXECUTE') ORDER BY 1`,
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.filter((r) => !r.secdef || !r.has_path || r.public_exec).map((r) => r.name)).toEqual([]);
+  });
+
+  it('函式的擁有者沒有 SUPERUSER 與 BYPASSRLS', async () => {
+    const { rows } = await testDb.base.query<{ name: string }>(
+      `SELECT DISTINCT n.nspname || '.' || p.proname AS name
+         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace JOIN pg_roles r ON r.oid = p.proowner
+        WHERE n.nspname IN ('registry', 'vault') AND (r.rolsuper OR r.rolbypassrls)`,
+    );
+    expect(rows).toEqual([]);
+  });
+});
+
 describe.each(Object.entries(ORG_TABLE_CASES))('%s 的跨組織探測', (table, testCase) => {
   let db: PGliteInterface;
   let withTx: WithTx;
@@ -170,7 +255,7 @@ describe.each(Object.entries(ORG_TABLE_CASES))('%s 的跨組織探測', (table, 
     const id = await seedA();
     await expect(
       withTx({ kind: 'org', orgId: orgA }, (tx) => tx.query(`UPDATE ${table} SET org_id = $2 WHERE id = $1`, [id, orgB])),
-    ).rejects.toThrow(testCase.appendOnly ? /permission denied/ : /row-level security/);
+    ).rejects.toThrow(testCase.appendOnly ? /permission denied/ : (testCase.blockedUpdateMessage ?? /row-level security/));
   });
 
   it('在自己的脈絡寫入別的組織的 org_id，被 RLS 擋下', async () => {

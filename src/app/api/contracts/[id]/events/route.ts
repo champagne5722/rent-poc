@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { authorize } from '@/lib/authorize';
 import { getContract, listContractEvents } from '@/lib/contracts';
 import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/contracts/route';
 import { jsonOk } from '@/lib/http';
@@ -10,6 +11,7 @@ export async function GET(_request: NextRequest, { params }: ContractRouteCtx) {
   const id = await contractIdOf(params);
   if (!id) return contractNotFound();
   return inOrgTx(async (tx) => {
+    await authorize(tx, 'contract.read', { type: 'contract', id });
     if (!(await getContract(tx, id))) return contractNotFound();
     return jsonOk({ data: await listContractEvents(tx, id) });
   });

@@ -1,6 +1,7 @@
 import path from 'path';
 import { createContractSubscriber } from '../contract-signing';
 import { DATA_DIR } from '../db';
+import { getFileStore } from '../file-store';
 import { dsClientSecret, dsFetch, isMockMode, verifySignersEnabled } from '../dottedsign';
 import type { ContractFileKind } from '../types';
 import { createDottedSignProvider } from './dottedsign-adapter';
@@ -14,7 +15,7 @@ export const signing = createSigningModule({
     ? createMockProvider({
         // Cloud Run 一定會注入 K_SERVICE
         rejectWebhookEvents: Boolean(process.env.K_SERVICE),
-        // 送簽時的 PDF 要撐過開發伺服器重新啟動，下載已簽 PDF 時才取得回來
+        // 送簽時的 PDF 要撐過開發伺服器重新啟動，下載已簽 PDF 時才取得回來。只有 mock 用，已簽 PDF 本身在 FileStore
         storeDir: path.join(DATA_DIR, 'mock-signing'),
       })
     : createDottedSignProvider({
@@ -23,7 +24,8 @@ export const signing = createSigningModule({
         verifySigners: verifySignersEnabled(),
       }),
   subscribers: { contract: createContractSubscriber() },
-  dataDir: DATA_DIR,
+  // 已簽 PDF 與 Audit Trail File。本機是 data/files/signed-document/，demo 是 Cloud Storage（FILE_STORE=gcs）
+  files: getFileStore('signed-document'),
 });
 
 export function contractSubject(id: string): SigningSubject {

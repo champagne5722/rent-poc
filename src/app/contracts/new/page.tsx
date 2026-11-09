@@ -122,6 +122,12 @@ function NewContractWizard() {
 
             <RoutingConditionsPanel value={routing} onChange={setRouting} disabled={creating} />
 
+            <Alert
+              type="info"
+              showIcon
+              message="建立合約後，案件清單會多一個自管租賃案件。撤回或拒簽後複製的新草稿，會留在同一個案件。"
+            />
+
             <TemplateNotice />
           </Space>
         </Card>
