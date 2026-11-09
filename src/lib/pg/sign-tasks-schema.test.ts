@@ -151,7 +151,7 @@ describe('簽署任務相關的表', () => {
     });
 
     it('動作與狀態只收已知的值', async () => {
-      await expect(inOrg(orgA, (tx) => insertOutbox(tx, newUlid(), 'send_email', 'pending'))).rejects.toThrow(/check constraint/);
+      await expect(inOrg(orgA, (tx) => insertOutbox(tx, newUlid(), 'delete_everything', 'pending'))).rejects.toThrow(/check constraint/);
       await expect(inOrg(orgA, (tx) => insertOutbox(tx, newUlid(), 'void_sign_task', 'weird'))).rejects.toThrow(/check constraint/);
     });
   });

@@ -39,6 +39,11 @@ export function actAs(orgId: string): void {
   };
 }
 
+/** 登入了但不是組織身分（承租人），route 必須回 403。 */
+export function actAsParty(): void {
+  state.current = { kind: 'party', userId: newUlid(), partyId: newUlid(), requestId: 'test' };
+}
+
 /** 讓 requestContext() 丟指定的錯，例如 new Unauthenticated()。 */
 export function actAsError(error: Error): void {
   state.current = error;
