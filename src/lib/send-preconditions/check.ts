@@ -94,6 +94,8 @@ export type SendBlockCode =
   | 'party_signer_mismatch'
   // 範本閘門（MIL-73），由送簽流程的 prepareContractSend 產生，不是七項檢查
   | 'template_not_reviewed'
+  // 現況確認附件頁沒有執業人員的簽署區域（MIL-71），由 status-annex.ts 產生，不是七項檢查
+  | 'status_annex_signature_missing'
   | LeasingAuthorityBlockReason['code'];
 
 /** 正式金鑰下沒有真實 adapter 時，要求執業人員簽章的組合被擋下的原因（ADR-0021）。 */

@@ -9,3 +9,4 @@ export {
   type SendPreconditionFacts,
   type SendPreconditionResult,
 } from './check';
+export { checkStatusAnnexSignatureFields } from './status-annex';

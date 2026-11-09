@@ -63,6 +63,7 @@ import {
 } from '@/lib/contract-detail';
 import SignatureFieldEditor from '@/components/SignatureFieldEditor';
 import { evaluateRouting } from '@/lib/signature-routing';
+import { STATUS_ANNEX_TITLE, statusAnnexOf, statusAnnexSummary } from '@/lib/status-annex';
 import type { PrintedPractitioner } from '@/lib/practitioner-assignment/seats';
 import type { SignatureRecordDetail } from '@/lib/signature-records/types';
 import { signatureRecordCards } from '@/lib/signature-records/view';
@@ -187,6 +188,9 @@ function ContractDetail({ id }: { id: string }) {
   const eventEntries = contractEventEntries(events);
   const fileRows = contractFileRows(contract, files, { mock: mockMode });
   const annexSummary = equipmentAnnexSummary(contract.fields);
+  // 現況確認附件（MIL-71）：草稿依分流條件顯示，送簽後只顯示凍結的內容，舊的包租合約沒有就不顯示
+  const statusAnnex = statusAnnexOf(contract.status, contract.contract_type, contract.fields);
+  const statusAnnexLines = statusAnnex ? statusAnnexSummary(statusAnnex) : [];
   const chain = contractChainNodes(contract, relations);
   const recordCards = signatureRecordCards(signatureRecords);
   const lapseNotices = lapseAlerts(signingLapses, contract.status);
@@ -376,6 +380,21 @@ function ContractDetail({ id }: { id: string }) {
             '無附屬設備'
           ),
         },
+        ...(statusAnnexLines.length > 0
+          ? [
+              {
+                key: 'statusAnnex',
+                label: STATUS_ANNEX_TITLE,
+                children: (
+                  <Space orientation="vertical" size={2}>
+                    {statusAnnexLines.map((line) => (
+                      <Typography.Text key={line}>{line}</Typography.Text>
+                    ))}
+                  </Space>
+                ),
+              },
+            ]
+          : []),
         {
           key: 'extra',
           label: '其他約定事項',

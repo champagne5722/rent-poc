@@ -6,6 +6,7 @@ import { getMandateItems } from '@/lib/mandate-schedule/repository';
 import { getAssignments } from '@/lib/practitioner-assignment/repository';
 import { loadPrintedPractitioners } from '@/lib/practitioner-assignment/service';
 import { loadContractRoutingFacts } from '@/lib/signature-routing/repository';
+import { statusAnnexOf } from '@/lib/status-annex';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -23,7 +24,9 @@ export async function GET(_request: NextRequest, { params }: Ctx) {
   const printed = routing.ok
     ? await loadPrintedPractitioners(routing.facts, await getAssignments(contract.id), getPracticeRegistry())
     : {};
-  const pdf = await renderer.render(contract.fields, printed, { mandateItems: await getMandateItems(contract.id) });
+  // 現況確認附件：草稿依分流條件印，送簽後只印凍結的內容（舊的包租合約沒有內容就不印）
+  const statusAnnex = statusAnnexOf(contract.status, contract.contract_type, contract.fields);
+  const pdf = await renderer.render(contract.fields, printed, { mandateItems: await getMandateItems(contract.id), statusAnnex });
   return new Response(Buffer.from(pdf), {
     headers: {
       'Content-Type': 'application/pdf',

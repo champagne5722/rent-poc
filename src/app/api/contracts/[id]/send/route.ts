@@ -1,11 +1,13 @@
 import { NextRequest } from 'next/server';
-import { getContract } from '@/lib/db';
+import { getContract, getDb } from '@/lib/db';
 import { contractPdfRenderer } from '@/lib/contract-pdf';
 import { contractTypeDefinition, missingFieldsForSendOf } from '@/lib/contract-types';
 import { getPracticeRegistry } from '@/lib/practice-registry';
 import { prepareContractSend } from '@/lib/practitioner-assignment/send';
 import { contractDocumentFileName } from '@/lib/signing';
 import { contractSubject, signing, signingErrorResponse } from '@/lib/signing-module';
+import { statusAnnexOf } from '@/lib/status-annex';
+import { statusAnnexPageMap } from '@/lib/status-annex/server';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -29,12 +31,15 @@ export async function POST(_request: NextRequest, { params }: Ctx) {
   }
   // 簽署序列由簽章分流規則表產生（ADR-0018）
   // 送簽前檢查（ADR-0018 決議 10）：分流、執業人員指派與資格。不符時列出全部原因，簽署人與簽章紀錄資料通過才產生
-  const prepared = await prepareContractSend(contract, getPracticeRegistry(), new Date().toISOString());
+  // 現況確認附件頁要有執業人員的簽署區域（MIL-71）：附件頁的頁碼由 PDF 版面算出，缺少時併入原因清單
+  const pages = await statusAnnexPageMap(contract);
+  const prepared = await prepareContractSend(contract, getPracticeRegistry(), new Date().toISOString(), getDb(), { pages });
   if (!prepared.ok) {
     return Response.json({ error: prepared.error, reasons: prepared.reasons }, { status: prepared.status });
   }
 
-  const pdf = await renderer.render(contract.fields, prepared.printed);
+  const statusAnnex = statusAnnexOf(contract.status, contract.contract_type, contract.fields);
+  const pdf = await renderer.render(contract.fields, prepared.printed, { statusAnnex });
   try {
     const task = await signing.send(
       contractSubject(contract.id),

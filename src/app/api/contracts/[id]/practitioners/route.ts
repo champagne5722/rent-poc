@@ -5,6 +5,7 @@ import { getAssignments, replaceAssignments } from '@/lib/practitioner-assignmen
 import type { PractitionerAssignmentInput } from '@/lib/practitioner-assignment/seats';
 import { evaluateSend, loadPrintedPractitioners, loadSeatOptions, validateAssignments } from '@/lib/practitioner-assignment/service';
 import { loadContractRoutingFacts } from '@/lib/signature-routing/repository';
+import { statusAnnexSendReasons } from '@/lib/status-annex/server';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -31,10 +32,12 @@ export async function GET(request: NextRequest, { params }: Ctx) {
   if (request.nextUrl.searchParams.get('only') === 'printed') {
     return Response.json({ data: { printed: await loadPrintedPractitioners(routing.facts, assignments, resolution) } });
   }
-  const [options, printed, evaluation] = await Promise.all([
+  const [options, printed, evaluation, annexReasons] = await Promise.all([
     loadSeatOptions(routing.facts, resolution, at),
     loadPrintedPractitioners(routing.facts, assignments, resolution),
     evaluateSend({ routing: routing.facts, contractType: contract.contract_type, fields: contract.fields, assignments, at }, resolution),
+    // 現況確認附件頁缺少執業人員的簽署區域（MIL-71）。確認頁併入原因清單，與送簽時的檢查一致
+    statusAnnexSendReasons(contract),
   ]);
   return Response.json({
     data: {
@@ -42,8 +45,8 @@ export async function GET(request: NextRequest, { params }: Ctx) {
       assignments,
       printed,
       evaluation: {
-        ok: evaluation.ok,
-        reasons: evaluation.reasons,
+        ok: evaluation.ok && annexReasons.length === 0,
+        reasons: [...evaluation.reasons, ...annexReasons],
         notices: evaluation.notices,
         // 同一人兼任而合併的席位，附上姓名給畫面提示（MIL-76）
         merges: evaluation.merges.map((m) => ({ ...m, name: printed[m.practitionerRuleId]?.name ?? '' })),

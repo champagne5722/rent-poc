@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateRouting } from './signature-routing';
+import { defaultStatusAnnex } from './status-annex';
 import type { LeaseContract, LeaseContractFields, ContractRoutingConditions, SignatureField } from './types';
 import {
   STEP_CONFIRM,
@@ -17,6 +18,11 @@ import {
   stepStatuses,
 } from './contract-wizard';
 
+const FILLED_STATUS_ANNEX = (() => {
+  const annex = defaultStatusAnnex();
+  return { ...annex, rows: annex.rows.map((r) => ({ ...r, status: 'normal' as const })) };
+})();
+
 function fields(routing?: ContractRoutingConditions): LeaseContractFields {
   return {
     ...(routing ? { routing } : {}),
@@ -29,6 +35,8 @@ function fields(routing?: ContractRoutingConditions): LeaseContractFields {
     propertyType: '整層住家',
     propertySize: 25,
     equipmentAnnex: [],
+    // 包租租賃合約必附現況確認附件（MIL-71）。夾具給填完的附件，這個檔案測的是指派與簽署區
+    statusAnnex: FILLED_STATUS_ANNEX,
     rent: 28000,
     deposit: 56000,
     startDate: '2026-09-01',
