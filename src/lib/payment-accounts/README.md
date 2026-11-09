@@ -29,6 +29,6 @@
 | `listPaymentAccounts(tx)`、`getPaymentAccount(tx, id)` | 讀取。含 `locked`、`isCash`、`active` |
 | `assertPaymentAccountsInOrg(tx, ids, { allowInactive })` | 檢查 `asset.bank.{id}` 的帳戶屬於本組織且啟用，並對帳戶列加共享鎖。MIL-125 的業務函式必須在寫分錄的同一個交易內呼叫，持有人鎖定才不會被競態繞過 |
 | `loadHolderRules(tx)`、`getHolderRule(tx, ruleId, version)` | 讀規則表，同一個 `rule_id` 取最新版本。傳給 `evaluateHolderRule` |
-| `listAffectedCases(tx, ruleId, version)` | 列出受影響案件。現階段以已完成的合約代替案件，忽略社宅與委託範圍條件。MIL-125 有持有人確認紀錄後改成依確認紀錄列出。規則版本目前只用來取規則列，不另做版本區分 |
+| `listAffectedCases(tx, ruleId, version)` | 列出受影響案件，回傳 `{ caseId }`。MIL-123 起依案件列出：有押金台帳的租賃案件，業務類型與社宅旗標符合，押金曾進入該持有人種類的帳戶（收取淨額大於 0）。委託範圍條件案件上沒有資料，先忽略。MIL-125 有持有人確認紀錄後改成依確認紀錄列出。規則版本目前只用來取規則列，不另做版本區分 |
 
 稽核 payload 只放 ID、持有人種類與收款方式，不放姓名與銀行識別。

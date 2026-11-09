@@ -30,7 +30,9 @@ migration `0050_ledger.sql` 建 `org.ledger_journals` 與 `org.ledger_entries`�
 - 沖銷：`UNIQUE (org_id, reverses_journal_id)` 保證最多沖銷一次，觸發器雙向比對借貸、擋下沖銷分錄再被沖銷、要求案件相同。`reason` 欄位必填且不得空白。
 - `UNIQUE (org_id, business_event_type, business_event_id)` 擋下用舊 ID 重寫。
 - 金額 `bigint`，CHECK 限制在 0 到 2^53 - 1，恰好一欄大於 0。
-- `case_id` 是文字，不掛 `cases` 的外鍵。到 `cases` 的外鍵與案件成員讀取政策由 MIL-123 加入。收款帳戶是否屬於本組織由 MIL-118 處理，科目編碼目前只檢查格式。
+- `case_id` 在 0050 是文字。MIL-123 的 migration 0056 以 `NOT VALID` 加上到 `cases` 的複合外鍵 `(org_id, case_id)`：只擋新寫入的分錄，案件必須存在且屬於同一個組織。寫分錄的測試必須先建案件，用 `src/lib/pg/test-cases.ts` 的 `seedCases()`。
+- 案件成員的讀取政策也在 0056：出租人（代管案件是屋主）、承租人、共同承租人，與動作表的 `ledger.read` 一致。view `org.deposit_balances` 設了 `security_invoker`。
+- 收款帳戶是否屬於本組織由 MIL-118 處理，科目編碼目前只檢查格式。
 
 ## 規則
 
