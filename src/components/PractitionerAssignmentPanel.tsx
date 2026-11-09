@@ -48,6 +48,7 @@ function SeatAssignment({
   disabled?: boolean;
 }) {
   const entity = seat.entities.find((e) => e.id === current?.entityId);
+  const blockedEntities = seat.entities.filter((e) => e.blockedReason);
   const practitioner = entity?.practitioners.find((p) => p.id === current?.practitionerId);
   const blank = (entityId: string): PractitionerAssignmentInput => ({
     slot: seat.ruleId,
@@ -81,7 +82,11 @@ function SeatAssignment({
               placeholder="選擇執業主體"
               value={current?.entityId}
               onChange={pickEntity}
-              options={seat.entities.map((e) => ({ value: e.id, label: e.name }))}
+              options={seat.entities.map((e) => ({
+                value: e.id,
+                label: e.blockedReason ? `${e.name}（不能選）` : e.name,
+                disabled: !!e.blockedReason,
+              }))}
             />
           </Form.Item>
         </Col>
@@ -118,6 +123,22 @@ function SeatAssignment({
           </Form.Item>
         </Col>
       </Row>
+      {blockedEntities.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          title="下列執業主體不能選"
+          description={
+            <Flex vertical>
+              {blockedEntities.map((e) => (
+                <Typography.Text key={e.id}>
+                  {e.name}：{e.blockedReason}
+                </Typography.Text>
+              ))}
+            </Flex>
+          }
+        />
+      )}
       {practitioner?.renewalWindow && (
         <Alert
           type="warning"

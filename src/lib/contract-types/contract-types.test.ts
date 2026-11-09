@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import type { MandateItem } from '../mandate-schedule';
 import type { ContractFields, LeaseContractFields, ManagementContractFields, Property } from '../types';
 import {
   CONTRACT_TYPES,
   contractTypeDefinition,
   initialFieldsFor,
   listSummaryOf,
+  mergeManagementFields,
   missingFieldsOf,
   partyOf,
   withParty,
@@ -50,8 +52,16 @@ const MANAGEMENT_FIELDS: ManagementContractFields = {
   mandatorEmail: 'owner@example.com',
   mandataryName: '北辰管理',
   mandataryEmail: 'manager@example.com',
+  termStart: '2027-01-01',
+  termEnd: '2027-12-31',
+  feeMode: 'monthly_fixed',
+  feeValue: 3000,
   extra: '',
 };
+
+const MANDATE_ITEMS: MandateItem[] = [
+  { propertyId: '7', propertyName: '信義小宅', propertyAddress: '台北市信義區松仁路 1 號', scopes: ['rent_collection'] },
+];
 
 describe('合約類型登錄', () => {
   it('每個合約類型都有定義，沒有漏的', () => {
@@ -111,6 +121,57 @@ describe('依合約類型檢核必填欄位', () => {
       }),
     ).toEqual(['委託人姓名', '受託人 Email']);
   });
+
+  it('委託管理合約檢核委託期間與報酬約定', () => {
+    const blank = { ...MANAGEMENT_FIELDS, termStart: '', termEnd: '', feeMode: null, feeValue: null };
+    expect(missingFieldsOf({ contract_type: 'management', fields: blank })).toEqual([
+      '委託期間起日',
+      '委託期間迄日',
+      '報酬約定',
+    ]);
+    expect(
+      missingFieldsOf({ contract_type: 'management', fields: { ...MANAGEMENT_FIELDS, termEnd: '2026-12-31' } }),
+    ).toEqual(['委託期間迄日（不得早於起日）']);
+    expect(
+      missingFieldsOf({ contract_type: 'management', fields: { ...MANAGEMENT_FIELDS, feeValue: null } }),
+    ).toEqual(['報酬金額']);
+  });
+
+  it('報酬是租金百分比時，數值要在 0 到 100 之間', () => {
+    const percent = { ...MANAGEMENT_FIELDS, feeMode: 'rent_percentage' as const };
+    expect(missingFieldsOf({ contract_type: 'management', fields: { ...percent, feeValue: 8 } })).toEqual([]);
+    expect(missingFieldsOf({ contract_type: 'management', fields: { ...percent, feeValue: 120 } })).toEqual([
+      '報酬金額（百分比要在 0 到 100 之間）',
+    ]);
+  });
+
+  it('帶委託標的清單時，清單有問題就列為缺漏；沒帶清單時不檢查', () => {
+    const contract = { contract_type: 'management', fields: MANAGEMENT_FIELDS } as const;
+    expect(missingFieldsOf(contract, { mandateItems: MANDATE_ITEMS })).toEqual([]);
+    expect(missingFieldsOf(contract, { mandateItems: [] })).toEqual(['委託標的清單']);
+    expect(missingFieldsOf(contract, { mandateItems: [{ ...MANDATE_ITEMS[0], scopes: [] }] })).toEqual(['委託標的清單']);
+    expect(missingFieldsOf(contract)).toEqual([]);
+  });
+
+  it('租賃合約不看委託標的清單', () => {
+    expect(missingFieldsOf({ contract_type: 'lease', fields: LEASE_FIELDS }, { mandateItems: [] })).toEqual([]);
+  });
+});
+
+describe('是否需要物件、建約入口的說明', () => {
+  it('租賃合約從物件建立，委託管理合約不需要物件而且有說明', () => {
+    expect(contractTypeDefinition('lease').requiresProperty).toBe(true);
+    expect(contractTypeDefinition('lease').draftNotice).toBeUndefined();
+    expect(contractTypeDefinition('management').requiresProperty).toBe(false);
+    expect(contractTypeDefinition('management').draftNotice?.title).toBe('委託管理合約不綁單一物件');
+  });
+});
+
+describe('是否支援送簽', () => {
+  it('租賃合約支援，委託管理合約的送簽屬 MIL-77，目前不支援', () => {
+    expect(contractTypeDefinition('lease').sendSupported).toBe(true);
+    expect(contractTypeDefinition('management').sendSupported).toBe(false);
+  });
 });
 
 describe('依合約類型建立草稿欄位', () => {
@@ -153,14 +214,25 @@ describe('依合約類型建立草稿欄位', () => {
     });
   });
 
-  it('委託管理合約：只有共用基底與空白的兩方當事人，沒有綁範本', () => {
-    expect(initialFieldsFor('management', { property: PROPERTY })).toEqual({
+  it('委託管理合約：空白的兩方當事人、委託期間與報酬，綁定範本 v1，沒有選用條款', () => {
+    expect(initialFieldsFor('management', {})).toEqual({
       mandatorName: '',
       mandatorEmail: '',
       mandataryName: '',
       mandataryEmail: '',
+      termStart: '',
+      termEnd: '',
+      feeMode: null,
+      feeValue: null,
       extra: '',
+      templateId: 'management-agreement',
+      templateVersion: 1,
+      clauses: [],
     });
+  });
+
+  it('租賃合約沒有物件時拒絕建立', () => {
+    expect(() => initialFieldsFor('lease', {})).toThrow('租賃合約需要物件');
   });
 });
 
@@ -178,13 +250,17 @@ describe('清單用的摘要', () => {
     expect(listSummaryOf({ contract_type: 'lease', fields: { ...LEASE_FIELDS, endDate: '' } }).period).toBeNull();
   });
 
-  it('委託管理合約：沒有單一物件與租期，乙方是受託人', () => {
+  it('委託管理合約：沒有單一物件與租金，乙方是受託人，期間是委託期間', () => {
     expect(listSummaryOf({ contract_type: 'management', fields: MANAGEMENT_FIELDS })).toEqual({
       propertyName: null,
       rent: null,
       partyB: { name: '北辰管理', email: 'manager@example.com' },
-      period: null,
+      period: ['2027-01-01', '2027-12-31'],
     });
+  });
+
+  it('委託管理合約委託期間沒填完時沒有期間', () => {
+    expect(listSummaryOf({ contract_type: 'management', fields: { ...MANAGEMENT_FIELDS, termEnd: '' } }).period).toBeNull();
   });
 });
 
@@ -192,5 +268,43 @@ describe('欄位形狀', () => {
   it('聯集成員都滿足 ContractFields', () => {
     const all: ContractFields[] = [LEASE_FIELDS, MANAGEMENT_FIELDS];
     expect(all).toHaveLength(2);
+  });
+});
+
+describe('委託管理合約：第②步表單的值併回欄位', () => {
+  it('只覆蓋表單管的欄位，範本綁定與分流條件原樣留著', () => {
+    const base = { ...MANAGEMENT_FIELDS, templateId: 'management-agreement', templateVersion: 1, clauses: [] };
+    const merged = mergeManagementFields(base, {
+      mandatorName: '新屋主',
+      mandatorEmail: 'new@example.com',
+      termStart: '2028-01-01',
+      termEnd: '2028-12-31',
+      feeMode: 'rent_percentage',
+      feeValue: 8,
+    });
+    expect(merged).toMatchObject({
+      mandatorName: '新屋主',
+      termStart: '2028-01-01',
+      feeMode: 'rent_percentage',
+      feeValue: 8,
+      templateId: 'management-agreement',
+      templateVersion: 1,
+    });
+    // 受託人兩欄表單沒給（由當事人簽署人帶入），沿用底稿的值，不被清空
+    expect(merged.mandataryName).toBe('北辰管理');
+  });
+
+  it('沒填的欄位正規化成空字串或 null，不讓 undefined 進資料庫', () => {
+    const merged = mergeManagementFields(MANAGEMENT_FIELDS, {});
+    expect(merged).toMatchObject({
+      mandatorName: '',
+      mandatorEmail: '',
+      termStart: '',
+      termEnd: '',
+      feeMode: null,
+      feeValue: null,
+      extra: '',
+    });
+    expect(Object.values(merged)).not.toContain(undefined);
   });
 });

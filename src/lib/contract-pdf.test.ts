@@ -46,7 +46,7 @@ describe('contractPdfRenderer', () => {
     expect(await pageTexts(viaRegistry)).toEqual(await pageTexts(direct));
   }, 60_000);
 
-  it('委託管理合約在 MIL-74 之前沒有 PDF', () => {
-    expect(contractPdfRenderer('management')).toBeNull();
+  it('委託管理合約有 PDF 產出函式，頁面尺寸與租賃 PDF 相同（內容見 pdf-management.test.ts）', () => {
+    expect(contractPdfRenderer('management')?.pageSize).toEqual(PDF_PAGE_SIZE);
   });
 });

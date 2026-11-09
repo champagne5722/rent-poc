@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { getContract } from '@/lib/db';
 import { contractPdfRenderer } from '@/lib/contract-pdf';
 import { getPracticeRegistry } from '@/lib/practice-registry';
+import { getMandateItems } from '@/lib/mandate-schedule/repository';
 import { getAssignments } from '@/lib/practitioner-assignment/repository';
 import { loadPrintedPractitioners } from '@/lib/practitioner-assignment/service';
 import { loadContractRoutingFacts } from '@/lib/signature-routing/repository';
@@ -22,7 +23,7 @@ export async function GET(_request: NextRequest, { params }: Ctx) {
   const printed = routing.ok
     ? await loadPrintedPractitioners(routing.facts, await getAssignments(contract.id), getPracticeRegistry())
     : {};
-  const pdf = await renderer.render(contract.fields, printed);
+  const pdf = await renderer.render(contract.fields, printed, { mandateItems: await getMandateItems(contract.id) });
   return new Response(Buffer.from(pdf), {
     headers: {
       'Content-Type': 'application/pdf',

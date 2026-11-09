@@ -12,7 +12,7 @@
 | `facts.ts` | 由合約類型與 `fields.routing` 組出分流事實，純函式 |
 | `repository.ts` | `loadContractRoutingFacts(contractId)`，回傳 Promise。內部直接引用 `db.ts`，不在 `index.ts` 匯出 |
 | `types.ts` | `RoutingFacts`、`PlannedSeat`、`SignatureRoute` |
-| `seats.ts` | `evaluateRouting(stored)`：分流條件換成畫面用的席位（`SeatView`）或擋下原因。`printOrder`：簽署序列換成印列順序。`routingInputError`：存草稿時檢查形狀。純函式，client 與 server 都能引用 |
+| `seats.ts` | `evaluateRouting(stored, contractType = 'lease')`：分流條件換成畫面用的席位（`SeatView`）或擋下原因，稱謂依合約類型取字（MIL-74）。`printOrder`：簽署序列換成印列順序。`routingInputError(stored, contractType)`：存草稿時檢查形狀。`partyOnlySeats(contractType)`：退回的兩方席位。純函式，client 與 server 都能引用 |
 | `seat-fields.ts` | `seatOfField`、`countFieldsBySeat`、`reconcileSignatureFields`：簽署區域與席位的對應。有 `slot` 的歸該席位，沒有 `slot` 的舊資料歸同角色的第一個席位 |
 
 ## 規則表的 13 列

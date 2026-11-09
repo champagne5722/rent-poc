@@ -31,6 +31,11 @@ export const ANNEX_COLUMN_WIDTHS = [170, 55, 80, 178.28] as const;
 export const ANNEX_CELL_PAD_X = 6;
 export const ANNEX_CELL_PAD_Y = 5;
 
+/** 委託標的清單附件頁（MIL-74）的版面參數。三欄寬度合計＝版心寬。 */
+export const MANDATE_ANNEX_TITLE = '委託標的清單';
+export const MANDATE_ANNEX_COLUMNS = ['租賃單位', '地址', '委託範圍'] as const;
+export const MANDATE_ANNEX_COLUMN_WIDTHS = [110, 203.28, 170] as const;
+
 /** 一行文字往下推進的距離（字級＋行距＋段後空白）。 */
 function lineAdvance(size: number, gapAfter = 0): number {
   return size + LINE_GAP + gapAfter;

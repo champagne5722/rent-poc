@@ -6,6 +6,7 @@
 // 資料涵蓋送簽前檢查的各種結果：
 // - 北辰：陳怡君（可簽章）、林志豪（換證窗口內）、吳家豪（專任旗標為否）、張明華（負責人，沒有證書）、
 //   周大衛（證書已失效）、許文傑（任職已結束）。兼營代管與包租。
+// - 星河：登記了代管業別，但業別尚未驗證（委託管理合約的受託人被擋下，MIL-74）。邢雅芳是它的專任管理人員。
 // - 北辰的當事人簽署人王建國、李淑芬，以及陳怡君本人（與執業人員同一人，MIL-76 的合併案例）。
 // - 雲頂不動產經紀：趙經紀（經紀人）、孫小美（經紀營業員，不得簽章）。
 
@@ -26,7 +27,11 @@ export const SEED_ENTITIES: readonly PracticeEntity[] = [
   { id: 'org-pe-yaoshi', name: '曜石不動產管理有限公司', licenseKinds: ['management'] },
   { id: 'org-pe-qinghe', name: '青禾租賃住宅管理有限公司', licenseKinds: ['management'] },
   { id: 'org-pe-yunding', name: '雲頂不動產經紀有限公司', licenseKinds: ['brokerage'] },
+  { id: 'org-pe-xinghe', name: '星河租賃住宅管理有限公司', licenseKinds: ['management'] },
 ];
+
+/** 登記了、但業別層還是 pending 的組合，鍵是「執業主體:業別」。 */
+const UNVERIFIED_LICENSES: ReadonlySet<string> = new Set(['org-pe-xinghe:management']);
 
 export const SEED_PARTY_SIGNERS: readonly PartySignerCandidate[] = [
   { id: 'ps-wang', entityId: 'org-pe-beichen', name: '王建國', email: 'wang.jianguo@beichen.example.com' },
@@ -37,6 +42,7 @@ export const SEED_PARTY_SIGNERS: readonly PartySignerCandidate[] = [
   { id: 'ps-yao', entityId: 'org-pe-yaoshi', name: '姚國棟', email: 'yao.guodong@yaoshi.example.com' },
   { id: 'ps-qing', entityId: 'org-pe-qinghe', name: '秦玉蘭', email: 'qin.yulan@qinghe.example.com' },
   { id: 'ps-yun', entityId: 'org-pe-yunding', name: '雲海濤', email: 'yun.haitao@yunding.example.com' },
+  { id: 'ps-xing', entityId: 'org-pe-xinghe', name: '邢志遠', email: 'xing.zhiyuan@xinghe.example.com' },
 ];
 
 interface SeedPractitioner {
@@ -143,6 +149,15 @@ const SEED_PRACTITIONERS: readonly SeedPractitioner[] = [
     certMonths: 24,
   },
   {
+    id: 'pr-xing',
+    name: '邢雅芳',
+    accountEmail: 'xing.yafang@xinghe.example.com',
+    certificateKind: 'rental_housing_manager',
+    fullTime: true,
+    entityId: 'org-pe-xinghe',
+    certMonths: 24,
+  },
+  {
     id: 'pr-zhao',
     name: '趙經紀',
     accountEmail: 'zhao.jingji@yunding.example.com',
@@ -190,7 +205,11 @@ export function createSeedPracticeRegistry({ today = todayInTaiwan }: SeedRegist
     const entity = SEED_ENTITIES.find((e) => e.id === seed.entityId)!;
     const credential: CredentialFacts = {
       license: {
-        state: entity.licenseKinds.includes(licenseKind) ? 'verified' : null,
+        state: !entity.licenseKinds.includes(licenseKind)
+          ? null
+          : UNVERIFIED_LICENSES.has(`${entity.id}:${licenseKind}`)
+            ? 'pending'
+            : 'verified',
         validUntil: null,
         latestCheckId: `chk-${seed.entityId}-${licenseKind}`,
       },

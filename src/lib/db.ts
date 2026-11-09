@@ -16,6 +16,7 @@ import type {
 import { EQUIPMENT_OPTIONS } from './types';
 import type { ContractType } from './labels';
 import { parseStoredEquipment } from './equipment';
+import { ensureMandateScheduleTables } from './mandate-schedule/tables';
 import { ensurePractitionerAssignmentTables } from './practitioner-assignment/tables';
 import { ensureSignatureRecordTables } from './signature-records/tables';
 import { migrateLegacyContractSigning } from './signing-module/contract-backfill';
@@ -89,6 +90,7 @@ export function ensureSchema(db: Database.Database): void {
   ensureSignTaskTables(db);
   ensureSignTaskFileTable(db);
   ensurePractitionerAssignmentTables(db);
+  ensureMandateScheduleTables(db);
   ensureSignatureRecordTables(db);
 
   seedEquipmentVocabulary(db);
@@ -386,6 +388,8 @@ export function deleteContractWithEvents(contractId: number, db: Database.Databa
     db.prepare('DELETE FROM contract_events WHERE contract_id = ?').run(contractId);
     // 執業人員的指派也屬於草稿（MIL-69）。簽章紀錄只在送簽後才有，草稿沒有，也不得刪除（MIL-70）。
     db.prepare('DELETE FROM contract_practitioner_assignments WHERE contract_id = ?').run(contractId);
+    // 委託標的清單也屬於草稿（MIL-74）
+    db.prepare('DELETE FROM contract_mandate_items WHERE contract_id = ?').run(contractId);
     db.prepare('DELETE FROM contracts WHERE id = ?').run(contractId);
   })();
 }

@@ -6,6 +6,7 @@ export { buildSignerSequence, type BuildSignerSequenceResult, type SeatAssignee 
 export {
   evaluateRouting,
   PARTY_ONLY_SEATS,
+  partyOnlySeats,
   hasPractitionerSeat,
   printOrder,
   routingInputError,

@@ -5,6 +5,7 @@
 // 換掉 `assignments` 的來源即可，這裡的組裝邏輯不變。
 
 import { credentialStatusAt, type RenewalWindow } from '../credential-status';
+import { REQUIRED_BUSINESS_ITEM_CODE } from '../registry-rules';
 import { practitionerTitle, type LicenseKind } from '../labels';
 import type { LeasingAuthoritySendFacts } from '../leasing-authority/preconditions';
 import type {
@@ -253,6 +254,15 @@ export async function loadPrintedPractitioners(
   return printed;
 }
 
+/** 委託管理合約的受託人必須有代管業別（營業項目 H706011）且業別已驗證（P0-11）。 */
+export const MANDATARY_LICENSE_MISSING = `缺少租賃住宅代管業的營業項目 ${REQUIRED_BUSINESS_ITEM_CODE.management}，不能擔任受託人`;
+export const MANDATARY_LICENSE_UNVERIFIED = '租賃住宅代管業的業別尚未驗證，不能擔任受託人';
+
+/** 委託管理合約的乙方（受託人）是執業主體：這個席位要查代管業別與業別是否已驗證。 */
+function isMandataryEntity(routing: RoutingFacts, entitySource: PractitionerEntitySource): boolean {
+  return routing.documentType === 'management' && partyRoleOfEntitySource(entitySource) === 'party_b';
+}
+
 // ── wizard 的指派選項 ────────────────────────────────────────
 
 export interface PractitionerOption {
@@ -267,6 +277,11 @@ export interface PractitionerOption {
 export interface EntityOption {
   id: string;
   name: string;
+  /**
+   * 不能選的原因。委託管理合約的受託人缺少代管業別（H706011）或業別未驗證時有值，畫面標示並說明（P0-11 AC2）。
+   * 其他席位只列持有業別的執業主體，沒有這個欄位。
+   */
+  blockedReason?: string;
   /** 執業主體不是合約的甲方或乙方時為空。 */
   partySigners: Array<Pick<PartySignerCandidate, 'id' | 'name' | 'email'>>;
   practitioners: PractitionerOption[];
@@ -311,9 +326,14 @@ export async function loadSeatOptions(
     const licenseKind = licenseKindForSeat(routing, seat);
     if (!requirement || !licenseKind) continue;
     const partyRole = partyRoleOfEntitySource(requirement.entitySource);
-    const entities = await registry.listEntities({ licenseKind });
+    // 委託管理合約的受託人：列出全部執業主體，不符的標示原因，讓使用者知道為什麼不能選
+    const isMandatary = isMandataryEntity(routing, requirement.entitySource);
+    const entities = await registry.listEntities(isMandatary ? undefined : { licenseKind });
     const entityOptions = await Promise.all(
       entities.map(async (entity): Promise<EntityOption> => {
+        if (isMandatary && !entity.licenseKinds.includes(licenseKind)) {
+          return { id: entity.id, name: entity.name, blockedReason: MANDATARY_LICENSE_MISSING, partySigners: [], practitioners: [] };
+        }
         const [partySigners, candidates] = await Promise.all([
           partyRole ? registry.listPartySigners(entity.id) : Promise.resolve([]),
           registry.listPractitioners(entity.id, {
@@ -323,9 +343,13 @@ export async function loadSeatOptions(
           }),
         ]);
         const practitioners: PractitionerOption[] = [];
+        let licenseUnverified = false;
         for (const c of candidates) {
           const status = credentialStatusAt(c.credential, at);
-          if (!status.signable) continue;
+          if (!status.signable) {
+            if (status.issues.some((i) => i.code === 'license_not_verified')) licenseUnverified = true;
+            continue;
+          }
           practitioners.push({
             id: c.id,
             name: c.name,
@@ -333,6 +357,9 @@ export async function loadSeatOptions(
             ...(c.certificateKind ? { title: practitionerTitle(c.certificateKind) } : {}),
             renewalWindow: status.renewalWindow,
           });
+        }
+        if (isMandatary && licenseUnverified) {
+          return { id: entity.id, name: entity.name, blockedReason: MANDATARY_LICENSE_UNVERIFIED, partySigners: [], practitioners: [] };
         }
         return {
           id: entity.id,
@@ -367,6 +394,8 @@ export async function validateAssignments(
   assignments: readonly PractitionerAssignmentInput[],
   resolution: PracticeRegistryResolution,
   stored: readonly PractitionerAssignmentInput[] = [],
+  /** 判定時點，ISO 8601。委託管理合約檢查受託人的業別層是否已驗證時用。 */
+  at: string = new Date().toISOString(),
 ): Promise<string | null> {
   if (assignments.length === 0) return null;
   if (!resolution.available) return resolution.reason;
@@ -383,7 +412,10 @@ export async function validateAssignments(
     if (!seat?.practitioner || !licenseKind) return `目前的簽署序列沒有這個執業人員席位：${a.slot}`;
 
     const entity = await registry.getEntity(a.entityId);
-    if (!entity?.licenseKinds.includes(licenseKind)) return '所選的執業主體沒有這個席位要求的業別';
+    const isMandatary = isMandataryEntity(routing, seat.practitioner.entitySource);
+    if (!entity?.licenseKinds.includes(licenseKind)) {
+      return isMandatary ? MANDATARY_LICENSE_MISSING : '所選的執業主體沒有這個席位要求的業別';
+    }
 
     const unchanged = stored.some(
       (s) =>
@@ -399,6 +431,13 @@ export async function validateAssignments(
         licenseKind,
       });
       if (!candidates.some((c) => c.id === a.practitionerId)) return '所選的執業人員不在這個席位的候選清單內';
+    }
+    if (isMandatary) {
+      const candidate = await registry.getPractitioner(a.practitionerId, { licenseKind });
+      const status = candidate ? credentialStatusAt(candidate.credential, at) : null;
+      if (status && !status.signable && status.issues.some((i) => i.code === 'license_not_verified')) {
+        return MANDATARY_LICENSE_UNVERIFIED;
+      }
     }
 
     if (a.partySignerId !== null) {
