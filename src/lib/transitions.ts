@@ -59,7 +59,9 @@ export function decideTransition(status: ContractStatus, result: ContractSigning
 export function applySigningResult(
   contract: Pick<Contract, 'id' | 'status'>,
   result: ContractSigningResult,
-  db?: Database.Database
+  db?: Database.Database,
+  // 歷程事件的行為者與附註要改寫時才帶，例如系統自動撤回（MIL-75）。狀態轉移不受影響。
+  eventOverride?: Partial<Pick<ContractEventInput, 'actor' | 'note'>>
 ): ContractStatus | null {
   const decision = decideTransition(contract.status, result);
   if (!decision) return null;
@@ -68,7 +70,7 @@ export function applySigningResult(
     contract.id,
     {
       status: decision.status,
-      event: decision.event,
+      event: { ...decision.event, ...eventOverride },
       declinedReason: result.type === 'declined' ? (result.reason ?? null) : null,
     },
     db

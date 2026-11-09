@@ -24,6 +24,11 @@ export interface OutcomeContext {
   prepared?: unknown;
 }
 
+// 模組交給 afterOutcome 的操作
+export interface AfterOutcomeTools {
+  voidTask(): Promise<void>;
+}
+
 // 簽署標的的訂閱者：簽署模組透過它通知業務實體，所以模組不依賴合約（ADR-0010 決議 7）。
 // 新增一種簽署標的時，只提供一個訂閱者。
 export interface SigningSubscriber {
@@ -47,6 +52,11 @@ export interface SigningSubscriber {
 
   // 交易提交後、模組保存文件之後呼叫，失敗不回滾狀態
   afterCompleted(subject: SigningSubject): Promise<void>;
+  // 選填。每個被接受的簽署事件在交易提交後呼叫（全員完成時在 afterCompleted 之後），能呼叫外部 API。
+  // 拋例外時模組記 log，不影響 webhook 的回應碼，也不回滾已提交的狀態。
+  // tools.voidTask 撤回這個簽署標的的簽署任務，與使用者手動撤回走同一條路徑。
+  // 例如簽署當下不可簽章時自動撤回（MIL-75，ADR-0018 決議 11）。
+  afterOutcome?(subject: SigningSubject, outcome: ProgressOutcome, tools: AfterOutcomeTools): Promise<void>;
   // 簽署標的沒有簽署任務時的撤回。不接受時拋 SigningRefusal。
   voidWithoutTask(subject: SigningSubject): void;
 }

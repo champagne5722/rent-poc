@@ -309,7 +309,7 @@ export interface ContractRelations {
 }
 
 // 合約歷程（見 GLOSSARY.md、ADR-0007）：附屬合約的 append-only 里程碑事件。
-// 只記這八種；草稿編輯流水與下載／查看等讀式操作不記。
+// 只記這十種；草稿編輯流水與下載／查看等讀式操作不記。
 export const CONTRACT_EVENT_TYPES = [
   'created', // 建立（衍生自撤回合約時附註來源）
   'sent', // 送簽
@@ -319,6 +319,8 @@ export const CONTRACT_EVENT_TYPES = [
   'completed', // 簽署完成
   'voided', // 撤回
   'copied', // 被複製為新草稿
+  'credential_lapsed', // 執業人員簽署時不可簽章（MIL-75，ADR-0018 決議 11）
+  'auto_void_failed', // 簽署時不可簽章後，自動撤回失敗（MIL-75，ADR-0021 決議 7）
 ] as const;
 export type ContractEventType = (typeof CONTRACT_EVENT_TYPES)[number];
 
@@ -331,6 +333,8 @@ export const CONTRACT_EVENT_TYPE_LABELS: Record<ContractEventType, string> = {
   completed: '簽署完成',
   voided: '撤回',
   copied: '被複製為新草稿',
+  credential_lapsed: '簽署時不可簽章',
+  auto_void_failed: '自動撤回失敗',
 };
 
 // 簽署人的行為者一律用簽署角色。landlord 是送簽與撤回的發動者，tenant 只有舊資料。

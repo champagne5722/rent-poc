@@ -190,7 +190,10 @@ describe('簽署事件：補 snapshot_at_sign，判定用事件時間', () => {
   });
 
   it('事件時間晚於證書效期時，快照記下不可簽章；簽署進度照常推進', async () => {
-    const { id, send, deliver, signing, subject } = await setup();
+    // 這項只驗 MIL-70 的快照與簽署進度。MIL-75 之後不可簽章會自動撤回，所以這裡關掉撤回（見 signing-lapse 的整合測試）
+    const { id, send, deliver, signing, subject } = await setup({
+      wrapSubscriber: (inner) => ({ ...inner, afterOutcome: undefined }),
+    });
     await send();
     await deliver('signed', 'tenant@example.com', '2026-11-10T08:00:00+08:00');
     await deliver('signed', PRACTITIONER_EMAIL, '2029-06-01T10:00:00+08:00');
