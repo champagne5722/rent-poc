@@ -15,9 +15,8 @@ MIL-111。依據：ADR-0017（三態、三層、專任四個判定點、核對�
 |---|---|---|
 | `my_practitioner()` | 組織成員 | 自己的證書，以及目前組織的任職，含補件原因 |
 | `org_employments()` | 組織成員 | 目前執業主體的任職清單 |
-| `employment_exclusivity_facts(key)` | 組織成員 | 同一證號的任職事實，只標 `self` 或 `other`，沒有別家的 ID。`other` 只回已驗證的任職（0071，MIL-165） |
-| `submit_practitioner(...)` | 組織成員 | 本人登錄或補件證書，排 `certificate` 項目 |
-| `create_employment(...)` | 組織成員 | 本人建立待驗證任職，排 `employment` 項目 |
+| `submit_practitioner(...)` | 組織成員 | 本人登錄或補件證書，排 `certificate` 項目。目前執業主體還沒有未結束的任職時，先判定專任。回傳 `outcome`：`registered` 或 `blocked`（0072，MIL-186） |
+| `create_employment(p_employment_id, p_practitioner_id, p_started_on, p_item_id)` | 組織成員 | 本人建立待驗證任職，排 `employment` 項目。先判定專任。回傳 `outcome`（`created` 或 `blocked`）與 `consent_required`（0072，MIL-186） |
 | `submit_consent(...)` | 組織成員 | 本人送所屬業者同意書，排 `consent` 項目 |
 | `end_employment(...)` | 組織成員 | 結束已驗證任職，執業主體 admin 或任職本人 |
 | `record_practitioner_check(...)`、`record_employment_check(...)`、`record_consent_check(...)` | 營運者 | 登錄核對，先 `assert_operator()` |
@@ -25,6 +24,8 @@ MIL-111。依據：ADR-0017（三態、三層、專任四個判定點、核對�
 | `review_queue()`、`review_item_detail()` | 營運者 | 0043 的函式，多列證書、任職、同意書三種項目與同一證號的其他任職 |
 | `signing_facts(entity_id, party_ids)` | 該執業主體的組織、營運者 | 可簽章判定事實（MIL-113） |
 | `certificate_badges(party_ids)` | 任何組織脈絡 | 標章（F 線 MIL-102） |
+
+專任判定的內部函式 `exclusivity_verdict(key, kind, entity_id)` 不授權給 `app_rw`，只有上面兩個寫入函式呼叫它。`employment_exclusivity_facts` 已在 0072 移除，應用程式拿不到別家的任職事實。
 
 `app_rw` 對兩張表沒有任何權限。`src/lib/pg/rls-cases/practitioners.ts` 的 `definerOnlyTables` 登記（彙總成 `DEFINER_ONLY_TABLES`），`rls-penetration.test.ts` 檢查。
 
@@ -34,7 +35,7 @@ MIL-111。依據：ADR-0017（三態、三層、專任四個判定點、核對�
 |---|---|
 | `rules.ts` | 證書登錄與核對表單的欄位規則、證號格式與遮罩（純函式） |
 | `dates.ts` | 台灣日期 |
-| `applicant.ts` | 本人端：`getMyPractitioner`、`registerCertificate`、`createEmployment`、`submitConsentLetter`、`endEmployment`、個資告知同意 |
+| `applicant.ts` | 本人端：`getMyPractitioner`、`registerCertificate`、`createEmployment`、`submitConsentLetter`、`endEmployment`、個資告知同意。專任結論來自資料庫，這裡只組訊息與寫稽核事件 |
 | `desk.ts` | 審核台：`getCredentialReview`、`recordCertificateCheck`、`recordEmploymentCheck`、`recordConsentCheck` |
 | `flows.ts` | 交易與交易外的事（寫檔、刪檔、寄信）。route 只呼叫這裡 |
 | `notify.ts` | 補件通知。E 線通知模組的接點 |
@@ -44,7 +45,7 @@ MIL-111。依據：ADR-0017（三態、三層、專任四個判定點、核對�
 
 - 登錄頁：先對「證書資料個資告知」目前版本表態（`recordConsent`，P0-24 AC3）。同意記在登錄時所在的組織，換到新組織要重新表態。
 - 成員只能登錄自己的證書：party 來自 `app.party_id`，資料庫函式再查成員資格。
-- 專任判定（`decideEmploymentCreation`）：管理人員在別家已有已驗證任職時阻擋，不建列，訊息固定「此證號已有在職紀錄」。別家只有待驗證時並存。經紀人員掛第二家時提示，要求同意書，仍建待驗證。阻擋與提示都寫稽核事件（`rule.full_time_block`、`rule.full_time_notice`），含證號、時間、原因，寫在宣稱方自己的鏈。
+- 專任判定在資料庫內，與寫入同一個函式呼叫（MIL-186）。規則的參考實作是 `classifyEmploymentCreation` 與 `decideEmploymentCreation`，`exclusivity-sql.test.ts` 固定兩者結論相同。管理人員在別家已有已驗證任職時阻擋，不建列，訊息固定「此證號已有在職紀錄」。別家只有待驗證時並存。經紀人員掛第二家時提示，要求同意書，仍建待驗證。阻擋與提示都寫稽核事件（`rule.full_time_block`、`rule.full_time_notice`），含證號、時間、原因，寫在宣稱方自己的鏈。
 - 營運者核對任職（`decideEmploymentVerification`）：別家已有已驗證任職時擋下，兩家都待驗證時由營運者判定哪一家相符。經紀人員不擋，同意書尚未核對時回警示。
 - 排除約束：部分唯一索引 `employments_exclusive_verified`，同一證號最多一筆已驗證的管理人員任職。已驗證代表進行中，任職結束時轉 `lapsed`。證書層另有 `practitioners_one_verified_per_cert`，同一證號最多一位已驗證的證書持有人。
 - 證書層核對跨組織沿用：換公司時只建任職與核對任職。舊任職結束後，新任職才能建立，一律是待驗證。

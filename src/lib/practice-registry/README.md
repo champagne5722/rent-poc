@@ -125,12 +125,13 @@ vitest 的 `vitest.setup.ts` 設 `PRACTICE_REGISTRY=seed`，所以既有的 rout
 | `org_employments` | 證號原文、失效任職 | 被拒 | 空 | 空 | 空 | 被拒 |
 | `my_practitioner` | 證號原文（本人的） | 被拒 | 空 | 空 | 空 | 被拒 |
 | `my_registration` | 統編 | 空 | 空 | 空 | 空 | 被拒 |
-| `employment_exclusivity_facts` | 空（自己這家的已結束任職例外：失效任職） | 被拒 | 被拒 | 被拒 | 空（執業主體組織成員，只回別家已驗證的任職，見殘餘風險）或被拒（屋主組織） | 被拒 |
 | `review_queue`、`review_item_detail` | 被拒 | 統編、證號原文、核對紀錄 ID、失效任職 | 被拒 | 被拒 | 被拒 | 被拒 |
 | `practitioner_party` | 被拒 | 空 | 被拒 | 被拒 | 被拒 | 被拒 |
 | `list_practice_entities`、`lookup_practice_entities`、`certificate_badges` | 空 | 空 | 空 | 空 | 空 | 被拒 |
 
 `signing_view` 單筆查詢的 `bound` 讀得到失效任職，是設計：送簽前檢查要說明被拒的原因。呼叫者必須先知道任職 ID，任職 ID 不可猜。
+
+專任事實沒有查詢函式。`employment_exclusivity_facts` 已在 0072 移除（MIL-186）。判定在 `submit_practitioner` 與 `create_employment` 內，這兩個函式列為「不揭露」：回傳值只有物件 ID 與結果代碼。詳見下方「殘餘風險」。
 
 ### 新增或修改函式時
 
@@ -147,24 +148,38 @@ vitest 的 `vitest.setup.ts` 設 `PRACTICE_REGISTRY=seed`，所以既有的 rout
 |---|---|---|---|
 | `party_signer_candidates`、`signing_view` | `bound`、`boundByCase` | 回該執業主體全部成員（或全部已驗證人員）的真實 email，不限於被指派的人 | MIL-116 |
 
-### 殘餘風險：`employment_exclusivity_facts`（待法務確認）
+### 殘餘風險：專任判定的阻擋結果（待法務確認）
 
-MIL-165 的矩陣測試發現，0047 的 `employment_exclusivity_facts` 對任何執業主體組織的成員回傳任意證書鍵在各家的任職，含已失效與待驗證的，連同起訖日。證書鍵可以枚舉。`0071_employment_exclusivity_minimal_facts.sql` 修正如下：
+歷史：MIL-165 的矩陣測試發現，0047 的 `employment_exclusivity_facts` 對任何執業主體組織的成員回傳任意證書鍵在各家的任職，含已失效與待驗證的，連同起訖日。證書鍵可以枚舉。0071 先收斂成別家只回已驗證的列。MIL-186 在 `0072_exclusivity_decision_in_writes.sql` 把判定搬進寫入函式，移除這個函式。
 
-- 別家（`other`）只回狀態是 `verified` 的任職。專任判定 `decideEmploymentCreation` 只用得到這些。已結束與待驗證的別家任職不再回傳。
-- 自己這家（`self`）照舊全部回傳。
-- 函式簽名與授權不變。
+現在的做法：
 
-沒有做「呼叫者必須持有這個證書鍵」的條件。`registerCertificate` 在寫任何東西之前就判定專任（P0-05 AC1、AC6），那時呼叫者還沒有這個證書鍵的證書列。加了條件，第一次登錄就不再被阻擋，既有測試 `practitioners.test.ts` 的 AC1 與 AC6 會失敗。
+- 專任判定在資料庫內，與寫入同一個函式呼叫。別家的任職事實只在函式內部讀取，不回給呼叫者，也不回給應用程式。
+- `registry.exclusivity_verdict` 是內部函式，不授權給 `app_rw`。只有 `submit_practitioner` 與 `create_employment` 呼叫它。
+- `submit_practitioner` 在呼叫者目前執業主體還沒有未結束的任職時判定（第一次登錄，或舊任職失效後換證）。被阻擋時什麼都不寫，回傳 `outcome = 'blocked'`。
+- `create_employment` 在建立任職前判定。被阻擋時回傳 `outcome = 'blocked'`。經紀人員在別家已有已驗證在職時，`consent_required` 為 true。
+- 阻擋用回傳值表示，不用例外。例外會讓同一個交易回滾，應用程式在同一個交易寫的稽核事件（`rule.full_time_block`、`rule.full_time_notice`）也會消失。稽核事件寫在宣稱方組織的鏈。
+- 「今天」取資料庫的台灣日期。函式不收日期參數，因為呼叫者能指定日期，就能用二分法從阻擋與否推出別家任職的起訖日。
+- 規則的參考實作是 `src/lib/registry-rules/exclusivity.ts` 的 `classifyEmploymentCreation`。`src/lib/practitioners/exclusivity-sql.test.ts` 固定資料庫與純函式對 82 組輸入的結論相同。
+- `decideEmploymentCreation` 保留。應用程式用 `presentCreationVerdict` 把結論轉成訊息與稽核內容。
 
-殘餘風險：
+沒有做「呼叫者必須持有這個證書鍵」的條件。第一次登錄時呼叫者還沒有這個證書鍵的證書列，加了條件，第一次登錄就不再被阻擋（P0-05 AC1、AC6）。
 
-- 任何執業主體組織的成員，仍能從 `other` 的有無得知某個證書鍵在別家有已驗證在職，以及該任職的起訖日。
-- 這與登錄時的阻擋結果「此證號已有在職紀錄」揭露的資訊相同，是 ADR-0017 決議 7「建立任職時判定」本身帶來的。
-- 差別在於登錄動作有稽核紀錄與審核項目，直接呼叫函式沒有。
-- 測試「殘餘風險：已驗證在職的證書鍵，仍可與不存在的證書鍵區分」把這個行為固定下來。
+測試：
 
-建議的後續（需要新票）：讓判定在 SQL 內與寫入同一個交易完成（併入 `submit_practitioner` 與 `create_employment`），再把 `employment_exclusivity_facts` 從 `app_rw` 的授權拿掉。這樣沒有可直接呼叫的探測入口。
+- `src/lib/pg/exclusivity-disclosure.test.ts`：各種呼叫者直接呼叫。查詢入口一律被拒，寫入路徑只回結論。
+- `src/lib/pg/registry-disclosure.test.ts`：直接查詢某個證書鍵在別家有沒有在職，一律被拒，真實與不存在的證書鍵回應相同。
+- `src/lib/practitioners/exclusivity-in-writes.pg.test.ts`：真實 PostgreSQL 的授權與寫入。
+
+殘餘風險（待法務確認）：
+
+- 能到達判定的呼叫者（有執業主體登錄的執業主體組織的成員），仍能從「被阻擋」得知某個證書鍵在別家有已驗證在職。
+- 這與登錄時的阻擋訊息「此證號已有在職紀錄」揭露的資訊相同，是 ADR-0017 決議 7「建立任職時判定」本身帶來的。
+- 回應不含任職的起訖日、狀態、筆數與別家的 ID。
+- 經紀人員的 `create_employment` 回傳 `consent_required`，是要求同意書的提示（P0-05 AC3），揭露的資訊與阻擋相同。
+- 用別人的證號反覆嘗試登錄，仍能枚舉。登錄嘗試的頻率上限需要產品決定，另案處理。
+- 被阻擋的稽核事件由應用程式在同一個交易寫入。直接以 SQL 呼叫寫入函式的人不會留下稽核事件。要讓稽核事件與判定不可分，需要授權寫入函式的擁有者執行 `audit.append`，這會改變稽核模組的授權，尚未做。
+- 任職結束後（已驗證轉已失效），阻擋隨之解除。重複嘗試的人能觀察到解除的時間。
 
 ### MIL-116 拿掉選人階段時
 
