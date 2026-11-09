@@ -1,0 +1,185 @@
+{
+  "world": {
+    "propertyIds": [
+      "01M71312MV2WM37JGN97CH17GM",
+      "01M71312N98DQVRR9J1354B91V",
+      "01M71312NKFA5Y5166C4FXMDXP",
+      "01M71312NYE1EHD0K53H6YA240"
+    ],
+    "signingContractId": "01M71312PFYAM06NT8N000N7X0",
+    "completedContractId": "01M7131572JK0TAJQ974F0NDJE",
+    "declinedContractId": "01M71316A7ECSM5JSY9K7YVBFE",
+    "readyDraftId": "01M71316W1CT2TMQTY4Z80S1HC",
+    "bareDraftId": "01M71316WVWTPYG2N72H62YW1Z",
+    "completedCaseId": "01M713156Y0FFMMYAJRKR21C2X",
+    "deskLicenseItemId": "01M7131H0XE39G5AB2FA6GEPTJ",
+    "deskCredentialItemId": "01M7131PVQ5HX22M362X8M8R0H",
+    "masterLeaseContractId": "01M7131QP7MCBQ1SK8H1F23YF8",
+    "masterLeaseDraftId": "01M7131VVB74VQZTDW6CPKKT5W",
+    "handover": null,
+    "orgHandover": "ho-0004"
+  },
+  "steps": [
+    {
+      "step": "物件甲",
+      "ok": true
+    },
+    {
+      "step": "物件乙",
+      "ok": true
+    },
+    {
+      "step": "物件丙",
+      "ok": true
+    },
+    {
+      "step": "物件丁",
+      "ok": true
+    },
+    {
+      "step": "合約：簽署中",
+      "ok": true
+    },
+    {
+      "step": "合約：已完成",
+      "ok": true
+    },
+    {
+      "step": "合約：已拒簽",
+      "ok": true
+    },
+    {
+      "step": "合約：草稿（欄位齊全）",
+      "ok": true
+    },
+    {
+      "step": "合約：草稿（只有物件）",
+      "ok": true
+    },
+    {
+      "step": "案件：已完成合約的案件",
+      "ok": true
+    },
+    {
+      "step": "收款帳戶",
+      "ok": true
+    },
+    {
+      "step": "成員邀請",
+      "ok": true
+    },
+    {
+      "step": "屋主資料",
+      "ok": true
+    },
+    {
+      "step": "執業主體甲：登入與建立",
+      "ok": true
+    },
+    {
+      "step": "執業主體乙：登入與建立",
+      "ok": true
+    },
+    {
+      "step": "執業主體丙：登入與建立",
+      "ok": true
+    },
+    {
+      "step": "營運者：登入",
+      "ok": true
+    },
+    {
+      "step": "執業主體甲：送件",
+      "ok": true
+    },
+    {
+      "step": "執業主體乙：送件",
+      "ok": true
+    },
+    {
+      "step": "執業主體丙：送件",
+      "ok": true
+    },
+    {
+      "step": "營運者：核對執業主體甲、乙的業別",
+      "ok": true
+    },
+    {
+      "step": "執業人員甲：同意個資告知並登錄證書",
+      "ok": true
+    },
+    {
+      "step": "執業人員乙：同意個資告知並登錄證書",
+      "ok": true
+    },
+    {
+      "step": "審核台 certificate 項目（除錯）",
+      "ok": true,
+      "detail": "[{\"state\":\"pending\",\"partyName\":\"e2e-practice\",\"certificateKind\":\"rental_housing_manager\"},{\"state\":\"pending\",\"partyName\":\"e2e-practice2\",\"certificateKind\":\"real_estate_broker\"}]"
+    },
+    {
+      "step": "審核台 employment 項目（除錯）",
+      "ok": true,
+      "detail": "[{\"entityName\":\"北辰示範租賃股份有限公司\",\"state\":\"pending\",\"partyName\":\"e2e-practice\",\"certificateKind\":\"rental_housing_manager\",\"consentRequired\":false},{\"entityName\":\"雲頂示範經紀行\",\"state\":\"pending\",\"partyName\":\"e2e-practice2\",\"certificateKind\":\"real_estate_broker\",\"consentRequired\":false}]"
+    },
+    {
+      "step": "營運者：核對執業人員甲的證書與任職",
+      "ok": true
+    },
+    {
+      "step": "營運者：讀未結佇列",
+      "ok": true
+    },
+    {
+      "step": "審核台未結項目（除錯）",
+      "ok": true,
+      "detail": "license:open, certificate:open, employment:open"
+    },
+    {
+      "step": "包租：物件",
+      "ok": true
+    },
+    {
+      "step": "包租：簽署中建立",
+      "ok": true
+    },
+    {
+      "step": "包租：簽署中 PDF 頁數（除錯）",
+      "ok": true,
+      "detail": "3"
+    },
+    {
+      "step": "包租：簽署中補欄位與簽署區",
+      "ok": true
+    },
+    {
+      "step": "包租：簽署中送簽",
+      "ok": true
+    },
+    {
+      "step": "包租：草稿建立",
+      "ok": true
+    },
+    {
+      "step": "包租：草稿 PDF 頁數（除錯）",
+      "ok": true,
+      "detail": "3"
+    },
+    {
+      "step": "包租：草稿補欄位與簽署區",
+      "ok": true
+    },
+    {
+      "step": "移交 ID",
+      "ok": true
+    },
+    {
+      "step": "後台移交 ID（執業主體甲）",
+      "ok": true
+    },
+    {
+      "step": "屋主二：登入、建立組織、簽署中合約",
+      "ok": true
+    }
+  ]
+}

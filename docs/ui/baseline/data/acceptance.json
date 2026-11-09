@@ -1,0 +1,352 @@
+[
+  {
+    "ticket": "MIL-123",
+    "item": "案件頁有「帳務設定」分頁，內容分五區",
+    "result": "通過",
+    "note": "五區標題都在畫面上",
+    "evidence": "acc-mil123-ledger.png"
+  },
+  {
+    "ticket": "MIL-123",
+    "item": "合約全員完成後，押金台帳顯示約定金額與餘額",
+    "result": "通過",
+    "note": "約定金額 $40,000 等於合約押金",
+    "evidence": "acc-mil123-ledger.png"
+  },
+  {
+    "ticket": "MIL-123",
+    "item": "應收期別一個月一期，租期 12 個月有 12 列",
+    "result": "通過",
+    "note": "表格資料列共 12 列（2 張表）",
+    "evidence": "acc-mil123-ledger.png"
+  },
+  {
+    "ticket": "MIL-123",
+    "item": "案件得登錄匯款識別，登錄後有成功回饋",
+    "result": "通過",
+    "note": "填付款人戶名「王大明」按新增，畫面顯示「已登錄匯款識別」"
+  },
+  {
+    "ticket": "MIL-123",
+    "item": "案件得設租金與押金的預設收款帳戶，儲存後有成功回饋",
+    "result": "通過",
+    "note": "選租金的預設帳戶按儲存，畫面顯示「已儲存預設收款帳戶」"
+  },
+  {
+    "ticket": "MIL-123",
+    "item": "登錄匯款識別與預設帳戶之後的畫面",
+    "result": "通過",
+    "note": "截圖",
+    "evidence": "acc-mil123-after-edit.png"
+  },
+  {
+    "ticket": "MIL-123",
+    "item": "社宅旗標的修改、原因欄與持有人衝突提示",
+    "result": "畫面看不到",
+    "note": "自管案件的畫面沒有「改為社宅代管案件」按鈕。旗標編輯與衝突提示只在代管案件出現，這個環境沒有代管案件，沒有驗收"
+  },
+  {
+    "ticket": "MIL-123",
+    "item": "migration 外鍵",
+    "result": "畫面看不到",
+    "note": "不經過畫面，由單元測試與真實 PostgreSQL 測試涵蓋，這張票沒有驗收"
+  },
+  {
+    "ticket": "MIL-123",
+    "item": "期別切分純函式與首末期比例",
+    "result": "畫面看不到",
+    "note": "不經過畫面，由單元測試與真實 PostgreSQL 測試涵蓋，這張票沒有驗收"
+  },
+  {
+    "ticket": "MIL-123",
+    "item": "提前終止改 cancelled",
+    "result": "畫面看不到",
+    "note": "不經過畫面，由單元測試與真實 PostgreSQL 測試涵蓋，這張票沒有驗收"
+  },
+  {
+    "ticket": "MIL-123",
+    "item": "旗標修改寫稽核並通知委託人",
+    "result": "畫面看不到",
+    "note": "不經過畫面，由單元測試與真實 PostgreSQL 測試涵蓋，這張票沒有驗收"
+  },
+  {
+    "ticket": "MIL-123",
+    "item": "押金台帳表的 RLS 與滲透測試",
+    "result": "畫面看不到",
+    "note": "不經過畫面，由單元測試與真實 PostgreSQL 測試涵蓋，這張票沒有驗收"
+  },
+  {
+    "ticket": "MIL-121",
+    "item": "兩個組織的案件都列出",
+    "result": "通過",
+    "note": "列表有 4 個案件連結（屋主一的簽署中、已完成、已拒簽案件，加屋主二的簽署中案件）",
+    "evidence": "acc-mil121-list.png"
+  },
+  {
+    "ticket": "MIL-121",
+    "item": "案件詳情顯示合約狀態，已完成的合約能下載已簽 PDF",
+    "result": "通過",
+    "note": "有「下載已簽合約」連結",
+    "evidence": "acc-mil121-detail.png"
+  },
+  {
+    "ticket": "MIL-121",
+    "item": "375px 寬沒有水平捲動",
+    "result": "通過",
+    "note": "列表與詳情在 375px 寬都沒有水平捲動",
+    "evidence": "t1-tenant-list-375.png"
+  },
+  {
+    "ticket": "MIL-121",
+    "item": "email 不屬於任何案件時只顯示「沒有案件」",
+    "result": "畫面看不到",
+    "note": "承租人身分要有案件成員關係才成立，E2E 沒有辦法登入成沒有案件的承租人。空狀態文字在 TenantCaseList.tsx，沒有驗收"
+  },
+  {
+    "ticket": "MIL-121",
+    "item": "結案後唯讀、仍能下載",
+    "result": "畫面看不到",
+    "note": "案件結案要走退租與結算流程（E 線），這個環境沒有可結案的案件，沒有驗收"
+  },
+  {
+    "ticket": "MIL-121",
+    "item": "更新成員 email 後舊 email 失效，並寫稽核事件",
+    "result": "畫面看不到",
+    "note": "操作在出租人端，結果是 session 與稽核，這張票沒有驗收"
+  },
+  {
+    "ticket": "MIL-121",
+    "item": "承租人讀不到別的案件",
+    "result": "畫面看不到",
+    "note": "權限與 RLS，由 PostgreSQL 測試涵蓋，這張票沒有驗收"
+  },
+  {
+    "ticket": "MIL-72",
+    "item": "詳情頁列出每位簽署人的角色、姓名與狀態",
+    "result": "通過",
+    "note": "甲方、乙方、執業人員三個角色都出現在詳情頁",
+    "evidence": "acc-mil72-master-detail.png"
+  },
+  {
+    "ticket": "MIL-71",
+    "item": "詳情頁的合約內容含現況確認附件頁",
+    "result": "通過",
+    "note": "合約內容預覽有「現況確認附件」",
+    "evidence": "acc-mil72-master-detail.png"
+  },
+  {
+    "ticket": "MIL-72",
+    "item": "清單的簽署進度依序列顯示",
+    "result": "通過",
+    "note": "包租合約那一列顯示「待乙方簽」與三個進度點（乙方、執業人員兼甲方、完成），停在第一點。進度點數量以截圖為準",
+    "evidence": "acc-mil72-contracts-list.png"
+  },
+  {
+    "ticket": "MIL-72",
+    "item": "工作台的待辦（乙方還沒簽時）",
+    "result": "通過",
+    "note": "乙方輪次時，待辦只列草稿，簽署中的包租合約不在待辦裡，球不在執業主體手上",
+    "evidence": "acc-mil72-workbench.png"
+  },
+  {
+    "ticket": "MIL-72",
+    "item": "乙方簽署後，進度移到第二位簽署人（執業人員兼甲方）",
+    "result": "通過",
+    "note": "詳情頁的目前待簽變成「執業人員」，進度停在第二位"
+  },
+  {
+    "ticket": "MIL-72",
+    "item": "輪到執業人員兼甲方時，工作台的待辦出現這份合約",
+    "result": "通過",
+    "note": "待辦區出現包租示範物件（執業人員與甲方是同一人，輪到時待辦出現）",
+    "evidence": "acc-mil72-workbench-practitioner-turn.png"
+  },
+  {
+    "ticket": "MIL-72",
+    "item": "三位不同的簽署人（甲方、乙方、執業人員各一人）",
+    "result": "畫面看不到",
+    "note": "這個環境的執業人員與甲方是同一人，合併成兩位簽署人，沒有驗收三位不同簽署人的情境。需要有一位不是當事人的執業人員才能驗收"
+  },
+  {
+    "ticket": "MIL-71",
+    "item": "缺少執業人員在附件頁的簽署區域時，送簽被擋下並列出原因",
+    "result": "通過",
+    "note": "送簽回 400，原因含「請在現況確認附件頁為執業人員放置簽名框」（以 API 回應驗收，確認頁列出同一組原因）"
+  },
+  {
+    "ticket": "MIL-71",
+    "item": "包租租賃合約的精靈出現現況確認附件",
+    "result": "通過",
+    "note": "精靈確認頁有「現況確認附件」摘要",
+    "evidence": "acc-mil71-master-wizard.png"
+  },
+  {
+    "ticket": "MIL-72",
+    "item": "確認頁的順序說明由簽署序列產生",
+    "result": "通過",
+    "note": "確認頁顯示「依序簽署：乙方、執業人員兼甲方」，由簽署序列產生，沒有固定的「乙方先簽」文字",
+    "evidence": "acc-mil71-master-wizard.png"
+  },
+  {
+    "ticket": "MIL-71",
+    "item": "附件在填寫欄位步驟有狀態與備註可填",
+    "result": "通過",
+    "note": "回到步驟二，附件區每列有狀態與備註（截圖）",
+    "evidence": "acc-mil71-annex-editor.png"
+  },
+  {
+    "ticket": "MIL-71",
+    "item": "屋主的租賃合約不顯示現況確認附件",
+    "result": "通過",
+    "note": "屋主的草稿精靈沒有現況確認附件"
+  },
+  {
+    "ticket": "MIL-71",
+    "item": "附件內容隨草稿保存，送簽後凍結為快照",
+    "result": "畫面看不到",
+    "note": "資料與 PDF 層的規則，由 vitest 涵蓋，這張票沒有驗收"
+  },
+  {
+    "ticket": "MIL-71",
+    "item": "附件頁排在簽署欄之後、不影響簽署欄落點",
+    "result": "畫面看不到",
+    "note": "資料與 PDF 層的規則，由 vitest 涵蓋，這張票沒有驗收"
+  },
+  {
+    "ticket": "MIL-71",
+    "item": "既有合約的 PDF 不變",
+    "result": "畫面看不到",
+    "note": "資料與 PDF 層的規則，由 vitest 涵蓋，這張票沒有驗收"
+  },
+  {
+    "ticket": "MIL-71",
+    "item": "PDF 測試驗證附件頁的文字",
+    "result": "畫面看不到",
+    "note": "資料與 PDF 層的規則，由 vitest 涵蓋，這張票沒有驗收"
+  },
+  {
+    "ticket": "MIL-72",
+    "item": "進度步驟與位置是純函式（2、3、4 位測試）",
+    "result": "畫面看不到",
+    "note": "純函式與查詢方式，由 vitest 涵蓋，這張票沒有驗收"
+  },
+  {
+    "ticket": "MIL-72",
+    "item": "清單批次查簽署進度，不逐列查詢",
+    "result": "畫面看不到",
+    "note": "純函式與查詢方式，由 vitest 涵蓋，這張票沒有驗收"
+  },
+  {
+    "ticket": "MIL-72",
+    "item": "既有合約沒有簽署任務時畫面不報錯",
+    "result": "畫面看不到",
+    "note": "純函式與查詢方式，由 vitest 涵蓋，這張票沒有驗收"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "開啟證書登錄頁先顯示個資告知，同意才顯示表單",
+    "result": "通過",
+    "note": "沒有同意前只有告知與同意、不同意按鈕",
+    "evidence": "acc-mil111-consent-gate.png"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "證號三段、證書種類、發證日、效期必填，效期預填發證日加 4 年",
+    "result": "通過",
+    "note": "發證日填 2026-01-15，效期預填 2030-01-15",
+    "evidence": "acc-mil111-b-panel.png"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "效期與發證日加 4 年不一致時提示",
+    "result": "通過",
+    "note": "效期改成 2030-06-30，畫面顯示不一致的提示"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "管理人員在別家已有已驗證在職時阻擋，訊息為「此證號已有在職紀錄」",
+    "result": "通過",
+    "note": "乙用甲的證號登錄，被擋下，訊息為「此證號已有在職紀錄」，沒有顯示別家（表單送出）",
+    "evidence": "acc-mil111-blocked.png"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "核對相符後，證書與任職顯示已驗證",
+    "result": "通過",
+    "note": "執業人員甲的頁面顯示「已驗證」",
+    "evidence": "acc-mil111-a-panel.png"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "標章文字固定為「證書資料已核對」加核對日，不含禁用詞",
+    "result": "通過",
+    "note": "「我的證書」頁顯示「證書資料已核對 2026-11-10」，沒有「保證合法」「認證」「擔保」",
+    "evidence": "acc-mil111-a-panel.png"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "屋主端看到標章",
+    "result": "畫面看不到",
+    "note": "標章資料已提供（getCertificateBadges），屋主端總覽與案件頁要等 MIL-102 接線才會顯示。合約詳情的執業人員列目前沒有標章，這張票沒有驗收"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "成員只能登錄自己的證書",
+    "result": "畫面看不到",
+    "note": "權限、資料庫約束、稽核或需要兩家以上已驗證執業主體的情境，這張票沒有驗收。由 vitest 與真實 PostgreSQL 測試涵蓋"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "別家只有待驗證時允許並存",
+    "result": "畫面看不到",
+    "note": "權限、資料庫約束、稽核或需要兩家以上已驗證執業主體的情境，這張票沒有驗收。由 vitest 與真實 PostgreSQL 測試涵蓋"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "舊任職離職後新任職為待驗證",
+    "result": "畫面看不到",
+    "note": "權限、資料庫約束、稽核或需要兩家以上已驗證執業主體的情境，這張票沒有驗收。由 vitest 與真實 PostgreSQL 測試涵蓋"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "經紀人員掛第二家時要求所屬業者同意書",
+    "result": "畫面看不到",
+    "note": "權限、資料庫約束、稽核或需要兩家以上已驗證執業主體的情境，這張票沒有驗收。由 vitest 與真實 PostgreSQL 測試涵蓋"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "同意書核對後標示「經所屬業者同意」",
+    "result": "畫面看不到",
+    "note": "權限、資料庫約束、稽核或需要兩家以上已驗證執業主體的情境，這張票沒有驗收。由 vitest 與真實 PostgreSQL 測試涵蓋"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "排除約束只涵蓋已驗證的管理人員專任任職",
+    "result": "畫面看不到",
+    "note": "權限、資料庫約束、稽核或需要兩家以上已驗證執業主體的情境，這張票沒有驗收。由 vitest 與真實 PostgreSQL 測試涵蓋"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "核對不符時維持待驗證並通知補件",
+    "result": "畫面看不到",
+    "note": "權限、資料庫約束、稽核或需要兩家以上已驗證執業主體的情境，這張票沒有驗收。由 vitest 與真實 PostgreSQL 測試涵蓋"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "證書層核對跨組織沿用",
+    "result": "畫面看不到",
+    "note": "權限、資料庫約束、稽核或需要兩家以上已驗證執業主體的情境，這張票沒有驗收。由 vitest 與真實 PostgreSQL 測試涵蓋"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "每次阻擋與提示寫稽核事件",
+    "result": "畫面看不到",
+    "note": "權限、資料庫約束、稽核或需要兩家以上已驗證執業主體的情境，這張票沒有驗收。由 vitest 與真實 PostgreSQL 測試涵蓋"
+  },
+  {
+    "ticket": "MIL-111",
+    "item": "證書影本相符後刪除、同意書在任職有效期間保留",
+    "result": "畫面看不到",
+    "note": "權限、資料庫約束、稽核或需要兩家以上已驗證執業主體的情境，這張票沒有驗收。由 vitest 與真實 PostgreSQL 測試涵蓋"
+  }
+]
