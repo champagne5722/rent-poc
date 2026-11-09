@@ -1,7 +1,13 @@
-import { getContract, getDb } from './db';
+import { appendContractEvent, getContract, getDb } from './db';
 import { getPracticeRegistry, type PracticeRegistryResolution } from './practice-registry';
 import { completeSignSnapshot, insertSignatureRecords, listPendingSignRecords } from './signature-records/repository';
-import { unavailableSnapshot, buildCredentialSnapshot, type SignatureSnapshot } from './signature-records/snapshot';
+import {
+  buildCredentialSnapshot,
+  isUnavailableSnapshot,
+  unavailableSnapshot,
+  type SignatureSnapshot,
+} from './signature-records/snapshot';
+import { hasVoidPendingLapse, markVoidFailed, recordLapse, settleOpenLapses } from './signing-lapse/repository';
 import { isContractSendContext } from './signature-records/types';
 import type { ProgressOutcome } from './signing-module/progress';
 import { normalizeEmail } from './signing-module/progress';
@@ -20,6 +26,8 @@ export interface ContractSubscriberOptions {
   registry?: () => PracticeRegistryResolution;
 }
 
+const AUTO_VOID_NOTE = '執業人員簽署時不可簽章，系統自動撤回';
+
 // 合約層訂閱簽署事件：合約狀態是簽署進度的投影（ADR-0010 決議 7）。
 // 轉移規則在 transitions.ts。文件保存與服務商任務編號都在簽署模組內，合約層不經手。
 // 簽章紀錄（ADR-0018 決議 12）也在這裡寫：送簽交易內寫 snapshot_at_send，簽署事件交易內補 snapshot_at_sign。
@@ -29,6 +37,9 @@ export function createContractSubscriber({ registry = () => getPracticeRegistry(
     if (!contract) throw new SigningRefusal(404, '合約不存在');
     return contract;
   };
+
+  // 正在自動撤回的合約。撤回事件進交易時，歷程的行為者要記系統，不是出租人。
+  const autoVoiding = new Set<number>();
 
   return {
     label: '合約',
@@ -78,8 +89,36 @@ export function createContractSubscriber({ registry = () => getPracticeRegistry(
     },
 
     onOutcome(subject, outcome, context) {
-      applySigningResult(contractOf(subject), outcome);
-      completeSignSnapshots(subject, outcome, context.eventAt, context.prepared as PreparedSignSnapshots | undefined);
+      const autoVoid = outcome.type === 'voided' && autoVoiding.has(subject.id);
+      applySigningResult(contractOf(subject), outcome, undefined, autoVoid ? { actor: 'system', note: AUTO_VOID_NOTE } : undefined);
+      const written = completeSignSnapshots(subject, outcome, context.eventAt, context.prepared as PreparedSignSnapshots | undefined);
+      recordLapsesFromSnapshots(subject, outcome, context.eventAt, written);
+      settleLapses(subject, outcome);
+    },
+
+    // 簽署當下不可簽章且任務未結束：交易提交後才自動撤回，外部 API 不在交易內（ADR-0018 決議 11、ADR-0010 決議 8）。
+    // 失敗不重試也不往外拋，記下失敗讓詳情頁顯示警示與撤回按鈕（ADR-0021 決議 7）。
+    async afterOutcome(subject, outcome, { voidTask }) {
+      if (outcome.type !== 'signer_signed' || !hasVoidPendingLapse(getDb(), subject.id)) return;
+      autoVoiding.add(subject.id);
+      try {
+        await voidTask();
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        // 失敗狀態與歷程同一個交易
+        const db = getDb();
+        db.transaction(() => {
+          if (!markVoidFailed(db, subject.id, message)) return;
+          appendContractEvent(subject.id, {
+            type: 'auto_void_failed',
+            actor: 'system',
+            note: `自動撤回失敗：${message}。請手動撤回。`,
+          });
+        })();
+        console.error(`[signing] 合約 ${subject.id} 簽署時不可簽章，自動撤回失敗：${message}`);
+      } finally {
+        autoVoiding.delete(subject.id);
+      }
     },
 
     // 文件保存已由簽署模組負責，合約完成後沒有其他處理
@@ -103,17 +142,85 @@ function completeSignSnapshots(
   outcome: ProgressOutcome,
   eventAt: string,
   prepared: PreparedSignSnapshots | undefined,
-): void {
-  if (outcome.type !== 'signer_signed' && outcome.type !== 'completed') return;
+): WrittenSignSnapshot[] {
+  if (outcome.type !== 'signer_signed' && outcome.type !== 'completed') return [];
   const db = getDb();
   const pending = listPendingSignRecords(db, subject.id);
   const covered =
     outcome.type === 'completed'
       ? pending
       : pending.filter((p) => normalizeEmail(p.signerEmail) === normalizeEmail(outcome.signer.email));
+  const written: WrittenSignSnapshot[] = [];
   for (const record of covered) {
     const snapshot =
       prepared?.snapshots[record.ruleId] ?? unavailableSnapshot(eventAt, '簽署事件到達時沒有取得登錄資料');
-    completeSignSnapshot(db, subject.id, record.ruleId, snapshot);
+    if (completeSignSnapshot(db, subject.id, record.ruleId, snapshot)) written.push({ ruleId: record.ruleId, snapshot });
+  }
+  return written;
+}
+
+// 這次交易新補上的 snapshot_at_sign
+interface WrittenSignSnapshot {
+  ruleId: string;
+  snapshot: SignatureSnapshot;
+}
+
+// 簽署事件的判定結果是不可簽章：簽署進度照常推進，記下失效事實（ADR-0018 決議 11 情況 B）。
+// 判定沿用 prepareOutcome 用事件時間算出的快照，不重新查登錄。查不到登錄資料的快照無法判定，不當作失效。
+// 只看這次新補的快照，重複的事件不會再補快照，所以不會重複記錄。
+// - 任務未結束：記為等著自動撤回，由 afterOutcome 在交易提交後撤回。
+// - 全員完成（含最後一位簽署人就是這位執業人員）：合約維持完成，只記事實，詳情頁顯示警示。
+// ADR-0021 決議 6：稽核事件與通知的過渡做法是寫合約歷程。上線前改寫稽核事件（P0-23）。
+function recordLapsesFromSnapshots(
+  subject: SigningSubject,
+  outcome: ProgressOutcome,
+  eventAt: string,
+  written: WrittenSignSnapshot[],
+): void {
+  const db = getDb();
+  for (const { ruleId, snapshot } of written) {
+    if (isUnavailableSnapshot(snapshot) || snapshot.result.signable) continue;
+    const reasons = snapshot.result.issues.map((issue) => issue.message);
+    // 最後一位簽完等於全員簽署，完成事件隨後就到，這時撤回只會與完成事件競態
+    const completed = outcome.type === 'completed' || (outcome.type === 'signer_signed' && outcome.next === null);
+    const recorded = recordLapse(db, {
+      contractId: subject.id,
+      ruleId,
+      state: completed ? 'completed_lapsed' : 'void_pending',
+      reasons,
+      eventAt,
+    });
+    if (!recorded) continue;
+    const detail = `${recorded.signerName}簽署時不可簽章（${reasons.join('、')}）。`;
+    appendContractEvent(subject.id, {
+      type: 'credential_lapsed',
+      actor: 'system',
+      note: detail + (completed ? '任務已全員完成，合約維持已完成。' : '簽署進度照常推進，系統將自動撤回。'),
+    });
+  }
+}
+
+// 任務結束時，結清先前記下、還沒處理完的失效紀錄
+function settleLapses(subject: SigningSubject, outcome: ProgressOutcome): void {
+  const db = getDb();
+  switch (outcome.type) {
+    case 'completed':
+      // 撤回前全員已完成（例如自動撤回失敗後才收到完成事件）：合約維持完成
+      for (const { signerName } of settleOpenLapses(db, subject.id, 'completed_lapsed')) {
+        appendContractEvent(subject.id, {
+          type: 'credential_lapsed',
+          actor: 'system',
+          note: `${signerName}簽署時不可簽章。任務之後全員完成，合約維持已完成。`,
+        });
+      }
+      return;
+    case 'voided':
+      settleOpenLapses(db, subject.id, 'voided');
+      return;
+    case 'declined':
+      settleOpenLapses(db, subject.id, 'task_ended');
+      return;
+    case 'signer_signed':
+      return;
   }
 }
