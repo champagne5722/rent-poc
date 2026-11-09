@@ -12,6 +12,7 @@ import {
   enqueueOutbox,
   failOutbox,
   listDueOutbox,
+  SIGN_TASK_ACTIONS,
   recoverStaleOutbox,
   type OutboxRow,
   type OutboxStatus,
@@ -433,7 +434,7 @@ export function createSigningModule({
       const ctx: OrgContext = { kind: 'org', orgId };
       const due = await db.inOrg(ctx, async (tx) => {
         await recoverStaleOutbox(tx);
-        return listDueOutbox(tx, limit);
+        return listDueOutbox(tx, limit, SIGN_TASK_ACTIONS);
       });
       const results: DispatchResult[] = [];
       for (const row of due) {

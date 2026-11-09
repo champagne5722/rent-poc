@@ -5,7 +5,10 @@ import type { SigningSubject } from './provider';
 // outbox 的儲存（ADR-0020 決議 5、6，MIL-85）。表與狀態的意義見 db/migrations/0006_sign_tasks.sql。
 // 這裡只管資料列的狀態轉移，不呼叫服務商。派送在 module.ts，排程重試（drain-outbox）在 MIL-86。
 
-export type OutboxAction = 'create_sign_task' | 'void_sign_task' | 'resend_sign_task';
+export type OutboxAction = 'create_sign_task' | 'void_sign_task' | 'resend_sign_task' | 'send_email';
+
+/** 簽署模組自己派送的動作。簽署模組的 drain 只處理這些，其他動作（例如通知 email）由各自的模組派送。 */
+export const SIGN_TASK_ACTIONS: readonly OutboxAction[] = ['create_sign_task', 'void_sign_task', 'resend_sign_task'];
 export type OutboxStatus = 'pending' | 'sending' | 'done' | 'failed' | 'dead' | 'skipped';
 
 /** 首次派送之外最多再重試的次數。用完轉 dead，進人工處理清單（ADR-0020 決議 6）。 */
@@ -19,6 +22,8 @@ const RETRYABLE: Record<OutboxAction, boolean> = {
   create_sign_task: false,
   void_sign_task: true,
   resend_sign_task: true,
+  // 寄信失敗可以重試。寄出後平台沒記下來時可能重複寄（至少一次，MIL-120）
+  send_email: true,
 };
 
 export interface OutboxRow {
@@ -95,11 +100,15 @@ export async function claimOutbox(tx: OrgTx, id: string): Promise<OutboxRow | nu
   return rows[0] ? toRow(rows[0]) : null;
 }
 
-/** 到期的 pending 列，最舊的先。drain-outbox 逐列認領處理，一次最多 limit 列。 */
-export async function listDueOutbox(tx: OrgTx, limit: number): Promise<OutboxRow[]> {
+/**
+ * 到期的 pending 列，最舊的先。drain-outbox 逐列認領處理，一次最多 limit 列。
+ * 各模組只取自己派送的動作（actions），不得搶別的模組的列。
+ */
+export async function listDueOutbox(tx: OrgTx, limit: number, actions: readonly OutboxAction[]): Promise<OutboxRow[]> {
   const { rows } = await tx.query<Row>(
-    `SELECT ${COLUMNS} FROM org.outbox WHERE status = 'pending' AND next_attempt_at <= now() ORDER BY id LIMIT $1`,
-    [limit],
+    `SELECT ${COLUMNS} FROM org.outbox
+      WHERE status = 'pending' AND next_attempt_at <= now() AND action = ANY($2::text[]) ORDER BY id LIMIT $1`,
+    [limit, [...actions]],
   );
   return rows.map(toRow);
 }
