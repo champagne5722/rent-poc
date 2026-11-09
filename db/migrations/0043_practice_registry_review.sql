@@ -25,7 +25,7 @@ ALTER TABLE registry.practice_licenses
   ADD COLUMN submitted_at timestamptz,
   ADD CONSTRAINT practice_licenses_permit_no_not_blank CHECK (permit_no IS NULL OR btrim(permit_no) <> '');
 
--- resolution：項目結案的原因。matched 代表相符，其餘是不符、查無、廢止、認領判定或被取代。
+-- resolution：項目結案的原因。match 代表相符，其餘是不符、查無、廢止、認領判定或被取代。
 ALTER TABLE registry.review_items
   ADD COLUMN resolution text CHECK (resolution IN
     ('match', 'mismatch', 'not_found', 'revoked', 'claim_to_claimant', 'claim_keep_registrant', 'superseded')),
@@ -145,8 +145,10 @@ BEGIN
       FROM registry.practice_entities e
       JOIN registry.practice_licenses l ON l.entity_id = e.id
       LEFT JOIN LATERAL (
+        -- 只算目前這一次送件之後的核對。改歸屬後，原登錄者時期的判定理由不得讓認領方看到
         SELECT k.result, k.note, k.checked_at FROM registry.credential_checks k
          WHERE k.subject_type = 'license' AND k.subject_id = l.id
+           AND l.submitted_at IS NOT NULL AND k.checked_at >= l.submitted_at
          ORDER BY k.checked_at DESC, k.id DESC LIMIT 1
       ) c ON true
      WHERE e.id = v_entity
@@ -213,8 +215,11 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM control.orgs o WHERE o.id = v_org AND o.kind = 'practice') THEN
     RAISE EXCEPTION '只有執業主體組織能送件' USING ERRCODE = '42501';
   END IF;
-  IF p_kind NOT IN ('management', 'master_lease', 'brokerage') THEN
+  IF p_kind IS NULL OR p_kind NOT IN ('management', 'master_lease', 'brokerage') THEN
     RAISE EXCEPTION '業別不合法：%', p_kind USING ERRCODE = '22023';
+  END IF;
+  IF p_new_state IS NULL THEN
+    RAISE EXCEPTION '下一狀態不得為空' USING ERRCODE = '22004';
   END IF;
   IF v_permit = '' THEN
     RAISE EXCEPTION '許可或登記證字號不得為空' USING ERRCODE = '22023';
@@ -438,7 +443,8 @@ CREATE FUNCTION registry.record_license_check(
   p_business_item_codes text[],
   p_registration_status text,
   p_audit_chain_id      text,
-  p_audit_seq           bigint
+  p_audit_seq           bigint,
+  p_permit_no           text
 )
 RETURNS text
 LANGUAGE plpgsql SECURITY DEFINER
@@ -448,6 +454,11 @@ DECLARE
   v_op      text := registry.assert_operator();
   v_license registry.practice_licenses;
 BEGIN
+  -- NULL 參數會讓下面的 NOT IN 與比較得到 NULL 而不是 FALSE，檢查等於沒做，所以先擋
+  IF p_check_id IS NULL OR p_license_id IS NULL OR p_channel IS NULL OR p_query_source IS NULL OR p_result IS NULL
+     OR p_expected_state IS NULL OR p_new_state IS NULL OR p_audit_chain_id IS NULL OR p_audit_seq IS NULL THEN
+    RAISE EXCEPTION '核對紀錄的必填參數不得為空' USING ERRCODE = '22004';
+  END IF;
   IF p_channel NOT IN ('gcis_manual', 'resim_manual', 'document_review') THEN
     RAISE EXCEPTION '第一版的核對管道只有 gcis_manual、resim_manual、document_review' USING ERRCODE = '22023';
   END IF;
@@ -479,6 +490,10 @@ BEGIN
      WHERE r.id = p_item_id AND r.type = 'license' AND r.subject_id = p_license_id AND r.status = 'open'
   ) THEN
     RAISE EXCEPTION '這個審核項目已結案，或不屬於這個業別' USING ERRCODE = '40001';
+  END IF;
+  -- 營運者核對的是他看到的證字號。執業主體在這之間改了字號，新字號沒人核對過，不得轉成已驗證
+  IF p_item_id IS NOT NULL AND v_license.permit_no IS DISTINCT FROM p_permit_no THEN
+    RAISE EXCEPTION '執業主體在核對期間更新了證字號，請重新整理後再核對' USING ERRCODE = '40001';
   END IF;
 
   IF p_business_item_codes IS NOT NULL THEN
@@ -546,7 +561,7 @@ DECLARE
   v_permit    text;
   v_old_item  text;
 BEGIN
-  IF p_decision NOT IN ('keep_registrant', 'to_claimant') THEN
+  IF p_decision IS NULL OR p_decision NOT IN ('keep_registrant', 'to_claimant') THEN
     RAISE EXCEPTION 'p_decision 必須是 keep_registrant 或 to_claimant' USING ERRCODE = '22023';
   END IF;
   IF btrim(coalesce(p_note, '')) = '' THEN
@@ -566,12 +581,14 @@ BEGIN
   IF p_decision = 'keep_registrant' THEN
     UPDATE registry.review_items r
        SET status = 'resolved', resolved_at = now(), resolved_by = v_op, resolution = 'claim_keep_registrant',
-           payload = r.payload || jsonb_build_object('resolution_note', btrim(p_note))
+           payload = r.payload || jsonb_build_object('resolution_note', btrim(p_note), 'audit_chain_id', p_audit_chain_id, 'audit_seq', p_audit_seq)
      WHERE r.id = p_item_id;
     RETURN;
   END IF;
 
   SELECT e.* INTO v_entity FROM registry.practice_entities e WHERE e.id = v_item.subject_id FOR UPDATE;
+  -- 鎖住所有業別列再檢查：同時進行的核對（record_license_check 也鎖業別列）要嘛先提交讓這裡看到已驗證，要嘛等這裡結束
+  PERFORM 1 FROM registry.practice_licenses l WHERE l.entity_id = v_entity.id FOR UPDATE;
   IF EXISTS (SELECT 1 FROM registry.practice_licenses l WHERE l.entity_id = v_entity.id AND l.state = 'verified') THEN
     RAISE EXCEPTION '執業主體還有已驗證的業別，請先以核對紀錄轉成失效再改歸屬' USING ERRCODE = '23514';
   END IF;
@@ -610,8 +627,9 @@ BEGIN
   FOR v_license IN SELECT l.* FROM registry.practice_licenses l WHERE l.entity_id = v_entity.id ORDER BY l.kind LOOP
     v_permit := v_item.payload -> 'submissions' -> v_license.kind ->> 'permit_no';
     UPDATE registry.practice_licenses l
+       -- submitted_at 設成現在：my_registration 只算送件之後的核對，原登錄者時期的判定理由因此不會外露
        SET permit_no = v_permit,
-           submitted_at = (v_item.payload -> 'submissions' -> v_license.kind ->> 'submitted_at')::timestamptz,
+           submitted_at = CASE WHEN v_permit IS NOT NULL THEN now() END,
            state = CASE WHEN v_permit IS NOT NULL AND l.state = 'lapsed' THEN 'pending' ELSE l.state END,
            updated_at = now()
      WHERE l.id = v_license.id;
@@ -628,7 +646,7 @@ BEGIN
 
   UPDATE registry.review_items r
      SET status = 'resolved', resolved_at = now(), resolved_by = v_op, resolution = 'claim_to_claimant',
-         payload = r.payload || jsonb_build_object('resolution_note', btrim(p_note))
+         payload = r.payload || jsonb_build_object('resolution_note', btrim(p_note), 'audit_chain_id', p_audit_chain_id, 'audit_seq', p_audit_seq)
    WHERE r.id = p_item_id;
   license_ids := v_map;
   RETURN NEXT;
@@ -670,7 +688,7 @@ REVOKE ALL ON FUNCTION
   registry.submit_license(text, text, text, text, text, text),
   registry.review_queue(text, int),
   registry.review_item_detail(text),
-  registry.record_license_check(text, text, text, text, text, jsonb, text, text[], text, text, text, text[], text, text, bigint),
+  registry.record_license_check(text, text, text, text, text, jsonb, text, text[], text, text, text, text[], text, text, bigint, text),
   registry.resolve_entity_claim(text, text, text, text[], text[], text, bigint),
   registry.lookup_practice_entities(text[])
   FROM PUBLIC;
@@ -680,7 +698,7 @@ GRANT EXECUTE ON FUNCTION
   registry.submit_license(text, text, text, text, text, text),
   registry.review_queue(text, int),
   registry.review_item_detail(text),
-  registry.record_license_check(text, text, text, text, text, jsonb, text, text[], text, text, text, text[], text, text, bigint),
+  registry.record_license_check(text, text, text, text, text, jsonb, text, text[], text, text, text, text[], text, text, bigint, text),
   registry.resolve_entity_claim(text, text, text, text[], text[], text, bigint),
   registry.lookup_practice_entities(text[])
   TO app_rw;

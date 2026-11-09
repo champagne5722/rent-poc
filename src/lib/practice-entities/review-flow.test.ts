@@ -549,3 +549,81 @@ describe('批次查詢', () => {
     await expect(withTx({ kind: 'control' }, (tx) => tx.query("SELECT * FROM registry.lookup_practice_entities(ARRAY['x'])"))).rejects.toThrow(/組織脈絡/);
   });
 });
+
+describe('審查後補的防線', () => {
+  it('SQL 函式不收 NULL 的狀態與結果：NULL 讓比較變成 NULL，檢查會被跳過，所以資料庫要明確拒絕', async () => {
+    const a = await t.practiceAccount('a@example.com');
+    const op = await t.operatorAccount();
+    await submit(a);
+    const licenseId = (await t.registry<{ id: string }>('SELECT id FROM registry.practice_licenses'))[0].id;
+    const call = (result: string | null, expected: string | null) =>
+      op.run('desk:x', (tx) =>
+        tx.query(
+          `SELECT registry.record_license_check('01ARZ3NDEKTSV4RRFFQ69G5FAV', NULL, $1, 'gcis_manual', 'x', '{}', $2, ARRAY[]::text[], '', $3, 'verified', NULL, NULL, $4, 1, NULL)`,
+          [licenseId, result, expected, PLATFORM_ORG_ID],
+        ),
+      );
+    await expect(call('match', null)).rejects.toThrow(/不得為空/);
+    await expect(call(null, 'pending')).rejects.toThrow(/不得為空/);
+    await expect(
+      op.run('desk:x', (tx) => tx.query("SELECT * FROM registry.resolve_entity_claim('x', NULL, 'x', ARRAY[]::text[], ARRAY[]::text[], 'c', 1)")),
+    ).rejects.toThrow(/keep_registrant 或 to_claimant/);
+    expect((await mine(a))?.licenses[0].state).toBe('pending');
+  });
+
+  it('核對期間執業主體改了證字號：資料庫拒絕（40001），新字號不會在沒人核對時轉成已驗證', async () => {
+    const a = await t.practiceAccount('a@example.com');
+    const op = await t.operatorAccount();
+    await submit(a, { permitNo: '舊字號' });
+    const itemId = await openItemId(a);
+    const licenseId = (await t.registry<{ id: string }>('SELECT id FROM registry.practice_licenses'))[0].id;
+    await submit(a, { permitNo: '新字號' });
+    await expect(
+      op.run('desk:x', (tx) =>
+        tx.query(
+          `SELECT registry.record_license_check('01ARZ3NDEKTSV4RRFFQ69G5FAV', $1, $2, 'gcis_manual', 'x', '{}', 'match', ARRAY[]::text[], '', 'pending', 'verified', NULL, NULL, $3, 1, '舊字號')`,
+          [itemId, licenseId, PLATFORM_ORG_ID],
+        ),
+      ),
+    ).rejects.toMatchObject({ code: '40001' });
+    expect((await mine(a))?.licenses[0]).toMatchObject({ state: 'pending', permitNo: '新字號' });
+  });
+
+  it('判定歸屬給認領方之後，認領方看不到原登錄者時期的判定理由', async () => {
+    const a = await t.practiceAccount('a@example.com', { name: '同名公司' });
+    const b = await t.practiceAccount('b@example.com', { name: '同名公司' });
+    const op = await t.operatorAccount();
+    await submit(a);
+    await recordCheckFlow(op.run, await openItemId(a), matchForm({ result: 'mismatch', note: '原登錄者才看得到的理由' }), t.deps);
+    await submit(b, { permitNo: '認領方字號' });
+    const claimId = (await t.registry<{ id: string }>("SELECT id FROM registry.review_items WHERE type = 'entity_claim'"))[0].id;
+    await resolveClaimFlow(op.run, claimId, { decision: 'to_claimant', note: '認領方提供登記證明' }, t.deps);
+
+    expect((await mine(b))?.licenses[0]).toMatchObject({ phase: 'awaiting_review', lastResult: null, lastNote: null });
+    expect(JSON.stringify(await mine(b))).not.toContain('原登錄者才看得到的理由');
+  });
+
+  it('認領判定的稽核位置存在項目裡', async () => {
+    await t.practiceAccount('a@example.com', { name: '同名公司' });
+    await t.practiceAccount('b@example.com', { name: '同名公司' });
+    const op = await t.operatorAccount();
+    const claimId = (await t.registry<{ id: string }>("SELECT id FROM registry.review_items WHERE type = 'entity_claim'"))[0].id;
+    await resolveClaimFlow(op.run, claimId, { decision: 'keep_registrant', note: '維持原登錄者' }, t.deps);
+    const payload = (await t.registry<{ payload: Record<string, unknown> }>('SELECT payload FROM registry.review_items WHERE id = $1', [claimId]))[0].payload;
+    expect(payload).toMatchObject({ audit_chain_id: PLATFORM_ORG_ID, resolution_note: '維持原登錄者' });
+    expect(Number(payload.audit_seq)).toBeGreaterThan(0);
+  });
+
+  it('登記狀態不是核准設立時選「相符」被拒，已驗證的其他業別維持原狀（要轉失效請改選已廢止）', async () => {
+    const a = await t.practiceAccount('a@example.com', { kinds: ['management', 'master_lease'] });
+    const op = await t.operatorAccount();
+    await submit(a, { kind: 'management' });
+    await recordCheckFlow(op.run, await openItemId(a, 'management'), matchForm(), t.deps);
+    await submit(a, { kind: 'master_lease', permitNo: '包租字第 1 號' });
+    const itemId = await openItemId(a, 'master_lease');
+    expect(await recordCheckFlow(op.run, itemId, matchForm({ registrationStatus: '廢止', businessItemCodes: ['H706021'] }), t.deps)).toMatchObject({
+      status: 'registration_not_approved',
+    });
+    expect((await t.registry<{ state: string }>("SELECT state FROM registry.practice_licenses WHERE kind = 'management'"))[0].state).toBe('verified');
+  });
+});

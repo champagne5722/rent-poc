@@ -39,7 +39,7 @@ export async function POST(request: Request, { params }: Ctx): Promise<Response>
         { status: 422 },
       );
     case 'registration_not_approved':
-      return jsonError(422, `登記狀態是「${result.registrationStatus}」，不是核准設立，不能判定相符`);
+      return jsonError(422, `登記狀態是「${result.registrationStatus}」，不是核准設立，不能判定相符。請改選「不符」或「已廢止」，已驗證的其他業別會一併轉為已失效。`);
     case 'not_found':
       return jsonError(404, '審核項目不存在');
     case 'wrong_type':

@@ -15,9 +15,7 @@ import { Unauthenticated, type RequestContext } from '../request-context';
 
 export type OperatorRequestContext = Extract<RequestContext, { kind: 'operator' }>;
 
-export function deskTicket(...parts: string[]): string {
-  return ['desk', ...parts].join(':');
-}
+export { deskTicket } from './ticket';
 
 /** 沒登入回 401，不是營運者身分回 403。handler 的例外原樣丟出（交易回滾）。 */
 export async function inOperatorTx(

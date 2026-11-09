@@ -22,6 +22,7 @@ import {
   type DeletedEvidence,
 } from './evidence';
 import { adminRecipients, sendSupplementRequested } from './notify';
+import { deskTicket } from './ticket';
 import { validateCheckForm, validateSubmission, type CheckField, type SubmissionField } from './rules';
 
 // 把「資料庫交易」和「交易外的事」（寫檔、刪檔、寄信）接起來的流程（MIL-109）。
@@ -104,7 +105,7 @@ export async function recordCheckFlow(run: OperatorRun, itemId: string, raw: Rec
   const form = validateCheckForm(raw);
   if (!form.ok) return { status: 'invalid', field: form.field, message: form.message };
 
-  const ticket = `desk:item:${itemId}`;
+  const ticket = deskTicket('item', itemId);
   let outcome: CheckOutcome;
   try {
     outcome = await run(ticket, (tx) => recordLicenseCheck(tx, itemId, form.value));
@@ -128,7 +129,7 @@ export async function resolveClaimFlow(run: OperatorRun, itemId: string, raw: { 
   if (note.length > 500) return { status: 'invalid', field: 'note', message: '理由不得超過 500 字' };
   const decision: ClaimDecision = raw.decision;
 
-  const ticket = `desk:item:${itemId}`;
+  const ticket = deskTicket('item', itemId);
   let outcome: ClaimOutcome;
   try {
     outcome = await run(ticket, (tx) => resolveEntityClaim(tx, itemId, decision, note));
@@ -153,7 +154,7 @@ export type OpenEvidenceResult =
 
 /** 開啟證據檔。先在交易內寫 vault.read，提交後才讀檔案；沒有紀錄就沒有讀取。 */
 export async function openEvidenceFlow(run: OperatorRun, evidenceId: string, deps: FlowDeps): Promise<OpenEvidenceResult> {
-  const opened = await run(`desk:evidence:${evidenceId}`, (tx) => openEvidence(tx, evidenceId));
+  const opened = await run(deskTicket('evidence', evidenceId), (tx) => openEvidence(tx, evidenceId));
   if (!opened) return { status: 'not_found' };
   const bytes = await deps.store.read(opened.key);
   if (!bytes) return { status: 'file_missing' };

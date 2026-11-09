@@ -249,6 +249,7 @@ export async function recordLicenseCheck(
   const approved = registrationStatus === null ? true : isRegistrationApproved(registrationStatus);
 
   if (form.result === 'match') {
+    // 登記狀態不是核准設立：不能判定相符。營運者改選「不符」或「已廢止」，已驗證的其他業別會一併轉成已失效
     if (!approved) return { status: 'registration_not_approved', registrationStatus: registrationStatus ?? '' };
     const eligibility = checkLicenseEligibility({ kind: license.kind, entityType: entity.entityType, businessItemCodes: codes });
     if (!eligibility.ok) return { status: 'ineligible', reasons: eligibility.reasons };
@@ -272,6 +273,8 @@ export async function recordLicenseCheck(
     to: transition.to,
     evidenceIds,
     entityUpdate: { businessItemCodes: form.businessItemCodes, registrationStatus: form.registrationStatus },
+    // 營運者看到的證字號。資料庫比對它，執業主體在核對期間改了字號就拒絕（40001）
+    permitNo: license.permitNo,
     observed: { business_item_codes: codes, registration_status: registrationStatus, permit_no_checked: license.permitNo !== null },
     note: form.note,
   });
@@ -293,6 +296,7 @@ export async function recordLicenseCheck(
         to: loss.transition.to,
         evidenceIds: [],
         entityUpdate: { businessItemCodes: null, registrationStatus: null },
+        permitNo: null,
         observed: { registration_status: registrationStatus },
         note: REGISTRATION_LOSS_NOTE,
       });
@@ -326,6 +330,8 @@ async function writeCheck(
     to: CredentialState;
     evidenceIds: string[];
     entityUpdate: { businessItemCodes: string[] | null; registrationStatus: string | null };
+    /** 只在結案項目時比對。登記狀態失效造成的轉移沒有項目，傳 null。 */
+    permitNo: string | null;
     observed: Record<string, unknown>;
     note: string;
   },
@@ -336,7 +342,7 @@ async function writeCheck(
     object: { type: 'license', id: input.licenseId },
     payload: { check_id: input.checkId, channel: input.form.channel, result: input.form.result, from: input.from, to: input.to },
   });
-  await tx.query('SELECT registry.record_license_check($1, $2, $3, $4, $5, $6::jsonb, $7, $8::text[], $9, $10, $11, $12::text[], $13, $14, $15)', [
+  await tx.query('SELECT registry.record_license_check($1, $2, $3, $4, $5, $6::jsonb, $7, $8::text[], $9, $10, $11, $12::text[], $13, $14, $15, $16)', [
     input.checkId,
     input.itemId,
     input.licenseId,
@@ -352,6 +358,7 @@ async function writeCheck(
     input.entityUpdate.registrationStatus,
     ref.chainId,
     ref.seq,
+    input.permitNo,
   ]);
 }
 

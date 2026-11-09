@@ -62,7 +62,7 @@ async function post(url: string, body: unknown): Promise<PostResult> {
 function EvidenceList({ evidence }: { evidence: EvidenceMeta[] }) {
   return (
     <Table<EvidenceMeta>
-      size="small"
+      size="middle"
       rowKey="id"
       pagination={false}
       dataSource={evidence}
@@ -98,7 +98,7 @@ function ChecksTable({ checks, kindOf }: { checks: DeskCheck[]; kindOf: (license
         歷次核對
       </Typography.Title>
       <Table<DeskCheck>
-        size="small"
+        size="middle"
         rowKey="id"
         pagination={false}
         dataSource={checks}
