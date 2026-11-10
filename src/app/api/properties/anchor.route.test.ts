@@ -263,6 +263,86 @@ describe('建立物件時登錄產權', () => {
   });
 });
 
+describe('滲透：B 組織撞 A 組織的鍵（MIL-144）', () => {
+  // 關鍵：這個關係是 B 自己能建立的（B 可以對任何鍵宣稱），所以它不得解鎖 A 的任何資料。
+  // 檢查 B 拿得到的一切：撞號的回應、B 的稽核鏈、B 能呼叫的所有 registry 查詢、B 的物件與通知。再確認 A 這邊沒有任何變化。
+  const A_ADDRESS = '台北市大安區秘密路 99 號';
+
+  async function setup() {
+    actAs(kit.orgA);
+    const aId = await create(body({ name: 'A 的秘密物件', address: A_ADDRESS, anchor: { key: KEY } }));
+    const aUnit = (await json(await get(aId))).data.rental_unit_id as string;
+    const aAnchor = await kit.asOwner(async (db) => (await db.query<{ anchor_id: string }>('SELECT anchor_id FROM registry.rental_units WHERE id = $1', [aUnit])).rows[0].anchor_id);
+    const aSnapshot = await viewOf(kit.orgA, aUnit);
+    actAs(kit.orgB);
+    const res = await post(body({ name: 'B 的物件', address: '新北市板橋區文化路 1 號', anchor: { key: KEY } }));
+    expect(res.status).toBe(201);
+    const bText = await res.clone().text();
+    const bId = (await json(res)).data.id as string;
+    const bUnit = (await json(await get(bId))).data.rental_unit_id as string;
+    return { aId, aUnit, aAnchor, aSnapshot, bId, bUnit, bText };
+  }
+
+  /** 一個組織能讀到的一切：物件、通知、稽核鏈與 registry 的每個讀取函式（用它自己的單位 ID）。 */
+  async function viewOf(orgId: string, unitId: string) {
+    return withTx({ kind: 'org', orgId }, async (tx) => {
+      const rows = async (sql: string, params: unknown[] = []) => (await tx.query(sql, params)).rows;
+      return {
+        properties: await rows('SELECT * FROM org.properties ORDER BY id'),
+        notifications: await rows('SELECT * FROM org.notifications ORDER BY id'),
+        audit: await rows('SELECT chain_id, seq, action, object_type, object_id, payload FROM audit.events ORDER BY seq'),
+        anchors: await rows('SELECT * FROM registry.get_anchors_for_units($1::text[])', [[unitId]]),
+        units: await rows('SELECT * FROM registry.get_unit_details($1::text[])', [[unitId]]),
+        siblings: await rows('SELECT * FROM registry.get_sibling_units($1)', [unitId]),
+        collisions: await rows('SELECT * FROM registry.get_collision_reviews($1::text[])', [[unitId]]),
+      };
+    });
+  }
+
+  it('B 拿得到的一切都不含 A 的名稱、ID、物件與地址', async () => {
+    const ctxA = await setup();
+    const aMarkers = [kit.orgA, 'A 組織', 'A 的秘密物件', A_ADDRESS, '秘密路', ctxA.aId, ctxA.aUnit, ctxA.aAnchor];
+    const bView = await viewOf(kit.orgB, ctxA.bUnit);
+    const everything = JSON.stringify({ response: ctxA.bText, view: bView });
+    for (const marker of aMarkers) expect(everything, `B 看到了 ${marker}`).not.toContain(marker);
+    // B 拿 A 的 ID 去問，與問不存在的 ID 完全相同
+    const probe = async (ids: { unit: string; property: string }) =>
+      withTx({ kind: 'org', orgId: kit.orgB }, async (tx) => ({
+        anchors: (await tx.query('SELECT * FROM registry.get_anchors_for_units($1::text[])', [[ids.unit]])).rows,
+        units: (await tx.query('SELECT * FROM registry.get_unit_details($1::text[])', [[ids.unit]])).rows,
+        siblings: (await tx.query('SELECT * FROM registry.get_sibling_units($1)', [ids.unit])).rows,
+        collisions: (await tx.query('SELECT * FROM registry.get_collision_reviews($1::text[])', [[ids.unit]])).rows,
+        property: (await tx.query('SELECT * FROM org.properties WHERE id = $1', [ids.property])).rows,
+      }));
+    expect(await probe({ unit: ctxA.aUnit, property: ctxA.aId })).toEqual(await probe({ unit: newUlid(), property: newUlid() }));
+  });
+
+  it('B 的稽核鏈只有 B 自己的事件，payload 不含 A 的任何資料也不含鍵', async () => {
+    const ctxA = await setup();
+    const events = await withTx({ kind: 'org', orgId: kit.orgB }, async (tx) => (await tx.query('SELECT * FROM audit.events ORDER BY seq')).rows);
+    expect(events.map((e: { action: string }) => e.action)).toEqual(['property.create', 'property.anchor_collision']);
+    const text = JSON.stringify(events);
+    for (const marker of [kit.orgA, ctxA.aId, ctxA.aUnit, ctxA.aAnchor, 'A 的秘密物件', A_ADDRESS, '01234']) expect(text).not.toContain(marker);
+  });
+
+  it('A 這邊沒有任何變化：物件、通知、稽核鏈、registry 讀取結果都與撞號前相同', async () => {
+    const ctxA = await setup();
+    expect(await viewOf(kit.orgA, ctxA.aUnit)).toEqual(ctxA.aSnapshot);
+    const anchor = await kit.asOwner(async (db) =>
+      (await db.query('SELECT id, status, city_code, building_no, updated_at FROM registry.anchors WHERE id = $1', [ctxA.aAnchor])).rows,
+    );
+    expect(anchor).toEqual([expect.objectContaining({ id: ctxA.aAnchor, status: 'keyed', building_no: '01234' })]);
+  });
+
+  it('B 反覆撞同一個鍵的回應逐位元相同（除了每次不同的審核單號與物件 ID），不會因為次數洩漏任何事', async () => {
+    await setup();
+    const strip = (t: string) => t.replace(/[0-9A-HJKMNP-TV-Z]{26}/g, '<id>');
+    const texts: string[] = [];
+    for (let i = 0; i < 3; i += 1) texts.push(strip(await (await post(body({ name: `B${i}`, anchor: { key: KEY } }))).text()));
+    expect(new Set(texts).size).toBe(1);
+  });
+});
+
 describe('POST /api/properties/[id]/anchor-key（補建號）', () => {
   it('待驗證的錨點補建號後轉已建號，回應帶新的產權', async () => {
     const id = await create(body({ anchor: { key: null } }));
