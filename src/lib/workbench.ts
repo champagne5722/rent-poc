@@ -50,13 +50,17 @@ export interface WorkbenchStat {
 
 export function workbenchStats(
   contracts: Contract[],
-  propertyCount: number,
+  propertyCount: number | null,
   progress: SigningProgressById = {}
 ): WorkbenchStat[] {
   const count = (predicate: (contract: Contract) => boolean) => contracts.filter(predicate).length;
 
+  // 沒有物件讀取權限時（propertyCount 為 null）不顯示物件數字，避免把「看不到」顯示成 0
+  const propertyStat: WorkbenchStat[] =
+    propertyCount === null ? [] : [{ key: 'properties', title: '物件', value: propertyCount, href: '/properties' }];
+
   return [
-    { key: 'properties', title: '物件', value: propertyCount, href: '/properties' },
+    ...propertyStat,
     {
       key: 'signing',
       title: '簽署中',

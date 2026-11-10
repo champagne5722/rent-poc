@@ -263,6 +263,10 @@ describe('workbenchStats（核心數據 4 卡）', () => {
     expect(properties.href).toBe('/properties');
   });
 
+  it('沒有物件讀取權限時（筆數為 null），不顯示物件卡', () => {
+    expect(workbenchStats(items, null).map((s) => s.key)).toEqual(['signing', 'todo', 'completed']);
+  });
+
   it('簽署中＝待乙方簽＋待甲方簽', () => {
     expect(workbenchStats(items, 0)[1].value).toBe(2);
   });
