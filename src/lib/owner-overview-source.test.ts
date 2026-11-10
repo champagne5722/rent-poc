@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveAttention, deriveOverview } from './owner-overview';
+import { deriveAttention, deriveOverview, overviewKindOf } from './owner-overview';
 import { createFakeOverviewSource, formatAsOf, todayInTaipei } from './owner-overview-source';
 import { SEED_OWNERS } from './owner-session';
 
@@ -25,7 +25,7 @@ describe('假資料 adapter', () => {
     const facts = await source.load(SEED_OWNERS[0]);
     const { rows, summary } = deriveOverview(facts, '2026-11-08');
 
-    expect(new Set(rows.map((r) => r.businessType))).toEqual(new Set(['self_managed', 'managed', 'master_lease']));
+    expect(new Set(rows.map((r) => overviewKindOf(r)))).toEqual(new Set(['lease_self_managed', 'lease_managed', 'master_lease']));
     expect(new Set(rows.flatMap((r) => (r.manager?.legalTitle === '租賃住宅代管業者' ? [r.manager.id] : []))).size).toBe(2);
     expect(rows.map((r) => r.leaseState)).toEqual(expect.arrayContaining(['vacant', 'signing', 'settling', 'active']));
     expect(summary.revokedManagers).toHaveLength(1);

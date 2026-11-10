@@ -12,7 +12,8 @@ import { registerPaymentAccount } from './repository';
 // MIL-118、MIL-123：「列出受影響案件」。案件落地後依案件列出：有押金台帳、業務類型與社宅旗標符合、
 // 押金曾進入該持有人種類的帳戶。分錄用原始 SQL 寫入：鏡像帳的寫入入口只准 ledger 目錄呼叫（post.guard.test.ts）。
 // 規則表用 migration 寫入的 5 列：DHR-01 是代管、社宅、代管業者持有；DHR-02 是代管、非社宅、代管業者持有；
-// DHR-04 是包租、非社宅、出租人持有；DHR-05 條件全不限。
+// DHR-04 是轉租、非社宅、出租人持有；DHR-05 條件全不限。規則看案件種類（MIL-198）：
+// 包租案件在資料上是自管租賃，沿用自管的規則，不屬於 DHR-04。
 
 describe('listAffectedCases（依案件）', () => {
   let testDb: TestDb;
@@ -41,13 +42,19 @@ describe('listAffectedCases（依案件）', () => {
   const inA = <T>(fn: (tx: OrgTx) => Promise<T>) => inOrg(orgA, fn);
 
   /** 建一個案件。hasLedger 為 false 表示合約還沒全員完成，沒有押金台帳。 */
-  async function newCase(over: { businessType?: string; socialHousing?: boolean; hasLedger?: boolean; orgId?: string } = {}): Promise<string> {
+  async function newCase(
+    over: { businessType?: string; caseKind?: string; socialHousing?: boolean; hasLedger?: boolean; orgId?: string } = {},
+  ): Promise<string> {
     const id = newUlid();
     const orgId = over.orgId ?? orgA;
     await inOrg(orgId, async (tx) => {
+      // 沒傳 caseKind 時，trigger 由舊欄位補值（轉租、租賃）。包租案件必須明寫
+      const columns = over.caseKind ? ', case_kind' : '';
+      const values = over.caseKind ? ', $5' : '';
       await tx.query(
-        `INSERT INTO org.cases (id, org_id, kind, state, business_type, title, social_housing) VALUES ($1, $2, 'lease', 'active', $3, '測試', $4)`,
-        [id, orgId, over.businessType ?? 'managed', over.socialHousing ?? false],
+        `INSERT INTO org.cases (id, org_id, kind, state, business_type, title, social_housing${columns})
+         VALUES ($1, $2, 'lease', 'active', $3, '測試', $4${values})`,
+        [id, orgId, over.businessType ?? 'managed', over.socialHousing ?? false, ...(over.caseKind ? [over.caseKind] : [])],
       );
       if (over.hasLedger !== false) {
         await tx.query(`INSERT INTO org.deposit_ledgers (id, org_id, case_id, expected_amount) VALUES ($1, $2, $3, 60000)`, [newUlid(), orgId, id]);
@@ -110,12 +117,32 @@ describe('listAffectedCases（依案件）', () => {
     expect(idsOf(await inA((tx) => listAffectedCases(tx, 'DHR-02', 1)))).toEqual([hit]);
   });
 
-  it('DHR-04：非社宅的包租案件，押金收在出租人的帳戶', async () => {
+  it('DHR-04：非社宅的轉租案件，押金收在出租人的帳戶', async () => {
     const lessor = await account('lessor');
     const hit = await newCase({ businessType: 'master_lease' });
     await depositMove(hit, lessor, 60000);
     await newCase({ businessType: 'managed' });
     expect(idsOf(await inA((tx) => listAffectedCases(tx, 'DHR-04', 1)))).toEqual([hit]);
+  });
+
+  it('DHR-04 不含包租案件：包租案件在資料上是自管租賃，沿用自管的規則（待法務確認）', async () => {
+    const lessor = await account('lessor');
+    const sublease = await newCase({ businessType: 'master_lease' });
+    const masterLease = await newCase({ businessType: 'self_managed', caseKind: 'master_lease' });
+    await depositMove(sublease, lessor, 60000);
+    await depositMove(masterLease, lessor, 60000);
+    expect(idsOf(await inA((tx) => listAffectedCases(tx, 'DHR-04', 1)))).toEqual([sublease]);
+    // 包租案件只屬於條件全不限的 DHR-05
+    expect(idsOf(await inA((tx) => listAffectedCases(tx, 'DHR-05', 1)))).toContain(masterLease);
+  });
+
+  it('DHR-01 到 DHR-03 只看租賃代管案件：轉租與包租案件即使由代管業者持有也不列出', async () => {
+    const manager = await account('manager');
+    const managed = await newCase({ socialHousing: false });
+    const sublease = await newCase({ businessType: 'master_lease' });
+    const masterLease = await newCase({ businessType: 'self_managed', caseKind: 'master_lease' });
+    for (const id of [managed, sublease, masterLease]) await depositMove(id, manager, 60000);
+    expect(idsOf(await inA((tx) => listAffectedCases(tx, 'DHR-02', 1)))).toEqual([managed]);
   });
 
   it('萬用列 DHR-05 條件不限：所有有押金台帳的案件都列出，新的在前', async () => {

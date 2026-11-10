@@ -52,6 +52,7 @@ describe('control.deposit_holder_rules', () => {
   it('萬用列 DHR-05 在：沒有具體規則命中的組合放行', async () => {
     const rules = await inOrg((tx) => loadHolderRules(tx));
     const result = evaluateHolderRule(rules, {
+      caseKind: 'lease',
       businessType: 'self_managed',
       socialHousing: false,
       holderKind: 'other',
@@ -63,6 +64,7 @@ describe('control.deposit_holder_rules', () => {
   it('資料庫讀出的規則判定社宅代管業者持有為阻擋', async () => {
     const rules = await inOrg((tx) => loadHolderRules(tx));
     const result = evaluateHolderRule(rules, {
+      caseKind: 'lease',
       businessType: 'managed',
       socialHousing: true,
       holderKind: 'manager',

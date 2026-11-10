@@ -1,6 +1,6 @@
 import { evaluateHolderRule, type HolderKind, type HolderRuleAction } from '../deposit-rules';
 import { loadHolderRules } from '../payment-accounts';
-import type { BusinessType } from '../cases';
+import type { BusinessType, StatutoryCaseKind } from '../cases';
 import type { OrgTx } from '../pg/with-tx';
 import { getDepositBalance, toMoney } from './reads';
 
@@ -27,6 +27,7 @@ export interface HolderConflict {
 }
 
 interface CaseFacts {
+  case_kind: StatutoryCaseKind;
   business_type: BusinessType | null;
   social_housing: boolean;
 }
@@ -44,7 +45,7 @@ interface AccountRow {
  * 一般代管案件由代管業者持有時得 warn_fix_mandate，社宅代管案件不受影響（block 與此條件無關）。
  */
 export async function listHolderConflicts(tx: OrgTx, caseId: string): Promise<HolderConflict[]> {
-  const facts = await tx.query<CaseFacts>(`SELECT business_type, social_housing FROM org.cases WHERE id = $1 AND kind = 'lease'`, [caseId]);
+  const facts = await tx.query<CaseFacts>(`SELECT case_kind, business_type, social_housing FROM org.cases WHERE id = $1 AND kind = 'lease'`, [caseId]);
   const caseFacts = facts.rows[0];
   if (!caseFacts || caseFacts.business_type === null) return [];
   if ((await getDepositBalance(tx, caseId)) <= 0) return [];
@@ -70,6 +71,7 @@ export async function listHolderConflicts(tx: OrgTx, caseId: string): Promise<Ho
   const conflicts: HolderConflict[] = [];
   for (const row of rows) {
     const evaluation = evaluateHolderRule(rules, {
+      caseKind: caseFacts.case_kind,
       businessType: caseFacts.business_type,
       socialHousing: caseFacts.social_housing,
       holderKind: row.holder_kind,

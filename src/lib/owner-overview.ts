@@ -2,10 +2,22 @@
 // 這裡只放純資料與純函式：事實由 OwnerOverviewSource 讀進來，畫面只呈現推導結果。
 // 全部欄位是 v1 假設，待訪談驗證（MIL-47）。
 
+import { caseRuleVariantOf, type CaseRuleVariant, type StatutoryCaseKind } from './cases';
+
 // ─── 事實：OwnerOverviewSource 交給推導的輸入 ────────────────────────
 
-/** 業務類型。包租列是屋主與包租業者之間的租約（MIL-94：包租列取自屋主自管案件）。 */
-export type BusinessType = 'self_managed' | 'managed' | 'master_lease';
+/**
+ * 業務類型：自管或代管。
+ * 包租案件是屋主與包租業者之間的租約（MIL-94：包租列取自屋主自管案件），資料上是自管租賃。
+ * 它由案件種類區分，不是業務類型的一個值（MIL-198）。
+ */
+export type BusinessType = 'self_managed' | 'managed';
+
+/** 屋主為出租人的案件種類：租賃案件或包租案件（ADR-0030）。 */
+export type OverviewCaseKind = Extract<StatutoryCaseKind, 'lease' | 'master_lease'>;
+
+/** 總覽的列分類與篩選值：租賃案件分自管與代管，加上包租案件。 */
+export type OverviewKind = Extract<CaseRuleVariant, 'lease_self_managed' | 'lease_managed' | 'master_lease'>;
 
 /** 租賃案件狀態（ADR-0016）。 */
 export type LeaseCaseState = 'draft' | 'signing' | 'active' | 'move_out' | 'settling' | 'closed' | 'aborted';
@@ -48,6 +60,7 @@ export type LeaseCaseFact = {
   caseId: string;
   orgId: string;
   unitId: string;
+  caseKind: OverviewCaseKind;
   businessType: BusinessType;
   state: LeaseCaseState;
   /** 代管業者或包租業者的執業主體；自管是 null。 */
@@ -105,6 +118,7 @@ export type OverviewRow = {
   unitId: string;
   address: string;
   unitLabel: string;
+  caseKind: OverviewCaseKind;
   businessType: BusinessType;
   manager: PracticeEntityFact | null;
   leaseState: LeaseState;
@@ -157,7 +171,12 @@ const REPRESENTATIVE_ORDER: readonly LeaseCaseState[] = ['active', 'move_out', '
 
 const LEASED_STATES: ReadonlySet<LeaseState> = new Set(['active', 'move_out']);
 
-const BUSINESS_TYPE_ORDER: readonly BusinessType[] = ['self_managed', 'managed', 'master_lease'];
+const KIND_ORDER: readonly OverviewKind[] = ['lease_self_managed', 'lease_managed', 'master_lease'];
+
+/** 列的分類：租賃案件依業務類型分自管與代管，包租案件另算一類。 */
+export function overviewKindOf(row: Pick<OverviewRow, 'caseKind' | 'businessType'>): OverviewKind {
+  return caseRuleVariantOf(row) as OverviewKind;
+}
 
 /** 兩個 YYYY-MM-DD 之間相差的天數（to - from）。 */
 export function daysBetween(from: string, to: string): number {
@@ -221,6 +240,7 @@ export function deriveOverview(facts: OverviewFacts, today: string): Overview {
       unitId,
       address: unit.address,
       unitLabel: unit.unitLabel,
+      caseKind: rep?.caseKind ?? 'lease',
       businessType: rep?.businessType ?? (mandate ? 'managed' : 'self_managed'),
       manager: managerId ? (managers.get(managerId) ?? null) : null,
       leaseState: rep ? (rep.state as LeaseState) : 'vacant',
@@ -244,7 +264,7 @@ export function deriveOverview(facts: OverviewFacts, today: string): Overview {
 
   rows.sort(
     (a, b) =>
-      BUSINESS_TYPE_ORDER.indexOf(a.businessType) - BUSINESS_TYPE_ORDER.indexOf(b.businessType) ||
+      KIND_ORDER.indexOf(overviewKindOf(a)) - KIND_ORDER.indexOf(overviewKindOf(b)) ||
       a.unitId.localeCompare(b.unitId),
   );
 
@@ -384,14 +404,14 @@ export function deriveAttention(rows: readonly OverviewRow[], today: string): At
 
 /** 全部租賃單位上方的篩選（P0-20 規則 3）。條件同時成立才列出；不影響需要注意清單。 */
 export type OverviewFilter = {
-  businessType: BusinessType | 'all';
+  kind: OverviewKind | 'all';
   overdue: boolean;
   expiringSoon: boolean;
   authorityUnverified: boolean;
 };
 
 export const EMPTY_FILTER: OverviewFilter = {
-  businessType: 'all',
+  kind: 'all',
   overdue: false,
   expiringSoon: false,
   authorityUnverified: false,
@@ -400,7 +420,7 @@ export const EMPTY_FILTER: OverviewFilter = {
 export function filterRows(rows: readonly OverviewRow[], filter: OverviewFilter): OverviewRow[] {
   return rows.filter(
     (r) =>
-      (filter.businessType === 'all' || r.businessType === filter.businessType) &&
+      (filter.kind === 'all' || overviewKindOf(r) === filter.kind) &&
       (!filter.overdue || r.overdue > 0) &&
       (!filter.expiringSoon || r.expiringSoon) &&
       (!filter.authorityUnverified || r.authority !== 'verified'),

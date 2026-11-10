@@ -1,4 +1,5 @@
 import { appendAudit } from '../audit';
+import { caseRuleVariantOf, isManagerOperated, type BusinessType, type StatutoryCaseKind } from '../cases';
 import type { NotifyReceipt } from '../notifications';
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
@@ -30,7 +31,8 @@ export type ChangeSocialHousingResult =
   | { ok: false; error: 'case_not_found' | 'not_applicable' | 'unchanged' | 'reason_required' | 'reason_too_long' };
 
 interface CaseRow {
-  business_type: 'self_managed' | 'managed' | 'master_lease';
+  case_kind: StatutoryCaseKind;
+  business_type: BusinessType | null;
   social_housing: boolean;
   title: string;
   linked_mandate_case_id: string | null;
@@ -48,13 +50,15 @@ export async function changeSocialHousing(
 
   // 鎖住案件列：兩個人同時改，後到的看到新值而回 unchanged
   const found = await tx.query<CaseRow>(
-    `SELECT business_type, social_housing, title, linked_mandate_case_id FROM org.cases WHERE id = $1 AND kind = 'lease' FOR UPDATE`,
+    `SELECT case_kind, business_type, social_housing, title, linked_mandate_case_id FROM org.cases WHERE id = $1 AND kind = 'lease' FOR UPDATE`,
     [input.caseId],
   );
   const row = found.rows[0];
   if (!row) return { ok: false, error: 'case_not_found' };
-  // 自管案件沒有代管業者，社宅代管的規則不適用（DHR-01 只管代管）
-  if (row.business_type === 'self_managed') return { ok: false, error: 'not_applicable' };
+  // 自管與包租案件沒有代管業者，社宅代管的規則不適用（DHR-01 只管租賃代管）。轉租案件適用，與原本的規則相同
+  if (!isManagerOperated(caseRuleVariantOf({ caseKind: row.case_kind, businessType: row.business_type }))) {
+    return { ok: false, error: 'not_applicable' };
+  }
   if (row.social_housing === input.value) return { ok: false, error: 'unchanged' };
 
   const changeId = newUlid();
