@@ -246,7 +246,8 @@ function ContractListInner({ contracts, progress, displayCodes }: ContractListPr
             render: (_, r) => <SigningProgress contract={r} progress={progress[String(r.id)] ?? null} />,
           },
           { title: '最後動作', width: 120, render: (_, r) => dayjs(lastActionAt(r)).format('MM-DD HH:mm') },
-          { title: '操作', width: 250, render: (_, r) => rowActions(r) },
+          // 操作欄固定在最右，表格橫向捲動時仍看得到（規格 39）
+          { title: '操作', width: 250, fixed: 'right', render: (_, r) => rowActions(r) },
         ],
       }}
     />

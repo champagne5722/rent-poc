@@ -124,6 +124,10 @@ export default function Loading() {
 }
 ```
 
+| prop | 型別 | 說明 |
+|---|---|---|
+| `withAction` | `boolean` | 頁首右側有沒有主要動作。預設 `true`。沒有動作的頁面傳 `false` |
+
 規則：
 
 - 載入中必須顯示骨架畫面，不整頁轉圈。

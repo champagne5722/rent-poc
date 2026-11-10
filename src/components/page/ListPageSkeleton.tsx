@@ -8,12 +8,17 @@ import { Flex, Skeleton } from 'antd';
 
 const TABLE_ROWS = 8;
 
-export default function ListPageSkeleton() {
+export interface ListPageSkeletonProps {
+  /** 頁首右側有沒有主要動作。沒有時不畫動作的骨架，避免載入完成後版面位移。預設有。 */
+  withAction?: boolean;
+}
+
+export default function ListPageSkeleton({ withAction = true }: ListPageSkeletonProps) {
   return (
     <Flex vertical gap="large" aria-busy="true" aria-label="載入中">
       <Flex justify="space-between" align="center" gap="middle">
         <Skeleton.Input active />
-        <Skeleton.Button active />
+        {withAction && <Skeleton.Button active />}
       </Flex>
       <Skeleton.Input active block />
       <Skeleton active title={false} paragraph={{ rows: TABLE_ROWS }} />

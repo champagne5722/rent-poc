@@ -1,4 +1,4 @@
-import { authorize, bindAccessContext, Forbidden } from './authorize';
+import { authorize, bindAccessContext, checkAccess, Forbidden } from './authorize';
 import { listContracts } from './contracts';
 import { listProperties } from './properties';
 import { requestContext } from './current-request-context';
@@ -58,11 +58,8 @@ export async function loadContractList(): Promise<ContractListLoad> {
       const contracts = await listContracts(tx);
       // 顯示編碼是輔助資訊：沒有物件讀取權限時，列表照常顯示，編碼欄留空
       const displayCodes: Record<string, string | null> = {};
-      try {
-        await authorize(tx, 'property.read', { type: 'org' });
+      if ((await checkAccess(tx, 'property.read', { type: 'org' })).allowed) {
         for (const p of await listProperties(tx)) displayCodes[p.id] = p.unit?.display_code ?? null;
-      } catch (error) {
-        if (!(error instanceof Forbidden)) throw error;
       }
       return { contracts, displayCodes };
     });
