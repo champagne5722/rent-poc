@@ -58,7 +58,7 @@ const PEOPLE: Record<SignerRole, { name: string; email: string }> = {
 
 /** 代管案件的簽署序列，由規則表產生：點交證明與退還證明三位，結算單兩位。 */
 function signersFor(type: NewType): Signer[] {
-  const route = routeSignatures({ documentType: type, businessType: 'managed' });
+  const route = routeSignatures({ documentType: type, caseKind: 'lease', businessType: 'managed' });
   if (route.kind !== 'sequence') throw new Error(`規則表沒有給出 ${type} 的序列`);
   const assignees = Object.fromEntries(route.plan.seats.map((seat) => [seat.ruleId, PEOPLE[seat.role]]));
   const built = buildSignerSequence(route.plan, assignees, []);

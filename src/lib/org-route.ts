@@ -52,7 +52,7 @@ export async function inOrgTxAs(
 }
 
 /**
- * 在組織交易內只做讀取，把結果帶出交易再處理。要做交易外的事（例如過渡期寫 SQLite）時用這個，
+ * 在組織交易內只做讀取，把結果帶出交易再處理。要做交易外的事（例如寫檔案或呼叫外部服務）時用這個，
  * 不要把它們塞進 inOrgTx 的 callback：交易內不得有 fs 與外部 I/O（ADR-0012 決議 10）。
  */
 export async function readInOrgTx<R>(

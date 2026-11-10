@@ -49,7 +49,7 @@ web
 - 元件一律用 antd。視覺客製走 DESIGN.md 的 token，不自訂元件（ADR-0009）。允許只組合 antd 元件、不改外觀的組合元件（ADR-0090）。
 - 視覺目標是 Linear 的設計語言，至少達到 Linear 介面的等級（ADR-0090）。目前只做桌機與亮色介面，不做鍵盤操作、手機版與深色模式。
 - 所有 UI 文案與錯誤訊息用繁體中文與台灣用語。領域詞以 GLOSSARY.md 為準。
-- 技術棧：Next.js（App Router）、React、Ant Design、SQLite。
+- 技術棧：Next.js（App Router）、React、Ant Design、PostgreSQL（ADR-0012）。
 
 ## Evidence on Hand
 

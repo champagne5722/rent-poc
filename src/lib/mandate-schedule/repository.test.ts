@@ -7,7 +7,7 @@ import type { ContractFields } from '../types';
 import { copyMandateItems, getMandateItems, replaceMandateItems } from './repository';
 import type { MandateItem } from './index';
 
-// PGlite（app_rw），組織 A 與 B 各一份。介面第一個參數是 tx，合約 ID 是 ULID（第二次同步 main 時由 SQLite 改寫）。
+// PGlite（app_rw），組織 A 與 B 各一份。介面第一個參數是 tx，合約 ID 是 ULID。
 
 let kit: RouteDb;
 let contractId: string;

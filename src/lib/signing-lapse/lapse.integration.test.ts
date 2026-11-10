@@ -31,7 +31,7 @@ vi.mock('@/lib/current-request-context', async () => ({
 // 整合測試：走簽署模組介面，配 Mock adapter（MIL-75，ADR-0018 決議 11 情況 B）。
 // 三位簽署人：乙方、執業人員、甲方。事件時間晚於證書效期，就是執業人員簽署當下已不可簽章。
 // 所有時間都由參數傳入，不依賴系統時鐘。
-// 資料庫是 PGlite（第二次同步 main 時由 SQLite 改寫，斷言內容不變）。
+// 資料庫是 PGlite。
 
 const SEND_AT = '2026-11-09T12:00:00+08:00';
 const SEED_TODAY = '2026-11-09';
@@ -68,8 +68,7 @@ afterEach(() => {
 const inA = <T,>(fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId: kit.orgA }, fn);
 const statusOf = async (id: string) => (await inA((tx) => getContract(tx, id)))?.status;
 
-// withTx 不得巢狀：呼叫當下如果還開著交易，再開一個會丟錯。能開成功，就代表呼叫當下沒有任何交易
-// （這是 SQLite 版 db.inTransaction 的對應斷言）
+// withTx 不得巢狀：呼叫當下如果還開著交易，再開一個會丟錯。能開成功，就代表呼叫當下沒有任何交易。
 const insideTransaction = () =>
   inA(async () => false).catch((e: unknown) => {
     if (e instanceof Error && e.message.includes('不得巢狀')) return true;

@@ -12,12 +12,13 @@ function planOf(facts: RoutingFacts): SignaturePlan {
   return route.plan;
 }
 
-const lease = (businessType: 'self_managed' | 'managed' | 'master_lease', extra: { lesseeIsMasterLessor?: boolean; brokerMediated?: boolean } = {}): RoutingFacts => ({
-  documentType: 'lease',
-  businessType,
-  lesseeIsMasterLessor: extra.lesseeIsMasterLessor ?? false,
-  brokerMediated: extra.brokerMediated ?? false,
-});
+/** 舊的分流條件換成案件種類（ADR-0030 決議 2）。 */
+const lease = (businessType: 'self_managed' | 'managed' | 'master_lease', extra: { lesseeIsMasterLessor?: boolean; brokerMediated?: boolean } = {}): RoutingFacts => {
+  const brokerMediated = extra.brokerMediated ?? false;
+  if (businessType === 'master_lease') return { documentType: 'lease', caseKind: 'sublease', brokerMediated };
+  if (extra.lesseeIsMasterLessor) return { documentType: 'lease', caseKind: 'master_lease', brokerMediated };
+  return { documentType: 'lease', caseKind: 'lease', businessType, brokerMediated };
+};
 
 const field = (id: string, signer: SignatureField['signer'], slot?: string): SignatureField => ({
   id,
@@ -81,7 +82,7 @@ const CASES: MergeCase[] = [
   },
   {
     title: '委託管理合約：乙方（受託人）的當事人簽署人兼任專任管理人員',
-    facts: { documentType: 'management', businessType: 'managed' },
+    facts: { documentType: 'management', caseKind: 'management' },
     assignees: {
       'management.managed.party_a': person('甲'),
       'management.managed.practitioner': person('陳', CHEN),

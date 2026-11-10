@@ -6,7 +6,7 @@ import { ulidOf } from './test-ids';
 
 // 同一人兼任時，送簽的簽署序列合併成一位簽署人（MIL-76）。
 
-const MASTER_LEASE: RoutingFacts = { documentType: 'lease', businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: false };
+const MASTER_LEASE: RoutingFacts = { documentType: 'lease', caseKind: 'sublease', brokerMediated: false };
 const BROKERED: RoutingFacts = { ...MASTER_LEASE, brokerMediated: true } as RoutingFacts;
 
 const field = (id: string, signer: SignatureField['signer'], slot: string, page = 0): SignatureField => ({

@@ -18,7 +18,7 @@ vi.mock('@/lib/current-request-context', async () => ({
 
 // MIL-83：合約 route 的 response body。合約在 PostgreSQL（PGlite，app_rw，RLS 生效）。
 // 涵蓋 MIL-37 第 4.5 節丙類的合約位置：漏 await 時 Response.json 會把 Promise 變成 {}，
-// 所以每個位置都驗本文，不只看狀態碼。簽署任務還在 SQLite（MIL-85 搬走），用 in-memory。
+// 所以每個位置都驗本文，不只看狀態碼。簽署任務也在 PostgreSQL。
 
 let kit: RouteDb;
 beforeAll(async () => {
