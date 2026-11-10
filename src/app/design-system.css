@@ -1,0 +1,64 @@
+/*
+ * 全域 CSS：只放 antd token 做不到的視覺（ADR-0090）。
+ * 數值全部引用 :root 的 CSS 變數。變數由 src/lib/design-theme.ts 從 DESIGN.md 產生，
+ * 由 layout.tsx 輸出成 <style>。這份檔案不得寫死色碼、px 或數字，也不得選取 antd 的內部 class。
+ * DESIGN.md 解析失敗時沒有變數，這些宣告無效，畫面退回瀏覽器與 antd 預設。
+ */
+
+/* 背景色（畫布色）在 globals.css */
+html,
+body {
+  color: var(--color-ink);
+  font-family: var(--font-family);
+  font-size: var(--type-body-size);
+  font-weight: var(--type-body-weight);
+  line-height: var(--type-body-line-height);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* 金額、日期與編號的數字等寬，表格欄位上下對齊 */
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  text-wrap: balance;
+}
+
+/* 細捲軸，顏色取分隔線色 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-hairline-strong) transparent;
+}
+
+/* 四級字階。頁面程式碼用這些 class，不手寫 font-size（inline style 禁止，ADR-0090）。 */
+.type-page-title {
+  font-size: var(--type-page-title-size);
+  font-weight: var(--type-page-title-weight);
+  line-height: var(--type-page-title-line-height);
+  color: var(--color-ink);
+}
+
+.type-section-title {
+  font-size: var(--type-section-title-size);
+  font-weight: var(--type-section-title-weight);
+  line-height: var(--type-section-title-line-height);
+  color: var(--color-ink);
+}
+
+.type-body {
+  font-size: var(--type-body-size);
+  font-weight: var(--type-body-weight);
+  line-height: var(--type-body-line-height);
+  color: var(--color-ink);
+}
+
+.type-caption {
+  font-size: var(--type-caption-size);
+  font-weight: var(--type-caption-weight);
+  line-height: var(--type-caption-line-height);
+  color: var(--color-ink-muted);
+}

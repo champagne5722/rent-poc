@@ -7,9 +7,11 @@ import AppShell from '@/components/AppShell';
 import { PATH_HEADER } from '@/lib/auth/config';
 import { isSessionExemptPath } from '@/lib/auth/session-gate';
 import { requestContext } from '@/lib/current-request-context';
+import { designCssText } from '@/lib/design-theme';
 import { loadDesignTheme } from '@/lib/design-theme-loader';
 import { Unauthenticated } from '@/lib/request-context';
 import './globals.css';
+import './design-system.css';
 
 export const metadata: Metadata = {
   title: '租房雲端管理平台',
@@ -40,11 +42,16 @@ async function requireLogin(): Promise<void> {
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   await requireLogin();
+  const design = loadDesignTheme();
   return (
     <html lang="zh-Hant-TW">
+      <head>
+        {/* DESIGN.md 的 CSS 變數（--color-*、--type-* 等），給 globals.css 與 design-system.css 引用 */}
+        <style dangerouslySetInnerHTML={{ __html: designCssText(design) }} />
+      </head>
       <body>
         <AntdRegistry>
-          <AppConfigProvider design={loadDesignTheme()}>
+          <AppConfigProvider design={design}>
             <AppShell>{children}</AppShell>
           </AppConfigProvider>
         </AntdRegistry>
