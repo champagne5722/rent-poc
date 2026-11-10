@@ -21,10 +21,13 @@ export async function requireOwnershipOperator(): Promise<OwnershipOperator> {
     throw error;
   }
   if (rc.kind !== 'operator') return { ok: false, response: jsonError(403, '只有平台營運者能使用審核台') };
-  const operator = rc;
-  const runs: OperatorRuns = {
+  return { ok: true, rc, runs: operatorRuns(rc) };
+}
+
+/** 營運者身分的兩種交易。route 與 server component 共用。 */
+export function operatorRuns(operator: Extract<RequestContext, { kind: 'operator' }>): OperatorRuns {
+  return {
     platform: (ticketId, fn) => withTx({ kind: 'operator', operatorId: operator.userId, orgId: PLATFORM_ORG_ID, ticketId }, (tx) => fn(tx as OrgTx)),
     inOrg: (orgId, ticketId, fn) => withTx({ kind: 'operator', operatorId: operator.userId, orgId, ticketId }, (tx) => fn(tx as OrgTx)),
   };
-  return { ok: true, rc: operator, runs };
 }

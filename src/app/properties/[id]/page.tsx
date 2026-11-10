@@ -13,7 +13,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnchorKeyFields } from '@/components/AnchorFields';
 import { DisplayCode } from '@/components/DisplayCode';
+import OwnershipPanel from '@/components/OwnershipPanel';
 import StatusTag from '@/components/StatusTag';
+import { REKEY_REVIEW_MESSAGE } from '@/lib/ownership/messages';
 import { shortUlid } from '@/lib/pg/ulid';
 import { unitFullText } from '@/lib/properties/unit-display';
 import { anchorKeyText, anchorLocationText, registeredMessage } from '@/lib/properties/anchor-display';
@@ -57,6 +59,12 @@ function AnchorPanel({ property, onKeyed }: { property: Property; onKeyed: () =>
         // 這個鍵已由自己的組織登錄（MIL-144）：這個物件維持原樣，帶使用者到既有的物件
         message.info('這個物件你已經登錄過，已帶你到既有的物件');
         router.push(`/properties/${json.data.id}`);
+        return;
+      }
+      if (json.data?.change_requested) {
+        // 物件已通過核對：鍵維持原樣，修正改送審核台（MIL-201）
+        message.info(json.data.message ?? REKEY_REVIEW_MESSAGE);
+        onKeyed();
         return;
       }
       message.success(registeredMessage((json.data?.verification_status ?? 'pending_verification') as PropertyVerificationStatus));
@@ -114,7 +122,9 @@ function AnchorPanel({ property, onKeyed }: { property: Property; onKeyed: () =>
           <Button icon={<EditOutlined />} onClick={() => setOpen(true)}>
             {editLabel}
           </Button>
-          <Typography.Text type="secondary">物件通過平台核對文件前，建號填錯時可以自己修正。</Typography.Text>
+          <Typography.Text type="secondary">
+            建號填錯時可以修正。文件正在核對時不能修正，物件已核對後修正建號需要平台審核。
+          </Typography.Text>
         </Flex>
       )}
 
@@ -368,7 +378,16 @@ function PropertyDetail({ id }: { id: string }) {
       <Tabs
         items={[
           { key: 'basic', label: '基本資料', children: <BasicPanel property={property} /> },
-          { key: 'anchor', label: '建號與核對', children: <AnchorPanel property={property} onKeyed={reload} /> },
+          {
+            key: 'anchor',
+            label: '建號與核對',
+            children: (
+              <Flex vertical gap="large">
+                <AnchorPanel property={property} onKeyed={reload} />
+                <OwnershipPanel propertyId={property.id} archived={Boolean(property.archived_at)} reloadToken={reloadToken} onChanged={reload} />
+              </Flex>
+            ),
+          },
           { key: 'units', label: '單位', children: <UnitsPanel property={property} reloadToken={reloadToken} /> },
         ]}
       />
