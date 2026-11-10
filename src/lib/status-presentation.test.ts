@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { HANDOVER_STATES } from './handover/transitions';
 import { STATUTORY_CASE_KINDS } from './cases/case-kind';
 import { LEASE_CASE_STATES, MANAGEMENT_CASE_STATES } from './cases/transitions';
+import { DOCUMENT_CHECK_RESULTS, OWNERSHIP_ITEM_STATUSES } from './ownership/review-status';
 import { QUEUE_STATUSES } from './practice-entities/queue-status';
 import {
   STATUS_TONES,
@@ -23,6 +24,8 @@ const SOURCES: { [K in StatusKind]: readonly StatusValueOf<K>[] } = {
   reviewItem: QUEUE_STATUSES,
   receivablePeriod: ['unpaid', 'partial', 'paid', 'overdue', 'cancelled'],
   propertyVerification: PROPERTY_VERIFICATION_STATUSES,
+  ownershipItem: OWNERSHIP_ITEM_STATUSES,
+  documentCheck: DOCUMENT_CHECK_RESULTS,
 };
 
 describe('狀態呈現表：每個狀態值都有名稱與色調', () => {
@@ -73,6 +76,15 @@ describe('狀態呈現表：名稱與色調對照（預期值取自 GLOSSARY 與
     ['propertyVerification', 'pending_verification', '待平台核對文件', 'progress'],
     ['propertyVerification', 'verified', '已核對', 'success'],
     ['propertyVerification', 'failed', '文件不符', 'error'],
+    ['ownershipItem', 'pending', '待核對', 'progress'],
+    ['ownershipItem', 'overdue', '超過 1 個工作日', 'warning'],
+    ['ownershipItem', 'held', '待處理', 'warning'],
+    ['ownershipItem', 'verified', '已通過', 'success'],
+    ['ownershipItem', 'failed', '不符', 'error'],
+    ['ownershipItem', 'superseded', '已被取代', 'neutral'],
+    ['documentCheck', 'pending', '待判定', 'neutral'],
+    ['documentCheck', 'match', '相符', 'success'],
+    ['documentCheck', 'mismatch', '不符', 'error'],
     ['receivablePeriod', 'unpaid', '未入帳', 'neutral'],
     ['receivablePeriod', 'partial', '部分入帳', 'warning'],
     ['receivablePeriod', 'paid', '已入帳', 'success'],

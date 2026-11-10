@@ -7,6 +7,7 @@
 import type { StatutoryCaseKind } from './cases/case-kind';
 import type { CaseState } from './cases/transitions';
 import type { HandoverState } from './handover/transitions';
+import type { DocumentCheckResult, OwnershipItemStatus } from './ownership/review-status';
 import type { QueueStatus } from './practice-entities/queue-status';
 import type { PeriodStatus } from './receivables';
 import { CONTRACT_STATUS_LABELS, type ContractStatus, type PropertyVerificationStatus } from './types';
@@ -34,6 +35,10 @@ export interface StatusValues {
   receivablePeriod: PeriodStatus | 'overdue';
   /** 物件對外的文件核對狀態（MIL-196，ADR-0028 決議 2）。只由文件核對決定，不讀 registry.anchors.status。 */
   propertyVerification: PropertyVerificationStatus;
+  /** 審核台出租權源項目的狀態（MIL-201）。只給平台營運者看，登錄的一方看不到 held。 */
+  ownershipItem: OwnershipItemStatus;
+  /** 文件核對的單項比對結果：建號是否與謄本相符、登記名義人是否與主張的所有權人相符（MIL-201）。 */
+  documentCheck: DocumentCheckResult;
 }
 export type StatusKind = keyof StatusValues;
 export type StatusValueOf<K extends StatusKind> = StatusValues[K];
@@ -99,6 +104,19 @@ const PRESENTATION: { [K in StatusKind]: Record<StatusValues[K], StatusView> } =
     pending_verification: { label: '待平台核對文件', tone: 'progress' },
     verified: { label: '已核對', tone: 'success' },
     failed: { label: '文件不符', tone: 'error' },
+  },
+  ownershipItem: {
+    pending: { label: '待核對', tone: 'progress' },
+    overdue: { label: '超過 1 個工作日', tone: 'warning' },
+    held: { label: '待處理', tone: 'warning' },
+    verified: { label: '已通過', tone: 'success' },
+    failed: { label: '不符', tone: 'error' },
+    superseded: { label: '已被取代', tone: 'neutral' },
+  },
+  documentCheck: {
+    pending: { label: '待判定', tone: 'neutral' },
+    match: { label: '相符', tone: 'success' },
+    mismatch: { label: '不符', tone: 'error' },
   },
 };
 

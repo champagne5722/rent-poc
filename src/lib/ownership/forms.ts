@@ -1,6 +1,15 @@
 // 謄本送件表單與審核台判定表單的欄位規則（MIL-201，ADR-0026 決議 1、6、9）。純函式，沒有 I/O。
 // 檔案本身（類型、大小）由 route 與 flows 檢查，這裡只驗證文字欄位。
 
+import { EVIDENCE_MAX_BYTES } from '../practice-entities/rules';
+
+/** 謄本檔案的限制。route 與 flows 用同一個上限（EVIDENCE_MAX_BYTES）檢查，畫面顯示同一組數字。 */
+export const TRANSCRIPT_MAX_BYTES = EVIDENCE_MAX_BYTES;
+export const TRANSCRIPT_MAX_MB = TRANSCRIPT_MAX_BYTES / 1024 / 1024;
+/** 謄本只收 PDF、PNG、JPEG（以內容判斷）。副檔名給檔案選擇器的 accept 用。 */
+export const TRANSCRIPT_ACCEPT = '.pdf,.png,.jpg,.jpeg';
+export const TRANSCRIPT_FILE_RULE_TEXT = `格式是 PDF、PNG 或 JPG，一次一個檔案，不超過 ${TRANSCRIPT_MAX_MB} MB`;
+
 export const CLAIMED_OWNER_MAX = 100;
 export const TRUST_FIELD_MAX = 500;
 export const HOLDER_MASKED_MAX = 40;
