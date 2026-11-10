@@ -61,7 +61,7 @@ Max 方案附的 API 額度涵蓋 Claude API、Managed Agents 與 Claude Agent S
 
 ## 額度用完、金鑰失效或其他錯誤
 
-工作不會變紅，也不會影響 `ci-deploy` 的 `check`。腳本改貼一則「這次沒有審查」的留言，寫明原因、HTTP 狀態碼、錯誤型別與 request id。留言不含金鑰與完整回應。
+工作不會變紅，也不會影響 `ci-deploy` 的 `check`。PR 上沒有有效的審查時，腳本改貼一則「這次沒有審查」的留言，寫明原因、HTTP 狀態碼、錯誤型別與 request id。留言不含金鑰與完整回應。
 
 | 情況 | 判斷 | 留言的原因 |
 |---|---|---|
