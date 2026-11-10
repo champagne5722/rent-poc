@@ -6,13 +6,17 @@ import {
   type BusinessType,
   type CaseMemberRelation,
   type CreationBlockReason,
+  type MandateCaseFacts,
+  type NewLeaseCaseKind,
   type OrgKind,
+  type PracticeFacts,
 } from '../cases';
 import { resolveSocialHousingDefault } from '../case-ledger/social-housing-default';
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
 import {
   closeMemberPeriod,
+  findCoveringMasterLeaseCase,
   findOrCreateParty,
   insertCase,
   insertCaseEvent,
@@ -38,9 +42,27 @@ export class CaseCreationBlocked extends Error {
 export interface NewLeaseCaseInput {
   orgId: string;
   orgKind: OrgKind;
+  /** 舊欄位。`master_lease` 是舊值，指轉租案件（見 src/lib/cases/case-kind.ts）。 */
   businessType: BusinessType;
-  /** 自管案件是出租人（建約的使用者），代管是屋主，包租是包租業者。 */
+  /**
+   * 案件種類（ADR-0030）。不傳時：業務類型 `master_lease` 當轉租案件，其餘當租賃案件。
+   * 包租案件（屋主租給包租業者）由包租業者的組織建立，必須明傳 `master_lease`，業務類型傳 `self_managed`。
+   */
+  caseKind?: NewLeaseCaseKind;
+  /**
+   * 過渡用，MIL-203 移除。舊建約精靈（POST /api/contracts）由屋主組織建立自管案件，
+   * 分流條件說承租人是包租業者時傳 true，案件歸為包租案件。新的建立入口不得傳這個欄位。
+   */
+  lesseeIsMasterLessor?: boolean;
+  /** 租賃案件是出租人（建約的使用者），代管是屋主，包租案件是屋主，轉租案件是包租業者。 */
   lessorPartyId: string;
+  /** 只用於轉租案件：屋主（包租案件的出租人）。 */
+  ownerPartyId?: string | null;
+  brokerPartyId?: string | null;
+  /** 主辦組織是執業主體組織時必須傳，由呼叫端查好業別與專任管理人員的事實。 */
+  practice?: PracticeFacts | null;
+  /** 代管案件必須傳。 */
+  mandateCase?: MandateCaseFacts | null;
   property: { id: string; name: string; address: string; rental_unit_id: string };
   /**
    * 社宅代管案件旗標（ADR-0050 決議 10）。不傳或傳 null 時，有委託管理案件就帶入它的旗標，否則是 false。
@@ -52,24 +74,37 @@ export interface NewLeaseCaseInput {
 }
 
 /**
- * 建立租賃案件（建約 wizard 第一步，ADR-0023 決議 1），回傳案件 ID。
- * 本票只接自管：代管與包租需要業別與委託的事實，由 MIL-116 傳入 `decideCaseCreation`。
+ * 建立租賃、包租或轉租案件（建約 wizard 第一步，ADR-0023 決議 1，ADR-0030 決議 1、5），回傳案件 ID。
+ * 委託管理案件不在這裡建，見 `decideCaseCreation` 的 `new_management`。
  * 案件、出租人成員、`created` 事件與稽核事件在同一個交易。
+ *
+ * 誰能呼叫：已在 `inOrgTx` 內、並已 authorize() 的 route。這個函式不做權限判斷。
+ * 轉租案件的包租案件事實由這裡自己查（`findCoveringMasterLeaseCase`），呼叫端不能傳入，所以無法偽造。
+ * 查詢只看目前組織主辦的案件。找不到時丟 `CaseCreationBlocked`，說明不分「沒有」與「別的組織的」。
  */
 export async function createLeaseCase(tx: OrgTx, input: NewLeaseCaseInput, now: Date = new Date()): Promise<string> {
   const caseId = newUlid();
+  const legacyMasterLease =
+    input.caseKind === undefined && input.lesseeIsMasterLessor === true && input.businessType === 'self_managed';
+  const caseKind: NewLeaseCaseKind | undefined = legacyMasterLease ? 'master_lease' : input.caseKind;
+  const resolvedKind = caseKind ?? (input.businessType === 'master_lease' ? 'sublease' : 'lease');
+  const masterLeaseCase =
+    resolvedKind === 'sublease' ? await findCoveringMasterLeaseCase(tx, input.property.rental_unit_id) : null;
   const result = decideCaseCreation(
     {
       type: 'new_lease',
       caseId,
       rentalUnitId: input.property.rental_unit_id,
       hostOrg: { orgId: input.orgId, kind: input.orgKind },
+      caseKind,
       businessType: input.businessType,
       lessorPartyId: input.lessorPartyId,
-      ownerPartyId: null,
-      brokerPartyId: null,
-      practice: null,
-      mandateCase: null,
+      ownerPartyId: input.ownerPartyId ?? null,
+      brokerPartyId: input.brokerPartyId ?? null,
+      practice: input.practice ?? null,
+      mandateCase: input.mandateCase ?? null,
+      masterLeaseCase,
+      transitionalOwnerHosted: legacyMasterLease && input.orgKind === 'owner',
     },
     now,
   );
@@ -96,7 +131,7 @@ export async function createLeaseCase(tx: OrgTx, input: NewLeaseCaseInput, now: 
   await appendAudit(tx, {
     action: 'case.create',
     object: { type: 'case', id: caseId },
-    payload: { kind: 'lease', business_type: input.businessType },
+    payload: { kind: 'lease', case_kind: result.case.caseKind, business_type: input.businessType },
   });
   return caseId;
 }

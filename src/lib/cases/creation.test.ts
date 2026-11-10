@@ -24,12 +24,14 @@ function newLease(overrides: Partial<NewLeaseCaseInput> = {}): NewLeaseCaseInput
     brokerPartyId: null,
     practice: null,
     mandateCase: null,
+    masterLeaseCase: null,
     ...overrides,
   };
 }
 
 const VERIFIED_PRACTICE = { entityStatus: 'verified', hasSignableManager: true } as const;
 const ACTIVE_MANDATE = { id: 'mcase-1', state: 'active', coversRentalUnit: true } as const;
+const ACTIVE_MASTER_LEASE = { id: 'ml-1', orgId: 'org-pm', state: 'active', coversRentalUnit: true } as const;
 
 function managedLease(overrides: Partial<NewLeaseCaseInput> = {}): NewLeaseCaseInput {
   return newLease({
@@ -50,6 +52,7 @@ function newMandate(overrides: Partial<NewManagementCaseInput> = {}): NewManagem
     mandatorPartyId: 'party-owner',
     mandataryPartyId: 'party-pm',
     validUntil: '2027-11-07',
+    practice: VERIFIED_PRACTICE,
     ...overrides,
   };
 }
@@ -90,9 +93,11 @@ describe('decideCaseCreation：新租賃案件', () => {
         state: 'draft',
         stateVersion: 0,
         currentContractId: null,
+        caseKind: 'lease',
         businessType: 'self_managed',
         rentalUnitId: 'unit-1',
         linkedMandateCaseId: null,
+        linkedMasterLeaseCaseId: null,
         predecessorCaseId: null,
         handoverId: null,
       },
@@ -102,9 +107,11 @@ describe('decideCaseCreation：新租賃案件', () => {
         occurredAt: NOW_ISO,
         payload: {
           kind: 'lease',
+          caseKind: 'lease',
           businessType: 'self_managed',
           rentalUnitId: 'unit-1',
           linkedMandateCaseId: null,
+          linkedMasterLeaseCaseId: null,
         },
       },
     });
@@ -128,15 +135,13 @@ describe('decideCaseCreation：新租賃案件', () => {
     ]);
   });
 
-  describe('主辦組織與業務類型（ADR-0023 決議 1）', () => {
+  describe('主辦組織與業務類型（ADR-0023 決議 1，ADR-0030 決議 1）', () => {
     it.each([
       ['owner', 'self_managed', true],
       ['owner', 'managed', false],
-      ['owner', 'master_lease', false],
       ['practice', 'self_managed', false],
       ['practice', 'managed', true],
-      ['practice', 'master_lease', true],
-    ] as const)('%s 組織建立 %s 案件：允許 %s', (kind, businessType, allowed) => {
+    ] as const)('%s 組織建立 %s 租賃案件：允許 %s', (kind, businessType, allowed) => {
       const input = managedLease({ hostOrg: { orgId: 'org-x', kind }, businessType });
       const result = decideCaseCreation(input, NOW);
       expect(result.ok).toBe(allowed);
@@ -212,28 +217,164 @@ describe('decideCaseCreation：新租賃案件', () => {
     });
   });
 
-  describe('包租案件', () => {
-    const masterLease = (overrides: Partial<NewLeaseCaseInput> = {}) =>
-      managedLease({ businessType: 'master_lease', lessorPartyId: 'party-pm', mandateCase: null, ...overrides });
+  // 業務類型 master_lease 是舊值，指轉租（ADR-0030 決議 2）。轉租案件必須連到有效的包租案件（決議 5）
+  describe('轉租案件（業務類型 master_lease）', () => {
+    const sublease = (overrides: Partial<NewLeaseCaseInput> = {}) =>
+      managedLease({
+        caseKind: 'sublease',
+        businessType: 'master_lease',
+        lessorPartyId: 'party-pm',
+        mandateCase: null,
+        masterLeaseCase: ACTIVE_MASTER_LEASE,
+        ...overrides,
+      });
 
-    it('lessor 是包租業者，不需要委託管理案件；有屋主時加 owner 成員', () => {
-      const result = accepted(decideCaseCreation(masterLease({ ownerPartyId: 'party-owner' }), NOW));
-      expect(result.case).toMatchObject({ businessType: 'master_lease', linkedMandateCaseId: null });
+    it('連到有效的包租案件：建立成功，記下連結；lessor 是包租業者，有屋主時加 owner 成員', () => {
+      const result = accepted(decideCaseCreation(sublease({ ownerPartyId: 'party-owner' }), NOW));
+      expect(result.case).toMatchObject({
+        kind: 'lease',
+        caseKind: 'sublease',
+        businessType: 'master_lease',
+        linkedMandateCaseId: null,
+        linkedMasterLeaseCaseId: 'ml-1',
+        orgId: 'org-pm',
+      });
       expect(result.members).toEqual([
         { partyId: 'party-pm', relation: 'lessor' },
         { partyId: 'party-owner', relation: 'owner' },
       ]);
+      expect(result.event.payload).toMatchObject({ caseKind: 'sublease', linkedMasterLeaseCaseId: 'ml-1' });
+    });
+
+    it('不傳案件種類時，業務類型 master_lease 當作轉租案件（舊呼叫端相容）', () => {
+      const result = accepted(decideCaseCreation(sublease({ caseKind: undefined }), NOW));
+      expect(result.case).toMatchObject({ caseKind: 'sublease' });
     });
 
     it('找不到屋主的自管案件時，沒有 owner 成員（ADR-0023 後果）', () => {
-      const { members } = accepted(decideCaseCreation(masterLease({ ownerPartyId: null }), NOW));
+      const { members } = accepted(decideCaseCreation(sublease({ ownerPartyId: null }), NOW));
       expect(members).toEqual([{ partyId: 'party-pm', relation: 'lessor' }]);
     });
 
-    it('只有包租案件才加 owner 成員', () => {
-      const { members } = accepted(decideCaseCreation(managedLease({ ownerPartyId: 'party-owner' }), NOW));
+    it('沒有包租案件 → 擋下', () => {
+      expect(reasonCodes(decideCaseCreation(sublease({ masterLeaseCase: null }), NOW))).toEqual(['no_valid_master_lease']);
+    });
+
+    it('包租案件沒涵蓋這個租賃單位 → 擋下', () => {
+      const masterLeaseCase = { ...ACTIVE_MASTER_LEASE, coversRentalUnit: false };
+      expect(reasonCodes(decideCaseCreation(sublease({ masterLeaseCase }), NOW))).toEqual(['no_valid_master_lease']);
+    });
+
+    it.each(['draft', 'signing', 'move_out', 'settling', 'closed', 'aborted'] as const)(
+      '包租案件是 %s（不是 active）→ 擋下',
+      (state) => {
+        const masterLeaseCase = { ...ACTIVE_MASTER_LEASE, state };
+        expect(reasonCodes(decideCaseCreation(sublease({ masterLeaseCase }), NOW))).toEqual(['no_valid_master_lease']);
+      },
+    );
+
+    it('包租案件屬於別的組織 → 擋下，說明與沒有包租案件完全相同（不洩漏別的組織有沒有）', () => {
+      const foreign = decideCaseCreation(sublease({ masterLeaseCase: { ...ACTIVE_MASTER_LEASE, orgId: 'org-other' } }), NOW);
+      const missing = decideCaseCreation(sublease({ masterLeaseCase: null }), NOW);
+      expect(reasonCodes(foreign)).toEqual(['no_valid_master_lease']);
+      expect(foreign).toEqual(missing);
+    });
+
+    it('屋主組織不得建轉租案件', () => {
+      const result = decideCaseCreation(sublease({ hostOrg: { orgId: 'org-pm', kind: 'owner' } }), NOW);
+      expect(reasonCodes(result)).toContain('host_org_not_allowed');
+    });
+
+    it('案件種類是轉租，業務類型卻不是 master_lease → 擋下', () => {
+      expect(reasonCodes(decideCaseCreation(sublease({ businessType: 'managed' }), NOW))).toContain('business_type_not_allowed');
+    });
+
+    it('業別未驗證或沒有專任管理人員 → 擋下', () => {
+      const result = decideCaseCreation(sublease({ practice: { entityStatus: 'pending', hasSignableManager: false } }), NOW);
+      expect(reasonCodes(result)).toEqual(['practice_entity_not_verified', 'no_signable_manager']);
+    });
+
+    it('同時有多個問題時，回傳全部原因', () => {
+      const result = decideCaseCreation(sublease({ practice: null, masterLeaseCase: null }), NOW);
+      expect(reasonCodes(result)).toEqual(['practice_entity_not_verified', 'no_signable_manager', 'no_valid_master_lease']);
+    });
+
+    it('代管案件不看包租案件，轉租案件不看委託管理案件', () => {
+      expect(decideCaseCreation(managedLease({ masterLeaseCase: null }), NOW).ok).toBe(true);
+      expect(decideCaseCreation(sublease({ mandateCase: null }), NOW).ok).toBe(true);
+    });
+  });
+
+  // 新的包租案件：屋主租給包租業者那一份（住宅包租契約）。資料上是自管租賃案件加案件種類 master_lease
+  describe('包租案件（ADR-0030 決議 1）', () => {
+    const masterLease = (overrides: Partial<NewLeaseCaseInput> = {}) =>
+      managedLease({
+        caseKind: 'master_lease',
+        businessType: 'self_managed',
+        lessorPartyId: 'party-owner',
+        mandateCase: null,
+        ...overrides,
+      });
+
+    it('包租業者的組織建立：lessor 是屋主，不連委託管理案件也不連包租案件', () => {
+      const result = accepted(decideCaseCreation(masterLease(), NOW));
+      expect(result.case).toMatchObject({
+        kind: 'lease',
+        caseKind: 'master_lease',
+        businessType: 'self_managed',
+        orgId: 'org-pm',
+        state: 'draft',
+        linkedMandateCaseId: null,
+        linkedMasterLeaseCaseId: null,
+      });
+      expect(result.members).toEqual([{ partyId: 'party-owner', relation: 'lessor' }]);
+      expect(result.event.payload).toMatchObject({ caseKind: 'master_lease' });
+    });
+
+    it('即使傳了 ownerPartyId 也不加 owner 成員（屋主已經是 lessor）', () => {
+      const { members } = accepted(decideCaseCreation(masterLease({ ownerPartyId: 'party-owner' }), NOW));
       expect(members.map((m) => m.relation)).toEqual(['lessor']);
     });
+
+    it('屋主組織不得建包租案件', () => {
+      const result = decideCaseCreation(masterLease({ hostOrg: { orgId: 'org-owner', kind: 'owner' } }), NOW);
+      expect(reasonCodes(result)).toContain('host_org_not_allowed');
+    });
+
+    it('業務類型不是 self_managed → 擋下', () => {
+      expect(reasonCodes(decideCaseCreation(masterLease({ businessType: 'managed' }), NOW))).toContain('business_type_not_allowed');
+    });
+
+    it('業別未驗證或沒有專任管理人員 → 擋下', () => {
+      const result = decideCaseCreation(masterLease({ practice: { entityStatus: 'lapsed', hasSignableManager: false } }), NOW);
+      expect(reasonCodes(result)).toEqual(['practice_entity_not_verified', 'no_signable_manager']);
+    });
+
+    describe('過渡：舊建約精靈由屋主組織建立承租人是包租業者的自管案件', () => {
+      const legacy = (overrides: Partial<NewLeaseCaseInput> = {}) =>
+        newLease({ caseKind: 'master_lease', transitionalOwnerHosted: true, ...overrides });
+
+      it('屋主組織加過渡旗標：允許，歸為包租案件，不看執業主體事實', () => {
+        const result = accepted(decideCaseCreation(legacy(), NOW));
+        expect(result.case).toMatchObject({ caseKind: 'master_lease', businessType: 'self_managed', orgId: 'org-owner' });
+      });
+
+      it('過渡旗標只放寬主辦組織，不放寬其他案件種類', () => {
+        const result = decideCaseCreation(
+          legacy({ caseKind: 'sublease', businessType: 'master_lease', masterLeaseCase: { ...ACTIVE_MASTER_LEASE, orgId: 'org-owner' } }),
+          NOW,
+        );
+        expect(reasonCodes(result)).toContain('host_org_not_allowed');
+      });
+
+      it('沒有旗標的屋主組織仍被擋下', () => {
+        expect(reasonCodes(decideCaseCreation(legacy({ transitionalOwnerHosted: false }), NOW))).toContain('host_org_not_allowed');
+      });
+    });
+  });
+
+  it('租賃案件不傳案件種類時，推出 lease', () => {
+    expect(accepted(decideCaseCreation(newLease(), NOW)).case).toMatchObject({ caseKind: 'lease' });
   });
 
   it('lessor 的 party ID 是空字串 → 擋下', () => {
@@ -252,6 +393,7 @@ describe('decideCaseCreation：新委託管理案件', () => {
         state: 'draft',
         stateVersion: 0,
         currentContractId: null,
+        caseKind: 'management',
         validUntil: '2027-11-07',
       },
       members: [
@@ -261,7 +403,7 @@ describe('decideCaseCreation：新委託管理案件', () => {
       event: {
         type: 'created',
         occurredAt: NOW_ISO,
-        payload: { kind: 'management', validUntil: '2027-11-07' },
+        payload: { kind: 'management', caseKind: 'management', validUntil: '2027-11-07' },
       },
     });
   });
@@ -271,9 +413,27 @@ describe('decideCaseCreation：新委託管理案件', () => {
     expect(result.case).toMatchObject({ validUntil: null });
   });
 
-  it('不檢查主辦組織種類（屋主上傳紙本契約書時主辦組織不確定）', () => {
+  // ADR-0030 決議 1：主辦組織是代管業者。屋主不上線時由業者上傳紙本契約書（ADR-0029 決議 7），主辦組織仍是業者
+  it('屋主組織不得建委託管理案件', () => {
     const owner = newMandate({ hostOrg: { orgId: 'org-owner', kind: 'owner' } });
-    expect(decideCaseCreation(owner, NOW).ok).toBe(true);
+    expect(reasonCodes(decideCaseCreation(owner, NOW))).toEqual(['host_org_not_allowed']);
+  });
+
+  it.each([['pending'], ['lapsed'], [null]] as const)('代管業別狀態是 %s → 擋下', (entityStatus) => {
+    const result = decideCaseCreation(newMandate({ practice: { entityStatus, hasSignableManager: true } }), NOW);
+    expect(reasonCodes(result)).toEqual(['practice_entity_not_verified']);
+  });
+
+  it('沒有可簽章的專任管理人員 → 擋下', () => {
+    const result = decideCaseCreation(newMandate({ practice: { entityStatus: 'verified', hasSignableManager: false } }), NOW);
+    expect(reasonCodes(result)).toEqual(['no_signable_manager']);
+  });
+
+  it('沒有提供執業主體事實 → 視為未驗證', () => {
+    expect(reasonCodes(decideCaseCreation(newMandate({ practice: null }), NOW))).toEqual([
+      'practice_entity_not_verified',
+      'no_signable_manager',
+    ]);
   });
 
   it('mandator 與 mandatary 是同一個人 → 擋下', () => {
@@ -317,9 +477,11 @@ describe('decideCaseCreation：後繼案件（ADR-0024 決議 2 到 4）', () =>
         state: 'active',
         stateVersion: 0,
         currentContractId: null,
+        caseKind: 'lease',
         businessType: 'managed',
         rentalUnitId: 'unit-1',
         linkedMandateCaseId: null,
+        linkedMasterLeaseCaseId: null,
         predecessorCaseId: 'case-1',
         handoverId: 'ho-1',
       },
@@ -332,6 +494,7 @@ describe('decideCaseCreation：後繼案件（ADR-0024 決議 2 到 4）', () =>
         occurredAt: NOW_ISO,
         payload: {
           kind: 'lease',
+          caseKind: 'lease',
           businessType: 'managed',
           rentalUnitId: 'unit-1',
           predecessorCaseId: 'case-1',

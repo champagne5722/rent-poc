@@ -102,6 +102,58 @@ describe('GET /api/cases', () => {
   });
 });
 
+describe('案件種類（MIL-195，ADR-0030）', () => {
+  async function insertKinded(orgId: string, title: string, kind: string, businessType: string | null, caseKind: string, linked: string | null = null) {
+    const caseId = newUlid();
+    await withTx({ kind: 'org', orgId }, async (tx) => {
+      await tx.query(
+        `INSERT INTO org.cases (id, org_id, kind, state, business_type, title, case_kind, linked_master_lease_case_id)
+         VALUES ($1, $2, $3, 'active', $4, $5, $6, $7)`,
+        [caseId, orgId, kind, businessType, title, caseKind, linked],
+      );
+    });
+    return caseId;
+  }
+
+  it('清單每一列帶案件種類，四種都有', async () => {
+    await insertKinded(kit.orgA, '租賃', 'lease', 'self_managed', 'lease');
+    await insertKinded(kit.orgA, '委託管理', 'management', null, 'management');
+    await insertKinded(kit.orgA, '包租', 'lease', 'self_managed', 'master_lease');
+    await insertKinded(kit.orgA, '轉租', 'lease', 'master_lease', 'sublease');
+    const rows = (await json(await getList())).data as { title: string; caseKind: string }[];
+    expect(Object.fromEntries(rows.map((r) => [r.title, r.caseKind]))).toEqual({
+      租賃: 'lease',
+      委託管理: 'management',
+      包租: 'master_lease',
+      轉租: 'sublease',
+    });
+  });
+
+  it('不經案件種類欄位寫入的舊資料（業務類型 master_lease）讀成轉租案件', async () => {
+    await insertPlainCase(kit.orgA, '舊轉租', 'master_lease');
+    const rows = (await json(await getList())).data as { caseKind: string; businessType: string }[];
+    expect(rows[0]).toMatchObject({ caseKind: 'sublease', businessType: 'master_lease' });
+  });
+
+  it('詳情帶案件種類；主辦組織看得到轉租案件連到的包租案件', async () => {
+    const master = await insertKinded(kit.orgA, '包租', 'lease', 'self_managed', 'master_lease');
+    const sub = await insertKinded(kit.orgA, '轉租', 'lease', 'master_lease', 'sublease', master);
+    const body = (await json(await getOne(req('GET'), ctx(sub)))).data;
+    expect(body.case).toMatchObject({ caseKind: 'sublease', linkedMasterLeaseCaseId: master });
+  });
+
+  it('別組織的成員讀轉租案件：看得到案件種類，看不到連到的包租案件', async () => {
+    const master = await insertKinded(kit.orgA, '包租', 'lease', 'self_managed', 'master_lease');
+    const sub = await insertKinded(kit.orgA, '轉租', 'lease', 'master_lease', 'sublease', master);
+    const lessor = await addMemberRow(kit.orgA, sub, 'lessor', 'sub-lessor@example.com', '包租業者');
+    asOrg(kit.orgB, lessor);
+    const body = (await json(await getOne(req('GET'), ctx(sub)))).data;
+    expect(body.isHost).toBe(false);
+    expect(body.case.caseKind).toBe('sublease');
+    expect(body.case).not.toHaveProperty('linkedMasterLeaseCaseId');
+  });
+});
+
 describe('GET /api/cases/[id]', () => {
   it('主辦組織：案件、成員、合約、事件與是否可管理成員', async () => {
     const id = await insertPlainCase(kit.orgA, '詳情案件');
