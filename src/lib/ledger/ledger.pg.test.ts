@@ -84,14 +84,14 @@ describe.skipIf(!adminUrl)('鏡像帳：真實 PostgreSQL', () => {
   });
 
   it('app_rw 的 UPDATE、DELETE、TRUNCATE 被擋下；超級使用者與擁有者被觸發器擋下', async () => {
-    const statements = ['UPDATE org.ledger_entries SET debit = debit + 1', 'DELETE FROM org.ledger_entries', 'TRUNCATE org.ledger_journals, org.ledger_entries'];
+    const statements = ['UPDATE org.ledger_entries SET debit = debit + 1', 'DELETE FROM org.ledger_entries', 'TRUNCATE org.ledger_journals, org.ledger_entries, org.receipt_confirmations, org.deposit_holder_acknowledgments'];
     for (const sql of statements) {
       await expect(inOrg(orgA, (tx) => tx.query(sql)), sql).rejects.toThrow(/permission denied/);
       await expect(admin.query(sql), sql).rejects.toThrow(/只增不改/);
     }
     await admin.query('SET ROLE app_owner');
     try {
-      await expect(admin.query('TRUNCATE org.ledger_journals, org.ledger_entries')).rejects.toThrow(/只增不改/);
+      await expect(admin.query('TRUNCATE org.ledger_journals, org.ledger_entries, org.receipt_confirmations, org.deposit_holder_acknowledgments')).rejects.toThrow(/只增不改/);
       expect((await admin.query('UPDATE org.ledger_entries SET debit = debit + 1')).rowCount).toBe(0);
     } finally {
       await admin.query('RESET ROLE');

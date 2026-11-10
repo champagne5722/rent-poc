@@ -4,7 +4,7 @@ import type { OrgTx } from '../with-tx';
 import type { CaseScopedRead, OrgTableCase, RlsRegistration } from './types';
 
 /** 建一個案件。鏡像帳與接上案件的表都掛 cases 的複合外鍵（MIL-123）。案件 ID 全域唯一，所以每次呼叫建新的。 */
-async function seedLedgerCase(tx: OrgTx, orgId: string): Promise<string> {
+export async function seedLedgerCase(tx: OrgTx, orgId: string): Promise<string> {
   const caseId = newUlid();
   await tx.query(
     `INSERT INTO org.cases (id, org_id, kind, state, business_type, title)
@@ -15,7 +15,7 @@ async function seedLedgerCase(tx: OrgTx, orgId: string): Promise<string> {
 }
 
 /** 寫一筆平衡的分錄（兩列明細）。分錄的檢查在提交時執行，所以兩個 INSERT 要在同一個交易內。 */
-async function seedLedgerJournal(tx: OrgTx, orgId: string): Promise<{ journalId: string; entryId: string }> {
+export async function seedLedgerJournal(tx: OrgTx, orgId: string): Promise<{ journalId: string; entryId: string; caseId: string }> {
   const caseId = await seedLedgerCase(tx, orgId);
   const journalId = newUlid();
   const entryId = newUlid();
@@ -30,7 +30,7 @@ async function seedLedgerJournal(tx: OrgTx, orgId: string): Promise<{ journalId:
        ($5, $2, $3, $4, 2, $6, 0, 100)`,
     [newUlid(), orgId, caseId, journalId, entryId, `liability.deposit.${caseId}`],
   );
-  return { journalId, entryId };
+  return { journalId, entryId, caseId };
 }
 
 const orgTables: Record<string, OrgTableCase> = {

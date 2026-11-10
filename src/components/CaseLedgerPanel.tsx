@@ -2,30 +2,25 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { App as AntApp, Alert, Button, Col, Descriptions, Flex, Form, Input, Modal, Popconfirm, Row, Select, Spin, Table, Tag, Typography, theme } from 'antd';
-import type { DepositLedger, HolderConflict, PeriodRecord, RemitterId, SocialHousingChange } from '@/lib/case-ledger';
+import type { HolderConflict, RemitterId, SocialHousingChange } from '@/lib/case-ledger';
 import { formatTaipei } from '@/lib/case-display';
 import {
   DEPOSIT_HOLDER_MESSAGE_TEXT,
-  DEPOSIT_LEDGER_STATUS_LABELS,
-  PERIOD_STATE_LABELS,
   REMITTER_KIND_LABELS,
   SOCIAL_HOUSING_LABELS,
 } from '@/lib/labels/case-ledger-labels';
 import { HOLDER_KIND_LABELS } from '@/lib/payment-accounts/input';
+import { DepositSection, PeriodsSection, ReceiptsSection, RecordReceiptSection, type ReceiptsSetup } from './CaseReceiptsPanel';
 
 // 案件的帳務設定分頁（MIL-123）：社宅代管旗標、押金台帳、應收期別、匯款識別、預設收款帳戶。
-// 只做設定與唯讀的清單。入帳確認、配置與沖銷的畫面屬 MIL-125，期別的未入帳與已入帳狀態等配置建好才有。
+// 入帳畫面（押金台帳、應收期別、登錄入帳確認、入帳紀錄）在 CaseReceiptsPanel（MIL-125）。沖銷與改配置屬 MIL-126、MIL-127。
 // 編輯控制項由 API 回傳的 canConfigure、canSetSocialHousing 決定，真正的檢查在各個寫入的 route。
 
-interface LedgerSetup {
+interface LedgerSetup extends ReceiptsSetup {
   socialHousing: boolean;
   canConfigure: boolean;
   canSetSocialHousing: boolean;
-  depositLedger: DepositLedger | null;
-  depositBalance: number;
-  periods: PeriodRecord[];
   remitterIds: RemitterId[];
-  defaultAccounts: { rentAccountId: string | null; depositAccountId: string | null } | null;
   socialHousingChanges: SocialHousingChange[];
   holderConflicts: HolderConflict[];
 }
@@ -89,7 +84,9 @@ export default function CaseLedgerPanel({ caseId }: { caseId: string }) {
     <Flex vertical gap="large">
       <SocialHousingSection caseId={caseId} setup={setup} onChanged={onChanged} />
       <DepositSection setup={setup} />
-      <PeriodsSection periods={setup.periods} hasLedger={setup.depositLedger !== null} />
+      <PeriodsSection setup={setup} />
+      {setup.canRecordPayment && <RecordReceiptSection caseId={caseId} setup={setup} onChanged={onChanged} />}
+      <ReceiptsSection setup={setup} />
       <RemitterSection caseId={caseId} setup={setup} onChanged={onChanged} />
       <DefaultAccountsSection caseId={caseId} setup={setup} accounts={accounts} onChanged={onChanged} />
     </Flex>
@@ -200,70 +197,6 @@ function SocialHousingSection({ caseId, setup, onChanged }: { caseId: string; se
           </Form>
         </Flex>
       </Modal>
-    </Flex>
-  );
-}
-
-// --- 押金台帳 ---
-
-function DepositSection({ setup }: { setup: LedgerSetup }) {
-  const ledger = setup.depositLedger;
-  return (
-    <Flex vertical gap="small">
-      <SectionTitle>押金台帳</SectionTitle>
-      {ledger === null ? (
-        <Typography.Text type="secondary">合約全員簽署完成後，系統自動建立押金台帳與應收期別。</Typography.Text>
-      ) : (
-        <Descriptions
-          column={1}
-          size="small"
-          bordered
-          items={[
-            { key: 'expected', label: '約定金額', children: money(ledger.expectedAmount) },
-            { key: 'balance', label: '目前餘額', children: money(setup.depositBalance) },
-            { key: 'status', label: '狀態', children: DEPOSIT_LEDGER_STATUS_LABELS[ledger.status] },
-            { key: 'created', label: '建立時間', children: formatTaipei(ledger.createdAt) },
-          ]}
-        />
-      )}
-    </Flex>
-  );
-}
-
-// --- 應收期別 ---
-
-function PeriodsSection({ periods, hasLedger }: { periods: PeriodRecord[]; hasLedger: boolean }) {
-  return (
-    <Flex vertical gap="small">
-      <SectionTitle>應收期別</SectionTitle>
-      <Table<PeriodRecord>
-        rowKey="id"
-        size="small"
-        dataSource={periods}
-        pagination={false}
-        scroll={{ x: 'max-content' }}
-        locale={{
-          emptyText: hasLedger ? '合約欄位不足（缺少月租、付款日或有效的租期），系統沒有產生應收期別。' : '合約全員簽署完成後才會產生',
-        }}
-        columns={[
-          { title: '期別', dataIndex: 'periodKey', width: 100 },
-          { title: '涵蓋日期', width: 220, render: (_, p) => `${p.periodStart} 至 ${p.periodEnd}` },
-          { title: '到期日', dataIndex: 'dueDate', width: 120 },
-          { title: '應收金額', width: 120, align: 'right', render: (_, p) => money(p.amount) },
-          {
-            title: '狀態',
-            width: 110,
-            render: (_, p) =>
-              p.state === 'cancelled' ? (
-                <Tag>{PERIOD_STATE_LABELS.cancelled}</Tag>
-              ) : p.overdueAt ? (
-                <Tag color="error">逾期</Tag>
-              ) : (
-                PERIOD_STATE_LABELS.active
-              ),
-          },
-        ]}
-      />
     </Flex>
   );
 }

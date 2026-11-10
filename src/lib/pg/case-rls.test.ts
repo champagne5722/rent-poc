@@ -262,10 +262,33 @@ describe('成員讀取矩陣：每種關係讀得到哪些表', () => {
         [newUlid(), host, caseId, journalId, newUlid(), `liability.deposit.${caseId}`],
       );
       await tx.query(`INSERT INTO org.deposit_ledgers (id, org_id, case_id, expected_amount) VALUES ($1, $2, $3, 60000)`, [newUlid(), host, caseId]);
+      const periodId = newUlid();
       await tx.query(
         `INSERT INTO org.receivable_periods (id, org_id, case_id, period_key, period_start, period_end, due_date, amount)
          VALUES ($1, $2, $3, '2026-11', '2026-11-01', '2026-11-30', '2026-11-05', 30000)`,
-        [newUlid(), host, caseId],
+        [periodId, host, caseId],
+      );
+      // 入帳確認、配置與持有人確認紀錄（MIL-125）：同樣只種 caseId
+      const accountId = newUlid();
+      await tx.query(
+        `INSERT INTO org.payment_accounts (id, org_id, name, holder_kind, holder_name, account_kind, bank_code, account_last4)
+         VALUES ($1, $2, '矩陣帳戶', 'other', '某人', 'general', '812', '0123')`,
+        [accountId, host],
+      );
+      const confirmationId = newUlid();
+      await tx.query(
+        `INSERT INTO org.receipt_confirmations (id, org_id, case_id, purpose, amount, value_date, payment_account_id, source, external_id, journal_id)
+         VALUES ($1, $2, $3, 'security_deposit', 100, '2026-11-08', $4, 'manual', 'RLS-MATRIX-1', $5)`,
+        [confirmationId, host, caseId, accountId, journalId],
+      );
+      await tx.query(
+        `INSERT INTO org.receipt_allocations (id, org_id, case_id, period_id, source, source_id, amount) VALUES ($1, $2, $3, $4, 'receipt', $5, 100)`,
+        [newUlid(), host, caseId, periodId, confirmationId],
+      );
+      await tx.query(
+        `INSERT INTO org.deposit_holder_acknowledgments (id, org_id, case_id, receipt_confirmation_id, payment_account_id, action, message_key)
+         VALUES ($1, $2, $3, $4, $5, 'warn', 'deposit_holder.warn.rule_unmatched')`,
+        [newUlid(), host, caseId, confirmationId, accountId],
       );
       await tx.query(`INSERT INTO org.case_remitter_ids (id, org_id, case_id, kind, value) VALUES ($1, $2, $3, 'account_last5', '12345')`, [newUlid(), host, caseId]);
       await tx.query(

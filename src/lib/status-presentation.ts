@@ -7,6 +7,7 @@
 import type { CaseState } from './cases/transitions';
 import type { HandoverState } from './handover/transitions';
 import type { QueueStatus } from './practice-entities/queue-status';
+import type { PeriodStatus } from './receivables';
 import { CONTRACT_STATUS_LABELS, type ContractStatus } from './types';
 
 /** 色調只有 5 種，對應 DESIGN.md 的語意色：中性（灰階）、進行中（primary）、成功、警告、錯誤。 */
@@ -23,6 +24,8 @@ export interface StatusValues {
   handover: HandoverState;
   /** 審核台項目的狀態。 */
   reviewItem: QueueStatus;
+  /** 應收期別的入帳狀態（MIL-125）。逾期是顯示狀態：每日排程已判定逾期，而且期別仍未足額。 */
+  receivablePeriod: PeriodStatus | 'overdue';
 }
 export type StatusKind = keyof StatusValues;
 export type StatusValueOf<K extends StatusKind> = StatusValues[K];
@@ -69,6 +72,13 @@ const PRESENTATION: { [K in StatusKind]: Record<StatusValues[K], StatusView> } =
   reviewItem: {
     open: { label: '待核對', tone: 'progress' },
     resolved: { label: '已結案', tone: 'neutral' },
+  },
+  receivablePeriod: {
+    unpaid: { label: '未入帳', tone: 'neutral' },
+    partial: { label: '部分入帳', tone: 'warning' },
+    paid: { label: '已入帳', tone: 'success' },
+    overdue: { label: '逾期', tone: 'error' },
+    cancelled: { label: '已取消', tone: 'neutral' },
   },
 };
 

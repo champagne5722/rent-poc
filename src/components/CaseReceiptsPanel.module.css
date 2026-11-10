@@ -1,0 +1,4 @@
+/* 登錄入帳確認表單的欄位寬度（MIL-125）。不寫 inline style，尺寸沿用欄位容器。 */
+.fullWidth {
+  width: 100%;
+}

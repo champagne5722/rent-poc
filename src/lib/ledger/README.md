@@ -19,6 +19,24 @@
 - 新增事件類型：寫事件定義，用 `extendLedgerRegistry` 擴充登錄表，當 `postJournal` 的第三個參數傳入。不改 `post.ts`，也不改 migration（資料庫的事件類型欄位是開放字串）。
 - 業務函式（`confirmReceipt()` 等）放在本目錄，組好 payload 再呼叫 `postJournal()`。F 線的 `recordHandoverRelease`、`recordHandoverReceipt` 也放這裡（ADR-0024）。
 
+## 業務函式：入帳確認（MIL-125）
+
+入口是 `src/lib/ledger/receipts.ts`，不從 `index.ts` 匯出，因為 `index.ts` 只放不碰資料庫的純函式。
+
+| 函式 | 用途 |
+|---|---|
+| `confirmReceipt(tx, candidate)` | 入帳確認的唯一入口。人工、對帳檔、推送都轉成 `ReceiptCandidate`，`source` 與 `externalId` 決定去重 |
+| `findConfirmationByKey`、`listReceipts`、`listAllocations`、`listPeriodViews`、`getPrepaidBalance`、`getDepositCollected` | 讀取：入帳確認、配置、含入帳狀態與差額的期別、預收租金餘額、押金累計已收 |
+
+- `confirmReceipt` 同交易寫入：入帳確認、分錄、配置、持有人確認紀錄（押金規則為 warn 時）、通知、稽核事件。任一步失敗整筆回滾。
+- 先鎖案件的押金台帳列，同一案件的入帳一次一筆。去重鍵已存在時，內容相同回傳原本那筆（`duplicate: true`），內容不同回 `idempotency_conflict`。
+- 租金：`allocateReceipt()` 預設配給最舊的未足額期別，超額寫 `liability.prepaid_rent.{case}`。押金不進應收期別。
+- 押金：`evaluateHolderRule()` 判定。`block` 回 `holder_blocked`，`warn` 與 `warn_fix_mandate` 沒有 `acknowledgeHolderWarning` 時回 `holder_ack_required`，兩者都帶 `notice`。委託範圍是否含押金案件上還沒有資料，先當 false。
+- 業務失敗回傳 `{ ok: false, failure }`，什麼都不寫。權限由呼叫端先 `authorize()`（動作 `ledger.record_payment`）。
+- 通知的 email 在交易提交後，用 `result.notices` 呼叫 `dispatchNotificationEmail`。
+- 表在 `0075_receipt_confirmations.sql`：`receipt_confirmations`（只增不改）、`receipt_allocations`（只有 `active` 能由 true 改 false）、`deposit_holder_acknowledgments`（只增不改）。
+- 沖銷（MIL-126）、預收抵充與改配置（MIL-127）、押金扣抵與返還（MIL-128）放在本目錄，從 `receipts.ts` 匯出。對帳檔匯入（MIL-129）組好 `ReceiptCandidate` 呼叫 `confirmReceipt`，不另寫分錄。
+
 ## 資料庫的防線
 
 migration `0050_ledger.sql` 建 `org.ledger_journals` 與 `org.ledger_entries`。純函式層的檢查不取代它們，資料庫是最後一道防線。

@@ -28,3 +28,20 @@ export const SOCIAL_HOUSING_LABELS = {
   yes: '社宅代管案件',
   no: '非社宅代管案件',
 } as const;
+
+// 入帳確認（MIL-125）。用詞以 GLOSSARY.md 為準：入帳確認、應收期別、押金台帳、預收租金、收款帳戶持有人。
+// 介面不顯示借貸，不出現「信託」字樣。
+
+export const RECEIPT_PURPOSE_LABELS = {
+  rent: '租金',
+  security_deposit: '押金',
+} as const;
+
+/** 每筆入帳的來源標示。現金收取沒有銀行紀錄可比對，所以單獨標出（ADR-0014 決議 10）。 */
+export function receiptSourceLabel(source: 'manual' | 'statement_file', isCash: boolean): string {
+  if (isCash) return '現金收取';
+  return source === 'manual' ? '使用者登錄' : '對帳檔';
+}
+
+/** 登錄入帳失敗時，route 回的 code 對應的處理提示。 */
+export const RECEIPT_HOLDER_CONFIRM_NOTE = '平台只記錄款項，不經手款項。確認後，系統會記錄你已看過這項規則，並通知委託人。';

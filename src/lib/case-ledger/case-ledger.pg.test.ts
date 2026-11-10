@@ -150,7 +150,7 @@ describe.skipIf(!adminUrl)('接上案件的帳務：真實 PostgreSQL', () => {
     await inOrg(orgA, (tx) => openCaseLedger(tx, caseId, terms));
     await expect(inOrg(orgA, (tx) => tx.query(`UPDATE org.receivable_periods SET amount = 1 WHERE case_id = $1`, [caseId]))).rejects.toThrow(/不得修改/);
     await expect(inOrg(orgA, (tx) => tx.query(`DELETE FROM org.deposit_ledgers WHERE case_id = $1`, [caseId]))).rejects.toThrow(/不得刪除/);
-    await expect(admin.query('TRUNCATE org.receivable_periods')).rejects.toThrow(/不得刪除/);
+    await expect(admin.query('TRUNCATE org.receivable_periods, org.receipt_allocations')).rejects.toThrow(/不得刪除/);
     await expect(inOrg(orgA, (tx) => tx.query('TRUNCATE org.case_social_housing_changes'))).rejects.toThrow(/permission denied/);
   });
 });
