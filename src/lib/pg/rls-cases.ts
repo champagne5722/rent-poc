@@ -19,6 +19,7 @@ import { paymentAccountsRls } from './rls-cases/payment-accounts';
 import { practiceEntitiesRls } from './rls-cases/practice-entities';
 import { practitionersRls } from './rls-cases/practitioners';
 import { propertiesRls } from './rls-cases/properties';
+import { receiptsRls } from './rls-cases/receipts';
 import { registryCoreRls } from './rls-cases/registry-core';
 import { signingRls } from './rls-cases/signing';
 import { vaultCredentialsRls } from './rls-cases/vault-credentials';
@@ -74,6 +75,7 @@ const RLS_MODULES: readonly RlsRegistration[] = [
   practiceEntitiesRls,
   practitionersRls,
   propertiesRls,
+  receiptsRls,
   registryCoreRls,
   signingRls,
   vaultCredentialsRls,

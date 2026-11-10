@@ -171,8 +171,9 @@ REVOKE ALL ON org.receipt_confirmations, org.receipt_allocations, org.deposit_ho
 -- 預設權限可能已給 app_rw 全部權限（0050 同樣明確收回），所以先收回再授予
 REVOKE UPDATE, DELETE, TRUNCATE ON org.receipt_confirmations, org.deposit_holder_acknowledgments FROM app_rw;
 GRANT SELECT, INSERT ON org.receipt_confirmations, org.deposit_holder_acknowledgments TO app_rw;
-REVOKE DELETE, TRUNCATE ON org.receipt_allocations FROM app_rw;
-GRANT SELECT, INSERT, UPDATE ON org.receipt_allocations TO app_rw;
+-- 配置保留 DELETE 權限，與 0055 的應收期別相同：別的組織的列 RLS 讓它刪不到，自己組織的列由觸發器擋下
+REVOKE TRUNCATE ON org.receipt_allocations FROM app_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON org.receipt_allocations TO app_rw;
 
 -- 7. RLS 與讀取政策 ------------------------------------------------------------------------------
 ALTER TABLE org.receipt_confirmations ENABLE ROW LEVEL SECURITY;
