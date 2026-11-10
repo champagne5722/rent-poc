@@ -6,6 +6,7 @@ import { createContractSubscriber } from '../contract-signing';
 import { createContract, getContract } from '../contracts';
 import { createLocalFileStore } from '../file-store/local-file-store';
 import { withTx } from '../pg/database';
+import { createVerifiedProperty } from '../ownership/test-kit';
 import { setupRouteDb, actAs, type RouteDb } from '../pg/route-test-kit';
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
@@ -102,8 +103,9 @@ interface Setup {
 }
 
 async function setup({ registry = seed, provider = createMockProvider(), wrapSubscriber, now }: Setup = {}) {
+  const propertyId = await createVerifiedProperty(kit);
   const id = await inA((tx) =>
-    createContract(tx, { property_id: null, fields: FIELDS as ContractFields, signature_fields: SIGNATURE_FIELDS }),
+    createContract(tx, { property_id: propertyId, fields: FIELDS as ContractFields, signature_fields: SIGNATURE_FIELDS }),
   );
   await inA((tx) =>
     replaceAssignments(tx, id, [{ slot: SLOT, entityId: 'org-pe-beichen', practitionerId: 'pr-chen', partySignerId: 'ps-wang' }]),
@@ -177,9 +179,10 @@ describe('送簽：簽章紀錄與簽署任務同一個交易', () => {
   });
 
   it('兩方合約沒有執業人員，不寫簽章紀錄', async () => {
+    const propertyId = await createVerifiedProperty(kit);
     const id = await inA((tx) =>
       createContract(tx, {
-        property_id: null,
+        property_id: propertyId,
         fields: {
           ...FIELDS,
           routing: { businessType: 'self_managed', lesseeIsMasterLessor: false, brokerMediated: false },

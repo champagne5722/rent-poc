@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { authorize } from '@/lib/authorize';
-import { attachContract, createLeaseCase } from '@/lib/case-store';
+import { attachContract, CaseCreationBlocked, createLeaseCase } from '@/lib/case-store';
 import { buildSigningProgress } from '@/lib/contract-list-load';
 import { createContract, listContracts } from '@/lib/contracts';
 import {
@@ -12,6 +12,8 @@ import {
 } from '@/lib/contract-types';
 import type { ContractType } from '@/lib/labels';
 import { inOrgTx, inOrgTxAs, readInOrgTx, readJson } from '@/lib/org-route';
+import { canCreateCase, PROPERTY_NOT_VERIFIED_CODE, PROPERTY_NOT_VERIFIED_MESSAGE } from '@/lib/ownership/gate';
+import { getOwnershipGate } from '@/lib/ownership/repository';
 import { isUlid } from '@/lib/pg/ulid';
 import { getProperty } from '@/lib/properties';
 import { routingInputError } from '@/lib/signature-routing';
@@ -40,6 +42,14 @@ export async function GET() {
 // 建約第一步先建立案件，合約掛在案件下（ADR-0023 決議 1，MIL-115）。屋主組織的租賃合約只能建自管案件。
 // 執業主體組織的代管與包租案件要查業別與委託，屬 MIL-116：這裡仍建沒有案件的合約，走原本的 uncased 路徑。
 // 委託管理合約不建租賃案件（它的案件是 management 類型，屬 MIL-116、119），權限走 uncased_contract.write。
+//
+// 物件通過平台的文件核對後才能建立（ADR-0028 決議 5，MIL-205）。兩條路都擋，回 409 與 code `property_not_verified`：
+// - 有案件的路：檢查在 createLeaseCase 裡，丟 CaseCreationBlocked，這裡轉成回應。
+// - 沒有案件的路（代管業者與包租業者的組織）：不經 createLeaseCase，所以這裡用同一個讀取入口 getOwnershipGate 檢查。
+function propertyNotVerified(): Response {
+  return jsonError(409, PROPERTY_NOT_VERIFIED_MESSAGE, PROPERTY_NOT_VERIFIED_CODE);
+}
+
 export async function POST(request: NextRequest) {
   const body = await readJson(request);
   const input = typeof body === 'object' && body !== null ? (body as { contract_type?: unknown; property_id?: unknown; routing?: unknown }) : {};
@@ -75,23 +85,35 @@ export async function POST(request: NextRequest) {
     if (property.archived_at) return jsonError(409, '物件已封存，不能建立合約');
     const routingError = routingInputError(routing, type);
     if (routingError) return jsonError(400, routingError);
+    // 沒有案件的路不經 createLeaseCase，所以在這裡檢查。有案件的路由 createLeaseCase 自己檢查
+    if (rc.orgKind !== 'owner' && !canCreateCase(await getOwnershipGate(tx, property.rental_unit_id))) {
+      return propertyNotVerified();
+    }
 
     const checkedRouting = routing as InitialFieldsInput['routing'];
     const fields = initialFieldsFor(type, { property, routing: checkedRouting });
 
     // 案件、合約、兩者的歷程事件與稽核事件同交易寫入（ADR-0007、ADR-0016、ADR-0019）
-    const caseId =
-      rc.orgKind === 'owner'
-        ? await createLeaseCase(tx, {
-            orgId: rc.orgId,
-            orgKind: 'owner',
-            businessType: 'self_managed',
-            // 過渡：分流條件說承租人是包租業者時，案件歸為包租案件（ADR-0030）。MIL-203 移除
-            lesseeIsMasterLessor: checkedRouting?.lesseeIsMasterLessor === true,
-            lessorPartyId: rc.partyId,
-            property,
-          })
-        : null;
+    let caseId: string | null = null;
+    if (rc.orgKind === 'owner') {
+      try {
+        caseId = await createLeaseCase(tx, {
+          orgId: rc.orgId,
+          orgKind: 'owner',
+          businessType: 'self_managed',
+          // 過渡：分流條件說承租人是包租業者時，案件歸為包租案件（ADR-0030）。MIL-203 移除
+          lesseeIsMasterLessor: checkedRouting?.lesseeIsMasterLessor === true,
+          lessorPartyId: rc.partyId,
+          property,
+        });
+      } catch (error) {
+        // createLeaseCase 在寫入任何資料前就丟錯，這裡回應不會留下半套資料
+        if (error instanceof CaseCreationBlocked && error.reasons.some((r) => r.code === PROPERTY_NOT_VERIFIED_CODE)) {
+          return propertyNotVerified();
+        }
+        throw error;
+      }
+    }
     const id = await createContract(tx, {
       property_id: property.id,
       fields,

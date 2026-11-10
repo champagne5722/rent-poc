@@ -123,6 +123,7 @@ npm run e2e:visual -- --update-snapshots
 
 - 只用角色、文字與 label 找元素。不用 class 名稱或 DOM 結構。UI 重構會大改 DOM。
 - 測試資料在測試內建立（`e2e/helpers/api.ts`），名稱帶隨機尾碼。測試不得依賴執行順序。
+- 物件通過平台的文件核對後才能建立合約與送簽（MIL-205）。要建合約的測試用 `seedVerifiedProperty`，它走同意告知、上傳謄本、營運者判定。單元與 route 測試用 `src/lib/ownership/test-kit.ts` 的 `createVerifiedProperty`。測「未通過」時才用 `seedProperty` 或 `createPropertyAt`。
 - dev server 剛編譯完時，頁面可能還沒 hydrate。第一下點擊用 `clickUntil`（`e2e/helpers/ui.ts`）重試，不用固定等待。
 - antd Select 的選項用 `chooseOption`。下拉是虛擬清單，`role=option` 的節點是隱藏的。
 - 重構票改了畫面文字或版面時，同一張票必須更新對應的流程測試。流程測試通過是重構票的完成條件之一。
@@ -144,7 +145,7 @@ node e2e/baseline/static-stats.mjs && node e2e/baseline/score.mjs && node e2e/ba
 ```
 
 - 腳本在 `e2e/baseline/`。它沒有斷言，不在 `npm run e2e` 與 `npm run e2e:visual` 裡。
-- 外殼替 dev server 設 `PLATFORM_OPERATOR_EMAILS`，所以測試能登入平台營運者。`baseline` 與 `flows` 會設，`visual` 不設。
+- 外殼替 dev server 設 `PLATFORM_OPERATOR_EMAILS`，所以測試能登入平台營運者。`baseline`、`flows` 與 `visual` 都會設。
 - 測試自己啟動 Chromium 並開 CDP port 9333，給 `impeccable detect --cdp` 掃渲染後的頁面。
 - 重跑後要看新截圖，更新 `e2e/baseline/score.mjs` 裡手填的「一致」「狀態」「回饋」。
 - 只重跑資料準備與驗收，加參數 `--grep "準備資料|前置|驗收|承租人端截圖"`。

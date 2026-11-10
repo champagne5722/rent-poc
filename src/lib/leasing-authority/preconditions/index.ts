@@ -3,7 +3,6 @@ export {
   checkLeasingAuthorityPreconditions,
   requiredDocumentsFor,
   REQUIRED_DOCUMENT_LABELS,
-  UNVERIFIED_AUTHORITY_TEXT,
 } from './preconditions';
 export type {
   LeasingAuthorityBlockCode,
@@ -11,7 +10,6 @@ export type {
   LeasingAuthorityDocument,
   LeasingAuthorityKind,
   LeasingAuthorityPreconditionResult,
-  LeasingAuthoritySendFact,
   LeasingAuthoritySendFacts,
   LeasingAuthorityStatus,
   PrimaryLeasingAuthorityFacts,

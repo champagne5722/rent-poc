@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { seedProperty, uniqueSuffix } from '../helpers/api';
+import { seedVerifiedProperty, uniqueSuffix } from '../helpers/api';
 import { chooseOption } from '../helpers/ui';
 
 // 流程 1：建約精靈建立草稿（MIL-168）。只驗證使用者看得到的行為。
 
-test('建約精靈：選物件後建立草稿，進入填寫欄位，離開後草稿留在合約列表', async ({ page }) => {
-  const property = await seedProperty(page, `E2E 建約物件 ${uniqueSuffix()}`);
+test('建約精靈：選物件後建立草稿，進入填寫欄位，離開後草稿留在合約列表', async ({ page, browser }) => {
+  const property = await seedVerifiedProperty(page, browser, `E2E 建約物件 ${uniqueSuffix()}`);
 
   await page.goto('/contracts/new');
   await expect(page.getByRole('heading', { name: '建立合約' })).toBeVisible();

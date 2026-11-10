@@ -3,6 +3,8 @@ import { currentNotice, latestConsent, NOTICE_CATALOG, recordConsent } from '../
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
 import type { PropertyOwnership, OwnershipSubmissionView, OwnershipTrustView } from '../types';
+import type { TrustItem } from '../leasing-authority/preconditions';
+import type { OwnershipGate } from './gate';
 import { AWAITING_REVIEW_MESSAGE, NOT_SUBMITTED_MESSAGE, VERIFIED_NOTE, mismatchMessages } from './messages';
 import type { TranscriptForm } from './forms';
 import { toPropertyVerificationStatus, type OwnershipStatus } from './status';
@@ -67,6 +69,53 @@ export async function fetchOwnershipStatuses(tx: OrgTx, anchorIds: readonly stri
     [[...anchorIds]],
   );
   return new Map(rows.map((r) => [r.anchor_id, r.status]));
+}
+
+interface GateRow {
+  node_id: string;
+  status: OwnershipStatus;
+  submission_id: string | null;
+  has_trust: boolean | null;
+  trust_registered_owner: string | null;
+  trust_related_parties: string | null;
+  trust_registration_status: string | null;
+  trust_lease_clause: string | null;
+}
+
+const filled = (value: string | null): boolean => value !== null && value.trim() !== '';
+
+/**
+ * 建立案件與送簽的唯一讀取入口（MIL-205，ADR-0028 決議 5）：這個組織對這個租賃單位有沒有已驗證的所有權節點。
+ * 由租賃單位找到錨點，再找呼叫者組織在該錨點的節點。節點只讀自己組織的（RLS），所以別的組織的租賃單位、
+ * 不存在的租賃單位與沒有節點的結果相同：`nodeStatus` 是 null。
+ * 有未失效的節點時取它，否則取最近一個已失效的節點，讓呼叫端分得出「已失效」與「沒有節點」。
+ * 這個函式只讀。節點失效的入口與 registry.verified_ownership_keys 的清除不在這裡（MIL-208）。
+ */
+export async function getOwnershipGate(tx: OrgTx, rentalUnitId: string): Promise<OwnershipGate> {
+  const { rows } = await tx.query<GateRow>(
+    `SELECT n.id AS node_id, n.status, s.id AS submission_id, s.has_trust,
+            s.trust_registered_owner, s.trust_related_parties, s.trust_registration_status, s.trust_lease_clause
+       FROM registry.get_anchors_for_units($1::text[]) a
+       JOIN org.ownership_nodes n ON n.anchor_id = a.anchor_id
+       LEFT JOIN org.ownership_submissions s ON s.id = n.current_submission_id
+      ORDER BY (n.status = 'lapsed'), n.status_changed_at DESC, n.id DESC
+      LIMIT 1`,
+    [[rentalUnitId]],
+  );
+  const row = rows[0];
+  if (!row) return { nodeStatus: null, node: null };
+  const trustRegistered = row.has_trust === true;
+  const trustItemsProvided: TrustItem[] = [];
+  if (trustRegistered) {
+    if (filled(row.trust_registered_owner)) trustItemsProvided.push('trust_registered_owner');
+    if (filled(row.trust_related_parties)) trustItemsProvided.push('trust_parties');
+    if (filled(row.trust_registration_status)) trustItemsProvided.push('trust_registration_status');
+    if (filled(row.trust_lease_clause)) trustItemsProvided.push('trust_leasing_power_clause');
+  }
+  return {
+    nodeStatus: row.status,
+    node: { id: row.node_id, hasSubmission: row.submission_id !== null, trustRegistered, trustItemsProvided },
+  };
 }
 
 interface SubmissionRow {

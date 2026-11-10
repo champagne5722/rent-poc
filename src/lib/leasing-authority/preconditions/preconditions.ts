@@ -8,14 +8,14 @@
 // 2. D 線呼叫 `checkLeasingAuthorityPreconditions(facts)`。
 // 3. `reasons` 的每一項都是 `{ code, message }`，與 D 線其他原因同形。D 線把它們接在
 //    自己的原因清單後面，全部列給使用者。代碼前綴不重疊，所以不需要改名。
-// 4. `facts` 不擋送簽。D 線產生電子簽署告知時，若有 `leasing_authority_unverified`，
-//    告知必須載明 `text`（「出租權源未驗證」），並記錄時間與告知版本（MIL-42 Q2 補充規則 1）。
-//    告知文字與記錄屬 D 線，本模組只交事實。
+// 4. 主要出租權源待驗證時擋下送簽（ADR-0028 決議 5，MIL-205）。「出租權源未驗證」的告知不再產生，
+//    所以本模組不再回傳告知用的事實。
 //
 //   const authority = checkLeasingAuthorityPreconditions(authorityFacts);
 //   const reasons = [...practitionerReasons, ...authority.reasons];
-//   const noticeFacts = authority.facts; // 交給電子簽署告知
 //   if (reasons.length > 0) return { ok: false, reasons };
+//
+// 事實由 `src/lib/ownership/send-facts.ts` 從所有權節點組出。
 //
 // 不列入送簽前提：謄本新鮮度（ADR-0026 決議 14）、疑似重複（ADR-0025 決議 10、P0-07 AC6）。
 
@@ -74,6 +74,7 @@ export interface LeasingAuthoritySendFacts {
   /**
    * 租賃單位所屬的物件還沒通過平台的文件核對（ADR-0028 決議 5）。
    * 由文件核對的結果決定，不得由鍵是否重複決定：送簽的結果不能讓使用者分辨別的組織是否登錄過同一個鍵。
+   * 已有節點時由主要出租權源的狀態原因說明，不重複列，所以呼叫端只在沒有節點時設 true。
    */
   propertyNotVerified: boolean;
   /** 疑似重複待審。不擋送簽，也不得顯示給使用者（ADR-0025 決議 10）。 */
@@ -82,6 +83,7 @@ export interface LeasingAuthoritySendFacts {
 
 export type LeasingAuthorityBlockCode =
   | 'no_primary_authority'
+  | 'primary_authority_pending'
   | 'primary_authority_failed'
   | 'primary_authority_lapsed'
   | 'missing_documents'
@@ -98,18 +100,9 @@ export interface LeasingAuthorityBlockReason {
   upstreamAuthorityIds?: string[];
 }
 
-export const UNVERIFIED_AUTHORITY_TEXT = '出租權源未驗證';
-
-export interface LeasingAuthoritySendFact {
-  code: 'leasing_authority_unverified';
-  text: typeof UNVERIFIED_AUTHORITY_TEXT;
-  authorityId: string;
-}
-
 export interface LeasingAuthorityPreconditionResult {
   blocked: boolean;
   reasons: LeasingAuthorityBlockReason[];
-  facts: LeasingAuthoritySendFact[];
 }
 
 export const REQUIRED_DOCUMENT_LABELS: Record<RequiredDocument, string> = {
@@ -170,11 +163,13 @@ export function checkLeasingAuthorityPreconditions(
   facts: LeasingAuthoritySendFacts,
 ): LeasingAuthorityPreconditionResult {
   const reasons: LeasingAuthorityBlockReason[] = [];
-  const sendFacts: LeasingAuthoritySendFact[] = [];
   const authority = facts.primaryAuthority;
 
   if (authority === null) {
-    reasons.push(reason('no_primary_authority', '這個租賃單位沒有主要出租權源。請先登錄出租權源再送簽。'));
+    // 物件沒有通過核對時，由 property_not_verified 說明，不再重複說「沒有出租權源」
+    if (!facts.propertyNotVerified) {
+      reasons.push(reason('no_primary_authority', '這個租賃單位沒有主要出租權源。請先登錄出租權源再送簽。'));
+    }
   } else {
     if (authority.status === 'failed') {
       reasons.push(
@@ -183,11 +178,7 @@ export function checkLeasingAuthorityPreconditions(
     } else if (authority.status === 'lapsed') {
       reasons.push(reason('primary_authority_lapsed', '主要出租權源已失效。請登錄新的出租權源再送簽。'));
     } else if (authority.status === 'pending_verification') {
-      sendFacts.push({
-        code: 'leasing_authority_unverified',
-        text: UNVERIFIED_AUTHORITY_TEXT,
-        authorityId: authority.id,
-      });
+      reasons.push(reason('primary_authority_pending', '主要出租權源還在等平台核對文件。核對通過後才能送簽。'));
     }
 
     const missing = missingDocumentsOf(authority);
@@ -225,5 +216,5 @@ export function checkLeasingAuthorityPreconditions(
 
   // 疑似重複待審不擋送簽，也不得出現在原因或事實裡（ADR-0025 決議 10）
 
-  return { blocked: reasons.length > 0, reasons, facts: sendFacts };
+  return { blocked: reasons.length > 0, reasons };
 }

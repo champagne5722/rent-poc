@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST as createContractRoute } from '@/app/api/contracts/route';
 import { POST as createProperty } from '@/app/api/properties/route';
+import { verifyProperty } from '@/lib/ownership/test-kit';
 import { actAs, actAsParty, actAsError, nextAnchorKey, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { Unauthenticated } from '@/lib/request-context';
 import { loadContractList } from './contract-list-load';
@@ -34,6 +35,7 @@ async function newContractWithProperty(): Promise<{ contractId: string; property
     }),
   );
   const propertyId = ((await property.json()) as { data: { id: string } }).data.id;
+  await verifyProperty(kit, propertyId);
   const res = await createContractRoute(
     new NextRequest('http://localhost/api/contracts', { method: 'POST', body: JSON.stringify({ property_id: propertyId }) }),
   );

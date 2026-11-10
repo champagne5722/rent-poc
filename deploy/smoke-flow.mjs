@@ -104,15 +104,21 @@ const created = await json(
   },
   201,
 );
-const propertyId = created.data?.id;
-check(typeof propertyId === 'string' && propertyId.length === 26, '建立物件，回傳物件 ID');
+const createdId = created.data?.id;
+check(typeof createdId === 'string' && createdId.length === 26, '建立物件，回傳物件 ID');
 
-// 4. 建立合約草稿並補欄位與簽署區
+// 4. 建立合約草稿並補欄位與簽署區。物件通過平台的文件核對後才能建立合約（MIL-205，ADR-0028 決議 5）。
+// 剛建立的物件還沒有核對，所以合約建在種子已核對的示範物件上。
+const demo = listed.data.find((p) => p.name.includes('示範物件'));
+check(demo?.verification_status === 'verified', '種子的示範物件已通過文件核對');
+const propertyId = demo.id;
+const blocked = await call('POST', '/api/contracts', { property_id: createdId });
+check(blocked.status === 409, '剛建立、還沒核對的物件建立合約被拒（409）');
 const draft = await json('POST', '/api/contracts', { property_id: propertyId }, 201);
 const contractId = draft.data?.id;
 check(typeof contractId === 'string' && contractId.length === 26, '建立合約，回傳合約 ID');
 const read = await json('GET', `/api/contracts/${contractId}`);
-check(read.data?.property_id === propertyId && read.data?.status === 'draft', '合約掛在剛建立的物件，狀態是草稿');
+check(read.data?.property_id === propertyId && read.data?.status === 'draft', '合約掛在已核對的示範物件，狀態是草稿');
 
 const updated = await json('PUT', `/api/contracts/${contractId}`, {
   fields: {

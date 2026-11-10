@@ -32,7 +32,7 @@ credentialStatusAt(facts: CredentialFacts, at: string, config?): CredentialStatu
 // at 是 ISO 8601，以台灣日期比對。signable 為 true 時帶 renewalWindow（換證窗口內有值）
 
 checkSendPreconditions(facts: SendPreconditionFacts): SendPreconditionResult
-// { ok, reasons, notices, leasingAuthorityFacts }。reasons 一次列完，不綁合約 ID
+// { ok, reasons, notices }。reasons 一次列完，不綁合約 ID
 ```
 
 `CredentialFacts` 是 `{ license, practitioner, employment }` 三層，每層 `{ state, latestCheckId, ... }`。業別與證書層有 `validUntil`，任職層有 `startsOn`、`endsOn`。形狀照 `src/lib/registry-rules/README.md` 的 MIL-113 接點。

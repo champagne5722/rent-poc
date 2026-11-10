@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { bindTemplate } from '../clause-library';
 import { createContract, getContract } from '../contracts';
 import { withTx } from '../pg/database';
+import { createVerifiedProperty } from '../ownership/test-kit';
 import { setupRouteDb, type RouteDb } from '../pg/route-test-kit';
 import type { OrgTx } from '../pg/with-tx';
 import { createSeedPracticeRegistry, type PracticeRegistryResolution } from '../practice-registry';
@@ -38,10 +39,11 @@ const SELF_MANAGED_FIELDS_ON_PAGE: SignatureField[] = [
   { id: 'a', signer: 'party_a', slot: 'lease.self_managed.party_a', page: 1, x: 0.6, y: 0.8, w: 0.2, h: 0.1 },
 ];
 
-function newContract(fields: object, signatureFields: SignatureField[] = SELF_MANAGED_FIELDS_ON_PAGE): Promise<string> {
+async function newContract(fields: object, signatureFields: SignatureField[] = SELF_MANAGED_FIELDS_ON_PAGE): Promise<string> {
+  const propertyId = await createVerifiedProperty(kit);
   return inA((tx) =>
     createContract(tx, {
-      property_id: null,
+      property_id: propertyId,
       fields: {
         landlordName: '王大明',
         landlordEmail: 'landlord@example.com',
@@ -83,9 +85,10 @@ describe('正式金鑰（DOTTEDSIGN_VERIFY_SIGNERS=1）', () => {
   });
 
   it('沒綁範本版本的早期草稿一樣被擋下', async () => {
+    const propertyId = await createVerifiedProperty(kit);
     const id = await inA((tx) =>
       createContract(tx, {
-        property_id: null,
+        property_id: propertyId,
         fields: {
           landlordName: '王大明',
           landlordEmail: 'landlord@example.com',

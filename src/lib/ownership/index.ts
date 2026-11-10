@@ -22,7 +22,17 @@ export {
   type TranscriptUpload,
 } from './flows';
 export {
+  canCreateCase,
+  canSendContract,
+  isVerified,
+  leasingAuthorityFactsOf,
+  PROPERTY_NOT_VERIFIED_CODE,
+  PROPERTY_NOT_VERIFIED_MESSAGE,
+  type OwnershipGate,
+} from './gate';
+export {
   fetchOwnershipStatuses,
+  getOwnershipGate,
   getOwnershipNodeStatus,
   getPropertyOwnership,
   recordTranscriptConsent,

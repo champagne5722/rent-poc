@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import fs from 'node:fs';
 import { DATA_DIR } from '@/lib/db';
 import { withTx } from '@/lib/pg/database';
+import { verifyProperty } from '@/lib/ownership/test-kit';
 import { actAs, actAsError, nextAnchorKey, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { newUlid } from '@/lib/pg/ulid';
 import { Unauthenticated } from '@/lib/request-context';
@@ -83,6 +84,7 @@ async function readyDraft(): Promise<string> {
     }),
   );
   const propertyId = (await json(propertyRes)).data.id;
+  await verifyProperty(kit, propertyId);
   const res = await create(new NextRequest('http://localhost/api/contracts', { method: 'POST', body: JSON.stringify({ property_id: propertyId }) }));
   const id = (await json(res)).data.id;
   await PUT(req('PUT', { fields: READY_FIELDS, signature_fields: SIGNATURE_FIELDS }), ctx(id));
@@ -115,8 +117,10 @@ describe('POST /api/contracts/[id]/send', () => {
     const propertyRes = await createProperty(
       new NextRequest('http://localhost/api/properties', { method: 'POST', body: JSON.stringify({ name: 'x', address: 'y', equipment: [], anchor: { key: nextAnchorKey() } }) }),
     );
+    const emptyPropertyId = (await json(propertyRes)).data.id;
+    await verifyProperty(kit, emptyPropertyId);
     const created = await create(
-      new NextRequest('http://localhost/api/contracts', { method: 'POST', body: JSON.stringify({ property_id: (await json(propertyRes)).data.id }) }),
+      new NextRequest('http://localhost/api/contracts', { method: 'POST', body: JSON.stringify({ property_id: emptyPropertyId }) }),
     );
     const empty = (await json(created)).data.id;
     const missing = await send(req('POST'), ctx(empty));

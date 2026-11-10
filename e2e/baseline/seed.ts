@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { APIRequestContext, Page } from '@playwright/test';
+import type { APIRequestContext, Browser, Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
-import { seedProperty, seedSendableDraft, READY_FIELDS } from '../helpers/api';
+import { seedSendableDraft, seedVerifiedProperty, READY_FIELDS } from '../helpers/api';
 import { STATUS_ANNEX_ITEMS, STATUS_ANNEX_VERSION } from '../../src/lib/status-annex/items';
 
 // 現況基準（MIL-170）的測試資料。
@@ -67,13 +67,13 @@ async function advance(page: Page, contractId: string, event: string): Promise<v
   await ok(await page.request.post('/api/mock/advance', { data: { contract_id: contractId, event } }), `模擬簽署事件 ${event}`);
 }
 
-export async function seedOwner(page: Page): Promise<Partial<OwnerWorld>> {
+export async function seedOwner(page: Page, browser: Browser): Promise<Partial<OwnerWorld>> {
   const world: Partial<OwnerWorld> = {};
   const properties = [
-    await step('物件甲', () => seedProperty(page, '大安和平東路 3 樓', '台北市大安區和平東路二段 100 號 3 樓')),
-    await step('物件乙', () => seedProperty(page, '板橋文化路 5 樓', '新北市板橋區文化路一段 200 號 5 樓')),
-    await step('物件丙', () => seedProperty(page, '信義松仁路 12 樓', '台北市信義區松仁路 88 號 12 樓')),
-    await step('物件丁', () => seedProperty(page, '中和景平路 2 樓', '新北市中和區景平路 300 號 2 樓')),
+    await step('物件甲', () => seedVerifiedProperty(page, browser, '大安和平東路 3 樓', '台北市大安區和平東路二段 100 號 3 樓')),
+    await step('物件乙', () => seedVerifiedProperty(page, browser, '板橋文化路 5 樓', '新北市板橋區文化路一段 200 號 5 樓')),
+    await step('物件丙', () => seedVerifiedProperty(page, browser, '信義松仁路 12 樓', '台北市信義區松仁路 88 號 12 樓')),
+    await step('物件丁', () => seedVerifiedProperty(page, browser, '中和景平路 2 樓', '新北市中和區景平路 300 號 2 樓')),
   ].filter((p): p is NonNullable<typeof p> => Boolean(p));
   world.propertyIds = properties.map((p) => p.id);
   const [a, b, c, d] = properties;
@@ -226,8 +226,8 @@ function certForm(kind: string, word: string, serial: string) {
 }
 
 /** 包租租賃合約：執業主體建立，人選來自 seed 假資料 adapter。 */
-export async function seedMasterLease(practice: Page): Promise<Pick<PracticeWorld, 'masterLeaseContractId' | 'masterLeaseDraftId'>> {
-  const created = await step('包租：物件', () => seedProperty(practice, '包租示範物件', '台北市中山區南京東路二段 50 號 6 樓'));
+export async function seedMasterLease(practice: Page, browser: Browser): Promise<Pick<PracticeWorld, 'masterLeaseContractId' | 'masterLeaseDraftId'>> {
+  const created = await step('包租：物件', () => seedVerifiedProperty(practice, browser, '包租示範物件', '台北市中山區南京東路二段 50 號 6 樓'));
   if (!created) return { masterLeaseContractId: null, masterLeaseDraftId: null };
 
   const build = async (label: string, send: boolean): Promise<string | null> => {

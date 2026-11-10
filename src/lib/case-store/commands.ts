@@ -12,6 +12,12 @@ import {
   type PracticeFacts,
 } from '../cases';
 import { resolveSocialHousingDefault } from '../case-ledger/social-housing-default';
+import {
+  canCreateCase,
+  PROPERTY_NOT_VERIFIED_CODE,
+  PROPERTY_NOT_VERIFIED_MESSAGE,
+} from '../ownership/gate';
+import { getOwnershipGate } from '../ownership/repository';
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
 import {
@@ -31,9 +37,17 @@ import type { CaseActor } from './types';
 // 案件的建立、掛合約與加成員（MIL-115）。轉移不在這裡，一律走 dispatch()。
 // 全部用呼叫端的 tx，與合約的寫入同一個交易。權限由呼叫端先 authorize()。
 
-/** `decideCaseCreation` 擋下了建立。`reasons` 是全部原因。 */
+/** 物件沒有通過平台的文件核對（MIL-205，ADR-0028 決議 5）。不屬於 `decideCaseCreation` 的原因碼。 */
+export interface PropertyNotVerifiedReason {
+  code: typeof PROPERTY_NOT_VERIFIED_CODE;
+  message: typeof PROPERTY_NOT_VERIFIED_MESSAGE;
+}
+
+export type CaseCreationBlockReason = CreationBlockReason | PropertyNotVerifiedReason;
+
+/** 建立案件被擋下。`reasons` 是全部原因：`decideCaseCreation` 的原因，或物件沒有通過核對。 */
 export class CaseCreationBlocked extends Error {
-  constructor(readonly reasons: CreationBlockReason[]) {
+  constructor(readonly reasons: CaseCreationBlockReason[]) {
     super(reasons.map((r) => r.message).join(' '));
     this.name = 'CaseCreationBlocked';
   }
@@ -81,8 +95,10 @@ export interface NewLeaseCaseInput {
  * 誰能呼叫：已在 `inOrgTx` 內、並已 authorize() 的 route。這個函式不做權限判斷。
  * 轉租案件的包租案件事實由這裡自己查（`findCoveringMasterLeaseCase`），呼叫端不能傳入，所以無法偽造。
  * 查詢只看目前組織主辦的案件。找不到時丟 `CaseCreationBlocked`，說明不分「沒有」與「別的組織的」。
+ * 物件沒有通過平台的文件核對時，在最前面丟 `CaseCreationBlocked`（`property_not_verified`），見 `requireVerifiedProperty`。
  */
 export async function createLeaseCase(tx: OrgTx, input: NewLeaseCaseInput, now: Date = new Date()): Promise<string> {
+  await requireVerifiedProperty(tx, input.property.rental_unit_id);
   const caseId = newUlid();
   const legacyMasterLease =
     input.caseKind === undefined && input.lesseeIsMasterLessor === true && input.businessType === 'self_managed';
@@ -134,6 +150,19 @@ export async function createLeaseCase(tx: OrgTx, input: NewLeaseCaseInput, now: 
     payload: { kind: 'lease', case_kind: result.case.caseKind, business_type: input.businessType },
   });
   return caseId;
+}
+
+/**
+ * 物件通過核對後才能建立案件（MIL-205，ADR-0028 決議 5）。
+ * 由這裡自己查這個組織對這個租賃單位有沒有已驗證的所有權節點，呼叫端不能傳入結果，所以無法偽造。
+ * 別的組織的租賃單位、不存在的租賃單位與沒有節點的結果相同，原因文字固定，不洩漏物件在不在平台上。
+ * 放在 `createLeaseCase` 的最前面：被擋下時什麼都還沒寫。
+ */
+async function requireVerifiedProperty(tx: OrgTx, rentalUnitId: string): Promise<void> {
+  const gate = await getOwnershipGate(tx, rentalUnitId);
+  if (!canCreateCase(gate)) {
+    throw new CaseCreationBlocked([{ code: PROPERTY_NOT_VERIFIED_CODE, message: PROPERTY_NOT_VERIFIED_MESSAGE }]);
+  }
 }
 
 /** 案件清單顯示的名稱：物件名稱加地址。 */

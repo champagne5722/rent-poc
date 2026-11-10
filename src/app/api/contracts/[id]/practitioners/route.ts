@@ -3,6 +3,7 @@ import { authorize } from '@/lib/authorize';
 import { getContract } from '@/lib/contracts';
 import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/contracts/route';
 import { jsonError, jsonOk } from '@/lib/http';
+import { loadLeasingAuthorityFacts } from '@/lib/ownership/send-facts';
 import { inOrgTx, readInOrgTx, readJson } from '@/lib/org-route';
 import type { OrgTx } from '@/lib/pg/with-tx';
 import { getPracticeRegistry } from '@/lib/practice-registry';
@@ -21,7 +22,9 @@ async function loadForAssignment(tx: OrgTx, id: string, action: 'contract.read' 
   await authorize(tx, action, { type: 'contract', id });
   const contract = await getContract(tx, id);
   if (!contract) return null;
-  return { contract, routing: await loadContractRoutingFacts(tx, id), stored: await getAssignments(tx, id) };
+  // 送簽預覽與送簽用同一組權源事實，原因一致（MIL-205）
+  const leasingAuthority = await loadLeasingAuthorityFacts(tx, contract);
+  return { contract, routing: await loadContractRoutingFacts(tx, id), stored: await getAssignments(tx, id), leasingAuthority };
 }
 
 export async function GET(request: NextRequest, { params }: ContractRouteCtx) {
@@ -30,7 +33,7 @@ export async function GET(request: NextRequest, { params }: ContractRouteCtx) {
   const read = await readInOrgTx((tx) => loadForAssignment(tx, id, 'contract.read'));
   if (!read.ok) return read.response;
   if (!read.value) return contractNotFound();
-  const { contract, routing, stored } = read.value;
+  const { contract, routing, stored, leasingAuthority } = read.value;
   if (!routing.ok) return jsonError(400, routing.reason);
 
   const resolution = getPracticeRegistry();
@@ -48,7 +51,7 @@ export async function GET(request: NextRequest, { params }: ContractRouteCtx) {
   const [options, printed, evaluation, annexReasons] = await Promise.all([
     loadSeatOptions(routing.facts, resolution, at),
     loadPrintedPractitioners(routing.facts, assignments, resolution),
-    evaluateSend({ routing: routing.facts, contractType: contract.contract_type, fields: contract.fields, assignments, at }, resolution),
+    evaluateSend({ routing: routing.facts, contractType: contract.contract_type, fields: contract.fields, assignments, at, leasingAuthority }, resolution),
     // 現況確認附件頁缺少執業人員的簽署區域（MIL-71）。確認頁併入原因清單，與送簽時的檢查一致
     statusAnnexSendReasons(contract),
   ]);

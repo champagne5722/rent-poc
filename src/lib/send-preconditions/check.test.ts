@@ -64,7 +64,7 @@ const codes = (f: SendPreconditionFacts) => checkSendPreconditions(f).reasons.ma
 
 describe('checkSendPreconditions：ADR-0018 決議 10 的 7 項', () => {
   it('全部符合：可送簽，沒有原因', () => {
-    expect(checkSendPreconditions(facts())).toEqual({ ok: true, reasons: [], notices: [], leasingAuthorityFacts: [] });
+    expect(checkSendPreconditions(facts())).toEqual({ ok: true, reasons: [], notices: [] });
   });
 
   describe('第 1 項：規則表有定義這個組合', () => {
@@ -323,7 +323,7 @@ describe('checkSendPreconditions：ADR-0018 決議 10 的 7 項', () => {
     it('沒有帶權源事實時不檢查', () => {
       expect(codes(facts())).toEqual([]);
     });
-    it('權源的告知事實原樣交出，不影響是否可送簽', () => {
+    it('主要出租權源待驗證時擋下送簽，不再產生「出租權源未驗證」的告知（MIL-205）', () => {
       const pending: LeasingAuthoritySendFacts = {
         rentalUnitId: 'ru-1',
         primaryAuthority: {
@@ -337,10 +337,9 @@ describe('checkSendPreconditions：ADR-0018 決議 10 的 7 項', () => {
         hasPendingSuspectedDuplicate: false,
       };
       const result = checkSendPreconditions(facts({ leasingAuthority: pending }));
-      expect(result.ok).toBe(true);
-      expect(result.leasingAuthorityFacts).toEqual([
-        { code: 'leasing_authority_unverified', text: '出租權源未驗證', authorityId: 'au-1' },
-      ]);
+      expect(result.ok).toBe(false);
+      expect(result.reasons.map((r) => r.code)).toEqual(['primary_authority_pending']);
+      expect(result).not.toHaveProperty('leasingAuthorityFacts');
     });
   });
 });

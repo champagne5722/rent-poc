@@ -5,6 +5,7 @@ import { getDepositLedger, listPeriods } from '@/lib/case-ledger';
 import { getCase, listCaseEvents, listCaseMembers } from '@/lib/case-store';
 import { DATA_DIR } from '@/lib/db';
 import { withTx } from '@/lib/pg/database';
+import { verifyProperty } from '@/lib/ownership/test-kit';
 import { actAs, actAsContext, nextAnchorKey, setupRouteDb, TEST_PARTY_ID, TEST_USER_ID, type RouteDb } from '@/lib/pg/route-test-kit';
 import { POST as advance } from '../mock/advance/route';
 import { POST as createProperty } from '../properties/route';
@@ -71,6 +72,7 @@ async function newDraft(fields: Record<string, unknown> = READY_FIELDS): Promise
     }),
   );
   const propertyId = (await json(propertyRes)).data.id;
+  await verifyProperty(kit, propertyId);
   const res = await create(new NextRequest('http://localhost/api/contracts', { method: 'POST', body: JSON.stringify({ property_id: propertyId }) }));
   expect(res.status).toBe(201);
   const contractId = (await json(res)).data.id;

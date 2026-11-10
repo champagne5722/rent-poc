@@ -1,13 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createVerifiedCaseProperty } from '../ownership/test-kit';
 import { withTx } from '../pg/database';
 import { setupRouteDb, type RouteDb } from '../pg/route-test-kit';
 import { newUlid } from '../pg/ulid';
-import { createProperty, parsePropertyInput } from '../properties';
 import { createContract } from '../contracts';
 import {
   addCaseMember,
   attachContract,
-  CaseCreationBlocked,
   CaseNotFound,
   CaseVersionConflict,
   createLeaseCase,
@@ -31,11 +30,10 @@ beforeEach(() => kit.reset());
 const NOW = new Date('2026-01-01T00:00:00.000Z');
 
 async function seedLeaseCase(orgId: string) {
+  // 建立案件要求物件已通過文件核對（MIL-205），所以先在交易外備好已核對的物件
+  const property = await createVerifiedCaseProperty(kit, { orgId, name: '測試物件' });
+  const propertyId = property.id;
   return withTx({ kind: 'org', orgId }, async (tx) => {
-    const parsed = parsePropertyInput({ name: '測試物件', address: '台北市大安區和平東路二段 100 號 3 樓', type: '整層住家' });
-    if (!parsed.ok) throw new Error(parsed.error);
-    const propertyId = await createProperty(tx, parsed.value);
-    const { rows } = await tx.query<{ rental_unit_id: string }>('SELECT rental_unit_id FROM org.properties WHERE id = $1', [propertyId]);
     const lessor = await findOrCreateParty(tx, 'lessor@example.com', '出租人');
     const caseId = await createLeaseCase(
       tx,
@@ -44,7 +42,7 @@ async function seedLeaseCase(orgId: string) {
         orgKind: 'owner',
         businessType: 'self_managed',
         lessorPartyId: lessor,
-        property: { id: propertyId, name: '測試物件', address: '台北市大安區', rental_unit_id: rows[0].rental_unit_id },
+        property: { ...property, address: '台北市大安區' },
       },
       NOW,
     );
@@ -80,11 +78,8 @@ describe('createLeaseCase', () => {
   });
 
   it('自管案件沒有代管業者，社宅旗標即使傳 true 也記 false（MIL-123）', async () => {
+    const property = await createVerifiedCaseProperty(kit, { name: '社宅測試' });
     const caseId = await withTx({ kind: 'org', orgId: kit.orgA }, async (tx) => {
-      const parsed = parsePropertyInput({ name: '社宅測試', address: '台北市大安區和平東路二段 100 號 4 樓', type: '整層住家' });
-      if (!parsed.ok) throw new Error(parsed.error);
-      const propertyId = await createProperty(tx, parsed.value);
-      const { rows } = await tx.query<{ rental_unit_id: string }>('SELECT rental_unit_id FROM org.properties WHERE id = $1', [propertyId]);
       const lessor = await findOrCreateParty(tx, 'lessor2@example.com', '出租人');
       return createLeaseCase(
         tx,
@@ -93,7 +88,7 @@ describe('createLeaseCase', () => {
           orgKind: 'owner',
           businessType: 'self_managed',
           lessorPartyId: lessor,
-          property: { id: propertyId, name: '社宅測試', address: '台北市大安區', rental_unit_id: rows[0].rental_unit_id },
+          property: { ...property, address: '台北市大安區' },
           socialHousing: true,
         },
         NOW,
@@ -114,6 +109,7 @@ describe('createLeaseCase', () => {
   });
 
   it('屋主組織不能建代管案件', async () => {
+    const property = await createVerifiedCaseProperty(kit);
     await expect(
       withTx({ kind: 'org', orgId: kit.orgA }, (tx) =>
         createLeaseCase(tx, {
@@ -121,10 +117,10 @@ describe('createLeaseCase', () => {
           orgKind: 'owner',
           businessType: 'managed',
           lessorPartyId: newUlid(),
-          property: { id: newUlid(), name: 'x', address: 'y', rental_unit_id: newUlid() },
+          property,
         }),
       ),
-    ).rejects.toBeInstanceOf(CaseCreationBlocked);
+    ).rejects.toThrow(/不得建立這種業務類型/);
   });
 });
 

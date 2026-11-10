@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DATA_DIR } from '@/lib/db';
+import { verifyProperty } from '@/lib/ownership/test-kit';
 import { actAs, actAsContext, nextAnchorKey, setupRouteDb, TEST_PARTY_ID, TEST_USER_ID, type RouteDb } from '@/lib/pg/route-test-kit';
 import { newUlid } from '@/lib/pg/ulid';
 import type { OrgRole } from '@/lib/request-context';
@@ -81,8 +82,10 @@ const PROPERTY_BODY = { name: '大安區溫馨兩房', address: '台北市大安
 /** 以 admin 在 org 建一份物件與合約草稿。 */
 async function seed(orgId: string): Promise<{ propertyId: string; contractId: string }> {
   actAsRole(orgId, 'admin');
-  const property = await json(await createProperty(req('POST', PROPERTY_BODY)));
+  // 每次用新的建號：兩個組織用同一個建號時，第二個組織的核對會停在待處理（ADR-0028 決議 4）
+  const property = await json(await createProperty(req('POST', { ...PROPERTY_BODY, anchor: { key: nextAnchorKey() } })));
   const propertyId = property.data.id as string;
+  await verifyProperty(kit, propertyId, { orgId });
   const contract = await json(await createContract(req('POST', { property_id: propertyId })));
   return { propertyId, contractId: contract.data.id as string };
 }

@@ -6,6 +6,7 @@ import { createContractSubscriber } from '../contract-signing';
 import { createContract, getContract, listContractEvents } from '../contracts';
 import { createLocalFileStore } from '../file-store/local-file-store';
 import { withTx } from '../pg/database';
+import { createVerifiedProperty } from '../ownership/test-kit';
 import { actAs, setupRouteDb, type RouteDb } from '../pg/route-test-kit';
 import type { OrgTx } from '../pg/with-tx';
 import { createSeedPracticeRegistry, type PracticeRegistryResolution } from '../practice-registry';
@@ -135,9 +136,10 @@ async function send(options: {
   assignments: PractitionerAssignmentInput[];
   fields: SignatureField[];
 }) {
+  const propertyId = await createVerifiedProperty(kit);
   const id = await inA((tx) =>
     createContract(tx, {
-      property_id: null,
+      property_id: propertyId,
       fields: {
         routing: routing(options.brokerMediated),
         ...options.landlord,
@@ -372,9 +374,10 @@ describe('兼任合併加經紀人：三位簽署人', () => {
   });
 
   it('經紀營業員不得簽章：送簽前被擋下並說明', async () => {
+    const propertyId = await createVerifiedProperty(kit);
     const id = await inA((tx) =>
       createContract(tx, {
-        property_id: null,
+        property_id: propertyId,
         fields: { routing: routing(true), ...WANG_AS_LANDLORD, tenantName: '王租客', tenantEmail: TENANT_EMAIL } as ContractFields,
         signature_fields: [FIELD_B, FIELD_P, FIELD_A, FIELD_K],
       }),

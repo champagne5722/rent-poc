@@ -1,5 +1,10 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { listIdentityOptions } from '../auth/account-service';
+import { createLocalFileStore } from '../file-store/local-file-store';
+import { getOwnershipGate } from '../ownership/repository';
 import { withTx } from '../pg/database';
 import { setupRouteDb, TEST_PARTY_ID, type RouteDb } from '../pg/route-test-kit';
 import {
@@ -25,11 +30,18 @@ const COUNTED_TABLES = [
 ];
 
 let kit: RouteDb;
+let storeRoot: string;
+let store: ReturnType<typeof createLocalFileStore>;
 beforeAll(async () => {
   kit = await setupRouteDb();
   await kit.reset();
+  storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'demo-seed-'));
+  store = createLocalFileStore(storeRoot);
 });
-afterAll(() => kit.close());
+afterAll(async () => {
+  await kit.close();
+  fs.rmSync(storeRoot, { recursive: true, force: true });
+});
 
 async function counts(): Promise<Record<string, number>> {
   return kit.asOwner(async (db) => {
@@ -42,16 +54,18 @@ async function counts(): Promise<Record<string, number>> {
     }
     return out;
   }).then(async (out) => {
-    // 物件表掛 RLS，要用屋主組織的脈絡才讀得到
     const org = await withTx({ kind: 'control' }, (tx) =>
       tx.query<{ id: string }>('SELECT id FROM control.orgs WHERE name = $1', [DEMO_ORG_NAME.owner]),
     );
-    out['org.properties'] =
-      org.rows.length === 0
-        ? 0
-        : await withTx({ kind: 'org', orgId: org.rows[0].id, partyId: TEST_PARTY_ID }, async (tx) =>
-            (await tx.query<{ n: number }>('SELECT count(*)::int AS n FROM org.properties')).rows[0].n,
-          );
+    // 物件、所有權節點、謄本送件與通知都掛 RLS，要用屋主組織的脈絡才讀得到
+    for (const table of ['org.properties', 'org.ownership_nodes', 'org.ownership_submissions', 'org.notifications']) {
+      out[table] =
+        org.rows.length === 0
+          ? 0
+          : await withTx({ kind: 'org', orgId: org.rows[0].id, partyId: TEST_PARTY_ID }, async (tx) =>
+              (await tx.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n,
+            );
+    }
     return out;
   });
 }
@@ -80,11 +94,11 @@ describe('readDemoSeedEmails', () => {
 describe('runDemoSeed', () => {
   it('第一次建立全部資料，第二次執行不新增任何資料', async () => {
     const emails = readDemoSeedEmails({});
-    const first = await runDemoSeed(emails, { now: NOW });
+    const first = await runDemoSeed(emails, { now: NOW, store });
     expect(first.every((s) => s.result === 'created')).toBe(true);
     const afterFirst = await counts();
 
-    const second = await runDemoSeed(emails, { now: new Date(NOW.getTime() + 60_000) });
+    const second = await runDemoSeed(emails, { now: new Date(NOW.getTime() + 60_000), store });
     expect(second.every((s) => s.result === 'exists')).toBe(true);
     expect(await counts()).toEqual(afterFirst);
   });
@@ -122,6 +136,19 @@ describe('runDemoSeed', () => {
     expect(rows.map((r) => r.email)).toEqual([DEMO_SEED_DEFAULT_EMAIL.operator]);
   });
 
+  it('示範物件走正式流程通過核對：一個已驗證的節點、一份送件、一則通知，重跑不增加', async () => {
+    const state = await counts();
+    expect(state['org.ownership_nodes']).toBe(1);
+    expect(state['org.ownership_submissions']).toBe(1);
+    expect(state['org.notifications']).toBe(1);
+    const org = await withTx({ kind: 'control' }, (tx) => tx.query<{ id: string }>('SELECT id FROM control.orgs WHERE name = $1', [DEMO_ORG_NAME.owner]));
+    const gate = await withTx({ kind: 'org', orgId: org.rows[0].id, partyId: TEST_PARTY_ID }, async (tx) => {
+      const { rows } = await tx.query<{ rental_unit_id: string }>('SELECT rental_unit_id FROM org.properties');
+      return getOwnershipGate(tx, rows[0].rental_unit_id);
+    });
+    expect(gate.nodeStatus).toBe('verified');
+  });
+
   it('屋主組織有一個示範物件，不留 session，示範業者的統編不是真實統編', async () => {
     const state = await counts();
     expect(state['org.properties']).toBe(1);
@@ -136,5 +163,25 @@ describe('runDemoSeed', () => {
       return sum % 10 === 0 || (id[6] === '7' && (sum + 1) % 10 === 0);
     };
     expect(valid(DEMO_MANAGER_TAX_ID)).toBe(false);
+  });
+});
+
+describe('已跑過舊版種子的資料庫', () => {
+  it('物件已存在但沒有核對時，重跑新版種子後示範物件變成已核對，不重複建立物件', async () => {
+    await kit.reset();
+    const emails = readDemoSeedEmails({});
+    // 謄本寫檔失敗：種子建完帳號、組織與物件後在核對這一步中斷，資料庫停在舊版種子的狀態
+    const brokenStore = { ...store, write: async () => { throw new Error('寫檔失敗'); } } as typeof store;
+    await expect(runDemoSeed(emails, { now: NOW, store: brokenStore })).rejects.toThrow('寫檔失敗');
+    const before = await counts();
+    expect(before['org.properties']).toBe(1);
+    expect(before['org.ownership_nodes']).toBe(0);
+
+    const steps = await runDemoSeed(emails, { now: new Date(NOW.getTime() + 60_000), store });
+    expect(steps.find((s) => s.step === '屋主的示範物件')?.result).toBe('exists');
+    expect(steps.find((s) => s.step === '示範物件通過文件核對')?.result).toBe('created');
+    const after = await counts();
+    expect(after['org.properties']).toBe(1);
+    expect(after['org.ownership_nodes']).toBe(1);
   });
 });

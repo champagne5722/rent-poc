@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { chromium, expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { chooseOption } from '../helpers/ui';
 import { PAGES, TENANT_PAGES, type PageSpec } from './pages';
-import { seedProperty, seedSendableDraft } from '../helpers/api';
+import { seedSendableDraft, seedVerifiedProperty } from '../helpers/api';
 import { seedMasterLease, seedOwner, seedPracticeAndDesk, step, stepLog, type OwnerWorld } from './seed';
 import { createOwnerOrg, createPracticeOrg, newUserContext, signIn } from './session';
 
@@ -83,7 +83,7 @@ test('準備資料', async () => {
   // 屋主
   const owner = await ownerPage();
   await owner.goto('/');
-  Object.assign(world, (await step('屋主資料', () => seedOwner(owner))) ?? {});
+  Object.assign(world, (await step('屋主資料', () => seedOwner(owner, browser))) ?? {});
 
   // 執業主體甲、乙與平台營運者
   const practice = await ctx.practice.newPage();
@@ -104,7 +104,7 @@ test('準備資料', async () => {
   });
   await step('營運者：登入', () => signIn(operator, OPERATOR_EMAIL));
   Object.assign(world, await seedPracticeAndDesk(practice, practice2, practice3, operator));
-  Object.assign(world, await seedMasterLease(practice));
+  Object.assign(world, await seedMasterLease(practice, browser));
 
   // 移交（假資料 adapter）與承租人案件：從列表頁取連結
   const hrefs = async (page: Page, route: string, pattern: RegExp): Promise<string | null> => {
@@ -121,7 +121,7 @@ test('準備資料', async () => {
   await step('屋主二：登入、建立組織、簽署中合約', async () => {
     await signIn(owner2, 'e2e-owner2@example.com');
     await createOwnerOrg(owner2, 'E2E 屋主二');
-    const property = await seedProperty(owner2, '士林中正路 4 樓', '台北市士林區中正路 20 號 4 樓');
+    const property = await seedVerifiedProperty(owner2, browser, '士林中正路 4 樓', '台北市士林區中正路 20 號 4 樓');
     const id = await seedSendableDraft(owner2, property.id);
     const sent = await owner2.request.post(`/api/contracts/${id}/send`);
     if (!sent.ok()) throw new Error(`屋主二送簽失敗：${sent.status()}`);

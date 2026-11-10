@@ -6,6 +6,7 @@ import { createLocalFileStore } from '../file-store/local-file-store';
 import { createContractSubscriber } from '../contract-signing';
 import { createContract, getContract, listContractEvents } from '../contracts';
 import { withTx } from '../pg/database';
+import { createVerifiedProperty } from '../ownership/test-kit';
 import { setupRouteDb, type RouteDb } from '../pg/route-test-kit';
 import type { OrgTx } from '../pg/with-tx';
 import { createSeedPracticeRegistry, REGISTRY_UNAVAILABLE_REASON, type PracticeRegistryResolution } from '../practice-registry';
@@ -80,9 +81,10 @@ const REVERSED_ROUTING: ContractRoutingConditions = {
 };
 const REVERSED_SLOT = 'lease.self_managed_lessee_master_lessor.practitioner';
 
-function newContract(fields: object, signatureFields: SignatureField[]): Promise<string> {
+async function newContract(fields: object, signatureFields: SignatureField[]): Promise<string> {
+  const propertyId = await createVerifiedProperty(kit);
   return inA((tx) =>
-    createContract(tx, { property_id: null, fields: fields as ContractFields, signature_fields: signatureFields }),
+    createContract(tx, { property_id: propertyId, fields: fields as ContractFields, signature_fields: signatureFields }),
   );
 }
 

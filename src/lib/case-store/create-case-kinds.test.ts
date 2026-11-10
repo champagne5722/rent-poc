@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { PROPERTY_NOT_VERIFIED_CODE, PROPERTY_NOT_VERIFIED_MESSAGE } from '../ownership/gate';
+import { casePropertyOf, createPropertyAt, createVerifiedCaseProperty, lapseOwnership } from '../ownership/test-kit';
 import { withTx } from '../pg/database';
 import { setupRouteDb, TEST_PARTY_ID, type RouteDb } from '../pg/route-test-kit';
 import { newUlid } from '../pg/ulid';
@@ -25,20 +27,33 @@ const VERIFIED = { entityStatus: 'verified', hasSignableManager: true } as const
 
 beforeEach(async () => {
   await kit.reset();
-  // 兩個組織共用一個租賃單位（同一間房子）：A 是包租業者，B 是別家公司
-  const unitId = newUlid();
-  const anchorId = newUlid();
-  await withTx({ kind: 'org', orgId: kit.orgA }, (tx) => tx.query('SELECT * FROM registry.create_pending_anchor($1, $2, $3)', [anchorId, unitId, '某地址']));
-  const propertyIds = new Map<string, string>();
-  for (const orgId of [kit.orgA, kit.orgB]) {
-    const propertyId = newUlid();
-    propertyIds.set(orgId, propertyId);
-    await withTx({ kind: 'org', orgId }, (tx) =>
-      tx.query('INSERT INTO org.properties (id, org_id, rental_unit_id, name, address) VALUES ($1, $2, $3, $4, $5)', [propertyId, orgId, unitId, '物件', '某地址']),
-    );
-  }
-  unit = { unitId, propertyOf: (orgId) => ({ id: propertyIds.get(orgId)!, name: '物件', address: '某地址', rental_unit_id: unitId }) };
+  // 兩個組織共用一個租賃單位（同一間房子）：A 是包租業者，B 是別家公司。
+  // 建立案件要求這個組織的物件已通過文件核對（MIL-205）。A 走正式流程核對。
+  // B 的物件指向同一個租賃單位，不核對：兩個組織對同一個建號不能都通過（ADR-0028 決議 4），
+  // B 只用來驗證「別的組織看不到 A 的案件」，它的案件用 foreignMasterLease 直接備好。
+  const a = await createVerifiedCaseProperty(kit, { orgId: kit.orgA, name: '物件' });
+  const bPropertyId = newUlid();
+  await withTx({ kind: 'org', orgId: kit.orgB }, (tx) =>
+    tx.query('INSERT INTO org.properties (id, org_id, rental_unit_id, name, address) VALUES ($1, $2, $3, $4, $5)', [bPropertyId, kit.orgB, a.rental_unit_id, '物件', '某地址']),
+  );
+  unit = {
+    unitId: a.rental_unit_id,
+    propertyOf: (orgId) => (orgId === kit.orgA ? a : { id: bPropertyId, name: '物件', address: '某地址', rental_unit_id: a.rental_unit_id }),
+  };
 });
+
+/** 別的組織（B）在同一個租賃單位上已有 active 的包租案件。不經 createLeaseCase：B 的物件沒有通過核對。 */
+const foreignMasterLease = async (): Promise<string> => {
+  const id = newUlid();
+  await withTx({ kind: 'org', orgId: kit.orgB }, (tx) =>
+    tx.query(
+      `INSERT INTO org.cases (id, org_id, kind, state, business_type, case_kind, rental_unit_id, title)
+       VALUES ($1, $2, 'lease', 'active', 'self_managed', 'master_lease', $3, '別組織的包租案件')`,
+      [id, kit.orgB, unit.unitId],
+    ),
+  );
+  return id;
+};
 
 const NOW = new Date('2026-11-10T02:00:00Z');
 
@@ -156,26 +171,22 @@ describe('createLeaseCase：轉租案件必須連到涵蓋這個租賃單位的�
 
   it('包租案件涵蓋的是別的租賃單位：拒絕', async () => {
     await activeMasterLease(kit.orgA);
-    const otherUnit = newUlid();
-    await inOrg(kit.orgA, (tx) => tx.query('SELECT * FROM registry.create_pending_anchor($1, $2, $3)', [newUlid(), otherUnit, '另一地址']));
-    const propertyId = newUlid();
-    await inOrg(kit.orgA, (tx) =>
-      tx.query('INSERT INTO org.properties (id, org_id, rental_unit_id, name, address) VALUES ($1, $2, $3, $4, $5)', [propertyId, kit.orgA, otherUnit, '另一物件', '另一地址']),
-    );
-    const input = { ...sublease(kit.orgA), property: { id: propertyId, name: '另一物件', address: '另一地址', rental_unit_id: otherUnit } };
-    await expect(inOrg(kit.orgA, (tx) => createLeaseCase(tx, input, NOW))).rejects.toBeInstanceOf(CaseCreationBlocked);
+    // 另一個已核對的物件，所以擋下的原因是沒有涵蓋它的包租案件，不是核對
+    const other = await createVerifiedCaseProperty(kit, { orgId: kit.orgA, name: '另一物件' });
+    const input = { ...sublease(kit.orgA), property: other };
+    await expect(inOrg(kit.orgA, (tx) => createLeaseCase(tx, input, NOW))).rejects.toThrow(/有效的包租案件/);
   });
 
   it('別的組織有 active 的包租案件：拒絕，訊息與「沒有包租案件」逐字相同，不洩漏別的組織有沒有', async () => {
     const withNothing = await blockedMessage(kit.orgA);
-    await activeMasterLease(kit.orgB);
+    await foreignMasterLease();
     const withForeign = await blockedMessage(kit.orgA);
     expect(withForeign).toBe(withNothing);
     expect(await inOrg(kit.orgA, (tx) => listCaseSummaries(tx))).toEqual([]);
   });
 
   it('別的組織的包租案件不能被連結（資料庫的複合外鍵也擋下）', async () => {
-    const foreignId = await activeMasterLease(kit.orgB);
+    const foreignId = await foreignMasterLease();
     const mine = await inOrg(kit.orgA, (tx) => createLeaseCase(tx, practiceInput(kit.orgA, { caseKind: 'master_lease' }), NOW));
     await activate(kit.orgA, mine);
     const subId = await inOrg(kit.orgA, (tx) => createLeaseCase(tx, sublease(kit.orgA), NOW));
@@ -194,5 +205,68 @@ describe('createLeaseCase：轉租案件必須連到涵蓋這個租賃單位的�
     await activeMasterLease(kit.orgA);
     const input = { ...sublease(kit.orgA), practice: { entityStatus: 'pending', hasSignableManager: true } as const };
     await expect(inOrg(kit.orgA, (tx) => createLeaseCase(tx, input, NOW))).rejects.toThrow(/業別/);
+  });
+});
+
+describe('createLeaseCase：物件通過核對後才能建立案件（MIL-205，ADR-0028 決議 5）', () => {
+  // 檢查在 createLeaseCase 裡，呼叫端不能傳入結果。每一種案件種類都一樣，不分屋主組織或執業主體組織
+  const KINDS: Array<{ name: string; orgKind: 'owner' | 'practice'; overrides: Partial<NewLeaseCaseInput> }> = [
+    { name: '租賃案件（屋主組織）', orgKind: 'owner', overrides: {} },
+    { name: '包租案件', orgKind: 'practice', overrides: { caseKind: 'master_lease' } },
+    { name: '轉租案件', orgKind: 'practice', overrides: { businessType: 'master_lease', caseKind: 'sublease', ownerPartyId: null } },
+  ];
+  const STAGES = ['unsubmitted', 'pending_verification', 'failed', 'lapsed'] as const;
+
+  async function propertyAt(stage: (typeof STAGES)[number]) {
+    if (stage === 'lapsed') {
+      const id = await createPropertyAt(kit, 'verified', { orgId: kit.orgA });
+      await lapseOwnership(kit, id, { orgId: kit.orgA });
+      return casePropertyOf(kit, id, { orgId: kit.orgA });
+    }
+    return casePropertyOf(kit, await createPropertyAt(kit, stage, { orgId: kit.orgA }), { orgId: kit.orgA });
+  }
+
+  const cases = KINDS.flatMap((kind) => STAGES.map((stage) => ({ ...kind, stage })));
+
+  it.each(cases)('$name，節點 $stage：丟 CaseCreationBlocked，原因固定，什麼都沒寫', async ({ orgKind, overrides, stage }) => {
+    const property = await propertyAt(stage);
+    const input: NewLeaseCaseInput = {
+      orgId: kit.orgA,
+      orgKind,
+      businessType: 'self_managed',
+      lessorPartyId: TEST_PARTY_ID,
+      property,
+      practice: VERIFIED,
+      ...overrides,
+    };
+    const error = await inOrg(kit.orgA, (tx) => createLeaseCase(tx, input, NOW)).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(CaseCreationBlocked);
+    expect((error as CaseCreationBlocked).reasons).toEqual([{ code: PROPERTY_NOT_VERIFIED_CODE, message: PROPERTY_NOT_VERIFIED_MESSAGE }]);
+    expect((error as Error).message).toBe('物件尚未通過平台的文件核對');
+    expect(await inOrg(kit.orgA, (tx) => listCaseSummaries(tx))).toEqual([]);
+  });
+
+  it('別的組織的租賃單位、不存在的租賃單位：原因與沒有節點相同，不洩漏物件在不在平台上', async () => {
+    const mine = await propertyAt('unsubmitted');
+    const messages: string[] = [];
+    for (const rental_unit_id of [mine.rental_unit_id, newUlid()]) {
+      const error = await inOrg(kit.orgB, (tx) =>
+        createLeaseCase(tx, { orgId: kit.orgB, orgKind: 'owner', businessType: 'self_managed', lessorPartyId: TEST_PARTY_ID, property: { ...mine, rental_unit_id } }, NOW),
+      ).catch((e: unknown) => e as Error);
+      expect(error).toBeInstanceOf(CaseCreationBlocked);
+      messages.push((error as Error).message);
+    }
+    expect(new Set(messages)).toEqual(new Set([PROPERTY_NOT_VERIFIED_MESSAGE]));
+  });
+
+  it('已驗證：建立成功', async () => {
+    const property = await createVerifiedCaseProperty(kit, { orgId: kit.orgA });
+    const id = await inOrg(kit.orgA, (tx) =>
+      createLeaseCase(tx, { orgId: kit.orgA, orgKind: 'owner', businessType: 'self_managed', lessorPartyId: TEST_PARTY_ID, property }, NOW),
+    );
+    expect((await inOrg(kit.orgA, (tx) => getCase(tx, id)))?.caseKind).toBe('lease');
   });
 });
