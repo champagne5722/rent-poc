@@ -23,6 +23,7 @@ import {
   SIGNER_ROLE_LABELS,
 } from './types';
 import { contractEquipmentAnnex, formatEquipmentItem } from './equipment';
+import { formatTaiwanTime } from './signature-records/view';
 import type { ContractType } from './labels';
 import {
   buildSigningSteps,
@@ -204,7 +205,12 @@ export interface ContractEventEntry {
   color: string;
 }
 
+// ISO 8601 的時間（結尾是 Z 或時區位移）固定換成台灣時間：詳情頁在 server component 先渲染一次，
+// 伺服器與瀏覽器的時區不同時，用本機時區格式化會讓兩邊的文字不一致。
+const HAS_TIME_ZONE = /(Z|[+-]\d{2}:?\d{2})$/;
+
 function formatEventTime(raw: string): string {
+  if (HAS_TIME_ZONE.test(raw)) return formatTaiwanTime(raw);
   const t = dayjs(raw);
   return t.isValid() ? t.format('YYYY-MM-DD HH:mm') : raw;
 }

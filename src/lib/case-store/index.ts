@@ -11,6 +11,7 @@ export {
 } from './commands';
 export {
   caseHasContracts,
+  findCoveringMasterLeaseCase,
   findOrCreateParty,
   getCase,
   getOrgName,

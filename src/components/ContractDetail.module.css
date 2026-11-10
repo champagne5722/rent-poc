@@ -1,0 +1,23 @@
+/* 合約詳情頁（MIL-175）。只放 antd 的 Flex 與 gap 排不出來的版面，尺寸與顏色引用 DESIGN.md 的 CSS 變數。 */
+
+/* 文件列：圖示、說明、動作。說明吃掉剩餘寬度，長文字在容器內換行 */
+.fileBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.fileIcon {
+  font-size: var(--type-section-title-size);
+  color: var(--color-ink-muted);
+}
+
+/* 簽署連結：連結吃掉剩餘寬度並截斷，複製按鈕留在右側 */
+.linkText {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 衍生鏈的一個節點。本約用主文色與粗體區分，其餘用次要色 */
+.chainNode {
+  min-width: 0;
+}

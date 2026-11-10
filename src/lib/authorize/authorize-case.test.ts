@@ -41,7 +41,7 @@ async function seedCase(state: CaseState, businessType: BusinessType = 'self_man
     const caseId = newUlid();
     await insertCase(
       tx,
-      { kind: 'lease', id: caseId, orgId: kit.orgA, state: 'draft', stateVersion: 0, currentContractId: null, businessType, rentalUnitId: '', linkedMandateCaseId: null, predecessorCaseId: null, handoverId: null },
+      { kind: 'lease', id: caseId, orgId: kit.orgA, state: 'draft', stateVersion: 0, currentContractId: null, caseKind: businessType === 'master_lease' ? 'sublease' : 'lease', businessType, rentalUnitId: '', linkedMandateCaseId: null, linkedMasterLeaseCaseId: null, predecessorCaseId: null, handoverId: null },
       { title: 'x', propertyId: null, rentalUnitId: null },
       NOW,
     );

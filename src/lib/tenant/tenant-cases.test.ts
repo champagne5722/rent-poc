@@ -132,6 +132,7 @@ describe('listTenantCases：我的案件', () => {
       leaseEnd: '2026-12-31',
       monthlyRent: 20000,
       relation: 'lessee',
+      caseKind: 'lease',
     });
     expect(rows[0]).toMatchObject({ orgName: 'B 組織', state: 'closed' });
   });
@@ -192,6 +193,7 @@ describe('loadTenantCaseDetail：案件詳情', () => {
       contract: { status: 'completed', hasSignedPdf: true },
       leaseStart: '2026-01-01',
       monthlyRent: 20000,
+      caseKind: 'lease',
     });
     const json = JSON.stringify(detail);
     expect(json).not.toContain('lessor@example.com');

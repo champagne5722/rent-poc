@@ -12,7 +12,38 @@
 |---|---|
 | `transitions.ts` | 常數與型別、`decideCaseTransition()` |
 | `creation.ts` | `decideCaseCreation()` 與它的輸入、輸出型別 |
-| `index.ts` | 兩個檔案的匯出 |
+| `case-kind.ts` | 案件種類四個值、舊欄位推出種類的 `caseKindOf()`、各種案件的主辦組織（MIL-195） |
+| `index.ts` | 三個檔案的匯出 |
+
+## 案件種類（MIL-195，ADR-0030）
+
+案件在資料上有四個種類，欄位是 `org.cases.case_kind`（migration 0077）：`lease`（租賃案件）、`management`（委託管理案件）、`master_lease`（包租案件）、`sublease`（轉租案件）。
+
+用詞改了。讀 2026-11-10 之前的程式碼、ADR 與註解時照下表換讀：
+
+| 案件種類 | `kind` | 舊欄位 `business_type` | 說明 |
+|---|---|---|---|
+| `lease` | `lease` | `self_managed` 或 `managed` | 租賃案件 |
+| `management` | `management` | 無 | 委託管理案件 |
+| `master_lease` | `lease` | `self_managed` | 包租案件，屋主租給包租業者那一份。承租人是包租業者 |
+| `sublease` | `lease` | `master_lease` | 轉租案件，包租業者轉租給承租人那一份 |
+
+- 舊值 `business_type = 'master_lease'` 指轉租，不是新的包租案件。兩個 `master_lease` 不同義。
+- 舊欄位原封不動，既有的呼叫端照舊讀。MIL-197、MIL-198 逐批搬到 `case_kind`，MIL-203 才移除舊值。新程式碼判斷包租或轉租一律看 `case_kind`。
+- 資料庫的 CHECK 擋下 `case_kind` 與 `kind`、`business_type` 的矛盾組合。舊的呼叫端不寫 `case_kind` 時，trigger 補成委託管理、轉租或租賃。trigger 補不出包租案件，因為它需要承租人的事實，呼叫端必須明寫。
+- 既有案件的回填規則與 `caseKindOf()` 相同，承租人是不是包租業者讀目前合約的 `fields.routing.lesseeIsMasterLessor`。
+
+| 案件種類 | 主辦組織 | 建立前的檢查（`decideCaseCreation`） |
+|---|---|---|
+| `lease` 自管 | 屋主組織 | 無 |
+| `lease` 代管 | 代管業者 | 業別已驗證、有可簽章的專任管理人員、有效的委託管理案件涵蓋這個單位 |
+| `management` | 代管業者 | 業別已驗證、有可簽章的專任管理人員 |
+| `master_lease` | 包租業者 | 同上，業別是包租 |
+| `sublease` | 包租業者 | 業別已驗證、有可簽章的專任管理人員、同組織有效（`active`）的包租案件涵蓋這個單位 |
+
+- 轉租案件的連結存在 `linked_master_lease_case_id`（複合外鍵，限同一個組織）。舊的轉租案件沒有連結，資料庫不要求必填，必填由判定函式負責。
+- 包租案件的事實由 `createLeaseCase` 自己用 `findCoveringMasterLeaseCase` 查，呼叫端不能傳入。查詢限目前組織主辦的案件。拒絕訊息不分「沒有」「別的組織的」「沒涵蓋」「不是 active」，不洩漏別的組織有沒有包租案件。
+- 過渡旗標：舊建約精靈（`POST /api/contracts`）由屋主組織建立承租人是包租業者的自管案件，`createLeaseCase` 的 `lesseeIsMasterLessor` 讓它歸為包租案件，並放寬這一種案件的主辦組織。MIL-203 移除。
 
 ## `decideCaseTransition(snapshot, input, now)`
 
@@ -61,14 +92,16 @@
 
 ### `new_lease` 的檢查
 
-- 屋主組織只能建 `self_managed`，執業主體組織只能建 `managed` 或 `master_lease`（`business_type_not_allowed`）。
-- 執業主體組織建代管或包租：對應業別必須是 `verified`（`practice_entity_not_verified`），且至少一位可簽章的專任管理人員（`no_signable_manager`）。業別對照在 `PRACTICE_CATEGORY_FOR_BUSINESS_TYPE`，由呼叫端查好狀態傳入。
+- 輸入可傳 `caseKind`（`lease`、`master_lease`、`sublease`）。不傳時，業務類型 `master_lease` 當轉租案件，其餘當租賃案件。
+- 租賃案件：屋主組織只能建 `self_managed`，執業主體組織只能建 `managed`（`business_type_not_allowed`）。包租與轉租案件只有執業主體組織能建（`host_org_not_allowed`），包租案件的業務類型是 `self_managed`，轉租案件是舊值 `master_lease`。
+- 轉租案件必須連到同組織、`active`、涵蓋這個租賃單位的包租案件（`no_valid_master_lease`，ADR-0030 決議 5）。
+- 執業主體組織建代管、包租或轉租案件：對應業別必須是 `verified`（`practice_entity_not_verified`），且至少一位可簽章的專任管理人員（`no_signable_manager`）。業別對照在 `PRACTICE_CATEGORY_FOR_BUSINESS_TYPE`，由呼叫端查好狀態傳入。
 - 代管案件必須連到 `active` 且涵蓋這個租賃單位的委託管理案件（`no_valid_mandate`，P0-09 AC3）。
-- 成員：`lessor`、包租案件的 `owner`（取自屋主的自管案件，找不到時沒有）、居間時的 `broker`。`lessee` 在送簽時才加，`practitioner` 由 wizard 指派，都不在建立時處理。
+- 成員：`lessor`、轉租案件的 `owner`（取自包租案件的出租人，找不到時沒有）、居間時的 `broker`。`lessee` 在送簽時才加，`practitioner` 由 wizard 指派，都不在建立時處理。出租人：租賃案件是建約的人，代管與包租案件是屋主，轉租案件是包租業者。
 
 ### `new_management` 的檢查
 
-只檢查 `mandator` 與 `mandatary` 非空且不相同，`validUntil` 是有效的 `YYYY-MM-DD` 或 `null`。不檢查主辦組織種類，因為屋主上傳紙本契約書時主辦組織不確定。業別驗證由移交的擋下條件與 MIL-116 負責。
+檢查 `mandator` 與 `mandatary` 非空且不相同，`validUntil` 是有效的 `YYYY-MM-DD` 或 `null`。主辦組織必須是執業主體組織（`host_org_not_allowed`），對應業別必須已驗證且有可簽章的專任管理人員（ADR-0030 決議 1）。屋主不上線時由業者上傳紙本契約書，主辦組織仍是業者（ADR-0029 決議 7）。
 
 ### `successor_lease` 的檢查
 

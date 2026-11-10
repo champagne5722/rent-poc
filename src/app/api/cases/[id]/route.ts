@@ -33,6 +33,8 @@ export async function GET(_request: NextRequest, { params }: CaseRouteCtx) {
     const publicRecord: Partial<CaseRecord> = { ...record };
     delete publicRecord.defaultRentAccountId;
     delete publicRecord.defaultDepositAccountId;
+    // 轉租案件連到的包租案件是主辦組織自己的案件（ADR-0030 決議 5），別組織的成員（例如承租人）不需要它的 ID
+    if (record.orgId !== rc.orgId) delete publicRecord.linkedMasterLeaseCaseId;
     return jsonOk({
       data: {
         case: publicRecord,
