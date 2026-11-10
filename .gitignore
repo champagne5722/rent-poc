@@ -41,7 +41,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# SQLite 資料（PoC 本機資料）
+# 本機檔案儲存與 mock 簽署的暫存檔（data/files、data/mock-signing）
 /data/
 
 # Claude Code 個人設定（含 API key，不入版控）

@@ -206,6 +206,14 @@ jobs:
             DEMO_BASIC_AUTH_USER=demo
             MAILER_ADAPTER=log
             PG_POOL_MAX=5
+            FILE_STORE=gcs
+            GCS_BUCKET_SIGNED=${{ vars.GCP_PROJECT_ID }}-files-signed
+            GCS_BUCKET_GENERAL=${{ vars.GCP_PROJECT_ID }}-files-general
+            AUDIT_ANCHOR_PROVIDER=freetsa
+            JOBS_OIDC_AUDIENCE=${{ env.APP_ORIGIN }}
+            JOBS_OIDC_SERVICE_ACCOUNT=rent-poc-scheduler@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+            PLATFORM_OPERATOR_EMAILS=${{ vars.PLATFORM_OPERATOR_EMAILS }}
+          # PLATFORM_OPERATOR_EMAILS 只放一個 email：env_vars 以逗號分隔，值裡不能有逗號
           secrets: ${{ steps.runtime-secrets.outputs.value }}
           # DOTTEDSIGN_ENABLED 改回 false 時，要真的卸除點點簽 secrets
           secrets_update_strategy: overwrite
