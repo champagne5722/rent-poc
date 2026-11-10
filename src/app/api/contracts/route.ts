@@ -76,10 +76,8 @@ export async function POST(request: NextRequest) {
     const routingError = routingInputError(routing, type);
     if (routingError) return jsonError(400, routingError);
 
-    const fields = initialFieldsFor(type, {
-      property,
-      routing: routing as InitialFieldsInput['routing'],
-    });
+    const checkedRouting = routing as InitialFieldsInput['routing'];
+    const fields = initialFieldsFor(type, { property, routing: checkedRouting });
 
     // 案件、合約、兩者的歷程事件與稽核事件同交易寫入（ADR-0007、ADR-0016、ADR-0019）
     const caseId =
@@ -88,6 +86,8 @@ export async function POST(request: NextRequest) {
             orgId: rc.orgId,
             orgKind: 'owner',
             businessType: 'self_managed',
+            // 過渡：分流條件說承租人是包租業者時，案件歸為包租案件（ADR-0030）。MIL-203 移除
+            lesseeIsMasterLessor: checkedRouting?.lesseeIsMasterLessor === true,
             lessorPartyId: rc.partyId,
             property,
           })

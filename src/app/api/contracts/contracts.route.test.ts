@@ -104,6 +104,23 @@ describe('POST /api/contracts', () => {
     expect(one.data.fields.routing).toEqual(routing);
   });
 
+  it('案件種類（MIL-195）：承租人是包租業者的自管合約歸為包租案件，其餘歸為租賃案件', async () => {
+    const caseKindOf = async (id: string) =>
+      withTx({ kind: 'org', orgId: kit.orgA }, async (tx) => {
+        const { rows } = await tx.query<{ case_kind: string; business_type: string }>(
+          `SELECT k.case_kind, k.business_type FROM org.cases k JOIN org.contracts c ON c.case_id = k.id WHERE c.id = $1`,
+          [id],
+        );
+        return rows[0];
+      });
+    const master = await newContract({ routing: { businessType: 'self_managed', lesseeIsMasterLessor: true, brokerMediated: false } });
+    const plain = await newContract({ routing: { businessType: 'self_managed', lesseeIsMasterLessor: false, brokerMediated: false } });
+    const unrouted = await newContract();
+    expect(await caseKindOf(master.id)).toEqual({ case_kind: 'master_lease', business_type: 'self_managed' });
+    expect(await caseKindOf(plain.id)).toEqual({ case_kind: 'lease', business_type: 'self_managed' });
+    expect(await caseKindOf(unrouted.id)).toEqual({ case_kind: 'lease', business_type: 'self_managed' });
+  });
+
   it('分流條件格式不對回 400，什麼都沒建', async () => {
     const propertyId = await newProperty();
     const res = await createContract(propertyId, { routing: { businessType: 'sublease' } });
