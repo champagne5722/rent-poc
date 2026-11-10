@@ -1,0 +1,38 @@
+/* 登入與第一次登入選身分共用的外框（MIL-183）。顏色、間距、圓角引用 DESIGN.md 的 CSS 變數。 */
+.page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--space-lg);
+  background: var(--color-canvas);
+}
+
+.panel {
+  width: 100%;
+  max-width: calc(var(--space-xxl) * 9);
+}
+
+/* 品牌名稱放在卡片外，用內文字重，不用標題層級，避免跟卡片的頁面標題搶 */
+.brand {
+  display: block;
+  margin-bottom: var(--space-md);
+  color: var(--color-ink-muted);
+}
+
+.heading {
+  margin: 0;
+}
+
+/* 身分選項：整塊可按的卡片按鈕，左對齊兩行文字 */
+button.choice {
+  height: auto;
+  padding: var(--space-sm) var(--space-md);
+  justify-content: flex-start;
+  text-align: start;
+}
+
+/* 按鈕內文是 span，預設置中。讓內層 Flex 撐滿，兩行文字才會靠左 */
+button.choice > span {
+  flex: 1;
+}
