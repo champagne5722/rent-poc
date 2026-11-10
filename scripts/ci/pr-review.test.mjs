@@ -511,6 +511,14 @@ test('extractAvoidTerms：只取有 _Avoid_ 的詞條', () => {
   assert.equal(extractAvoidTerms(md), '- 用「屋主（Owner）」，避開：房東');
 });
 
+test('extractAvoidTerms：repo 真實的 GLOSSARY.md 能取出避開詞', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const md = await readFile(new URL('../../GLOSSARY.md', import.meta.url), 'utf8');
+  const out = extractAvoidTerms(md);
+  assert.ok(out.split('\n').length >= 20);
+  assert.match(out, /用「屋主（Owner）」，避開：房東、業主/);
+});
+
 test('parseReview：缺欄位時補預設，無效狀態改成無法判斷', () => {
   const r = parseReview(JSON.stringify({ standards: {}, spec: { criteria: [{ criterion: 'A', status: '亂寫', evidence: 1 }] }, security: {} }));
   assert.deepEqual(r.standards.findings, []);
