@@ -1,4 +1,4 @@
-import type { CaseEvent, CaseMemberRelation, CaseState, NewCase, NewCaseMember } from '../cases';
+import type { CaseEvent, CaseMemberRelation, CaseState, MasterLeaseCaseFacts, NewCase, NewCaseMember } from '../cases';
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
 import type { CaseEventRecord, CaseMemberRecord, CaseRecord } from './types';
@@ -12,6 +12,7 @@ interface CaseRow {
   id: string;
   org_id: string;
   kind: CaseRecord['kind'];
+  case_kind: CaseRecord['caseKind'];
   state: CaseState;
   state_version: number;
   business_type: CaseRecord['businessType'];
@@ -20,6 +21,7 @@ interface CaseRow {
   property_id: string | null;
   current_contract_id: string | null;
   linked_mandate_case_id: string | null;
+  linked_master_lease_case_id: string | null;
   predecessor_case_id: string | null;
   handover_id: string | null;
   valid_until: string | null;
@@ -33,8 +35,8 @@ interface CaseRow {
   updated_at: Date | null;
 }
 
-const CASE_COLUMNS = `id, org_id, kind, state, state_version, business_type, title, rental_unit_id, property_id,
-  current_contract_id, linked_mandate_case_id, predecessor_case_id, handover_id,
+const CASE_COLUMNS = `id, org_id, kind, case_kind, state, state_version, business_type, title, rental_unit_id, property_id,
+  current_contract_id, linked_mandate_case_id, linked_master_lease_case_id, predecessor_case_id, handover_id,
   to_char(valid_until, 'YYYY-MM-DD') AS valid_until, to_char(lease_start, 'YYYY-MM-DD') AS lease_start,
   to_char(lease_end, 'YYYY-MM-DD') AS lease_end, monthly_rent, social_housing, default_rent_account_id,
   default_deposit_account_id, created_at, updated_at`;
@@ -44,6 +46,7 @@ function toCase(row: CaseRow): CaseRecord {
     id: row.id,
     orgId: row.org_id,
     kind: row.kind,
+    caseKind: row.case_kind,
     state: row.state,
     stateVersion: row.state_version,
     businessType: row.business_type,
@@ -52,6 +55,7 @@ function toCase(row: CaseRow): CaseRecord {
     propertyId: row.property_id,
     currentContractId: row.current_contract_id,
     linkedMandateCaseId: row.linked_mandate_case_id,
+    linkedMasterLeaseCaseId: row.linked_master_lease_case_id,
     predecessorCaseId: row.predecessor_case_id,
     handoverId: row.handover_id,
     validUntil: row.valid_until,
@@ -93,8 +97,8 @@ export async function insertCase(
     `INSERT INTO org.cases
        (id, org_id, kind, state, state_version, business_type, title, rental_unit_id, property_id, current_contract_id,
         linked_mandate_case_id, predecessor_case_id, handover_id, valid_until, lease_start, lease_end, monthly_rent,
-        created_at, social_housing)
-     VALUES ($1, current_setting('app.org_id', true), $2, $3, 0, $4, $5, $6, $7, NULL, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+        created_at, social_housing, case_kind, linked_master_lease_case_id)
+     VALUES ($1, current_setting('app.org_id', true), $2, $3, 0, $4, $5, $6, $7, NULL, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
     [
       newCase.id,
       newCase.kind,
@@ -112,8 +116,31 @@ export async function insertCase(
       extra.monthlyRent ?? null,
       now.toISOString(),
       extra.socialHousing ?? false,
+      newCase.caseKind,
+      lease?.linkedMasterLeaseCaseId ?? null,
     ],
   );
+}
+
+/**
+ * 找這個租賃單位上、目前組織主辦的有效包租案件，給「建立轉租案件」的判定函式當事實（ADR-0030 決議 5）。
+ *
+ * 誰能呼叫：已在 `inOrgTx` 內的程式碼，由呼叫端先 authorize()。
+ * 回什麼：有效（active）且租賃單位相同的包租案件的事實，優先回 active 的那一筆；沒有則回 null。
+ * 為什麼安全：查詢明確限定 `org_id` 等於目前組織，所以即使目前身分因成員關係讀得到別的組織的案件，
+ * 這裡也不會回它們。判定函式對「沒有」「別的組織」「沒涵蓋」「不是 active」回完全相同的說明，
+ * 呼叫者因此無法由拒絕訊息得知別的組織有沒有包租案件。
+ */
+export async function findCoveringMasterLeaseCase(tx: OrgTx, rentalUnitId: string): Promise<MasterLeaseCaseFacts | null> {
+  const { rows } = await tx.query<{ id: string; org_id: string; state: MasterLeaseCaseFacts['state'] }>(
+    `SELECT id, org_id, state FROM org.cases
+      WHERE case_kind = 'master_lease' AND rental_unit_id = $1 AND org_id = current_setting('app.org_id', true)
+      ORDER BY (state = 'active') DESC, id DESC
+      LIMIT 1`,
+    [rentalUnitId],
+  );
+  const row = rows[0];
+  return row ? { id: row.id, orgId: row.org_id, state: row.state, coversRentalUnit: true } : null;
 }
 
 /** 案件的目前合約改指向另一份合約。不寫事件，事件由呼叫端的 `attachContract` 寫。 */
@@ -333,6 +360,8 @@ export interface CaseSummary {
   /** 主辦組織的名稱。 */
   orgName: string;
   kind: CaseRecord['kind'];
+  /** 案件種類（ADR-0030）：租賃、委託管理、包租、轉租。 */
+  caseKind: CaseRecord['caseKind'];
   state: CaseState;
   businessType: CaseRecord['businessType'];
   title: string;
@@ -359,7 +388,7 @@ interface SummaryRow extends CaseRow {
  */
 export async function listCaseSummaries(tx: OrgTx): Promise<CaseSummary[]> {
   const { rows } = await tx.query<SummaryRow>(
-    `SELECT k.id, k.org_id, o.name AS org_name, k.kind, k.state, k.business_type, k.title,
+    `SELECT k.id, k.org_id, o.name AS org_name, k.kind, k.case_kind, k.state, k.business_type, k.title,
             to_char(k.lease_start, 'YYYY-MM-DD') AS lease_start, to_char(k.lease_end, 'YYYY-MM-DD') AS lease_end,
             k.monthly_rent, k.created_at, k.updated_at, c.status AS contract_status,
             (SELECT string_agg(p.display_name, '、' ORDER BY m.id)
@@ -375,6 +404,7 @@ export async function listCaseSummaries(tx: OrgTx): Promise<CaseSummary[]> {
     orgId: r.org_id,
     orgName: r.org_name,
     kind: r.kind,
+    caseKind: r.case_kind,
     state: r.state,
     businessType: r.business_type,
     title: r.title,

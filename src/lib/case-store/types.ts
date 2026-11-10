@@ -6,6 +6,7 @@ import type {
   CaseMemberRelation,
   CaseState,
   OutboxTask,
+  StatutoryCaseKind,
 } from '../cases';
 
 // 案件資料層的型別（MIL-115）。純函式在 src/lib/cases/，這裡是帶 I/O 的 repository、dispatch 與訂閱。
@@ -14,15 +15,24 @@ import type {
 export interface CaseRecord {
   id: string;
   orgId: string;
+  /** 舊欄位：租賃或委託管理。新程式碼判斷案件種類看 `caseKind`。 */
   kind: CaseKind;
+  /**
+   * 案件種類（ADR-0030）：租賃、委託管理、包租、轉租。
+   * 包租案件指屋主租給包租業者那一份。舊的業務類型值 `master_lease` 指轉租，見 src/lib/cases/case-kind.ts。
+   */
+  caseKind: StatutoryCaseKind;
   state: CaseState;
   stateVersion: number;
+  /** 舊欄位。`master_lease` 是舊值，指轉租案件。 */
   businessType: BusinessType | null;
   title: string;
   rentalUnitId: string | null;
   propertyId: string | null;
   currentContractId: string | null;
   linkedMandateCaseId: string | null;
+  /** 轉租案件連到的包租案件（ADR-0030 決議 5）。只有轉租案件有值，而且舊的轉租案件沒有。 */
+  linkedMasterLeaseCaseId: string | null;
   predecessorCaseId: string | null;
   handoverId: string | null;
   validUntil: string | null;
