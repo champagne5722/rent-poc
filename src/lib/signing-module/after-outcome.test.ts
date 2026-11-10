@@ -20,7 +20,7 @@ vi.mock('@/lib/current-request-context', async () => ({
 }));
 
 // afterOutcome 掛鉤的契約（MIL-75）：每個被接受的簽署事件在交易提交後呼叫，例外不往外拋。
-// 資料庫是 PGlite（第二次同步 main 時由 SQLite 改寫，斷言內容不變）。
+// 資料庫是 PGlite。
 
 let kit: RouteDb;
 let dataDir: string;
@@ -45,7 +45,7 @@ const inA = <T,>(fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId: 
 const statusOf = async (id: string) => (await inA((tx) => getContract(tx, id)))?.status;
 
 // withTx 不得巢狀：afterOutcome 被呼叫時如果模組還開著交易，再開一個會丟錯。
-// 能開成功，就代表呼叫當下沒有任何交易（這是 SQLite 版 db.inTransaction 為 false 的對應斷言）
+// 能開成功，就代表呼叫當下沒有任何交易
 const insideTransaction = () =>
   inA(async () => false).catch((e: unknown) => {
     if (e instanceof Error && e.message.includes('不得巢狀')) return true;

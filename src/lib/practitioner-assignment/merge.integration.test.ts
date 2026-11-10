@@ -26,7 +26,7 @@ vi.mock('@/lib/current-request-context', async () => ({
 // 整合測試：走簽署模組介面，配 Mock adapter（MIL-76，ADR-0018 決議 9、15）。
 // 同一人兼任合併後走到完成，以及居間加包租的四位簽署人走到完成。
 // 簽署事件經 webhook 進來，事件時間由參數傳入。
-// 資料庫是 PGlite（第二次同步 main 時由 SQLite 改寫，斷言內容不變）。
+// 資料庫是 PGlite。
 
 const SEND_AT = '2026-11-09T12:00:00+08:00';
 const SIGNABLE_AT = '2026-11-10T09:30:00+08:00';

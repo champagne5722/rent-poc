@@ -19,8 +19,7 @@ const GOOD_CREDENTIAL: CredentialFacts = {
 
 const MASTER_LEASE: RoutingFacts = {
   documentType: 'lease',
-  businessType: 'master_lease',
-  lesseeIsMasterLessor: false,
+  caseKind: 'sublease',
   brokerMediated: false,
 };
 
@@ -71,13 +70,13 @@ describe('checkSendPreconditions：ADR-0018 決議 10 的 7 項', () => {
   describe('第 1 項：規則表有定義這個組合', () => {
     it('未定義的組合被擋下，原因說明是哪個組合', () => {
       const result = checkSendPreconditions(
-        facts({ routing: { documentType: 'lease', businessType: 'managed', lesseeIsMasterLessor: true, brokerMediated: false }, signers: [] }),
+        facts({ routing: { documentType: 'lease', caseKind: 'management', brokerMediated: false }, signers: [] }),
       );
       expect(result.ok).toBe(false);
       expect(result.reasons.map((r) => r.code)).toEqual(['no_rule']);
     });
     it('不送簽的組合（自管點交證明）回報不需簽署', () => {
-      expect(codes(facts({ routing: { documentType: 'handover_certificate', businessType: 'self_managed' }, signers: [] }))).toEqual([
+      expect(codes(facts({ routing: { documentType: 'handover_certificate', caseKind: 'lease', businessType: 'self_managed' }, signers: [] }))).toEqual([
         'not_required',
       ]);
     });
@@ -96,7 +95,7 @@ describe('checkSendPreconditions：ADR-0018 決議 10 的 7 項', () => {
       expect(codes(facts({ entities: {} }))).toContain('entity_not_selected');
     });
     it('規則不要求執業人員的組合（自管、代管租賃）不需要指派', () => {
-      const selfManaged: RoutingFacts = { documentType: 'lease', businessType: 'self_managed', lesseeIsMasterLessor: false, brokerMediated: false };
+      const selfManaged: RoutingFacts = { documentType: 'lease', caseKind: 'lease', businessType: 'self_managed', brokerMediated: false };
       const result = checkSendPreconditions({
         routing: selfManaged,
         at: AT,
@@ -110,7 +109,7 @@ describe('checkSendPreconditions：ADR-0018 決議 10 的 7 項', () => {
       expect(result.ok).toBe(true);
     });
     it('代管的租賃合約不產生執業人員（P0-12 AC2）', () => {
-      const managed: RoutingFacts = { documentType: 'lease', businessType: 'managed', lesseeIsMasterLessor: false, brokerMediated: false };
+      const managed: RoutingFacts = { documentType: 'lease', caseKind: 'lease', businessType: 'managed', brokerMediated: false };
       const result = checkSendPreconditions({
         routing: managed,
         at: AT,
@@ -211,7 +210,7 @@ describe('checkSendPreconditions：ADR-0018 決議 10 的 7 項', () => {
       expect(result.reasons[0].message).toBe('陳怡君的證書種類（不動產經紀人）不符合租賃住宅管理人員席位的要求');
     });
     it('經紀人席位不要求專任', () => {
-      const broker: RoutingFacts = { ...MASTER_LEASE, brokerMediated: true };
+      const broker: RoutingFacts = { documentType: 'lease', caseKind: 'sublease', brokerMediated: true };
       const brokerSigner: SeatSigner = {
         seatRuleId: 'lease.broker',
         name: '趙經紀',
@@ -241,7 +240,7 @@ describe('checkSendPreconditions：ADR-0018 決議 10 的 7 項', () => {
       expect(result.reasons).toEqual([expect.objectContaining({ code: 'employment_entity_mismatch' })]);
     });
     it('席位指定的是乙方執業主體時，比對乙方的執業主體', () => {
-      const reversed: RoutingFacts = { documentType: 'lease', businessType: 'self_managed', lesseeIsMasterLessor: true, brokerMediated: false };
+      const reversed: RoutingFacts = { documentType: 'lease', caseKind: 'master_lease', brokerMediated: false };
       const result = checkSendPreconditions({
         routing: reversed,
         at: AT,

@@ -1,6 +1,6 @@
 // 簽章分流的型別（ADR-0018 決議 3、5，ADR-0021）。純型別與常數，沒有 I/O。
 
-import type { BusinessType } from '../cases';
+import type { BusinessType, StatutoryCaseKind } from '../cases';
 import type { CertificateKind } from '../labels';
 import type { SignerVerifyMethod } from '../signing-module/provider';
 import type { SignerRole } from '../types';
@@ -18,22 +18,26 @@ export const DOCUMENT_TYPES = [
 ] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
+/** 租賃案件的業務類型：自管、代管（ADR-0030 決議 3）。舊值 `master_lease` 是轉租，現在是轉租案件。 */
+export const LEASE_BUSINESS_TYPES = ['self_managed', 'managed'] as const satisfies readonly BusinessType[];
+export type LeaseBusinessType = (typeof LEASE_BUSINESS_TYPES)[number];
+
+/**
+ * 分流事實裡的案件部分（ADR-0030 決議 2、3）。規則表看案件種類。
+ * 業務類型只留給租賃案件，用來分自管與代管。其他案件種類沒有業務類型。
+ */
+export type CaseRoutingBasis =
+  | { caseKind: 'lease'; businessType: LeaseBusinessType }
+  | { caseKind: Exclude<StatutoryCaseKind, 'lease'> };
+
 /**
  * 分流事實：`routeSignatures` 的輸入。不綁合約 ID，E 線的文件也用同一個形狀。
- * 只有租賃合約帶「承租人是否為包租業者」與「是否有經紀業者居間」。
- * 其他文件沿用該案件租賃合約的地位，只看業務類型（ADR-0018 決議 5、8）。
+ * 只有租賃合約帶「是否有經紀業者居間」。
+ * 「承租人是否為包租業者」不再是分流事實：它已併入案件種類 `master_lease`（包租案件，MIL-197）。
  */
 export type RoutingFacts =
-  | {
-      documentType: 'lease';
-      businessType: BusinessType;
-      lesseeIsMasterLessor: boolean;
-      brokerMediated: boolean;
-    }
-  | {
-      documentType: Exclude<DocumentType, 'lease'>;
-      businessType: BusinessType;
-    };
+  | ({ documentType: 'lease'; brokerMediated: boolean } & CaseRoutingBasis)
+  | ({ documentType: Exclude<DocumentType, 'lease'> } & CaseRoutingBasis);
 
 /** 簽署區域必須落在哪一種頁：合約本文，或現況確認附件頁（ADR-0018 決議 6）。 */
 export type SignatureFieldPage = 'body' | 'status_annex';
@@ -71,7 +75,7 @@ export interface SignaturePlan {
   seats: readonly PlannedSeat[];
 }
 
-export type RejectionCode = 'invalid_facts' | 'unknown_document_type' | 'unknown_business_type' | 'undefined_combination';
+export type RejectionCode = 'invalid_facts' | 'unknown_document_type' | 'unknown_case_kind' | 'unknown_business_type' | 'undefined_combination';
 
 /** 分流結果：有序列、不送簽、拒絕。拒絕時沒有預設序列。 */
 export type SignatureRoute =

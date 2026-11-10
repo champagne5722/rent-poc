@@ -1,11 +1,13 @@
-# PR：跑檢查與映像冒煙測試。push main：同樣的檢查通過後部署 demo 環境。
+# PR 與 push dev：跑檢查與映像冒煙測試，不部署。
+# push demo：同樣的檢查通過後，先用 app_owner 跑 migration，再部署 demo 環境（Cloud Run 加 Cloud SQL）。
+# push main 不觸發任何事：main 留給未來的正式環境。
 # 部署用 Workload Identity Federation，repo 內沒有長期金鑰。設定值與步驟見 docs/deployment.md。
 name: ci-deploy
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [dev, demo]
   # 改了 repo variables 或 Secret Manager 之後，用這個重新部署
   workflow_dispatch:
 
@@ -21,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # 真實 PostgreSQL，跑 pg 驅動、advisory lock 與角色檢查（ADR-0012 決議 13）。
-    # 主版本必須與 PGlite 回報的一致，pg-integration.test.ts 會檢查。Cloud SQL 目前也支援 18（2026-11-08）。
+    # 主版本必須與 PGlite 回報的一致，pg-integration.test.ts 會檢查。Cloud SQL 也用 18（2026-11-08）。
     services:
       postgres:
         image: postgres:18
@@ -74,12 +76,18 @@ jobs:
           tags: rent-poc:smoke
           cache-from: type=gha
           cache-to: type=gha,mode=max,ignore-error=true
+      # 冒煙測試在宿主機跑 migration 與種子（與 deploy 工作的做法相同），所以要裝 Node 與套件
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci --ignore-scripts
       - name: 冒煙測試
         run: deploy/smoke-test.sh rent-poc:smoke
 
   deploy:
-    # 使用者還沒完成 GCP 設定時略過，不讓 main 變紅
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.GCP_PROJECT_ID != ''
+    # 只有 demo 分支部署。使用者還沒完成 GCP 設定時略過，不讓 demo 變紅
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/demo' && vars.GCP_PROJECT_ID != ''
     needs: [check, image]
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -92,6 +100,8 @@ jobs:
     env:
       IMAGE: asia-east1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/rent-poc/app:${{ github.sha }}
       APP_ORIGIN: https://rent-poc-demo-${{ vars.GCP_PROJECT_NUMBER }}.asia-east1.run.app
+      # Cloud SQL 執行個體的連線名稱，格式 <專案 ID>:asia-east1:<執行個體名稱>
+      CLOUDSQL_INSTANCE: ${{ vars.CLOUDSQL_INSTANCE }}
     steps:
       - uses: actions/checkout@v7
       - id: auth
@@ -117,6 +127,41 @@ jobs:
           provenance: false
           tags: ${{ env.IMAGE }}
           cache-from: type=gha
+      # migration 在部署新版本之前跑，用 app_owner 的憑證經 Cloud SQL Auth Proxy 連線。
+      # 憑證只在這個工作的記憶體裡，Cloud Run 的環境變數不含它（執行身分讀不到 migrate-database-url）。
+      # 沒有新的 migration 時什麼都不做，所以重新部署與手動重跑都安全。
+      # 新 migration 必須讓還在服務中的舊版本能繼續運作（先加欄位、後移除），因為這一步在流量切換之前。
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - id: migrate-secret
+        name: 讀 app_owner 的連線字串
+        uses: google-github-actions/get-secretmanager-secrets@v3
+        with:
+          secrets: |-
+            url:${{ vars.GCP_PROJECT_ID }}/migrate-database-url
+      - name: 啟動 Cloud SQL Auth Proxy
+        env:
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          PROXY_VERSION: v2.18.0
+        run: |
+          set -euo pipefail
+          curl -fsSL -o cloud-sql-proxy "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/${PROXY_VERSION}/cloud-sql-proxy.linux.amd64"
+          chmod +x cloud-sql-proxy
+          ./cloud-sql-proxy --token "$ACCESS_TOKEN" --address 127.0.0.1 --port 5432 "$CLOUDSQL_INSTANCE" > proxy.log 2>&1 &
+          for _ in $(seq 1 30); do
+            if (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat proxy.log
+          echo "::error::Cloud SQL Auth Proxy 在 30 秒內沒有就緒"
+          exit 1
+      - name: 執行 migration
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ steps.migrate-secret.outputs.url }}
       - id: runtime-secrets
         name: 組出要掛載的 secrets
         env:
@@ -125,6 +170,8 @@ jobs:
           {
             echo 'value<<EOF'
             echo 'DEMO_BASIC_AUTH_PASSWORD=demo-basic-auth-password:latest'
+            echo 'DATABASE_URL=database-url:latest'
+            echo 'AUTH_SECRET=auth-secret:latest'
             if [ "$DOTTEDSIGN_ENABLED" = "true" ]; then
               echo 'DOTTEDSIGN_CLIENT_ID=dottedsign-client-id:latest'
               echo 'DOTTEDSIGN_CLIENT_SECRET=dottedsign-client-secret:latest'
@@ -138,24 +185,35 @@ jobs:
           service: ${{ env.SERVICE }}
           region: ${{ env.REGION }}
           image: ${{ env.IMAGE }}
-          # max-instances=1 與 instance-based（no-cpu-throttling）是 SQLite 加 Litestream 的必要條件，
-          # 見 ADR-0011。遷移 PostgreSQL 後才能改。
+          # request-based 計費。--cpu-throttling 明確寫出，才會把舊 revision 的 --no-cpu-throttling 改回來。資料在 Cloud SQL，所以不再限制單一實例。
+          # max-instances 改設連線預算內的上限：db-f1-micro 的連線數有限，每個實例的連線池上限是 PG_POOL_MAX（5），
+          # 3 個實例最多 15 條連線。--remove-env-vars 清掉舊的 Litestream 設定。提高上限前先確認 Cloud SQL 的 max_connections（見 docs/deployment.md）。
           flags: >-
             --service-account=${{ vars.RUNTIME_SA }}
             --execution-environment=gen2
             --cpu=1
             --memory=1Gi
-            --no-cpu-throttling
+            --cpu-throttling
             --cpu-boost
             --min-instances=0
-            --max-instances=1
+            --max-instances=3
+            --add-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }}
+            --remove-env-vars=LITESTREAM_GCS_BUCKET
             --allow-unauthenticated
             --startup-probe=httpGet.path=/api/health,httpGet.port=8080,periodSeconds=3,timeoutSeconds=3,failureThreshold=40
           env_vars: |-
             APP_ORIGIN=${{ env.APP_ORIGIN }}
             DEMO_BASIC_AUTH_USER=demo
             MAILER_ADAPTER=log
-            LITESTREAM_GCS_BUCKET=${{ vars.LITESTREAM_BUCKET }}
+            PG_POOL_MAX=5
+            FILE_STORE=gcs
+            GCS_BUCKET_SIGNED=${{ vars.GCP_PROJECT_ID }}-files-signed
+            GCS_BUCKET_GENERAL=${{ vars.GCP_PROJECT_ID }}-files-general
+            AUDIT_ANCHOR_PROVIDER=freetsa
+            JOBS_OIDC_AUDIENCE=${{ env.APP_ORIGIN }}
+            JOBS_OIDC_SERVICE_ACCOUNT=rent-poc-scheduler@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+            PLATFORM_OPERATOR_EMAILS=${{ vars.PLATFORM_OPERATOR_EMAILS }}
+          # PLATFORM_OPERATOR_EMAILS 只放一個 email：env_vars 以逗號分隔，值裡不能有逗號
           secrets: ${{ steps.runtime-secrets.outputs.value }}
           # DOTTEDSIGN_ENABLED 改回 false 時，要真的卸除點點簽 secrets
           secrets_update_strategy: overwrite

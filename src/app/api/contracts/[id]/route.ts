@@ -31,7 +31,7 @@ export async function GET(_request: NextRequest, { params }: ContractRouteCtx) {
   });
   if (!read.ok) return read.response;
   if (!read.value) return contractNotFound();
-  // 簽署任務還在 SQLite（MIL-85 搬走），在交易外讀
+  // 簽署進度走簽署模組自己的交易，所以在 inOrgTx 外讀
   return jsonOk({
     data: read.value.contract,
     relations: read.value.relations,
