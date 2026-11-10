@@ -126,7 +126,6 @@ export interface NewManagementCaseInput {
   practice: PracticeFacts | null;
 }
 
-/** 移交生效時，接收方組織建立後繼案件（ADR-0024 決議 2 到 4）。 */
 /** 可以有後繼案件的案件種類。移交只適用租賃案件（ADR-0024 決議 1）。 */
 const SUCCESSOR_CASE_KINDS: readonly NewLeaseCaseKind[] = ['lease'];
 
@@ -134,6 +133,7 @@ function isSuccessorCaseKind(kind: StatutoryCaseKind): kind is NewLeaseCaseKind 
   return (SUCCESSOR_CASE_KINDS as readonly string[]).includes(kind);
 }
 
+/** 移交生效時，接收方組織建立後繼案件（ADR-0024 決議 2 到 4）。 */
 export interface SuccessorCaseInput {
   type: 'successor_lease';
   caseId: string;

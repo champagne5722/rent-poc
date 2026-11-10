@@ -144,12 +144,12 @@ interface Expectation {
 const CONTRACT_OPERATORS = [...hostWriters('self', 'managed', 'sublease', 'mgmt'), 'self.lessor', 'sublease.lessor'];
 
 const CASE_EXPECTATIONS: Record<string, Expectation> = {
-  // 讀租期與狀態：所有成員，含包租案件的所有權人
+  // 讀租期與狀態：所有成員，含轉租案件的所有權人
   'case.read_summary': {
     personas: NOT_STRANGER,
     states: { lease: ALL_LEASE_STATES, management: ALL_MGMT_STATES },
   },
-  // 讀合約：除了包租案件的所有權人
+  // 讀合約：除了轉租案件的所有權人
   'contract.read': {
     personas: NOT_STRANGER.filter((id) => id !== 'sublease.owner'),
     states: { lease: ALL_LEASE_STATES, management: ALL_MGMT_STATES },
@@ -174,7 +174,7 @@ const CASE_EXPECTATIONS: Record<string, Expectation> = {
     ],
     states: { lease: ALL_LEASE_STATES, management: [] },
   },
-  // 屋主報表：自己的、自己產出的。包租業者否，所有權人是
+  // 屋主報表：自己的、自己產出的。轉租案件的包租業者否，所有權人是
   'report.read_owner': {
     personas: [...hostReaders('self', 'managed'), 'self.lessor', 'managed.owner', 'managed.owner_viewer', 'sublease.owner'],
     states: { lease: ALL_LEASE_STATES, management: [] },
@@ -202,7 +202,7 @@ const CASE_EXPECTATIONS: Record<string, Expectation> = {
     personas: [...hostReaders('self', 'managed', 'sublease'), 'self.lessor', 'managed.owner', 'managed.owner_viewer', 'sublease.lessor'],
     states: { lease: ALL_LEASE_STATES, management: [] },
   },
-  // 修改社宅代管旗標：代管與包租案件的主辦組織寫入角色。屋主與出租人本人否，自管案件否
+  // 修改社宅代管旗標：租賃代管與轉租案件的主辦組織寫入角色。屋主與出租人本人否，租賃自管與包租案件否
   'case.set_social_housing': {
     personas: hostWriters('managed', 'sublease'),
     states: { lease: OPEN_LEASE, management: [] },

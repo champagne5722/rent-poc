@@ -9,7 +9,7 @@ import {
 import type { CaseState } from '../../cases';
 
 /**
- * 合約生命週期動作：與擬約送簽同一批人（主辦組織的 admin、staff，自管與包租的出租人），
+ * 合約生命週期動作：與擬約送簽同一批人（主辦組織的 admin、staff，租賃自管、包租與轉租案件的出租人），
  * 差別只在允許的案件狀態。送簽後撤回或拒簽，案件回 `draft`（cases README），所以複製為新草稿在 `draft`。
  * 代管案件的屋主不在內（P0-09：代管案件的屋主不得擬約與送簽）。
  */
@@ -47,7 +47,7 @@ const CONTRACT_LIFECYCLE = {
 } as const satisfies Record<string, CaseActionRule>;
 
 export const contractActions = {
-  // 讀合約：包租案件的所有權人讀不到（P0-09 AC5）。經紀業者只得讀合約（ADR-0016 決議 14）。
+  // 讀合約：轉租案件的所有權人讀不到（P0-09 AC5）。經紀業者只得讀合約（ADR-0016 決議 14）。
   'contract.read': {
     scope: 'case',
     effect: 'read',

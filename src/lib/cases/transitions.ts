@@ -16,7 +16,7 @@ export type ManagementCaseState = (typeof MANAGEMENT_CASE_STATES)[number];
 
 export type CaseState = LeaseCaseState | ManagementCaseState;
 
-/** 業務類型：自管、代管、包租。識別字與 src/lib/owner-overview.ts 相同。 */
+/** 業務類型：自管、代管、轉租（舊值 master_lease）。新程式碼判斷轉租看案件種類（case-kind.ts）。 */
 export const BUSINESS_TYPES = ['self_managed', 'managed', 'master_lease'] as const;
 export type BusinessType = (typeof BUSINESS_TYPES)[number];
 

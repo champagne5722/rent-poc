@@ -45,9 +45,12 @@ describe('社宅旗標', () => {
 
   const inA = <T>(fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId: orgA }, fn);
 
-  const newCase = (id: string, over: { orgId?: string; businessType?: string; socialHousing?: boolean; kind?: 'lease' | 'management'; linked?: string } = {}) =>
-    withTx({ kind: 'org', orgId: over.orgId ?? orgA }, (tx) =>
-      tx.query(
+  const newCase = (
+    id: string,
+    over: { orgId?: string; businessType?: string; caseKind?: string; socialHousing?: boolean; kind?: 'lease' | 'management'; linked?: string } = {},
+  ) =>
+    withTx({ kind: 'org', orgId: over.orgId ?? orgA }, async (tx) => {
+      const inserted = await tx.query(
         over.kind === 'management'
           ? `INSERT INTO org.cases (id, org_id, kind, state, title, social_housing) VALUES ($1, $2, 'management', 'active', '委託管理', $3)`
           : `INSERT INTO org.cases (id, org_id, kind, state, business_type, title, social_housing, linked_mandate_case_id)
@@ -55,8 +58,11 @@ describe('社宅旗標', () => {
         over.kind === 'management'
           ? [id, over.orgId ?? orgA, over.socialHousing ?? false]
           : [id, over.orgId ?? orgA, over.socialHousing ?? false, over.businessType ?? 'managed', over.linked ?? null],
-      ),
-    );
+      );
+      // 沒傳 caseKind 時由 trigger 依舊欄位補值。包租案件必須明寫（資料上是自管租賃）
+      if (over.caseKind) await tx.query(`UPDATE org.cases SET case_kind = $2 WHERE id = $1`, [id, over.caseKind]);
+      return inserted;
+    });
 
   const addMandator = (caseId: string) =>
     inA((tx) =>
@@ -162,13 +168,19 @@ describe('社宅旗標', () => {
       expect(await notifications()).toEqual([]);
     });
 
-    it('自管案件不適用：回傳 not_applicable', async () => {
+    it('租賃自管案件不適用：回傳 not_applicable', async () => {
       await newCase(CASE, { businessType: 'self_managed' });
       expect(await inA((tx) => changeSocialHousing(tx, { caseId: CASE, value: true, reason: '嘗試', actorPartyId: PARTY }))).toEqual({ ok: false, error: 'not_applicable' });
       expect(await flagOf(CASE)).toBe(false);
     });
 
-    it('包租案件得標記', async () => {
+    it('包租案件不適用：沿用自管的規則（待法務確認），回傳 not_applicable', async () => {
+      await newCase(CASE, { businessType: 'self_managed', caseKind: 'master_lease' });
+      expect(await inA((tx) => changeSocialHousing(tx, { caseId: CASE, value: true, reason: '嘗試', actorPartyId: PARTY }))).toEqual({ ok: false, error: 'not_applicable' });
+      expect(await flagOf(CASE)).toBe(false);
+    });
+
+    it('轉租案件得標記', async () => {
       await newCase(CASE, { businessType: 'master_lease' });
       expect((await inA((tx) => changeSocialHousing(tx, { caseId: CASE, value: true, reason: '社宅包租', actorPartyId: PARTY }))).ok).toBe(true);
     });

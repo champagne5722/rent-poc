@@ -16,7 +16,7 @@ export const ledgerActions = {
     },
     onBehalfScope: null,
   },
-  // 讀屋主報表：自己的、自己產出的。包租業者否。物件層級的歸屬過濾由 authorize() 查詢。
+  // 讀屋主報表：自己的、自己產出的。轉租案件的包租業者否，所有權人是。物件層級的歸屬過濾由 authorize() 查詢。
   'report.read_owner': {
     scope: 'case',
     effect: 'read',
@@ -77,7 +77,7 @@ export const ledgerActions = {
     relations: { lease_self_managed: ['lessor'], master_lease: ['lessor'], lease_managed: ['lessor'], sublease: ['lessor'] },
     onBehalfScope: null,
   },
-  // 修改社宅代管旗標（ADR-0050 決議 10）：代管與包租案件的主辦組織。自管案件沒有代管業者，旗標不適用。
+  // 修改社宅代管旗標（ADR-0050 決議 10）：租賃代管與轉租案件的主辦組織。租賃自管與包租案件沒有代管業者，旗標不適用。
   'case.set_social_housing': {
     scope: 'case',
     effect: 'write',

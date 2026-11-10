@@ -2,7 +2,7 @@
 import { ALL_ROLES, ALL_STATES, OPEN, WRITE_ROLES, type ActionRule } from './rules';
 
 export const caseActions = {
-  // 讀租期與狀態：所有成員，含包租案件的所有權人（P0-09 AC5）。
+  // 讀租期與狀態：所有成員，含轉租案件的所有權人（P0-09 AC5，這裡的「包租案件」在表裡是轉租案件）。
   'case.read_summary': {
     scope: 'case',
     effect: 'read',
