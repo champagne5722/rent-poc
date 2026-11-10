@@ -14,6 +14,7 @@ import {
 } from '@/lib/labels/case-ledger-labels';
 import type { PeriodView, ReceiptListItem } from '@/lib/ledger/receipts';
 import { HOLDER_KIND_LABELS } from '@/lib/payment-accounts/input';
+import styles from './CaseReceiptsPanel.module.css';
 import StatusTag from './StatusTag';
 
 // 案件的入帳畫面（MIL-125）：押金台帳、應收期別、登錄入帳確認、入帳紀錄。
@@ -280,12 +281,12 @@ export function RecordReceiptSection({ caseId, setup, onChanged }: { caseId: str
           </Col>
           <Col xs={24} md={6}>
             <Form.Item name="amount" label="金額" extra={amountHint} rules={[{ required: true, message: '請填寫金額' }]}>
-              <InputNumber<number> min={1} precision={0} prefix="$" style={{ width: '100%' }} controls={false} inputMode="numeric" />
+              <InputNumber<number> min={1} precision={0} prefix="$" className={styles.fullWidth} controls={false} inputMode="numeric" />
             </Form.Item>
           </Col>
           <Col xs={24} md={5}>
             <Form.Item name="valueDate" label="入帳日" rules={[{ required: true, message: '請選擇入帳日' }]}>
-              <DatePicker allowClear={false} style={{ width: '100%' }} disabledDate={(current) => current.isAfter(dayjs(), 'day')} />
+              <DatePicker allowClear={false} className={styles.fullWidth} disabledDate={(current) => current.isAfter(dayjs(), 'day')} />
             </Form.Item>
           </Col>
           <Col xs={24} md={7}>
