@@ -22,14 +22,12 @@ export default function CollisionReviewPanel({ detail }: { detail: ReviewDetail 
   const waitingMs = Math.max(0, (item.resolvedAt ? new Date(item.resolvedAt).getTime() : openedAt) - new Date(item.createdAt).getTime());
 
   return (
-    <Flex vertical gap="large" style={{ maxWidth: 960 }}>
+    <Flex vertical gap="large">
       <Flex align="center" gap="middle" wrap>
         <Link href="/desk">
           <LeftOutlined aria-hidden /> 回審核台
         </Link>
-        <Typography.Title level={5} style={{ margin: 0 }}>
-          {queueTypeLabel(item.type)}
-        </Typography.Title>
+        <Typography.Text strong>{queueTypeLabel(item.type)}</Typography.Text>
         {!open && <Tag>已結案：{resolutionLabel(item.resolution)}</Tag>}
       </Flex>
 
