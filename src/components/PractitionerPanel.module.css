@@ -1,0 +1,26 @@
+/* 我的證書的欄寬（MIL-181）。antd 沒有欄寬 token，這裡取 DESIGN.md 的 spacing 倍數。 */
+.noticeText {
+  white-space: pre-wrap;
+  margin-bottom: 0;
+}
+
+.kindField {
+  max-width: calc(var(--space-xxl) * 7);
+}
+
+.yearField {
+  flex: 1 1 calc(var(--space-xxl) * 2);
+}
+
+.wordField,
+.serialField {
+  flex: 2 1 calc(var(--space-xxl) * 3.5);
+}
+
+.dateField {
+  flex: 1 1 calc(var(--space-xxl) * 4);
+}
+
+.alertGap {
+  margin-bottom: var(--space-md);
+}

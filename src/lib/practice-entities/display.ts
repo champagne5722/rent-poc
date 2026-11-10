@@ -1,27 +1,27 @@
 // 執業主體與審核台畫面用的標籤與格式（MIL-109）。純函式。用詞以 GLOSSARY.md 為準。
 
 import type { CredentialState } from '../registry-rules';
+import { statusLabelMap, statusPresentation, type StatusTone, type StatusView } from '../status-presentation';
 import type { LicensePhase } from './applicant';
 
-export const STATE_LABELS: Record<CredentialState, string> = {
-  pending: '待驗證',
-  verified: '已驗證',
-  lapsed: '已失效',
+// 名稱與色調只有一份，在 src/lib/status-presentation.ts（MIL-181）。這裡把色調換成 antd Tag 的顏色名稱，給仍用舊介面的呼叫端。
+const TONE_TO_TAG: Record<StatusTone, Tone> = {
+  neutral: 'default',
+  progress: 'processing',
+  success: 'success',
+  warning: 'warning',
+  error: 'error',
 };
+
+const toView = (view: StatusView): { label: string; tone: Tone } => ({ label: view.label, tone: TONE_TO_TAG[view.tone] });
+
+export const STATE_LABELS: Record<CredentialState, string> = statusLabelMap('credentialState');
 
 export const stateLabel = (state: CredentialState): string => STATE_LABELS[state];
 
 export type Tone = 'default' | 'processing' | 'warning' | 'success' | 'error';
 
-const PHASES: Record<LicensePhase, { label: string; tone: Tone }> = {
-  not_submitted: { label: '尚未送件', tone: 'default' },
-  awaiting_review: { label: '待核對', tone: 'processing' },
-  needs_resubmission: { label: '待補件', tone: 'warning' },
-  verified: { label: '已驗證', tone: 'success' },
-  lapsed: { label: '已失效', tone: 'error' },
-};
-
-export const phaseView = (phase: LicensePhase): { label: string; tone: Tone } => PHASES[phase];
+export const phaseView = (phase: LicensePhase): { label: string; tone: Tone } => toView(statusPresentation('licensePhase', phase));
 
 const QUEUE_TYPES: Record<string, string> = {
   license: '業別核對',
@@ -73,16 +73,8 @@ export const isBacklogged = (waitingMs: number): boolean => waitingMs > BACKLOG_
 // 證書、任職與同意書（MIL-111）。進度的標籤沿用業別的詞：待核對、待補件、已驗證、已失效。
 export type PractitionerPhase = 'awaiting_review' | 'needs_resubmission' | 'verified' | 'lapsed' | 'not_submitted' | 'ended';
 
-const PRACTITIONER_PHASES: Record<PractitionerPhase, { label: string; tone: Tone }> = {
-  not_submitted: { label: '尚未送出', tone: 'default' },
-  awaiting_review: { label: '待核對', tone: 'processing' },
-  needs_resubmission: { label: '待補件', tone: 'warning' },
-  verified: { label: '已驗證', tone: 'success' },
-  lapsed: { label: '已失效', tone: 'error' },
-  ended: { label: '已失效', tone: 'error' },
-};
-
-export const practitionerPhaseView = (phase: PractitionerPhase): { label: string; tone: Tone } => PRACTITIONER_PHASES[phase];
+export const practitionerPhaseView = (phase: PractitionerPhase): { label: string; tone: Tone } =>
+  toView(statusPresentation('practitionerPhase', phase));
 
 /** 撞號項目宣稱的鍵，審核台顯示用，例如「臺北市 大安區 龍泉 一　建號 01234-000」。名稱缺少時退回編碼。 */
 export function claimedKeyText(

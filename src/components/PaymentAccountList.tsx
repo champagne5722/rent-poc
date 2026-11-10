@@ -1,12 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, App as AntApp, Button, Flex, Form, Input, Modal, Popconfirm, Radio, Select, Switch, Table, Tag, Typography } from 'antd';
+import { useEffect, useMemo, useState, useTransition } from 'react';
+import { Alert, App as AntApp, Button, Flex, Form, Input, Modal, Popconfirm, Radio, Select, Tag, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
+import { useRouter } from 'next/navigation';
+import ListPage from '@/components/page/ListPage';
+import StatusTag from '@/components/StatusTag';
 import { ACCOUNT_LAST4_PATTERN, BANK_CODE_PATTERN, HOLDER_KIND_LABELS } from '@/lib/payment-accounts/input';
 import type { PaymentAccount } from '@/lib/payment-accounts/repository';
+import styles from './PaymentAccountList.module.css';
 
-// 收款帳戶（MIL-118）：登錄、修改、停用，並看到每位持有人的現金收取帳戶。
+// 收款帳戶（MIL-118、MIL-181）：套用列表頁版型。資料由 server component 載入後傳進來，操作成功後呼叫 router.refresh()。
+// 登錄、修改、停用，並看到每位持有人的現金收取帳戶。
 // 只存遮罩識別：銀行代碼與帳號末四碼。account_kind 不顯示，現金收取用標籤表示。
 // 持有人是出租人、屋主、代管業者時，從選單挑一位本組織的成員或案件成員（MIL-187），不能自己輸入 ID。
 // 選單來自 GET /api/payment-accounts/holder-options，只有顯示名稱與 party ID。
@@ -234,7 +239,7 @@ function AccountEditor({ target, onClose, onSaved, onDeactivateAndAdd }: EditorP
               <Form.Item
                 name="bankCode"
                 label="銀行代碼"
-                style={{ flex: 1 }}
+                className={styles.half}
                 rules={[{ required: true, pattern: BANK_CODE_PATTERN, message: '請輸入 3 碼銀行代碼，或含分行的 7 碼' }]}
               >
                 <Input inputMode="numeric" maxLength={7} placeholder="例：812" disabled={locked} />
@@ -242,7 +247,7 @@ function AccountEditor({ target, onClose, onSaved, onDeactivateAndAdd }: EditorP
               <Form.Item
                 name="accountLast4"
                 label="帳號末四碼"
-                style={{ flex: 1 }}
+                className={styles.half}
                 rules={[{ required: true, pattern: ACCOUNT_LAST4_PATTERN, message: '請輸入帳號末 4 碼' }]}
                 extra="只填末四碼，請勿輸入完整帳號。"
               >
@@ -256,11 +261,17 @@ function AccountEditor({ target, onClose, onSaved, onDeactivateAndAdd }: EditorP
   );
 }
 
-function PaymentAccountsPage() {
+type StatusFilter = 'active' | 'all';
+
+export interface PaymentAccountListProps {
+  items: PaymentAccount[];
+}
+
+function PaymentAccountListInner({ items }: PaymentAccountListProps) {
   const { message, modal } = AntApp.useApp();
-  const [items, setItems] = useState<PaymentAccount[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showInactive, setShowInactive] = useState(false);
+  const router = useRouter();
+  const [, startRefresh] = useTransition();
+  const [status, setStatus] = useState<StatusFilter>('active');
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   // 每次開啟編輯器都換一個 key：表單實例會保留上一次的值，不換的話「停用並新增」帶入的預設值會被舊值蓋掉
   const [editorSeq, setEditorSeq] = useState(0);
@@ -268,41 +279,17 @@ function PaymentAccountsPage() {
     setEditorSeq((n) => n + 1);
     setEditor(target);
   };
-
-  // 載入只在 effect 的非同步回呼裡改狀態；儲存或停用後遞增 reloadKey 重新載入
-  const [reloadKey, setReloadKey] = useState(0);
-  const reload = useCallback(() => {
-    setLoading(true);
-    setReloadKey((k) => k + 1);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetch('/api/payment-accounts')
-      .then(async (res) => {
-        if (cancelled) return;
-        if (res.ok) setItems((await res.json()).data);
-        else message.error('無法載入收款帳戶');
-        setLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        message.error('無法載入收款帳戶');
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey, message]);
+  const reload = () => startRefresh(() => router.refresh());
 
   // 同一位持有人的帳戶排在一起，銀行帳戶在前、現金收取在後
   const rows = useMemo(
     () =>
       items
-        .filter((a) => showInactive || a.active)
+        .filter((a) => status === 'all' || a.active)
         .sort((a, b) => a.holderName.localeCompare(b.holderName) || Number(a.isCash) - Number(b.isCash) || b.id.localeCompare(a.id)),
-    [items, showInactive],
+    [items, status],
   );
+  const activeCount = useMemo(() => items.filter((a) => a.active).length, [items]);
 
   const deactivate = async (id: string): Promise<boolean> => {
     const res = await fetch(`/api/payment-accounts/${id}/deactivate`, { method: 'POST' });
@@ -338,82 +325,89 @@ function PaymentAccountsPage() {
   };
 
   return (
-    <Flex vertical gap={24}>
-      <Flex justify="space-between" align="center" gap={16} wrap>
-        <Flex vertical gap={4}>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            收款帳戶
-          </Typography.Title>
-          <Typography.Text type="secondary">只記帳戶名稱、銀行代碼與帳號末四碼。平台不經手款項。</Typography.Text>
-        </Flex>
-        <Flex align="center" gap={16} wrap>
-          <Flex align="center" gap={8}>
-            <Switch size="small" checked={showInactive} onChange={setShowInactive} aria-label="顯示已停用的帳戶" />
-            <Typography.Text type="secondary" style={{ whiteSpace: 'nowrap' }}>
-              顯示已停用
-            </Typography.Text>
-          </Flex>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor({ kind: 'new' })}>
-            新增收款帳戶
-          </Button>
-        </Flex>
-      </Flex>
-
-      <Table<PaymentAccount>
-        rowKey="id"
-        size="middle"
-        loading={loading}
-        dataSource={rows}
-        pagination={false}
-        scroll={{ x: 'max-content' }}
-        locale={{ emptyText: '尚無收款帳戶，點右上角「新增收款帳戶」開始' }}
-        columns={[
-          { title: '名稱', dataIndex: 'name' },
-          {
-            title: '持有人',
-            render: (_, a) => (
-              <Flex align="center" gap={8}>
-                <Tag>{HOLDER_KIND_LABELS[a.holderKind]}</Tag>
-                <span>{a.holderName}</span>
-              </Flex>
-            ),
+    <>
+      <ListPage<PaymentAccount, StatusFilter>
+        header={{
+          title: '收款帳戶列表',
+          extra: (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor({ kind: 'new' })}>
+              新增收款帳戶
+            </Button>
+          ),
+        }}
+        intro="只記帳戶名稱、銀行代碼與帳號末四碼。平台不經手款項。"
+        filter={{
+          status: {
+            value: status,
+            onChange: setStatus,
+            options: [
+              { value: 'active', label: '使用中', count: activeCount },
+              { value: 'all', label: '全部（含已停用）', count: items.length },
+            ],
           },
-          {
-            title: '收款方式',
-            render: (_, a) =>
-              a.isCash ? <Tag color="processing">現金收取</Tag> : <span>{`${a.bankCode}　末四碼 ${a.accountLast4}`}</span>,
-          },
-          {
-            title: '狀態',
-            width: 100,
-            render: (_, a) => (a.active ? <Tag color="success">使用中</Tag> : <Tag>已停用</Tag>),
-          },
-          {
-            title: '操作',
-            width: 140,
-            render: (_, a) =>
-              a.active ? (
-                <Flex gap={8}>
-                  <Button type="link" size="small" onClick={() => openEditor({ kind: 'edit', account: a })}>
-                    編輯
-                  </Button>
-                  <Popconfirm
-                    title="停用這個收款帳戶？"
-                    description="停用後不能再收款，既有的紀錄會保留。"
-                    okText="停用"
-                    cancelText="取消"
-                    onConfirm={() => void deactivate(a.id)}
-                  >
-                    <Button type="link" size="small" danger>
-                      停用
-                    </Button>
-                  </Popconfirm>
+          active: status !== 'active',
+          onClear: () => setStatus('active'),
+        }}
+        empty={{
+          description: '尚無收款帳戶。新增第一個收款帳戶，收款時才能記錄入帳。',
+          action: (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openEditor({ kind: 'new' })}>
+              新增收款帳戶
+            </Button>
+          ),
+        }}
+        table={{
+          rowKey: 'id',
+          dataSource: rows,
+          scroll: { x: 'max-content' },
+          columns: [
+            { title: '名稱', dataIndex: 'name' },
+            {
+              title: '持有人',
+              render: (_, a) => (
+                <Flex align="center" gap="small">
+                  <Tag>{HOLDER_KIND_LABELS[a.holderKind]}</Tag>
+                  <span>{a.holderName}</span>
                 </Flex>
-              ) : (
-                <Typography.Text type="secondary">—</Typography.Text>
               ),
-          },
-        ]}
+            },
+            {
+              title: '收款方式',
+              render: (_, a) => (a.isCash ? <Tag>現金收取</Tag> : <span>{`${a.bankCode}　末四碼 ${a.accountLast4}`}</span>),
+            },
+            {
+              title: '狀態',
+              width: 100,
+              render: (_, a) => <StatusTag kind="paymentAccount" value={a.active ? 'active' : 'inactive'} />,
+            },
+            {
+              title: '操作',
+              width: 140,
+              fixed: 'right',
+              render: (_, a) =>
+                a.active ? (
+                  <Flex gap="small">
+                    <Button type="link" size="small" onClick={() => openEditor({ kind: 'edit', account: a })}>
+                      編輯
+                    </Button>
+                    <Popconfirm
+                      title="停用這個收款帳戶？"
+                      description="停用後不能再收款，既有的紀錄會保留。"
+                      okText="停用"
+                      cancelText="取消"
+                      onConfirm={() => void deactivate(a.id)}
+                    >
+                      <Button type="link" size="small" danger>
+                        停用
+                      </Button>
+                    </Popconfirm>
+                  </Flex>
+                ) : (
+                  <Typography.Text type="secondary">—</Typography.Text>
+                ),
+            },
+          ],
+        }}
       />
 
       <AccountEditor
@@ -429,14 +423,15 @@ function PaymentAccountsPage() {
           deactivateAndAdd(account);
         }}
       />
-    </Flex>
+    </>
   );
 }
 
-export default function Page() {
+// 頁面自己包 AntApp，message 與 modal 才吃得到主題
+export default function PaymentAccountList(props: PaymentAccountListProps) {
   return (
     <AntApp>
-      <PaymentAccountsPage />
+      <PaymentAccountListInner {...props} />
     </AntApp>
   );
 }

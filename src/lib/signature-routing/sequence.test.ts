@@ -22,8 +22,8 @@ const field = (id: string, signer: SignatureField['signer'], page = 0, slot?: st
 
 const selfManaged = planOf({
   documentType: 'lease',
+  caseKind: 'lease',
   businessType: 'self_managed',
-  lesseeIsMasterLessor: false,
   brokerMediated: false,
 });
 
@@ -79,8 +79,7 @@ describe('buildSignerSequence：缺少席位的簽署人', () => {
 describe('buildSignerSequence：居間加包租的四位簽署人', () => {
   const plan = planOf({
     documentType: 'lease',
-    businessType: 'master_lease',
-    lesseeIsMasterLessor: false,
+    caseKind: 'sublease',
     brokerMediated: true,
   });
   const assignees = {

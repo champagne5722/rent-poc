@@ -17,7 +17,7 @@ const seed: PracticeRegistryResolution = {
   registry: createSeedPracticeRegistry({ today: () => TODAY }),
 };
 
-const MASTER_LEASE: RoutingFacts = { documentType: 'lease', businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: false };
+const MASTER_LEASE: RoutingFacts = { documentType: 'lease', caseKind: 'sublease', brokerMediated: false };
 const PRACTITIONER_SLOT = 'lease.master_lease.practitioner';
 
 // 包租業者北辰，當事人簽署人王建國，專任管理人員陳怡君
@@ -129,7 +129,7 @@ describe('evaluateSend：由指派與登錄資料組出送簽前檢查的輸入'
   });
 
   describe('自管且承租人是包租業者：執業主體是乙方', () => {
-    const reversed: RoutingFacts = { documentType: 'lease', businessType: 'self_managed', lesseeIsMasterLessor: true, brokerMediated: false };
+    const reversed: RoutingFacts = { documentType: 'lease', caseKind: 'master_lease', brokerMediated: false };
     const slot = 'lease.self_managed_lessee_master_lessor.practitioner';
     const fields = {
       landlordName: '林屋主',
@@ -168,7 +168,7 @@ describe('evaluateSend：由指派與登錄資料組出送簽前檢查的輸入'
   });
 
   it('兩方合約不需要執業人員：不查登錄，指派可以是空的', async () => {
-    const selfManaged: RoutingFacts = { documentType: 'lease', businessType: 'self_managed', lesseeIsMasterLessor: false, brokerMediated: false };
+    const selfManaged: RoutingFacts = { documentType: 'lease', caseKind: 'lease', businessType: 'self_managed', brokerMediated: false };
     const result = await evaluateSend(input({ routing: selfManaged, assignments: [] }), { available: false, reason: 'x' });
     expect(result).toMatchObject({ ok: true, reasons: [], assignees: {}, records: [] });
   });
@@ -222,7 +222,7 @@ describe('loadSeatOptions：wizard 的指派選項', () => {
   });
 
   it('沒有執業人員席位的組合：沒有選項', async () => {
-    const selfManaged: RoutingFacts = { documentType: 'lease', businessType: 'self_managed', lesseeIsMasterLessor: false, brokerMediated: false };
+    const selfManaged: RoutingFacts = { documentType: 'lease', caseKind: 'lease', businessType: 'self_managed', brokerMediated: false };
     expect(await loadSeatOptions(selfManaged, seed, AT)).toEqual({ available: true, registryKind: 'seed', seats: [] });
   });
 

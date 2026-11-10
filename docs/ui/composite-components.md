@@ -284,3 +284,24 @@ lint 規則 `rent/no-inline-style` 擋下所有 JSX 的 `style` 屬性（規則�
 - 數量只降不升。新增 inline style 會讓 lint 失敗。
 - 重構一個檔案時，必須清掉它的 inline style，並從基準刪除該條目。違規少於基準時，lint 也會失敗，提醒更新基準。
 - 執行 `npm run lint:inline-style`，把基準內的違規逐處列成警告，用來看還剩多少。平常的 `npm run lint` 不列這些警告，因為 `--max-warnings=10` 會被擠爆。
+
+## 設定類頁面（MIL-181）
+
+組織成員、執業主體、我的證書這類「幾個區段各管一件事」的頁面，用 `SettingsPage` 加 `SettingsSection`。收款帳戶只有一張表，用 `ListPage`。
+
+| 元件 | 檔案 | 用途 |
+|---|---|---|
+| `SettingsPage` | `src/components/page/SettingsPage.tsx` | 頁首、提醒（`notices`）、由上而下的區段 |
+| `SettingsSection` | `src/components/page/SettingsSection.tsx` | 一張 `Card size="small"`：標題、說明（`description`）、右側動作（`extra`） |
+| `SettingsPageSkeleton` | `src/components/page/SettingsPageSkeleton.tsx` | `loading.tsx` 用的骨架畫面，頁首加兩個區段 |
+| `ListTable` | `src/components/page/ListTable.tsx` | 區段內的表格。分頁與空狀態與 `ListPage` 相同 |
+| `NoAccess` | `src/components/page/NoAccess.tsx` | 目前的身分看不到這一頁時的畫面。頁首加空狀態，沒有動作 |
+
+規則：
+
+- 頁首標題寫這一頁自己的名稱，不與頂部列的區域名稱重複。
+- 區段內的清單用 `ListTable`，沒有資料時用 `EmptyState`，說明寫下一步。
+- 操作欄放最右並固定，用文字連結。
+- 資料在 server component 載入。載入函式回傳 `{ kind: 'forbidden' }`，頁面顯示 `NoAccess`。
+- `ListPage` 的 `intro` 放頁首下方的一句說明，例如清單的範圍或限制。
+- 執業主體端與證書端的送件進度共用「尚未送件」這個詞，定義在 `src/lib/status-presentation.ts` 的 `licensePhase` 與 `practitionerPhase`。
