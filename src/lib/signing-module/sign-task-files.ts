@@ -66,7 +66,7 @@ export async function getSignTaskFile(
   kind: ContractFileKind,
 ): Promise<SignTaskFile | null> {
   const { rows } = await tx.query<FileRow>(
-    `SELECT ${COLUMNS} FROM org.sign_task_files WHERE sign_task_id = $1 AND kind = $2`,
+    `SELECT ${COLUMNS} FROM org.sign_task_files WHERE org_id = current_setting('app.org_id', true) AND sign_task_id = $1 AND kind = $2`,
     [signTaskId, kind],
   );
   return rows[0] ? toFile(rows[0]) : null;
@@ -74,7 +74,7 @@ export async function getSignTaskFile(
 
 export async function listSignTaskFiles(tx: OrgTx, signTaskId: string): Promise<SignTaskFile[]> {
   const { rows } = await tx.query<FileRow>(
-    `SELECT ${COLUMNS} FROM org.sign_task_files WHERE sign_task_id = $1 ORDER BY kind`,
+    `SELECT ${COLUMNS} FROM org.sign_task_files WHERE org_id = current_setting('app.org_id', true) AND sign_task_id = $1 ORDER BY kind`,
     [signTaskId],
   );
   return rows.map(toFile);
