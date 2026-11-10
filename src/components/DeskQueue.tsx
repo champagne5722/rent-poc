@@ -1,17 +1,19 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { Alert, Empty, Flex, Segmented, Table, Tag, Typography } from 'antd';
+import { useState } from 'react';
+import { Flex, Typography, type TableColumnsType } from 'antd';
 import Link from 'next/link';
+import ListPage from '@/components/page/ListPage';
 import StatusTag from '@/components/StatusTag';
 import { practitionerTitle, statutoryTitle, type LicenseKind } from '@/lib/labels';
+import { ownershipItemStatus } from '@/lib/ownership/review-status';
 import { claimedKeyText, formatWaiting, isBacklogged, queueTypeLabel, resolutionLabel } from '@/lib/practice-entities/display';
 import type { QueueItem } from '@/lib/practice-entities/desk';
 
-// 審核台佇列（MIL-109，GLOSSARY「審核台」）：平台營運者處理待核對項目。
-// 待核對的最久的在前，附等待時間。等待超過 3 日標警示（ADR-0017 決議 12 的積壓門檻，假設）。
+// 審核台佇列（MIL-109、MIL-180，GLOSSARY「審核台」）：平台營運者處理待核對項目。列表頁版型，資料由 server component 載入。
+// 待核對的最久的在前，附等待時間與狀態標籤。非出租權源項目等待超過 3 日標警示（ADR-0017 決議 12 的積壓門檻，假設）。
 // 出租權源項目（MIL-201）：等待時間只算週一到週五，超過 1 個工作日標警示，兩項都相符卻停住的項目標「待處理」，核對畫面在 /desk/ownership/[id]。
-// 只有平台營運者身分開得了，權限在 /api/desk/* 的 route 判斷，其他身分看到的是切換身分的提示。
+// 只有平台營運者身分開得了。權限在 server component 與 /api/desk/* 的 route 判斷，其他身分看到的是切換身分的提示。
 
 type Status = 'open' | 'resolved';
 
@@ -27,127 +29,102 @@ function describeKinds(item: QueueItem): string {
 /** 出租權源項目有自己的核對畫面，其餘項目走 /desk/items/[id]。 */
 const reviewHref = (item: QueueItem): string => (item.type === 'leasing_authority' ? `/desk/ownership/${item.id}` : `/desk/items/${item.id}`);
 
-export default function DeskQueue() {
+/** 狀態欄：出租權源項目有自己的狀態（待處理、超過 1 個工作日），其餘項目只有待核對與已結案。 */
+function statusOf(item: QueueItem) {
+  return item.type === 'leasing_authority' ? (
+    <StatusTag kind="ownershipItem" value={ownershipItemStatus({ status: item.status, resolution: item.resolution, overdue: item.overdue, held: item.summary.held === true })} />
+  ) : (
+    <StatusTag kind="reviewItem" value={item.status} />
+  );
+}
+
+/** 等待時間：出租權源只算工作日，其餘項目算日曆日。超過門檻時用警示色。 */
+function waitingOf(item: QueueItem) {
+  if (item.type === 'leasing_authority') return <Typography.Text type={item.overdue ? 'warning' : undefined}>{formatWaiting(item.waitingBusinessMs)}</Typography.Text>;
+  const backlogged = isBacklogged(item.waitingMs);
+  return <Typography.Text type={backlogged ? 'warning' : undefined}>{backlogged ? `${formatWaiting(item.waitingMs)}（超過 3 日）` : formatWaiting(item.waitingMs)}</Typography.Text>;
+}
+
+const COLUMNS: TableColumnsType<QueueItem> = [
+  {
+    title: '類型',
+    dataIndex: 'type',
+    width: 120,
+    render: (type: string) => queueTypeLabel(type),
+  },
+  {
+    title: '對象',
+    key: 'entity',
+    render: (_v, item) =>
+      item.summary.claimantOrgName ? (
+        // 撞號與撞號超限項目：宣稱方組織
+        <Typography.Text>{item.summary.claimantOrgName}</Typography.Text>
+      ) : item.summary.partyName ? (
+        // 證書、任職、同意書項目：主要是人員，任職與同意書另列執業主體
+        <Flex vertical>
+          <Typography.Text>{item.summary.partyName}</Typography.Text>
+          <Typography.Text type="secondary">{item.summary.entityName ?? ''}</Typography.Text>
+        </Flex>
+      ) : (
+        <Flex vertical>
+          <Typography.Text>{item.summary.entityName ?? '—'}</Typography.Text>
+          <Typography.Text type="secondary">{item.summary.taxId ?? ''}</Typography.Text>
+        </Flex>
+      ),
+  },
+  { title: '業別、證書或鍵', key: 'kind', render: (_v, item) => describeKinds(item) },
+  { title: '許可或登記證字號', key: 'permit', render: (_v, item) => item.summary.permitNo ?? '—' },
+  { title: '狀態', key: 'status', width: 150, render: (_v, item) => statusOf(item) },
+];
+
+const OPEN_COLUMNS: TableColumnsType<QueueItem> = [
+  ...COLUMNS,
+  { title: '等待時間', dataIndex: 'waitingMs', width: 160, align: 'right', render: (_ms: number, item) => waitingOf(item) },
+  actionColumn('核對'),
+];
+
+const RESOLVED_COLUMNS: TableColumnsType<QueueItem> = [
+  ...COLUMNS,
+  { title: '結果', dataIndex: 'resolution', width: 120, render: resolutionLabel },
+  actionColumn('查看'),
+];
+
+/** 操作欄放最右並固定，用文字連結（列表頁版型的規則）。 */
+function actionColumn(label: string): TableColumnsType<QueueItem>[number] {
+  return {
+    title: '操作',
+    key: 'action',
+    width: 80,
+    fixed: 'right',
+    render: (_v, item) => <Link href={reviewHref(item)}>{label}</Link>,
+  };
+}
+
+export default function DeskQueue({ open, resolved }: { open: QueueItem[]; resolved: QueueItem[] }) {
   const [status, setStatus] = useState<Status>('open');
-  const [items, setItems] = useState<QueueItem[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async (next: Status): Promise<{ items: QueueItem[] } | { error: string }> => {
-    try {
-      const response = await fetch(`/api/desk/queue?status=${next}`);
-      if (response.status === 403) return { error: '只有平台營運者身分能開啟審核台。請從右上角切換身分。' };
-      if (!response.ok) throw new Error(String(response.status));
-      return { items: ((await response.json()) as { data: { items: QueueItem[] } }).data.items };
-    } catch {
-      return { error: '審核台載入失敗，請重新整理。' };
-    }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void load(status).then((result) => {
-      if (cancelled) return;
-      if ('items' in result) {
-        setItems(result.items);
-        setError(null);
-      } else {
-        setError(result.error);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [load, status]);
-
-  if (error) return <Alert type="error" showIcon title={error} />;
 
   return (
-    <Flex vertical gap="middle" style={{ maxWidth: 1080 }}>
-      <Flex align="center" justify="space-between" wrap gap="small">
-        <Typography.Title level={5} style={{ margin: 0 }}>
-          {status === 'open' ? '待核對項目' : '已結案項目'}
-        </Typography.Title>
-        <Segmented<Status>
-          value={status}
-          onChange={(next) => {
-            setItems(null);
-            setStatus(next);
-          }}
-          options={[
-            { value: 'open', label: '待核對' },
-            { value: 'resolved', label: '已結案' },
-          ]}
-        />
-      </Flex>
-      <Table<QueueItem>
-        size="middle"
-        rowKey="id"
-        loading={items === null}
-        pagination={false}
-        dataSource={items ?? []}
-        locale={{ emptyText: <Empty description={status === 'open' ? '沒有待核對的項目。' : '還沒有結案的項目。'} /> }}
-        scroll={{ x: 'max-content' }}
-        columns={[
-          {
-            title: '類型',
-            dataIndex: 'type',
-            width: 140,
-            render: (type: string, item) =>
-              item.summary.held ? (
-                <Flex gap="small" align="center">
-                  {queueTypeLabel(type)}
-                  <StatusTag kind="ownershipItem" value="held" />
-                </Flex>
-              ) : (
-                queueTypeLabel(type)
-              ),
-          },
-          {
-            title: '對象',
-            key: 'entity',
-            render: (_v, item) =>
-              item.summary.claimantOrgName ? (
-                // 撞號與撞號超限項目：宣稱方組織
-                <Typography.Text>{item.summary.claimantOrgName}</Typography.Text>
-              ) : item.summary.partyName ? (
-                // 證書、任職、同意書項目：主要是人員，任職與同意書另列執業主體
-                <Flex vertical>
-                  <Typography.Text>{item.summary.partyName}</Typography.Text>
-                  <Typography.Text type="secondary">{item.summary.entityName ?? ''}</Typography.Text>
-                </Flex>
-              ) : (
-                <Flex vertical>
-                  <Typography.Text>{item.summary.entityName ?? '—'}</Typography.Text>
-                  <Typography.Text type="secondary">{item.summary.taxId ?? ''}</Typography.Text>
-                </Flex>
-              ),
-          },
-          { title: '業別、證書或鍵', key: 'kind', render: (_v, item) => describeKinds(item) },
-          { title: '許可或登記證字號', key: 'permit', render: (_v, item) => item.summary.permitNo ?? '—' },
-          status === 'open'
-            ? {
-                title: '等待時間',
-                dataIndex: 'waitingMs',
-                width: 200,
-                align: 'right' as const,
-                render: (ms: number, item) =>
-                  item.type === 'leasing_authority' ? (
-                    // 出租權源：只算工作日，目標是 1 個工作日內
-                    <Flex gap="small" align="center" justify="flex-end">
-                      {item.overdue && <StatusTag kind="ownershipItem" value="overdue" />}
-                      <Typography.Text>{formatWaiting(item.waitingBusinessMs)}</Typography.Text>
-                    </Flex>
-                  ) : (
-                    <Flex gap="small" align="center" justify="flex-end">
-                      {isBacklogged(ms) && <Tag color="warning">超過 3 日</Tag>}
-                      <Typography.Text>{formatWaiting(ms)}</Typography.Text>
-                    </Flex>
-                  ),
-              }
-            : { title: '結果', dataIndex: 'resolution', width: 140, render: resolutionLabel },
-          { title: '操作', key: 'action', width: 90, render: (_v, item) => <Link href={reviewHref(item)}>{status === 'open' ? '核對' : '查看'}</Link> },
-        ]}
-      />
-    </Flex>
+    <ListPage<QueueItem, Status>
+      header={{ title: '審核項目列表' }}
+      filter={{
+        status: {
+          value: status,
+          onChange: setStatus,
+          options: [
+            { value: 'open', label: '待核對', count: open.length },
+            { value: 'resolved', label: '已結案', count: resolved.length },
+          ],
+        },
+        active: false,
+        onClear: () => setStatus('open'),
+      }}
+      empty={{ description: status === 'open' ? '沒有待核對的項目。有新的送件時，項目會出現在這裡。' : '還沒有結案的項目。判定送出後，項目會移到這裡。' }}
+      table={{
+        rowKey: 'id',
+        dataSource: status === 'open' ? open : resolved,
+        columns: status === 'open' ? OPEN_COLUMNS : RESOLVED_COLUMNS,
+        scroll: { x: 'max-content' },
+      }}
+    />
   );
 }

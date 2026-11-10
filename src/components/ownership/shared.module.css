@@ -1,0 +1,15 @@
+/* 出租權源畫面（物件頁與審核台）共用的版面（MIL-180）。尺寸引用 DESIGN.md 的 CSS 變數。 */
+
+/* 表單欄位的最大寬度（spacing 的倍數），避免單行輸入框在寬螢幕拉到整欄 */
+.fieldNarrow {
+  max-width: calc(var(--space-xxl) * 7);
+}
+
+.fieldMedium {
+  max-width: calc(var(--space-xxl) * 12);
+}
+
+.messageList {
+  margin: 0;
+  padding-left: var(--space-lg);
+}

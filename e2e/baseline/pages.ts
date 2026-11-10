@@ -81,7 +81,7 @@ export const PAGES: PageSpec[] = [
   { id: '25-org-handover-detail', title: '後台 移交詳情', phase: 4, layout: '詳情', role: 'practice', route: '/handovers/{orgHandover}', sources: ['src/app/handovers/[id]/(detail)'] },
   { id: '26-practice', title: '執業主體', phase: 4, layout: '面板', role: 'practice', route: '/practice', sources: ['src/app/practice/(page)/page.tsx', 'src/components/PracticePanel.tsx', 'src/components/EmploymentList.tsx'] },
   { id: '27-practitioner', title: '我的證書（執業人員）', phase: 4, layout: '面板', role: 'practice', route: '/practitioner', sources: ['src/app/practitioner/(page)/page.tsx', 'src/components/PractitionerPanel.tsx'] },
-  { id: '28-desk-queue', title: '審核台佇列', phase: 4, layout: '列表', role: 'operator', route: '/desk', sources: ['src/app/desk/page.tsx', 'src/components/DeskQueue.tsx'] },
+  { id: '28-desk-queue', title: '審核台佇列', phase: 4, layout: '列表', role: 'operator', route: '/desk', sources: ['src/app/desk/(list)/page.tsx', 'src/components/DeskQueue.tsx'] },
   { id: '29-desk-item-license', title: '審核台項目（業別核對）', phase: 4, layout: '詳情', role: 'operator', route: '/desk/items/{deskLicense}', sources: ['src/app/desk/items/[id]/page.tsx', 'src/components/DeskItemPanel.tsx', 'src/components/CredentialReviewPanel.tsx'] },
   { id: '30-desk-item-credential', title: '審核台項目（證書或任職核對）', phase: 4, layout: '詳情', role: 'operator', route: '/desk/items/{deskCredential}', sources: ['src/app/desk/items/[id]/page.tsx', 'src/components/DeskItemPanel.tsx', 'src/components/CredentialReviewPanel.tsx'] },
   { id: '31-login', title: '登入頁', phase: 4, layout: '登入', role: 'anonymous', route: '/login', sources: ['src/app/login/page.tsx', 'src/components/LoginForm.tsx'] },

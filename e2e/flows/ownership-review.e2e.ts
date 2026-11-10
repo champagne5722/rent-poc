@@ -172,7 +172,7 @@ test('營運者判定不符後，物件頁顯示固定訊息，使用者修正�
     await openReview(operator, property);
     await decide(operator, { keyMatch: true, holderMatch: false, reason: '謄本的登記名義人是另一位' });
     // 結案後的項目在已結案清單，詳情顯示判定結果
-    await operator.getByText('已結案', { exact: true }).click();
+    await operator.getByText(/^已結案/).first().click();
     const closedRow = operator.getByRole('row').filter({ hasText: new RegExp(`建號 0*${property.buildingNo}-`) });
     await expect(closedRow).toBeVisible();
     await closedRow.getByRole('link', { name: '查看' }).click();

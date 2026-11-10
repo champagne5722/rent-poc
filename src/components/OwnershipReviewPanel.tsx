@@ -9,12 +9,14 @@ import NextStep from '@/components/page/NextStep';
 import StatusTag from '@/components/StatusTag';
 import { shortUlid } from '@/lib/pg/ulid';
 import { formatFileSize, formatTaipeiDate, formatTaipeiDateTime } from '@/lib/ownership/format';
-import { HOLDER_MASKED_MAX, REASON_MAX, TRUST_FIELD_LABELS, TRUST_FIELDS, validateCheckForm, type CheckFormField, type TrustField } from '@/lib/ownership/forms';
+import { HOLDER_MASKED_MAX, REASON_MAX, validateCheckForm, type CheckFormField } from '@/lib/ownership/forms';
 import { HELD_MESSAGE, mismatchMessages } from '@/lib/ownership/messages';
 import { documentCheckResult, ownershipItemStatus } from '@/lib/ownership/review-status';
 import { formatWaiting, queueTypeLabel } from '@/lib/practice-entities/display';
 import { statusPresentation } from '@/lib/status-presentation';
 import type { OwnershipReviewDetail } from '@/lib/ownership/desk';
+import { trustDescriptionItems } from './ownership/trust';
+import shared from './ownership/shared.module.css';
 import styles from './OwnershipReviewPanel.module.css';
 
 // 審核台的出租權源核對面板（MIL-201，ADR-0026 決議 7，ADR-0028 決議 3）。
@@ -35,13 +37,6 @@ interface ApiError {
 }
 
 const DECISION_FIELDS: readonly CheckFormField[] = ['keyMatch', 'holderMatch', 'holderMasked', 'reason'];
-
-const TRUST_VIEW_KEYS: Record<TrustField, 'registered_owner' | 'related_parties' | 'registration_status' | 'lease_clause'> = {
-  registeredOwner: 'registered_owner',
-  relatedParties: 'related_parties',
-  registrationStatus: 'registration_status',
-  leaseClause: 'lease_clause',
-};
 
 /** 登記名義人欄位的檢查，與 API 同一個函式（不含證號）。 */
 function validateHolderMasked(_: unknown, value: string | undefined): Promise<void> {
@@ -112,13 +107,7 @@ function ComparePanels({ detail }: { detail: OwnershipReviewDetail }) {
                     submission.file_name
                   ),
                 },
-                ...(submission.trust
-                  ? TRUST_FIELDS.map((field) => ({
-                      key: `trust-${field}`,
-                      label: `信託：${TRUST_FIELD_LABELS[field]}`,
-                      children: submission.trust?.[TRUST_VIEW_KEYS[field]] ?? '—',
-                    }))
-                  : []),
+                ...trustDescriptionItems(submission.trust),
               ]}
             />
             <Typography.Text type="secondary" className="type-caption">
@@ -221,7 +210,7 @@ function DecisionForm({ itemId }: { itemId: string }) {
         <Form.Item
           label="謄本上的登記名義人（已遮罩）"
           name="holderMasked"
-          className={styles.fieldNarrow}
+          className={shared.fieldNarrow}
           extra="照謄本原樣填遮罩後的姓名。不得填身分證字號。"
           rules={[
             { required: true, whitespace: true, message: '請照謄本填登記名義人（已遮罩）' },
@@ -234,7 +223,7 @@ function DecisionForm({ itemId }: { itemId: string }) {
         <Form.Item
           label="判定理由"
           name="reason"
-          className={styles.fieldMedium}
+          className={shared.fieldMedium}
           extra="理由記在判定紀錄。登錄的一方不會看到這段理由，只會看到固定訊息。"
           rules={[
             { required: true, whitespace: true, message: '請填判定理由' },
@@ -255,7 +244,7 @@ function DecisionForm({ itemId }: { itemId: string }) {
                 showIcon
                 title="登錄的一方會看到下列固定訊息"
                 description={
-                  <ul className={styles.messageList}>
+                  <ul className={shared.messageList}>
                     {userMessages.map((m) => (
                       <li key={m}>{m}</li>
                     ))}

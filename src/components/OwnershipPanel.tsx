@@ -22,7 +22,9 @@ import {
 } from '@/lib/ownership/forms';
 import { AWAITING_REVIEW_MESSAGE, NOT_SUBMITTED_MESSAGE } from '@/lib/ownership/messages';
 import type { OwnershipSubmissionView, PropertyOwnership } from '@/lib/types';
+import { trustDescriptionItems } from './ownership/trust';
 import styles from './OwnershipPanel.module.css';
+import shared from './ownership/shared.module.css';
 
 // 物件頁的出租權源文件區塊（MIL-201，ADR-0026、ADR-0028 決議 3）。放在物件頁的「建號與核對」分頁。
 // 顯示核對狀態、最新一次送件，以及個資告知與謄本上傳。
@@ -94,13 +96,7 @@ function SubmissionSummary({ ownership, submission }: { ownership: PropertyOwner
         { key: 'acquired', label: '謄本取得時間', children: formatTaipeiDate(submission.acquired_at) },
         { key: 'file', label: '謄本檔案', children: `${submission.file_name}（${formatFileSize(submission.byte_size)}）` },
         { key: 'submitted', label: '送出時間', children: formatTaipeiDateTime(submission.submitted_at) },
-        ...(submission.trust
-          ? TRUST_FIELD_ORDER.map((field) => ({
-              key: `trust-${field}`,
-              label: `信託：${TRUST_FIELD_LABELS[field]}`,
-              children: submission.trust?.[trustViewKey(field)] ?? '—',
-            }))
-          : []),
+        ...trustDescriptionItems(submission.trust),
         ...(verified || ownership.node_status === 'failed'
           ? [
               { key: 'checked', label: '核對時間', children: formatTaipeiDateTime(ownership.checked_at) },
@@ -110,19 +106,6 @@ function SubmissionSummary({ ownership, submission }: { ownership: PropertyOwner
       ]}
     />
   );
-}
-
-function trustViewKey(field: TrustField): 'registered_owner' | 'related_parties' | 'registration_status' | 'lease_clause' {
-  switch (field) {
-    case 'registeredOwner':
-      return 'registered_owner';
-    case 'relatedParties':
-      return 'related_parties';
-    case 'registrationStatus':
-      return 'registration_status';
-    case 'leaseClause':
-      return 'lease_clause';
-  }
 }
 
 function StatusBlock({ ownership, archived }: { ownership: PropertyOwnership; archived: boolean }) {
@@ -149,7 +132,7 @@ function StatusBlock({ ownership, archived }: { ownership: PropertyOwnership; ar
         title="文件核對未通過"
         description={
           <Flex vertical gap="small">
-            <ul className={styles.messageList}>
+            <ul className={shared.messageList}>
               {messages.map((m) => (
                 <li key={m}>{m}</li>
               ))}
@@ -307,7 +290,7 @@ function TranscriptForm({ ownership, onSubmitted }: { ownership: PropertyOwnersh
         <Form.Item
           label="你主張的所有權人"
           name="claimedOwner"
-          className={styles.fieldNarrow}
+          className={shared.fieldNarrow}
           rules={[
             { required: true, whitespace: true, message: '請填你主張的所有權人' },
             { max: CLAIMED_OWNER_MAX, message: `所有權人不得超過 ${CLAIMED_OWNER_MAX} 字` },
@@ -319,7 +302,7 @@ function TranscriptForm({ ownership, onSubmitted }: { ownership: PropertyOwnersh
         <Form.Item
           label="謄本取得時間"
           name="acquiredAt"
-          className={styles.fieldNarrow}
+          className={shared.fieldNarrow}
           rules={[{ required: true, message: '請填謄本的取得時間' }]}
         >
           <DatePicker format="YYYY-MM-DD" placeholder="選擇日期" disabledDate={(date) => date.isAfter(dayjs(), 'day')} allowClear={false} />
@@ -335,7 +318,7 @@ function TranscriptForm({ ownership, onSubmitted }: { ownership: PropertyOwnersh
                 key={field}
                 label={TRUST_FIELD_LABELS[field]}
                 name={TRUST_FORM_NAMES[field]}
-                className={styles.fieldMedium}
+                className={shared.fieldMedium}
                 rules={[
                   { required: true, whitespace: true, message: `請填${TRUST_FIELD_LABELS[field]}` },
                   { max: TRUST_FIELD_MAX, message: `${TRUST_FIELD_LABELS[field]}不得超過 ${TRUST_FIELD_MAX} 字` },
