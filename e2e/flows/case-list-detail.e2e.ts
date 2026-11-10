@@ -1,14 +1,13 @@
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
-import { seedProperty, seedSendableDraft, uniqueSuffix } from '../helpers/api';
-import { clickUntil } from '../helpers/ui';
+import { expect, test, type Browser, type Page } from '@playwright/test';
+import { seedVerifiedProperty, seedSendableDraft, uniqueSuffix } from '../helpers/api';
 
 // 案件列表與案件詳情（MIL-184）。重構只改呈現：狀態分組、成員、帳務設定、案件事件的行為沿用既有 API。
 // 設定環境變數 SHOT_DIR 時，順便把畫面存成截圖（前後對照用）。
 
-async function seedCase(page: Page): Promise<{ caseId: string; contractId: string }> {
-  const property = await seedProperty(page, `E2E 案件物件 ${uniqueSuffix()}`);
+async function seedCase(page: Page, browser: Browser): Promise<{ caseId: string; contractId: string }> {
+  const property = await seedVerifiedProperty(page, browser, `E2E 案件物件 ${uniqueSuffix()}`);
   const contractId = await seedSendableDraft(page, property.id);
   const res = await page.request.get('/api/cases');
   expect(res.ok()).toBe(true);
@@ -28,8 +27,8 @@ async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: path.join(dir, `${name}.png`), fullPage: true });
 }
 
-test('案件列表：頁首、狀態分組與狀態標籤，點案件進入詳情', async ({ page }) => {
-  const { caseId } = await seedCase(page);
+test('案件列表：頁首、狀態分組與狀態標籤，點案件進入詳情', async ({ page, browser }) => {
+  const { caseId } = await seedCase(page, browser);
   await page.goto('/cases');
 
   await expect(page.getByRole('heading', { name: '案件列表' })).toBeVisible();
@@ -46,12 +45,16 @@ test('案件列表：頁首、狀態分組與狀態標籤，點案件進入詳�
   await page.getByRole('button', { name: '清除篩選' }).last().click();
   await expect(row).toBeVisible();
 
-  await clickUntil(row, page.getByRole('link', { name: /返回案件列表/ }));
+  // 詳情頁第一次編譯很慢，可能超過 clickUntil 的 3 秒。已經換頁就不再點列，只等詳情頁出現
+  await expect(async () => {
+    if (!page.url().endsWith(`/cases/${caseId}`)) await row.click({ timeout: 5_000 });
+    await expect(page.getByRole('link', { name: /返回案件列表/ })).toBeVisible({ timeout: 15_000 });
+  }).toPass({ timeout: 60_000 });
   await expect(page).toHaveURL(new RegExp(`/cases/${caseId}$`));
 });
 
-test('案件詳情：頂端寫出狀態與下一步，帳務設定與案件事件是可收合區段', async ({ page }) => {
-  const { caseId, contractId } = await seedCase(page);
+test('案件詳情：頂端寫出狀態與下一步，帳務設定與案件事件是可收合區段', async ({ page, browser }) => {
+  const { caseId, contractId } = await seedCase(page, browser);
   await page.goto(`/cases/${caseId}`);
 
   await expect(page.getByRole('link', { name: /返回案件列表/ })).toBeVisible();
@@ -76,8 +79,8 @@ test('案件詳情：頂端寫出狀態與下一步，帳務設定與案件事�
   await expect(ledger).toHaveAttribute('aria-expanded', 'false');
 });
 
-test('案件詳情：送簽後狀態與下一步更新；加入共同承租人後成員列表更新', async ({ page }) => {
-  const { caseId, contractId } = await seedCase(page);
+test('案件詳情：送簽後狀態與下一步更新；加入共同承租人後成員列表更新', async ({ page, browser }) => {
+  const { caseId, contractId } = await seedCase(page, browser);
   const sent = await page.request.post(`/api/contracts/${contractId}/send`);
   expect(sent.ok()).toBe(true);
   await page.goto(`/cases/${caseId}`);
