@@ -238,7 +238,7 @@ describe('鏡像帳的表與觸發器', () => {
     const statements = [
       ['ledger_journals', `UPDATE org.ledger_journals SET case_id = 'X'`],
       ['ledger_journals', 'DELETE FROM org.ledger_journals'],
-      ['ledger_journals', 'TRUNCATE org.ledger_journals, org.ledger_entries'],
+      ['ledger_journals', 'TRUNCATE org.ledger_journals, org.ledger_entries, org.receipt_confirmations, org.deposit_holder_acknowledgments'],
       ['ledger_entries', 'UPDATE org.ledger_entries SET debit = debit + 1'],
       ['ledger_entries', 'DELETE FROM org.ledger_entries'],
       ['ledger_entries', 'TRUNCATE org.ledger_entries'],
@@ -258,7 +258,7 @@ describe('鏡像帳的表與觸發器', () => {
       await asRole(db, 'app_owner', async () => {
         await expect(db.query('TRUNCATE org.ledger_entries')).rejects.toThrow(/只增不改/);
         // 單獨 TRUNCATE 被參照的 ledger_journals 會先被外鍵擋下，兩張表一起 TRUNCATE 才走到觸發器
-        await expect(db.query('TRUNCATE org.ledger_journals, org.ledger_entries')).rejects.toThrow(/只增不改/);
+        await expect(db.query('TRUNCATE org.ledger_journals, org.ledger_entries, org.receipt_confirmations, org.deposit_holder_acknowledgments')).rejects.toThrow(/只增不改/);
         await expect(db.query('TRUNCATE org.ledger_journals')).rejects.toThrow(/truncate|只增不改/);
       });
     });
