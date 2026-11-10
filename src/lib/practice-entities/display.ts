@@ -34,6 +34,9 @@ const QUEUE_TYPES: Record<string, string> = {
   // 產權的項目（MIL-144）
   anchor_collision: '撞號',
   anchor_collision_limit: '撞號超限',
+  // 物件的文件核對（MIL-201）。名稱取自 GLOSSARY「審核台」
+  leasing_authority: '出租權源',
+  anchor_rekey: '修正建號',
 };
 
 export const queueTypeLabel = (type: string): string => QUEUE_TYPES[type] ?? type;
