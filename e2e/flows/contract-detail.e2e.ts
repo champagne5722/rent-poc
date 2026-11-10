@@ -1,20 +1,20 @@
-import { expect, test } from '@playwright/test';
-import { seedProperty, seedSendableDraft, uniqueSuffix } from '../helpers/api';
+import { expect, test, type Browser, type Page } from '@playwright/test';
+import { seedSendableDraft, seedVerifiedProperty, uniqueSuffix } from '../helpers/api';
 import { clickUntil } from '../helpers/ui';
 
 // 合約詳情的「下一步」區塊與狀態變更（MIL-175）。簽署走 mock 模式，不呼叫點點簽。
 // 重構只改呈現：撤回、模擬拒簽的結果、複製為新草稿的行為都沿用既有 API。
 
-async function seedSentContract(page: import('@playwright/test').Page): Promise<string> {
-  const property = await seedProperty(page, `E2E 詳情物件 ${uniqueSuffix()}`);
+async function seedSentContract(page: Page, browser: Browser): Promise<string> {
+  const property = await seedVerifiedProperty(page, browser, `E2E 詳情物件 ${uniqueSuffix()}`);
   const contractId = await seedSendableDraft(page, property.id);
   const sent = await page.request.post(`/api/contracts/${contractId}/send`);
   expect(sent.ok()).toBe(true);
   return contractId;
 }
 
-test('合約詳情：簽署中寫出下一步與負責人，撤回後處理動作變成複製為新草稿', async ({ page }) => {
-  const contractId = await seedSentContract(page);
+test('合約詳情：簽署中寫出下一步與負責人，撤回後處理動作變成複製為新草稿', async ({ page, browser }) => {
+  const contractId = await seedSentContract(page, browser);
   await page.goto(`/contracts/${contractId}`);
 
   // 頂端：返回列表、狀態、下一步與負責人
@@ -42,8 +42,8 @@ test('合約詳情：簽署中寫出下一步與負責人，撤回後處理動�
   await expect(page.getByLabel('下一步')).toContainText('完成欄位與簽署區後送簽');
 });
 
-test('合約詳情：撤回失敗時還原狀態，顯示原因與下一步', async ({ page }) => {
-  const contractId = await seedSentContract(page);
+test('合約詳情：撤回失敗時還原狀態，顯示原因與下一步', async ({ page, browser }) => {
+  const contractId = await seedSentContract(page, browser);
   await page.route(`**/api/contracts/${contractId}/void`, (route) =>
     route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: '簽署任務已經結束' }) })
   );
@@ -61,8 +61,8 @@ test('合約詳情：撤回失敗時還原狀態，顯示原因與下一步', as
   await expect(nextStep).toContainText('等待乙方簽署');
 });
 
-test('合約詳情：乙方拒簽後，下一步寫出拒簽的人，處理動作是複製為新草稿', async ({ page }) => {
-  const contractId = await seedSentContract(page);
+test('合約詳情：乙方拒簽後，下一步寫出拒簽的人，處理動作是複製為新草稿', async ({ page, browser }) => {
+  const contractId = await seedSentContract(page, browser);
   await page.goto(`/contracts/${contractId}`);
 
   await clickUntil(page.getByRole('button', { name: '模擬乙方拒簽' }), page.getByLabel('下一步').getByText(/已拒簽/));

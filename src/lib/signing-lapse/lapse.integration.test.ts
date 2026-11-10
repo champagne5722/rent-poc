@@ -9,10 +9,11 @@ import { createContractSubscriber } from '../contract-signing';
 import { createContract, getContract, getContractRelations, listContractEvents } from '../contracts';
 import { createLocalFileStore } from '../file-store/local-file-store';
 import { withTx } from '../pg/database';
+import { createVerifiedProperty } from '../ownership/test-kit';
 import { shortUlid } from '../pg/ulid';
 import { actAs, setupRouteDb, TEST_PARTY_ID, type RouteDb } from '../pg/route-test-kit';
 import type { OrgTx } from '../pg/with-tx';
-import { createProperty, getProperty, parsePropertyInput } from '../properties';
+import { getProperty } from '../properties';
 import { createSeedPracticeRegistry, type PracticeRegistryResolution } from '../practice-registry';
 import { replaceAssignments } from '../practitioner-assignment/repository';
 import { loadSendInputs, prepareContractSend } from '../practitioner-assignment/send';
@@ -123,18 +124,16 @@ function spiedProvider() {
 // withCase：合約掛在屋主組織的自管租賃案件下（MIL-115），驗證自動撤回時案件跟著回 draft
 async function setup(registry: PracticeRegistryResolution = seed, { practitionerLast = false, withCase = false } = {}) {
   let caseId: string | null = null;
-  let propertyId: string | null = null;
+  // 送簽要求物件已通過文件核對（MIL-205），有沒有案件都一樣
+  const propertyId = await createVerifiedProperty(kit, { name: '案件測試物件' });
   if (withCase) {
-    const parsed = parsePropertyInput({ name: '案件測試物件', address: '台北市大安區某路 1 號', equipment: [] });
-    if (!parsed.ok) throw new Error(parsed.error);
-    propertyId = await inA((tx) => createProperty(tx, parsed.value));
     caseId = await inA(async (tx) =>
       createLeaseCase(tx, {
         orgId: kit.orgA,
         orgKind: 'owner',
         businessType: 'self_managed',
         lessorPartyId: TEST_PARTY_ID,
-        property: (await getProperty(tx, propertyId!))!,
+        property: (await getProperty(tx, propertyId))!,
       }),
     );
   }

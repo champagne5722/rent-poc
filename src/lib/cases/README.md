@@ -43,6 +43,7 @@
 
 - 轉租案件的連結存在 `linked_master_lease_case_id`（複合外鍵，限同一個組織）。舊的轉租案件沒有連結，資料庫不要求必填，必填由判定函式負責。
 - 包租案件的事實由 `createLeaseCase` 自己用 `findCoveringMasterLeaseCase` 查，呼叫端不能傳入。查詢限目前組織主辦的案件。拒絕訊息不分「沒有」「別的組織的」「沒涵蓋」「不是 active」，不洩漏別的組織有沒有包租案件。
+- 物件通過核對才能建立案件（MIL-205，ADR-0028 決議 5）：`createLeaseCase` 開頭呼叫 `getOwnershipGate`，這個組織對這個租賃單位沒有已驗證的所有權節點時丟 `CaseCreationBlocked`（原因碼 `property_not_verified`，文字「物件尚未通過平台的文件核對」）。結果由函式自己查，呼叫端不能傳入。每一種案件種類都檢查，檢查在 `decideCaseCreation` 之前，被擋下時什麼都沒寫。
 - 過渡旗標：舊建約精靈（`POST /api/contracts`）由屋主組織建立承租人是包租業者的自管案件，`createLeaseCase` 的 `lesseeIsMasterLessor` 讓它歸為包租案件，並放寬這一種案件的主辦組織。MIL-203 移除。
 
 ## `decideCaseTransition(snapshot, input, now)`

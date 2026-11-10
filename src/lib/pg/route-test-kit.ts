@@ -55,6 +55,12 @@ export function actAs(orgId: string): void {
   };
 }
 
+/** 目前 actAs 的組織 ID。不是組織身分（或沒有 actAs）時回 null。測試的資料準備用它決定物件屬於哪個組織。 */
+export function actingOrgId(): string | null {
+  const current = state.current;
+  return current !== null && !(current instanceof Error) && current.kind === 'org' ? current.orgId : null;
+}
+
 /** 登入了但不是組織身分（承租人），route 必須回 403。 */
 export function actAsParty(): void {
   state.current = { kind: 'party', userId: newUlid(), partyId: newUlid(), requestId: 'test' };

@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { seedProperty, seedSendableDraft, uniqueSuffix } from '../helpers/api';
+import { seedSendableDraft, seedVerifiedProperty, uniqueSuffix } from '../helpers/api';
 
 // 流程 2：從合約詳情送簽，合約進入簽署中（MIL-168）。簽署走 mock 模式，不呼叫點點簽。
 // 目前的產品把「確認送簽」放在建約精靈最後一步，詳情頁的草稿用「繼續編輯」進精靈。
 
-test('合約詳情：草稿經確認送簽後，合約進入簽署中', async ({ page }) => {
-  const property = await seedProperty(page, `E2E 送簽物件 ${uniqueSuffix()}`);
+test('合約詳情：草稿經確認送簽後，合約進入簽署中', async ({ page, browser }) => {
+  const property = await seedVerifiedProperty(page, browser, `E2E 送簽物件 ${uniqueSuffix()}`);
   const contractId = await seedSendableDraft(page, property.id);
 
   // 詳情頁：草稿狀態，標示 mock 模式

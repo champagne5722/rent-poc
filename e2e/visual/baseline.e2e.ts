@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { seedDraft, seedProperty, seedSendableDraft } from '../helpers/api';
+import { seedDraft, seedSendableDraft, seedVerifiedProperty } from '../helpers/api';
 import { chooseOption } from '../helpers/ui';
 
 // 截圖基準（MIL-168）：合約列表、合約詳情、建約精靈、物件列表。
@@ -72,9 +72,9 @@ async function shoot(page: Page, name: string, options: { fullPage?: boolean } =
   });
 }
 
-test('準備截圖用的資料', async ({ page }) => {
-  seeded.propertyA = (await seedProperty(page, '截圖基準物件甲', '台北市大安區和平東路二段 100 號 3 樓')).id;
-  seeded.propertyB = (await seedProperty(page, '截圖基準物件乙', '新北市板橋區文化路一段 200 號 5 樓')).id;
+test('準備截圖用的資料', async ({ page, browser }) => {
+  seeded.propertyA = (await seedVerifiedProperty(page, browser, '截圖基準物件甲', '台北市大安區和平東路二段 100 號 3 樓')).id;
+  seeded.propertyB = (await seedVerifiedProperty(page, browser, '截圖基準物件乙', '新北市板橋區文化路一段 200 號 5 樓')).id;
   seeded.sentContractId = await seedSendableDraft(page, seeded.propertyA);
   const sent = await page.request.post(`/api/contracts/${seeded.sentContractId}/send`);
   expect(sent.ok()).toBe(true);

@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { seedDraft, seedProperty, seedSendableDraft, uniqueSuffix } from '../helpers/api';
+import { seedDraft, seedSendableDraft, seedVerifiedProperty, uniqueSuffix } from '../helpers/api';
 import { chooseOption } from '../helpers/ui';
 
 // 流程 4：合約列表的篩選與清除篩選（MIL-174）。只驗證使用者看得到的行為。
 // 列表資料在 server component 載入，篩選在畫面上即時生效，不重新整理頁面。
 
-test('合約列表：依狀態篩選，篩選後沒有結果時顯示清除篩選，清除後回到全部', async ({ page }) => {
-  const property = await seedProperty(page, `E2E 列表物件 ${uniqueSuffix()}`);
+test('合約列表：依狀態篩選，篩選後沒有結果時顯示清除篩選，清除後回到全部', async ({ page, browser }) => {
+  const property = await seedVerifiedProperty(page, browser, `E2E 列表物件 ${uniqueSuffix()}`);
   const sentId = await seedSendableDraft(page, property.id);
   expect((await page.request.post(`/api/contracts/${sentId}/send`)).ok()).toBe(true);
   await seedDraft(page, property.id);

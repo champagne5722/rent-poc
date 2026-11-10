@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createContract, getContract, saveDraft } from '../contracts';
 import { withTx } from '../pg/database';
+import { createVerifiedProperty } from '../ownership/test-kit';
 import { setupRouteDb, type RouteDb } from '../pg/route-test-kit';
 import type { OrgTx } from '../pg/with-tx';
 import { createSeedPracticeRegistry, type PracticeRegistryResolution } from '../practice-registry';
@@ -56,7 +57,7 @@ function filledAnnex(): StatusAnnex {
   return { ...annex, rows: annex.rows.map((r) => ({ ...r, status: 'normal' as const })) };
 }
 
-function newContract(signatureFields: SignatureField[], extra: object = {}): Promise<string> {
+async function newContract(signatureFields: SignatureField[], extra: object = {}): Promise<string> {
   const fields = {
     routing: MASTER,
     landlordName: '王建國',
@@ -77,8 +78,9 @@ function newContract(signatureFields: SignatureField[], extra: object = {}): Pro
     statusAnnex: filledAnnex(),
     ...extra,
   };
+  const propertyId = await createVerifiedProperty(kit);
   return inA((tx) =>
-    createContract(tx, { property_id: null, fields: fields as unknown as ContractFields, signature_fields: signatureFields }),
+    createContract(tx, { property_id: propertyId, fields: fields as unknown as ContractFields, signature_fields: signatureFields }),
   );
 }
 

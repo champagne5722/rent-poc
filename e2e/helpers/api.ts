@@ -1,4 +1,5 @@
-import type { Page } from '@playwright/test';
+import { expect, type Browser, type Page } from '@playwright/test';
+import { newUserContext, signIn } from '../baseline/session';
 
 // 測試資料的準備。這些只是「前置條件」，被測的行為一律走畫面。
 // 資料每次執行都重新建立，名稱帶隨機尾碼，不依賴既有資料，也不依賴測試的執行順序。
@@ -36,6 +37,80 @@ export async function seedProperty(page: Page, name: string, address = '台北�
   if (!response.ok()) throw new Error(`建立物件失敗：${response.status()} ${await response.text()}`);
   const body = (await response.json()) as { data: { id: string } };
   return { id: body.data.id, name, address, buildingNo };
+}
+
+// 物件通過平台的文件核對後才能建立合約與送簽（ADR-0028 決議 5，MIL-205）。
+// 前置條件走既有的 API：物件的使用者同意個資告知、上傳謄本，平台營運者在審核台判定通過。
+// 營運者的登入要 PLATFORM_OPERATOR_EMAILS，外殼 scripts/e2e/run-e2e.sh 替 flows、visual 與 baseline 設定。
+
+const OPERATOR_EMAIL = process.env.BASELINE_OPERATOR_EMAIL ?? 'e2e-operator@example.com';
+
+/** 最小的 PDF 檔頭。伺服器端以內容判斷類型，只認開頭的 %PDF。 */
+const TRANSCRIPT = { name: '第二類謄本.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%E2E 測試用謄本\n') };
+
+/** 每個瀏覽器只登入營運者一次。測試內的資料準備共用這個營運者頁面。 */
+const operatorPages = new WeakMap<Browser, Promise<Page>>();
+
+function operatorPageOf(browser: Browser): Promise<Page> {
+  let pending = operatorPages.get(browser);
+  if (!pending) {
+    pending = (async () => {
+      const context = await newUserContext(browser);
+      const page = await context.newPage();
+      await signIn(page, OPERATOR_EMAIL);
+      return page;
+    })();
+    operatorPages.set(browser, pending);
+  }
+  return pending;
+}
+
+async function okJson<T>(response: Awaited<ReturnType<Page['request']['get']>>, what: string): Promise<T> {
+  if (!response.ok()) throw new Error(`${what}：${response.status()} ${(await response.text()).slice(0, 300)}`);
+  return (await response.json()) as T;
+}
+
+/**
+ * 讓已登錄的物件通過文件核對：同意個資告知、上傳謄本、營運者判定通過。
+ * `page` 是物件所屬組織的成員。`submitOnly` 為 true 時只送出謄本，物件停在待核對（測核對畫面用）。
+ */
+export async function verifyPropertyViaApi(page: Page, browser: Browser, property: SeededProperty, options: { submitOnly?: boolean } = {}): Promise<void> {
+  const consent = await page.request.post(`/api/properties/${property.id}/ownership/consent`, { data: { decision: 'agree' } });
+  if (!consent.ok()) throw new Error(`同意個資告知失敗：${consent.status()} ${await consent.text()}`);
+  const upload = await page.request.post(`/api/properties/${property.id}/ownership`, {
+    multipart: { claimed_owner: '王大明', acquired_at: '2026-01-15', file: TRANSCRIPT },
+  });
+  if (upload.status() !== 201) throw new Error(`上傳謄本失敗：${upload.status()} ${await upload.text()}`);
+  if (options.submitOnly) return;
+
+  const operator = await operatorPageOf(browser);
+  const queue = await okJson<{ data: { items: Array<{ id: string; type: string; summary: { claimedKey?: { buildingNo: string } } }> } }>(
+    await operator.request.get('/api/desk/queue?status=open'),
+    '讀審核台佇列',
+  );
+  const item = queue.data.items.find(
+    (i) => i.type === 'leasing_authority' && new RegExp(`^0*${property.buildingNo}$`).test(i.summary.claimedKey?.buildingNo ?? ''),
+  );
+  if (!item) throw new Error(`審核台找不到建號 ${property.buildingNo} 的出租權源項目`);
+  const decision = await okJson<{ data: { outcome: string } }>(
+    await operator.request.post(`/api/desk/ownership/${item.id}/decision`, {
+      data: { key_match: true, holder_match: true, holder_masked: '王○明', reason: 'E2E 資料準備，文件相符' },
+    }),
+    '營運者判定',
+  );
+  expect(decision.data.outcome).toBe('verified');
+}
+
+/** 登錄物件並讓它通過核對。建立合約與送簽的流程用這個。 */
+export async function seedVerifiedProperty(
+  page: Page,
+  browser: Browser,
+  name: string,
+  address = '台北市大安區和平東路二段 100 號 3 樓',
+): Promise<SeededProperty> {
+  const property = await seedProperty(page, name, address);
+  await verifyPropertyViaApi(page, browser, property);
+  return property;
 }
 
 export const READY_FIELDS = {

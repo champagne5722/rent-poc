@@ -1,14 +1,23 @@
 import { listIdentityOptions, provisionAccount, type Account } from '../auth/account-service';
-import { PLATFORM_OPERATOR_EMAILS_ENV } from '../auth/config';
+import { PLATFORM_OPERATOR_EMAILS_ENV, PLATFORM_ORG_ID } from '../auth/config';
 import { normalizeEmail } from '../auth/email';
 import { logout } from '../auth/login-flow';
 import { openSession } from '../auth/session-service';
+import { getFileStore, type FileStore } from '../file-store';
 import { createOwnerOrg, createPracticeOrg } from '../orgs/onboarding';
+import { decideOwnershipFlow, type OperatorRuns } from '../ownership/desk';
+import { submitTranscriptFlow } from '../ownership/flows';
+import { getOwnershipGate, recordTranscriptConsent } from '../ownership/repository';
 import { withTx } from '../pg/database';
+import type { OrgTx } from '../pg/with-tx';
+import { listQueue } from '../practice-entities/desk';
+import { deskTicket } from '../practice-entities/ticket';
 import { parsePropertyCreateInput, registerProperty } from '../properties';
 
 // 示範資料的種子（MIL-91，ADR-0012 決議 9、11）。
 // 全部走既有的帳號、組織與物件函式，所以 RLS 與稽核都生效，沒有直接寫表。
+// 示範物件也走正式的核對流程（MIL-205）：同意個資告知、送出謄本、平台營運者判定通過。
+// 物件通過核對後才能建立案件，示範屋主才能直接示範建約。
 // 能重複執行：帳號、組織、物件各自先檢查再建，第二次執行不新增任何資料。
 // 連線身分是 DATABASE_URL 指定的 app_rw。只有示範用的假值，沒有真實個資。
 
@@ -57,6 +66,16 @@ export const DEMO_PROPERTY = {
   equipment: [],
 };
 
+/** 示範謄本的內容與表單。檔案內容是明顯的示範文字，不是真實謄本。 */
+export const DEMO_TRANSCRIPT = {
+  fileName: '示範謄本.pdf',
+  bytes: new TextEncoder().encode('%PDF-1.7\n示範資料，不是真實謄本。'),
+  form: { claimedOwner: '示範屋主', acquiredAt: '2026-11-01' },
+  /** 營運者判定的遮罩名義人與理由，也是示範值。 */
+  holderMasked: '示範○主',
+  reason: '示範資料，種子判定通過',
+} as const;
+
 /** 輸出與步驟名稱用的中文名。用 GLOSSARY.md 的詞。 */
 export const DEMO_SEED_ROLE_LABEL: Record<DemoSeedRole, string> = {
   owner: '屋主',
@@ -98,6 +117,8 @@ interface Context {
 
 export interface DemoSeedDeps {
   now: Date;
+  /** 示範謄本存放的 FileStore。預設是正式設定的 general 用途 FileStore。 */
+  store?: FileStore;
   /** 讀 PLATFORM_OPERATOR_EMAILS。平台營運者的成員資格由帳號第一次建立時的環境變數決定。 */
   env?: Readonly<Record<string, string | undefined>>;
 }
@@ -175,9 +196,69 @@ async function ensureProperty(account: Account, orgId: string, steps: DemoSeedSt
   steps.push({ step: '屋主的示範物件', result: created ? 'created' : 'exists' });
 }
 
+/** 營運者身分的兩種交易，與 route 用的相同（ownership/operator.ts），只是這裡沒有請求脈絡。 */
+function operatorRunsOf(operatorUserId: string): OperatorRuns {
+  return {
+    platform: (ticketId, fn) => withTx({ kind: 'operator', operatorId: operatorUserId, orgId: PLATFORM_ORG_ID, ticketId }, (tx) => fn(tx as OrgTx)),
+    inOrg: (orgId, ticketId, fn) => withTx({ kind: 'operator', operatorId: operatorUserId, orgId, ticketId }, (tx) => fn(tx as OrgTx)),
+  };
+}
+
+/**
+ * 讓示範物件通過文件核對。已核對就不動。做法與正式流程相同：
+ * 屋主同意個資告知、送出謄本（沒有節點或驗證失敗時）、營運者在審核台判定通過。
+ * 重跑時：已核對回 exists。停在待驗證（上次中斷）時只補判定。
+ */
+async function ensureOwnershipVerified(
+  owner: { account: Account; orgId: string },
+  operatorUserId: string,
+  deps: DemoSeedDeps,
+  steps: DemoSeedStep[],
+): Promise<void> {
+  const ctx = { kind: 'org', orgId: owner.orgId, partyId: owner.account.partyId } as const;
+  const lookup = () =>
+    withTx(ctx, async (tx) => {
+      const { rows } = await tx.query<{ id: string; rental_unit_id: string }>('SELECT id, rental_unit_id FROM org.properties WHERE name = $1', [DEMO_PROPERTY.name]);
+      if (!rows[0]) throw new Error('找不到示範物件');
+      return { propertyId: rows[0].id, gate: await getOwnershipGate(tx, rows[0].rental_unit_id) };
+    });
+
+  let { propertyId, gate } = await lookup();
+  if (gate.nodeStatus === 'verified') {
+    steps.push({ step: '示範物件通過文件核對', result: 'exists' });
+    return;
+  }
+  if (gate.nodeStatus !== 'pending_verification') {
+    await withTx(ctx, (tx) => recordTranscriptConsent(tx, propertyId, owner.account.partyId, 'agree'));
+    const submitted = await submitTranscriptFlow(
+      { orgId: owner.orgId, partyId: owner.account.partyId },
+      propertyId,
+      { ...DEMO_TRANSCRIPT.form },
+      { fileName: DEMO_TRANSCRIPT.fileName, contentType: 'application/pdf', bytes: DEMO_TRANSCRIPT.bytes },
+      { store: deps.store ?? getFileStore('general'), now: () => deps.now },
+    );
+    if (submitted.status !== 'submitted') throw new Error(`示範謄本送出失敗：${submitted.status}`);
+    ({ gate } = await lookup());
+  }
+
+  const runs = operatorRunsOf(operatorUserId);
+  const items = await runs.platform(deskTicket('queue'), (tx) => listQueue(tx, 'open', deps.now));
+  const item = items.find((i) => i.type === 'leasing_authority' && i.subjectId === gate.node?.id);
+  if (!item) throw new Error('找不到示範物件待核對的審核項目');
+  const decided = await decideOwnershipFlow(runs, item.id, {
+    keyMatch: true,
+    holderMatch: true,
+    holderMasked: DEMO_TRANSCRIPT.holderMasked,
+    reason: DEMO_TRANSCRIPT.reason,
+  });
+  if (decided.status !== 'recorded' || decided.outcome !== 'verified') throw new Error(`示範物件核對失敗：${decided.status}`);
+  steps.push({ step: '示範物件通過文件核對', result: 'created' });
+}
+
 /**
  * 建立五個示範帳號與最少的資料：屋主組織加一個物件、代管業者與包租業者各一個組織、
  * 承租人與平台營運者的帳號。承租人身分要等有案件才出現，所以只建帳號。
+ * 最後讓示範物件通過文件核對，屋主才能直接建立案件。
  */
 export async function runDemoSeed(emails: DemoSeedEmails, deps: DemoSeedDeps): Promise<DemoSeedStep[]> {
   // 只有平台營運者的帳號帶營運者名單，其他帳號不得因為環境變數取得平台營運者資格
@@ -196,7 +277,10 @@ export async function runDemoSeed(emails: DemoSeedEmails, deps: DemoSeedDeps): P
   steps.push({ step: '承租人的帳號', result: tenantExisted ? 'exists' : 'created' });
 
   const operatorExisted = await partyExists(emails.operator);
-  await ensureAccount(emails.operator, operatorCtx);
+  const operator = await ensureAccount(emails.operator, operatorCtx);
   steps.push({ step: '平台營運者的帳號', result: operatorExisted ? 'exists' : 'created' });
+
+  // 營運者帳號建好後，示範物件才能走完核對流程
+  await ensureOwnershipVerified(owner, operator.userId, deps, steps);
   return steps;
 }

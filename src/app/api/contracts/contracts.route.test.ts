@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { verifyProperty } from '@/lib/ownership/test-kit';
 import { withTx } from '@/lib/pg/database';
 import { actAs, actAsError, nextAnchorKey, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { newUlid } from '@/lib/pg/ulid';
@@ -39,7 +40,8 @@ const req = (method: string, payload?: unknown) =>
 const createContract = (propertyId: unknown, extra: Record<string, unknown> = {}) =>
   POST(new NextRequest('http://localhost/api/contracts', { method: 'POST', body: JSON.stringify({ property_id: propertyId, ...extra }) }));
 
-async function newProperty(over: Record<string, unknown> = {}): Promise<string> {
+/** 登錄物件。預設走正式流程讓它通過文件核對（MIL-205）；`verified: false` 時停在剛登錄、沒有節點。 */
+async function newProperty(over: Record<string, unknown> = {}, options: { verified?: boolean } = {}): Promise<string> {
   const res = await createProperty(
     new NextRequest('http://localhost/api/properties', {
       method: 'POST',
@@ -53,7 +55,9 @@ async function newProperty(over: Record<string, unknown> = {}): Promise<string> 
       }),
     }),
   );
-  return (await json(res)).data.id;
+  const id = (await json(res)).data.id;
+  if (options.verified !== false) await verifyProperty(kit, id);
+  return id;
 }
 
 async function newContract(extra: Record<string, unknown> = {}): Promise<{ id: string; propertyId: string }> {
