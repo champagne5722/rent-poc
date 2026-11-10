@@ -19,6 +19,7 @@ const SOURCES: { [K in StatusKind]: readonly StatusValueOf<K>[] } = {
   case: [...new Set([...LEASE_CASE_STATES, ...MANAGEMENT_CASE_STATES])],
   handover: HANDOVER_STATES,
   reviewItem: QUEUE_STATUSES,
+  receivablePeriod: ['unpaid', 'partial', 'paid', 'overdue', 'cancelled'],
 };
 
 describe('狀態呈現表：每個狀態值都有名稱與色調', () => {
@@ -61,6 +62,11 @@ describe('狀態呈現表：名稱與色調對照（預期值取自 GLOSSARY 與
     ['handover', 'cancelled', '已取消', 'neutral'],
     ['reviewItem', 'open', '待核對', 'progress'],
     ['reviewItem', 'resolved', '已結案', 'neutral'],
+    ['receivablePeriod', 'unpaid', '未入帳', 'neutral'],
+    ['receivablePeriod', 'partial', '部分入帳', 'warning'],
+    ['receivablePeriod', 'paid', '已入帳', 'success'],
+    ['receivablePeriod', 'overdue', '逾期', 'error'],
+    ['receivablePeriod', 'cancelled', '已取消', 'neutral'],
   ] as const)('%s %s：%s、%s', (kind, value, label, tone) => {
     expect(statusPresentation(kind, value as never)).toEqual({ label, tone });
   });
