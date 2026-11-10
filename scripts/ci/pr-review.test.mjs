@@ -519,6 +519,23 @@ test('extractAvoidTerms：repo 真實的 GLOSSARY.md 能取出避開詞', async 
   assert.match(out, /用「屋主（Owner）」，避開：房東、業主/);
 });
 
+test('parseReview：丟掉模型自己否定的項目', () => {
+  const r = parseReview(
+    JSON.stringify({
+      standards: {
+        findings: [
+          { location: 'a.ts:1', title: '真的問題', detail: '要修。', rule: 'r', blocking: true },
+          { location: 'b.ts:2', title: '用語問題（建議）', detail: '此項不構成問題。', rule: 'r', blocking: false },
+          { location: 'c.ts:3', title: '另一項', detail: '此項無法確認，不列。', rule: 'r', blocking: false },
+        ],
+      },
+      spec: { note: '', criteria: [], findings: [] },
+      security: { applicable: false, checks: [] },
+    }),
+  );
+  assert.deepEqual(r.standards.findings.map((f) => f.title), ['真的問題']);
+});
+
 test('parseReview：缺欄位時補預設，無效狀態改成無法判斷', () => {
   const r = parseReview(JSON.stringify({ standards: {}, spec: { criteria: [{ criterion: 'A', status: '亂寫', evidence: 1 }] }, security: {} }));
   assert.deepEqual(r.standards.findings, []);

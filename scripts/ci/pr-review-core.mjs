@@ -360,7 +360,12 @@ function normalizeFindings(list) {
       rule: asString(f.rule),
       blocking: f.blocking === true,
     }))
-    .filter((f) => f.title);
+    .filter((f) => f.title && !isRetracted(f));
+}
+
+/** 模型偶爾會列出項目，又在內文自己否定。這種項目不算問題，丟掉。 */
+export function isRetracted(f) {
+  return /不構成問題|此項不成立|無法確認[，,]?\s*不列|此項無法確認|不列入/.test(`${f.title} ${f.detail}`);
 }
 
 /** 解析並整理模型的 JSON 回覆。格式不對時丟 ReviewParseError。 */
