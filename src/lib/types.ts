@@ -57,10 +57,11 @@ export interface EquipmentAnnexRow {
 }
 
 /**
- * 物件對外的文件核對狀態（ADR-0028 決議 2）。只由文件核對決定，不讀 registry.anchors.status。
- * 目前沒有核對功能，所以只有「待平台核對文件」一種。MIL-201 加入「已核對」與「文件不符」。
+ * 物件對外的文件核對狀態（ADR-0028 決議 2，MIL-201）。只由所有權節點決定，不讀 registry.anchors.status。
+ * 待平台核對文件：還沒送文件、文件待核對，或節點已失效。已核對：說明文字固定為「平台已比對出租權源文件」。
+ * 文件不符：兩項比對有一項不符，使用者修正後能重新送出。
  */
-export const PROPERTY_VERIFICATION_STATUSES = ['pending_verification'] as const;
+export const PROPERTY_VERIFICATION_STATUSES = ['pending_verification', 'verified', 'failed'] as const;
 export type PropertyVerificationStatus = (typeof PROPERTY_VERIFICATION_STATUSES)[number];
 
 /**

@@ -64,6 +64,8 @@ describe('狀態呈現表：名稱與色調對照（預期值取自 GLOSSARY 與
     ['reviewItem', 'open', '待核對', 'progress'],
     ['reviewItem', 'resolved', '已結案', 'neutral'],
     ['propertyVerification', 'pending_verification', '待平台核對文件', 'progress'],
+    ['propertyVerification', 'verified', '已核對', 'success'],
+    ['propertyVerification', 'failed', '文件不符', 'error'],
     ['receivablePeriod', 'unpaid', '未入帳', 'neutral'],
     ['receivablePeriod', 'partial', '部分入帳', 'warning'],
     ['receivablePeriod', 'paid', '已入帳', 'success'],

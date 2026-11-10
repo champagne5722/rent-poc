@@ -83,8 +83,10 @@ const PRESENTATION: { [K in StatusKind]: Record<StatusValues[K], StatusView> } =
     cancelled: { label: '已取消', tone: 'neutral' },
   },
   propertyVerification: {
-    // 「已核對」「文件不符」由核對功能（MIL-201）加入。「已核對」的字樣固定為「平台已比對出租權源文件」，不寫成保證
+    // 「已核對」的說明文字固定為「平台已比對出租權源文件」（VERIFIED_NOTE，src/lib/ownership/messages.ts），不寫成保證
     pending_verification: { label: '待平台核對文件', tone: 'progress' },
+    verified: { label: '已核對', tone: 'success' },
+    failed: { label: '文件不符', tone: 'error' },
   },
 };
 
