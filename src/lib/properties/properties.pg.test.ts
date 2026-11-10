@@ -139,13 +139,14 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
         section_name: '龍泉 一',
         latitude: 25.0338,
         longitude: 121.5435,
+        collision_review: null,
       });
 
       const pendingId = await withTx({ kind: 'org', orgId: orgA }, (tx) => createProperty(tx, input()));
       const after = await withTx({ kind: 'org', orgId: orgA }, (tx) =>
         setPropertyAnchorKey(tx, pendingId, { cityCode: 'A', townCode: '02', sectionCode: '0021', buildingNo: '04202', subNo: '000' }),
       );
-      expect(after).toMatchObject({ status: 'keyed', building_no: '04202' });
+      expect(after).toMatchObject({ kind: 'keyed', anchor: { status: 'keyed', building_no: '04202' } });
     });
 
     it('撞到別的組織：物件照樣建立，產權維持待驗證，回審核單號；既有登錄方不受影響（MIL-144）', async () => {
