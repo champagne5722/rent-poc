@@ -4,6 +4,7 @@ import { registerPaymentAccount } from '../payment-accounts';
 import { pgliteDriver } from '../pg/drivers';
 import { testCaseId } from '../pg/test-cases';
 import { asRole, createTestDb, type TestDb } from '../pg/test-harness';
+import { seedOrgMember } from '../pg/test-parties';
 import { newUlid } from '../pg/ulid';
 import { createWithTx, type OrgTx, type WithTx } from '../pg/with-tx';
 import { changeSocialHousing, listSocialHousingChanges, resolveSocialHousingDefault } from './social-housing';
@@ -14,7 +15,8 @@ import { changeSocialHousing, listSocialHousingChanges, resolveSocialHousingDefa
 const CASE = testCaseId('CASEA1');
 const MANDATE_CASE = testCaseId('CASEM1');
 const OTHER_ORG_CASE = testCaseId('CASEB1');
-const PARTY = newUlid();
+// 持有人必須是真實的組織成員（MIL-187），每個測試開始時建立
+let PARTY = '';
 const MANDATOR = newUlid();
 
 describe('社宅旗標', () => {
@@ -38,6 +40,7 @@ describe('社宅旗標', () => {
     await inA((tx) =>
       tx.query(`INSERT INTO control.parties (id, email, display_name) VALUES ($1, 'mandator@example.com', '王屋主')`, [MANDATOR]),
     );
+    PARTY = await seedOrgMember(withTx, orgA);
   });
 
   const inA = <T>(fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId: orgA }, fn);

@@ -27,6 +27,21 @@ describe('parsePaymentAccountInput', () => {
     });
   });
 
+  it('持有人的 party：請求有帶就回傳（去除前後空白），沒帶或空字串時回傳值沒有這個欄位', () => {
+    const party = '01M71Q7FFF25FFVTXJZPNMM7F9';
+    expect(parsePaymentAccountInput(bank({ holderPartyId: ` ${party} ` }))).toMatchObject({ ok: true, value: { holderPartyId: party } });
+    for (const empty of [undefined, null, '', '  ']) {
+      const result = parsePaymentAccountInput(bank({ holderPartyId: empty }));
+      expect(result.ok && 'holderPartyId' in result.value, String(empty)).toBe(false);
+    }
+  });
+
+  it('持有人的 party 不是字串：400 層級的格式錯誤，不放行到資料庫', () => {
+    for (const bad of [123, {}, [], true]) {
+      expect(parsePaymentAccountInput(bank({ holderPartyId: bad }))).toEqual({ ok: false, error: '持有人格式有誤' });
+    }
+  });
+
   it('接受 7 碼銀行加分行代碼', () => {
     expect(parsePaymentAccountInput(bank({ bankCode: '8120456 ' }))).toMatchObject({ ok: true, value: { bankCode: '8120456' } });
   });

@@ -15,6 +15,8 @@ export const PAYMENT_ACCOUNT_ERRORS = {
   method_change: { status: 400, message: '銀行帳戶與現金收取不能互相切換。請停用並新增' },
   cash_exists: { status: 409, message: '這位持有人已有現金收取帳戶' },
   holder_party_required: { status: 400, message: '找不到持有人，請重新登入後再試' },
+  // 不存在的 party、別的組織的 party、格式錯誤的 ID 都回這一個，不洩漏它是哪一種
+  holder_not_allowed: { status: 422, message: '持有人必須從成員清單中選擇' },
 } as const;
 
 export type PaymentAccountErrorCode = keyof typeof PAYMENT_ACCOUNT_ERRORS;
@@ -27,7 +29,7 @@ export function paymentAccountError(code: PaymentAccountErrorCode): Response {
 /**
  * 目前登入者的 party，當作出租人、屋主、代管業者持有人的 party。
  * 沒有登入回 401 的 Response，不是組織身分回 403。
- * MIL-123 與 C 線併入後，持有人改從成員清單選，這個函式只剩預設值的用途。
+ * 持有人改從成員清單選（MIL-187）後，這個函式只剩「請求沒有指定持有人」時的預設值。
  */
 export async function currentPartyId(): Promise<{ ok: true; partyId: string } | { ok: false; response: Response }> {
   try {

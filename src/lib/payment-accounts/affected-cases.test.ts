@@ -2,6 +2,7 @@ import type { PGliteInterface } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pgliteDriver } from '../pg/drivers';
 import { asRole, createTestDb, type TestDb } from '../pg/test-harness';
+import { seedOrgMember } from '../pg/test-parties';
 import { newUlid } from '../pg/ulid';
 import { createWithTx, type OrgTx, type WithTx } from '../pg/with-tx';
 import { listAffectedCases } from './affected-cases';
@@ -19,7 +20,9 @@ describe('listAffectedCases（依案件）', () => {
   let withTx: WithTx;
   const orgA = newUlid();
   const orgB = newUlid();
-  const PARTY = newUlid();
+  // 持有人必須是真實的組織成員（MIL-187），每個測試開始時建立
+  let PARTY = '';
+  let PARTY_B = '';
 
   beforeAll(async () => {
     testDb = await createTestDb();
@@ -31,6 +34,8 @@ describe('listAffectedCases（依案件）', () => {
     await asRole(db, 'app_owner', () =>
       db.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, 'A', 'owner'), ($2, 'B', 'owner')`, [orgA, orgB]),
     );
+    PARTY = await seedOrgMember(withTx, orgA);
+    PARTY_B = await seedOrgMember(withTx, orgB);
   });
   const inOrg = <T>(orgId: string, fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId }, fn);
   const inA = <T>(fn: (tx: OrgTx) => Promise<T>) => inOrg(orgA, fn);
@@ -54,7 +59,7 @@ describe('listAffectedCases（依案件）', () => {
   async function account(holderKind: string, orgId = orgA): Promise<string> {
     const parsed = parsePaymentAccountInput({ name: `${holderKind}帳戶`, holderKind, holderName: '持有人', method: 'bank', bankCode: '812', accountLast4: '0123' });
     if (!parsed.ok) throw new Error(parsed.error);
-    const result = await inOrg(orgId, (tx) => registerPaymentAccount(tx, parsed.value, holderKind === 'other' ? null : PARTY));
+    const result = await inOrg(orgId, (tx) => registerPaymentAccount(tx, parsed.value, holderKind === 'other' ? null : orgId === orgB ? PARTY_B : PARTY));
     if (!result.ok) throw new Error(result.error);
     return result.id;
   }

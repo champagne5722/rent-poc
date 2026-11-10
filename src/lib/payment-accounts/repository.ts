@@ -2,6 +2,7 @@ import { appendAudit } from '../audit';
 import type { HolderKind } from '../deposit-rules';
 import { isUlid, newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
+import { isHolderCandidate } from './holder-candidates';
 import type { PaymentAccountInput } from './input';
 
 // 收款帳戶的 repository（MIL-118，ADR-0014 決議 9、10，ADR-0050 決議 9）。
@@ -9,8 +10,10 @@ import type { PaymentAccountInput } from './input';
 //
 // - 只存遮罩識別（銀行代碼、帳號末四碼）。account_kind 是內部識別字，不出現在回傳值：
 //   介面只需要知道「是不是現金收取」，所以回傳 isCash。
-// - 持有人的 party：lessor、owner、manager 由呼叫端帶（route 取目前登入者），other 沒有 party，以姓名識別。
-//   MIL-123 與 C 線併入後，選單換成成員清單，並補 holder_party_id 的外鍵。
+// - 持有人的 party：請求帶 holderPartyId（來自持有人選單），沒帶時 lessor、owner、manager 用呼叫端給的預設值
+//   （route 取目前登入者），other 沒有 party，以姓名識別。
+//   新寫入的 party 必須在本組織的成員或案件成員清單內（holder-candidates），不在時回 holder_not_allowed，
+//   不存在的 party 與別的組織的 party 回應相同。資料庫另有 holder_party_id 到 control.parties 的外鍵（0074）。
 // - 每位持有人一個現金收取帳戶：登錄與修改時，同交易補上持有人缺的那一個。
 // - 有分錄引用後，持有人與遮罩識別不得修改。這裡先檢查回 locked，資料庫觸發器是最後一道防線。
 
@@ -145,19 +148,21 @@ async function ensureCashAccount(tx: OrgTx, holder: Holder): Promise<string | nu
 
 export type RegisterResult =
   | { ok: true; id: string; /** 同交易補上的現金收取帳戶。持有人本來就有則為 null。 */ cashAccountId: string | null }
-  | { ok: false; error: 'cash_exists' | 'holder_party_required' };
+  | { ok: false; error: 'cash_exists' | 'holder_party_required' | 'holder_not_allowed' };
 
 /**
  * 登錄收款帳戶。登錄銀行帳戶時，同交易為持有人補現金收取帳戶（ADR-0050 決議 9）。
  * 明確登錄現金收取而持有人已有時回 cash_exists。
+ * 持有人的 party 取 input.holderPartyId，沒有時用 defaultPartyId。兩者都要在持有人候選清單內，否則回 holder_not_allowed。
  */
 export async function registerPaymentAccount(
   tx: OrgTx,
   input: PaymentAccountInput,
-  holderPartyId: string | null,
+  defaultPartyId: string | null,
 ): Promise<RegisterResult> {
-  const party = resolveParty(input.holderKind, holderPartyId);
+  const party = resolveParty(input.holderKind, input.holderPartyId ?? defaultPartyId);
   if (party === 'missing') return { ok: false, error: 'holder_party_required' };
+  if (party !== null && !(await isHolderCandidate(tx, party))) return { ok: false, error: 'holder_not_allowed' };
 
   const cash = input.method === 'cash';
   const holder: Holder = { kind: input.holderKind, partyId: party, name: input.holderName };
@@ -179,12 +184,14 @@ export async function registerPaymentAccount(
 
 export type UpdateResult =
   | { ok: true }
-  | { ok: false; error: 'not_found' | 'inactive' | 'locked' | 'method_change' | 'cash_exists' | 'holder_party_required' };
+  | { ok: false; error: 'not_found' | 'inactive' | 'locked' | 'method_change' | 'cash_exists' | 'holder_party_required' | 'holder_not_allowed' };
 
 /**
  * 修改收款帳戶。有分錄引用後，持有人與遮罩識別不得改，只能改名稱，回 locked。
- * 持有人的 party 沿用原值，不被目前登入者蓋掉：非建立者只改名稱時，持有人不能變。
- * fallbackPartyId 只在原本沒有 party（other）、改成其他種類時使用。
+ * 持有人的 party：請求有帶（input.holderPartyId）就用請求的，沒帶就沿用原值，不被目前登入者蓋掉：
+ * 非建立者只改名稱時，持有人不能變。fallbackPartyId 只在原本沒有 party（other）、改成其他種類時使用。
+ * party 與原值不同時，必須在持有人候選清單內，否則回 holder_not_allowed（先於 locked 檢查）。
+ * 沿用原值時不重新檢查：持有人離開組織後，帳戶仍能改名稱。
  */
 export async function updatePaymentAccount(
   tx: OrgTx,
@@ -199,8 +206,11 @@ export async function updatePaymentAccount(
   if (before.deactivated_at !== null) return { ok: false, error: 'inactive' };
   if ((input.method === 'cash') !== (before.account_kind === 'cash')) return { ok: false, error: 'method_change' };
 
-  const party = resolveParty(input.holderKind, before.holder_party_id ?? fallbackPartyId);
+  const party = resolveParty(input.holderKind, input.holderPartyId ?? before.holder_party_id ?? fallbackPartyId);
   if (party === 'missing') return { ok: false, error: 'holder_party_required' };
+  if (party !== null && party !== before.holder_party_id && !(await isHolderCandidate(tx, party))) {
+    return { ok: false, error: 'holder_not_allowed' };
+  }
 
   const holderChanged =
     input.holderKind !== before.holder_kind || input.holderName !== before.holder_name || party !== before.holder_party_id;
