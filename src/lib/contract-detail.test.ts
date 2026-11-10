@@ -150,6 +150,11 @@ describe('contractEventEntries', () => {
     expect(entries[1].time).toBe('2026-01-02 15:30');
   });
 
+  it('ISO 8601 的時間固定顯示台灣時間，不受執行環境的時區影響', () => {
+    const entries = contractEventEntries([makeEvent({ id: 1, created_at: '2026-01-02T07:30:00.000Z' })]);
+    expect(entries[0].time).toBe('2026-01-02 15:30');
+  });
+
   it('時間不可解析時原樣顯示', () => {
     const entries = contractEventEntries([makeEvent({ id: 1, created_at: '待補' })]);
     expect(entries[0].time).toBe('待補');
