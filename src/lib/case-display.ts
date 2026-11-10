@@ -1,6 +1,8 @@
 import type { CaseEventRecord } from './case-store/types';
+import { BUSINESS_TYPE_LABELS } from './labels';
 import { CASE_EVENT_LABELS, CASE_INPUT_LABELS, CASE_STATE_LABELS } from './labels/case-labels';
-import type { CaseInputType, CaseState } from './cases';
+import type { BusinessType, CaseInputType, CaseState, StatutoryCaseKind } from './cases';
+import { statusPresentation } from './status-presentation';
 
 // 案件畫面共用的顯示函式（MIL-115）。純函式，沒有 I/O，清單與詳情都用。
 
@@ -46,4 +48,20 @@ export function eventDescription(event: Pick<CaseEventRecord, 'type' | 'fromStat
     return `${base}（${CASE_STATE_LABELS[event.fromState]} → ${CASE_STATE_LABELS[event.toState]}）`;
   }
   return base;
+}
+
+/**
+ * 租賃案件的業務類型名稱：自管或代管。其他三種案件沒有業務類型，回 null（ADR-0030 決議 3）。
+ * 舊值 `master_lease` 指轉租案件，所以轉租案件不在這裡顯示成「包租」。
+ */
+export function leaseBusinessTypeLabel(caseKind: StatutoryCaseKind, businessType: BusinessType | null): string | null {
+  if (caseKind !== 'lease' || businessType === null) return null;
+  return BUSINESS_TYPE_LABELS[businessType];
+}
+
+/** 案件種類的畫面名稱，名稱取自狀態呈現表。租賃案件後面加業務類型，例如「租賃案件（自管）」。 */
+export function caseKindLabel(caseKind: StatutoryCaseKind, businessType: BusinessType | null): string {
+  const name = statusPresentation('caseKind', caseKind).label;
+  const businessTypeLabel = leaseBusinessTypeLabel(caseKind, businessType);
+  return businessTypeLabel ? `${name}（${businessTypeLabel}）` : name;
 }

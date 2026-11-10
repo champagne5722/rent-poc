@@ -5,8 +5,7 @@ import { Button, Empty, Flex, Segmented, Table, Tag, Typography } from 'antd';
 import Link from 'next/link';
 import type { CaseSummary } from '@/lib/case-store';
 import type { CaseState } from '@/lib/cases';
-import { leasePeriodLabel, monthlyRentLabel } from '@/lib/case-display';
-import { BUSINESS_TYPE_LABELS } from '@/lib/labels';
+import { caseKindLabel, leasePeriodLabel, monthlyRentLabel } from '@/lib/case-display';
 import { CASE_STATE_COLORS, CASE_STATE_LABELS } from '@/lib/labels/case-labels';
 import { CONTRACT_STATUS_LABELS, type ContractStatus } from '@/lib/types';
 
@@ -88,9 +87,9 @@ export default function CasesPage() {
             ),
           },
           {
-            title: '業務類型',
-            width: 100,
-            render: (_, r) => (r.businessType ? BUSINESS_TYPE_LABELS[r.businessType] : '委託管理'),
+            title: '案件種類',
+            width: 130,
+            render: (_, r) => caseKindLabel(r.caseKind, r.businessType),
           },
           {
             title: '狀態',

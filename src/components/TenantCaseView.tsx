@@ -5,10 +5,10 @@ import type { TabsProps } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { TERMINAL_CASE_STATES } from '@/lib/access';
-import { leasePeriodLabel, monthlyRentLabel } from '@/lib/case-display';
-import { BUSINESS_TYPE_LABELS } from '@/lib/labels';
+import { leaseBusinessTypeLabel, leasePeriodLabel, monthlyRentLabel } from '@/lib/case-display';
 import { CASE_MEMBER_RELATION_LABELS, CASE_STATE_COLORS, CASE_STATE_LABELS } from '@/lib/labels/case-labels';
 import { TENANT_ROOT_HREF } from '@/lib/nav';
+import { statusPresentation } from '@/lib/status-presentation';
 import type { TenantCaseDetail } from '@/lib/tenant';
 import { tenantContractStatusLabel } from '@/lib/tenant/labels';
 
@@ -92,11 +92,10 @@ export default function TenantCaseView({
                       ...(detail.businessType === 'managed'
                         ? [{ key: 'org', label: '代管業者', children: detail.orgName }]
                         : []),
-                      {
-                        key: 'type',
-                        label: '業務類型',
-                        children: detail.businessType ? BUSINESS_TYPE_LABELS[detail.businessType] : '—',
-                      },
+                      { key: 'kind', label: '案件種類', children: statusPresentation('caseKind', detail.caseKind).label },
+                      ...(leaseBusinessTypeLabel(detail.caseKind, detail.businessType)
+                        ? [{ key: 'type', label: '業務類型', children: leaseBusinessTypeLabel(detail.caseKind, detail.businessType) }]
+                        : []),
                       { key: 'period', label: '租期', children: leasePeriodLabel(detail.leaseStart, detail.leaseEnd) },
                       { key: 'rent', label: '月租金', children: monthlyRentLabel(detail.monthlyRent) },
                       { key: 'relation', label: '你在案件中的關係', children: CASE_MEMBER_RELATION_LABELS[detail.relation] },

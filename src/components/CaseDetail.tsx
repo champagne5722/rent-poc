@@ -5,11 +5,11 @@ import { App as AntApp, Alert, Button, Col, Descriptions, Flex, Form, Input, Mod
 import Link from 'next/link';
 import type { CaseContractRow, CaseEventRecord, CaseMemberRecord, CaseRecord } from '@/lib/case-store';
 import { isTenantRelation } from '@/lib/cases';
-import { eventDescription, formatTaipei, leasePeriodLabel, monthlyRentLabel } from '@/lib/case-display';
-import { BUSINESS_TYPE_LABELS } from '@/lib/labels';
+import { eventDescription, formatTaipei, leaseBusinessTypeLabel, leasePeriodLabel, monthlyRentLabel } from '@/lib/case-display';
 import CaseLedgerPanel from './CaseLedgerPanel';
 import { CASE_MEMBER_RELATION_LABELS, CASE_STATE_COLORS, CASE_STATE_LABELS } from '@/lib/labels/case-labels';
 import { shortUlid } from '@/lib/pg/ulid';
+import { statusPresentation } from '@/lib/status-presentation';
 import { CONTRACT_STATUS_LABELS, type ContractStatus } from '@/lib/types';
 
 // 案件詳情（MIL-115）：概況、成員、合約、案件事件，分頁呈現（DESIGN.md「Layout」）。
@@ -150,7 +150,10 @@ function CaseDetailBody({ caseId, readOnly, backHref }: { caseId: string; readOn
                 size="small"
                 bordered
                 items={[
-                  { key: 'type', label: '業務類型', children: record.businessType ? BUSINESS_TYPE_LABELS[record.businessType] : '委託管理' },
+                  { key: 'kind', label: '案件種類', children: statusPresentation('caseKind', record.caseKind).label },
+                  ...(leaseBusinessTypeLabel(record.caseKind, record.businessType)
+                    ? [{ key: 'type', label: '業務類型', children: leaseBusinessTypeLabel(record.caseKind, record.businessType) }]
+                    : []),
                   { key: 'state', label: '狀態', children: CASE_STATE_LABELS[record.state] },
                   { key: 'period', label: '租期', children: leasePeriodLabel(record.leaseStart, record.leaseEnd) },
                   { key: 'rent', label: '月租金', children: monthlyRentLabel(record.monthlyRent) },

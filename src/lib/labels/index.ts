@@ -44,7 +44,7 @@ export function partyLabels(contractType: ContractType): PartyLabels {
 export type LicenseKind = 'management' | 'master_lease' | 'brokerage';
 
 /**
- * 案件的業務類型：自管、代管、包租（GLOSSARY「業務類型」）。
+ * 案件的業務類型：自管、代管、轉租（舊值 master_lease，GLOSSARY「業務類型」）。
  * 注意（ADR-0030）：舊值 `master_lease` 現在指轉租案件，包租案件指屋主租給包租業者那一份。
  * 案件種類見 src/lib/cases/case-kind.ts，名稱見 status-presentation 的 `caseKind`。舊值由 MIL-197、MIL-198 逐批搬走。
  */
