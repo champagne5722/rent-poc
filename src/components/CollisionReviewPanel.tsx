@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Alert, Descriptions, Flex, Tag, Typography } from 'antd';
 import { LeftOutlined } from '@ant-design/icons';
 import Link from 'next/link';
@@ -16,7 +17,9 @@ export default function CollisionReviewPanel({ detail }: { detail: ReviewDetail 
   const { item, collision } = detail;
   const open = item.status === 'open';
   const isLimit = item.type === 'anchor_collision_limit';
-  const waitingMs = Math.max(0, (item.resolvedAt ? new Date(item.resolvedAt).getTime() : Date.now()) - new Date(item.createdAt).getTime());
+  // 開啟畫面當下的時間：待審項目的等待時間算到現在，已結案的算到結案
+  const [openedAt] = useState(() => Date.now());
+  const waitingMs = Math.max(0, (item.resolvedAt ? new Date(item.resolvedAt).getTime() : openedAt) - new Date(item.createdAt).getTime());
 
   return (
     <Flex vertical gap="large" style={{ maxWidth: 960 }}>
