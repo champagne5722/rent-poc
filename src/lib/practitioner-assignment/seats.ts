@@ -10,16 +10,17 @@ export { partyRoleOfEntitySource };
 /**
  * 席位的執業主體要持有哪一種業別。判定事實的業別層用這一種。
  * - 經紀人席位：經紀業。
- * - 其他席位的執業主體：包租或代管。包租案件、承租人是包租業者的自管案件是包租業者，代管案件是代管業者。
+ * - 其他席位的執業主體：包租或代管，依案件種類（ADR-0030）。包租案件與轉租案件是包租業者，
+ *   委託管理案件與代管的租賃案件是代管業者。
  * 回 null 代表這個組合沒有對應的業別，不應該有執業人員席位。
  */
 export function licenseKindForSeat(routing: RoutingFacts, seat: PlannedSeat): LicenseKind | null {
   const requirement = seat.practitioner;
   if (!requirement) return null;
   if (requirement.entitySource === 'broker_entity') return 'brokerage';
-  if (routing.businessType === 'master_lease') return 'master_lease';
-  if (routing.businessType === 'managed') return 'management';
-  if (routing.documentType === 'lease' && routing.lesseeIsMasterLessor) return 'master_lease';
+  if (routing.caseKind === 'master_lease' || routing.caseKind === 'sublease') return 'master_lease';
+  if (routing.caseKind === 'management') return 'management';
+  if (routing.caseKind === 'lease' && routing.businessType === 'managed') return 'management';
   return null;
 }
 

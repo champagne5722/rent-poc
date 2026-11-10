@@ -14,7 +14,7 @@ const seed: PracticeRegistryResolution = {
   registry: createSeedPracticeRegistry({ today: () => TODAY }),
 };
 
-const MANAGED: RoutingFacts = { documentType: 'management', businessType: 'managed' };
+const MANAGED: RoutingFacts = { documentType: 'management', caseKind: 'management' };
 const SLOT = 'management.managed.practitioner';
 
 // 受託人北辰（代管業別已驗證），當事人簽署人王建國，專任管理人員陳怡君
@@ -95,7 +95,7 @@ describe('委託管理合約：loadSeatOptions', () => {
 
   it('租賃合約的選項不變：只列持有該業別的執業主體，沒有 blockedReason', async () => {
     const options = await loadSeatOptions(
-      { documentType: 'lease', businessType: 'managed', lesseeIsMasterLessor: false, brokerMediated: false },
+      { documentType: 'lease', caseKind: 'lease', businessType: 'managed', brokerMediated: false },
       seed,
       AT,
     );
@@ -103,7 +103,7 @@ describe('委託管理合約：loadSeatOptions', () => {
     // 代管的租賃合約沒有執業人員席位
     expect(options.seats).toEqual([]);
     const master = await loadSeatOptions(
-      { documentType: 'lease', businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: false },
+      { documentType: 'lease', caseKind: 'sublease', brokerMediated: false },
       seed,
       AT,
     );

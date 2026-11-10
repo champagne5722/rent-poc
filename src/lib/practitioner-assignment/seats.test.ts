@@ -8,12 +8,12 @@ function practitionerSeats(routing: RoutingFacts) {
   return route.plan.seats.filter((s) => s.practitioner);
 }
 
-const lease = (businessType: 'self_managed' | 'managed' | 'master_lease', lesseeIsMasterLessor = false, brokerMediated = false): RoutingFacts => ({
-  documentType: 'lease',
-  businessType,
-  lesseeIsMasterLessor,
-  brokerMediated,
-});
+/** 舊的分流條件換成案件種類：業務類型 master_lease 是轉租案件，承租人是包租業者的自管案件是包租案件（ADR-0030 決議 2）。 */
+const lease = (businessType: 'self_managed' | 'managed' | 'master_lease', lesseeIsMasterLessor = false, brokerMediated = false): RoutingFacts => {
+  if (businessType === 'master_lease') return { documentType: 'lease', caseKind: 'sublease', brokerMediated };
+  if (lesseeIsMasterLessor) return { documentType: 'lease', caseKind: 'master_lease', brokerMediated };
+  return { documentType: 'lease', caseKind: 'lease', businessType, brokerMediated };
+};
 
 describe('licenseKindForSeat：執業人員席位的執業主體要持有哪一種業別', () => {
   it('包租租賃合約：包租業', () => {
@@ -26,7 +26,7 @@ describe('licenseKindForSeat：執業人員席位的執業主體要持有哪一�
     expect(licenseKindForSeat(routing, seat)).toBe('master_lease');
   });
   it('委託管理合約：代管業', () => {
-    const routing: RoutingFacts = { documentType: 'management', businessType: 'managed' };
+    const routing: RoutingFacts = { documentType: 'management', caseKind: 'management' };
     const [seat] = practitionerSeats(routing);
     expect(licenseKindForSeat(routing, seat)).toBe('management');
   });

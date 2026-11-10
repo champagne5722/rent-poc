@@ -1,9 +1,9 @@
 // 分流條件換成畫面用的簽署序列（MIL-67）。純函式，沒有 I/O，client 與 server 都能引用。
 // 規則表與排序仍在 route.ts，這裡只負責把結果換成畫面要的席位資料與擋下原因。
 
-import { BUSINESS_TYPE_LABELS, partyLabels, practitionerTitle, type ContractType, type PartyLabels } from '../labels';
+import { partyLabels, practitionerTitle, type ContractType, type PartyLabels } from '../labels';
 import { signatureBlockLayout } from '../pdf-layout';
-import { SIGNER_ROLE_LABELS, type ContractRoutingConditions, type SignerRole } from '../types';
+import { SIGNER_ROLE_LABELS, type SignerRole } from '../types';
 import { routingFactsOf } from './facts';
 import type { MergedSeats } from './sequence';
 import { routeSignatures } from './route';
@@ -64,27 +64,19 @@ function seatView(seat: SignaturePlan['seats'][number], labels: PartyLabels): Se
   };
 }
 
-function describeConditions(c: ContractRoutingConditions): string {
-  const parts = [BUSINESS_TYPE_LABELS[c.businessType]];
-  if (c.lesseeIsMasterLessor) parts.push('承租人是包租業者');
-  if (c.brokerMediated) parts.push('有經紀業者居間');
-  return parts.join('、');
-}
-
 /**
  * @param stored `fields.routing` 的原始值。undefined 視為自管租賃合約（沒有分流條件的既有合約）。
  * 規則表沒有定義的組合、形狀不對的值都回傳原因，不給預設序列。
  */
 export function evaluateRouting(stored: unknown, contractType: ContractType = 'lease'): RoutingEvaluation {
   const resolved = routingFactsOf(contractType, stored);
-  if (!resolved.ok) return { ok: false, reason: `${resolved.reason}，請重新選擇分流條件` };
+  if (!resolved.ok) {
+    const advice = resolved.code === 'undefined_combination' ? '請調整分流條件後再繼續' : '請重新選擇分流條件';
+    return { ok: false, reason: `${resolved.reason}，${advice}` };
+  }
   const route = routeSignatures(resolved.facts);
   if (route.kind === 'rejected') {
-    const conditions =
-      resolved.facts.documentType === 'lease'
-        ? describeConditions(resolved.facts)
-        : `委託管理合約、${BUSINESS_TYPE_LABELS[resolved.facts.businessType]}`;
-    return { ok: false, reason: `規則表沒有定義「${conditions}」這個組合，請調整分流條件後再繼續` };
+    return { ok: false, reason: `${route.reason}，請調整分流條件後再繼續` };
   }
   if (route.kind === 'not_required') return { ok: false, reason: '這個組合不送簽，由雙方確認' };
   const labels = partyLabels(contractType);
@@ -97,7 +89,7 @@ export function evaluateRouting(stored: unknown, contractType: ContractType = 'l
  */
 export function routingInputError(stored: unknown, contractType: ContractType = 'lease'): string | null {
   const resolved = routingFactsOf(contractType, stored);
-  return resolved.ok ? null : resolved.reason;
+  return resolved.ok || resolved.code === 'undefined_combination' ? null : resolved.reason;
 }
 
 /**

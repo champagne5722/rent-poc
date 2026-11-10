@@ -6,12 +6,14 @@ import { checkStatusAnnexSignatureFields } from './status-annex';
 // 規則列的必要簽署區域頁包含現況確認附件頁（MIL-71、ADR-0018 決議 6）：
 // 執業人員在附件頁沒有簽署區域時，送簽被擋下並列出原因。
 
-const lease = (extra: { businessType?: 'self_managed' | 'managed' | 'master_lease'; lesseeIsMasterLessor?: boolean; brokerMediated?: boolean } = {}): RoutingFacts => ({
-  documentType: 'lease',
-  businessType: extra.businessType ?? 'master_lease',
-  lesseeIsMasterLessor: extra.lesseeIsMasterLessor ?? false,
-  brokerMediated: extra.brokerMediated ?? false,
-});
+/** 舊的分流條件換成案件種類（ADR-0030 決議 2）。預設是轉租案件，也就是舊的業務類型 master_lease。 */
+const lease = (extra: { businessType?: 'self_managed' | 'managed' | 'master_lease'; lesseeIsMasterLessor?: boolean; brokerMediated?: boolean } = {}): RoutingFacts => {
+  const brokerMediated = extra.brokerMediated ?? false;
+  const businessType = extra.businessType ?? 'master_lease';
+  if (businessType === 'master_lease') return { documentType: 'lease', caseKind: 'sublease', brokerMediated };
+  if (extra.lesseeIsMasterLessor) return { documentType: 'lease', caseKind: 'master_lease', brokerMediated };
+  return { documentType: 'lease', caseKind: 'lease', businessType, brokerMediated };
+};
 
 const PAGES = { pageCount: 4, signaturePage: 1, statusAnnexPage: 3 };
 
