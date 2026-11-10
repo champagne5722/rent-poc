@@ -90,7 +90,7 @@ export async function orgTableRlsViolations(q: CatalogQuery): Promise<string[]> 
 
 /** audit 的每張表：歸 audit_owner、FORCE RLS，app_rw 的直接權限與登記一致，PUBLIC 沒有權限。 */
 export async function auditTableViolations(q: CatalogQuery): Promise<string[]> {
-  const rows = await q<RlsRow & Record<string, unknown>>(
+  const rows = await q<{ name: string; enabled: boolean; forced: boolean; owner: string; app_rw: string[] | null; public_grant: boolean }>(
     `SELECT n.nspname || '.' || c.relname AS name, c.relrowsecurity AS enabled, c.relforcerowsecurity AS forced,
             pg_get_userbyid(c.relowner) AS owner,
             (SELECT array_agg(p ORDER BY p) FROM unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) AS p
@@ -100,7 +100,7 @@ export async function auditTableViolations(q: CatalogQuery): Promise<string[]> {
       WHERE n.nspname = 'audit' AND c.relkind IN ('r', 'p') ORDER BY 1`,
   );
   const violations: string[] = [];
-  for (const r of rows as Array<RlsRow & { app_rw: string[] | null; public_grant: boolean }>) {
+  for (const r of rows) {
     if (r.owner !== 'audit_owner') violations.push(`${r.name}：擁有者是 ${r.owner}，必須是 audit_owner`);
     if (!r.enabled || !r.forced) violations.push(`${r.name}：必須 ENABLE 且 FORCE ROW LEVEL SECURITY`);
     if (r.public_grant) violations.push(`${r.name}：不得對 PUBLIC 授權`);
