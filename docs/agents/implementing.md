@@ -159,21 +159,60 @@ HEAVY_COST=6 scripts/heavy.sh measure-e2e scripts/measure/measure-e2e.sh flows
 
 ## 真實 PostgreSQL 測試
 
-`*.pg.test.ts` 在沒有 `TEST_DATABASE_URL` 時會靜默跳過，結果仍是綠燈。實作子對話不啟動 Docker，不跑這些測試。新增的 `*.pg.test.ts` 列在回報裡，由驗證者執行。
+`*.pg.test.ts` 在沒有 `TEST_DATABASE_URL` 時會靜默跳過，結果仍是綠燈。實作子對話預設不啟動 Docker，不跑這些測試。新增的 `*.pg.test.ts` 列在回報裡，由驗證者執行。派工單明說這張票得用真實 PostgreSQL 時，才啟動派工單指定的容器。
 
-驗證者的做法：
+### 本機一條指令
+
+前提是本機有 Docker。在 worktree 根目錄執行：
+
+```bash
+npm run test:pg
+```
+
+- 它啟動自己的容器 `rentpoc-pg-test`（PostgreSQL 18，port 54399），跑所有 `*.pg.test.ts`，跑完刪除容器。
+- 它不碰 `rentpoc-pg-verify`（port 54329），那是驗證者共用的。
+- 它用 `scripts/ci/check-pg-tests-ran.mjs` 確認每個 pg 測試檔都有執行，沒有被跳過，通過數量不低於 100。
+- 它經過 `scripts/heavy.sh` 排程，成本 4 GB。整組約 15 秒。
+- 已設定 `TEST_DATABASE_URL` 時，它直接用該資料庫，不啟動容器。
+- 設定 `PG_TEST_KEEP=1` 時，它保留容器，下次執行重用。
+- 找不到可用的 Docker 時，它回傳 69，並說明原因。
+
+CI 的 `check` 工作跑同一組測試，並用同一個檢查腳本。變數沒設、某個 pg 測試檔沒有執行或有測試被跳過時，`check` 失敗。
+
+### 只跑一個檔案
 
 ```bash
 docker run --name rentpoc-pg-verify -d -p 54329:5432 -e POSTGRES_PASSWORD=pw postgres:18
 ```
 
 ```bash
-TEST_DATABASE_URL=postgres://postgres:pw@localhost:54329/postgres npm run verify
+TEST_DATABASE_URL=postgres://postgres:pw@localhost:54329/postgres npm test -- <路徑>
 ```
 
 ```bash
 docker stop rentpoc-pg-verify
 ```
+
+### 系統目錄檢查與滲透測試
+
+組織隔離由三組檢查把關（MIL-89，ADR-0012 決議 6）。它們自己從系統目錄找出所有表、view 與定義者函式，不靠手寫的表名清單。
+
+| 檢查 | 檔案 | 跑在 |
+|---|---|---|
+| 系統目錄檢查 | `src/lib/pg/rls-catalog-kit.ts`（查詢）、`rls-catalog-suite.ts`（測試本體） | PGlite（`rls-catalog.test.ts`）與真實 PostgreSQL（`rls-catalog.pg.test.ts`） |
+| 跨組織滲透探測 | `src/lib/pg/rls-penetration-suite.ts` | PGlite（`rls-penetration.test.ts`）與真實 PostgreSQL（`rls-penetration.pg.test.ts`） |
+| 案件成員入口的滲透 | `src/lib/case-store/member-tx.pg.test.ts` | 真實 PostgreSQL |
+
+系統目錄檢查涵蓋的項目：
+
+1. 每張表都登記在所屬 schema 的清單。不認得的 schema 有表就失敗。
+2. `org` 的每張表：`org_id` 不為空、`ENABLE` 與 `FORCE` RLS、至少一條政策。
+3. `audit` 的每張表：歸 `audit_owner`、`FORCE` RLS、`app_rw` 的權限與登記一致。
+4. `app_owner`、`app_rw`、`audit_owner`、`vault_owner` 不是 superuser，沒有 `BYPASSRLS`。`app_rw` 不擁有任何物件。
+5. 所有 view 設 `security_invoker = true`，`app_rw` 對 view 只有 `SELECT`，不用 materialized view。
+6. 參照 `org` 表的外鍵都含成對的 `org_id`。
+7. `org` 表的唯一鍵都含 `org_id`，主鍵是 `(id)` 或含 `org_id`。
+8. 所有定義者函式固定 `search_path`，PUBLIC 不能執行，擁有者不繞過 RLS。
 
 ## commit 前
 
@@ -193,7 +232,13 @@ docker stop rentpoc-pg-verify
 
 登記檔已拆成每個模組一個檔。新增自己模組的檔，再在彙總檔加一行 import 與一行清單。既有模組的內容改自己模組的檔，不用動彙總檔。
 
-- 新的 org 表或 registry 表：新增 `src/lib/pg/rls-cases/<模組>.ts`，在彙總檔 `src/lib/pg/rls-cases.ts` 登記。缺登記時 `rls-penetration.test.ts` 會失敗。
+- 新的 org 表或 registry 表：新增 `src/lib/pg/rls-cases/<模組>.ts`，在彙總檔 `src/lib/pg/rls-cases.ts` 登記。缺登記時 `rls-penetration.test.ts` 與 `rls-catalog.test.ts` 會失敗。
+- 新的 `control` 表：在自己模組檔的 `controlTables` 登記，寫明理由與 `app_rw` 的直接 DML 權限。新的 `audit` 表用 `auditTables`，新的 `registry` 或 `vault` 表用 `definerOnlyTables`。
+- 新的 schema：先在 `src/lib/pg/rls-catalog-kit.ts` 的 `SCHEMA_REGISTRIES` 加一列。沒有加時，有表就失敗。
+- 新的 view：必須用 `WITH (security_invoker = true)`，並只 `GRANT SELECT` 給 `app_rw`。`org` schema 有預設權限會自動給 `app_rw` 四種 DML，所以建 view 後要 `REVOKE INSERT, UPDATE, DELETE`。
+- 新的定義者函式（`SECURITY DEFINER`）：必須 `SET search_path = pg_catalog, <自己的 schema>, pg_temp`（`pg_temp` 排最後），並 `REVOKE EXECUTE ... FROM PUBLIC`。只授予需要的角色。
+- 新的外鍵參照 `org` 表：用 `(org_id, x_id)` 複合外鍵。
+- 新的 `org` 表唯一鍵：必須含 `org_id`。需要跨組織唯一時（只有 registry 與主要出租權源），把索引登記在 `rls-cases.ts` 的 `CROSS_ORG_UNIQUE_KEY_EXCEPTIONS`，並寫一句理由。
 - 新的動作：新增 `src/lib/access/actions/<模組>.ts`，在彙總檔 `src/lib/access/actions.ts` 登記，再在 `decide-access.test.ts` 加預期列。細節見 `src/lib/access/README.md`。
 - 新的選單項目：新增 `src/lib/nav/<模組>.ts`，在彙總檔 `src/lib/nav.ts` 登記。新的 key 要在 `src/components/AppShell.tsx` 的 `NAV_ICONS` 補 icon。
 - 新的 route：在 `inOrgTx` 開頭呼叫 `authorize()`。見 `src/lib/authorize/README.md`。

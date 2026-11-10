@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Alert, Button, Checkbox, Flex, Form, Input, Radio, Typography, theme } from 'antd';
+import { Alert, Button, Checkbox, Flex, Form, Input, Radio, Typography } from 'antd';
 import { statutoryTitle, type LicenseKind } from '@/lib/labels';
 import { ORG_NAME_MAX } from '@/lib/orgs/onboarding-rules';
+import styles from './AuthPanel.module.css';
 import LogoutButton from './LogoutButton';
 
 // 第一次登入、帳號還沒有任何身分時的畫面（MIL-106，ADR-0022 決議 4）：
@@ -55,7 +56,6 @@ export default function OnboardingForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [redirectTo, setRedirectTo] = useState('/');
-  const { token } = theme.useToken();
   const [form] = Form.useForm();
   const entityType = Form.useWatch('entityType', form) as 'company' | 'firm' | undefined;
 
@@ -106,13 +106,13 @@ export default function OnboardingForm() {
         {/* P0-21 AC6：email 不屬於任何案件時，只說「沒有案件」，不提示案件是否存在 */}
         <Typography.Text type="secondary">沒有案件。承租人請確認使用簽約時填寫的 email 登入。</Typography.Text>
         <Flex vertical gap="small">
-          <Button size="large" block style={{ height: 'auto', padding: `${token.paddingSM}px ${token.padding}px`, justifyContent: 'flex-start', textAlign: 'start' }} onClick={() => setStep('owner')}>
+          <Button size="large" block className={styles.choice} onClick={() => setStep('owner')}>
             <Flex vertical align="flex-start">
               <Typography.Text strong>我是屋主</Typography.Text>
               <Typography.Text type="secondary">管理自己的物件與出租合約</Typography.Text>
             </Flex>
           </Button>
-          <Button size="large" block style={{ height: 'auto', padding: `${token.paddingSM}px ${token.padding}px`, justifyContent: 'flex-start', textAlign: 'start' }} onClick={() => setStep('practice')}>
+          <Button size="large" block className={styles.choice} onClick={() => setStep('practice')}>
             <Flex vertical align="flex-start">
               <Typography.Text strong>我是經理人</Typography.Text>
               <Typography.Text type="secondary">以代管、包租或經紀業者的名義執業</Typography.Text>
@@ -147,7 +147,7 @@ export default function OnboardingForm() {
       }
     >
       <Flex vertical gap="middle">
-        <Typography.Title level={5} style={{ margin: 0 }}>
+        <Typography.Title level={5} className={styles.heading}>
           {isOwner ? '建立屋主組織' : '登錄執業主體'}
         </Typography.Title>
         {error && <Alert type="error" showIcon title={error} />}
@@ -155,7 +155,7 @@ export default function OnboardingForm() {
         <Form.Item
           label={isOwner ? '組織名稱' : '公司或商號名稱'}
           name="name"
-          style={{ margin: 0 }}
+          className={styles.heading}
           rules={[{ required: true, whitespace: true, message: '請輸入名稱' }, { max: ORG_NAME_MAX, message: `名稱不得超過 ${ORG_NAME_MAX} 字` }]}
         >
           <Input autoFocus autoComplete="organization" placeholder={isOwner ? '例如：王小明的屋主組織' : '例如：安心代管有限公司'} />
@@ -166,12 +166,12 @@ export default function OnboardingForm() {
             <Form.Item
               label="統一編號"
               name="taxId"
-              style={{ margin: 0 }}
+          className={styles.heading}
               rules={[{ required: true, message: '請輸入統一編號' }, { pattern: /^\s*\d{8}\s*$/, message: '統一編號是 8 碼數字' }]}
             >
               <Input inputMode="numeric" maxLength={8} placeholder="8 碼數字" />
             </Form.Item>
-            <Form.Item label="組織型態" name="entityType" style={{ margin: 0 }}>
+            <Form.Item label="組織型態" name="entityType" className={styles.heading}>
               <Radio.Group
                 options={[
                   { value: 'company', label: '公司' },
@@ -189,7 +189,7 @@ export default function OnboardingForm() {
             <Form.Item
               label="業別"
               name="kinds"
-              style={{ margin: 0 }}
+          className={styles.heading}
               extra={entityType === 'firm' ? '租賃住宅代管與包租限公司登錄，商號只能登錄不動產經紀業。' : undefined}
               rules={[{ required: true, type: 'array', min: 1, message: '請至少選一種業別' }]}
             >
