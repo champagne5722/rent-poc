@@ -1,4 +1,5 @@
 import { appendAudit } from '../audit';
+import { isReviewOverdue, businessMsBetween } from '../ownership/business-days';
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
 import {
@@ -32,6 +33,10 @@ export interface QueueItem {
   resolution: string | null;
   /** 等待時間，毫秒。待核對項目是現在減去排進佇列的時間，已結案項目是結案減排進。 */
   waitingMs: number;
+  /** 等待時間，毫秒，只算臺北時間的週一到週五（MIL-201）。已結案的項目算到結案。 */
+  waitingBusinessMs: number;
+  /** 超過 1 個工作日（ADR-0028 決議 3 的目標時限）。審核台標出這些項目。 */
+  overdue: boolean;
   summary: {
     entityName?: string;
     taxId?: string;
@@ -52,6 +57,8 @@ export interface QueueItem {
     /** 撞號超限項目：24 小時內的上限與被擋次數。 */
     limit?: number;
     hits?: number;
+    /** 出租權源項目（MIL-201）：兩項都相符，但別的組織對同一個鍵已有已驗證的節點，項目停在待處理。 */
+    held?: boolean;
   };
 }
 
@@ -101,7 +108,7 @@ interface QueueRow {
     entity_name?: string; tax_id?: string; entity_type?: EntityType; kind?: LicenseKind; kinds?: LicenseKind[]; permit_no?: string | null; state?: CredentialState;
     party_name?: string; certificate_kind?: CertificateKind; consent_required?: boolean;
     claimant_org_name?: string; claimed_key?: RawClaimedKey; city_name?: string | null; town_name?: string | null;
-    section_name?: string | null; section_sub_name?: string | null; limit?: number; hits?: number;
+    section_name?: string | null; section_sub_name?: string | null; limit?: number; hits?: number; held?: boolean;
   };
 }
 
@@ -122,6 +129,8 @@ export async function listQueue(tx: OrgTx, status: QueueStatus, now: Date): Prom
       resolvedAt: r.resolved_at ? iso(r.resolved_at) : null,
       resolution: r.resolution,
       waitingMs: Math.max(0, end - created),
+      waitingBusinessMs: businessMsBetween(new Date(created), new Date(end)),
+      overdue: isReviewOverdue(new Date(created), new Date(end)),
       summary: {
         entityName: r.summary.entity_name,
         taxId: r.summary.tax_id,
@@ -143,6 +152,7 @@ export async function listQueue(tx: OrgTx, status: QueueStatus, now: Date): Prom
         },
         limit: r.summary.limit,
         hits: r.summary.hits,
+        held: r.summary.held,
       },
     };
   });

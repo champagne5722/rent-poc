@@ -2,6 +2,8 @@ import { appendAudit } from '@/lib/audit';
 import { parseStoredEquipment } from '@/lib/equipment';
 import { newUlid } from '@/lib/pg/ulid';
 import type { OrgTx } from '@/lib/pg/with-tx';
+import { fetchOwnershipStatuses } from '@/lib/ownership/repository';
+import { toPropertyVerificationStatus, type OwnershipStatus } from '@/lib/ownership/status';
 import { normalizeAddress } from '@/lib/registry/address-match';
 import { formatDisplayCode } from '@/lib/registry/display-code';
 import { sectionLabel } from '@/lib/registry/section-code';
@@ -37,7 +39,7 @@ interface Row {
 const COLUMNS =
   'id, rental_unit_id, name, address, type, size, default_rent, note, equipment, archived_at, created_at, updated_at';
 
-/** 物件已合併或停用，不能修正建號。通過核對後要送審核台的規則等核對功能（MIL-201）加入後再處理。 */
+/** 物件已合併或停用，或文件正在核對，不能修正建號。通過核對後修正建號改送審核台（MIL-201），不丟這個錯。 */
 export class AnchorKeyLockedError extends Error {
   constructor() {
     super('物件目前不能修正建號');
@@ -151,15 +153,15 @@ async function fetchUnits(tx: OrgTx, unitIds: string[]): Promise<Map<string, Pro
   return new Map(rows.map((r) => [r.unit_id, toUnit(r)]));
 }
 
-function toProperty(row: Row, anchor: PropertyAnchor | null, unit: PropertyUnit | null): Property {
+function toProperty(row: Row, anchor: PropertyAnchor | null, unit: PropertyUnit | null, ownership: OwnershipStatus | null): Property {
   return {
     id: row.id,
     rental_unit_id: row.rental_unit_id,
     unit,
     archived_at: isoOrNull(row.archived_at),
     anchor,
-    // 對外狀態只由文件核對決定，不讀 registry.anchors.status。核對功能（MIL-201）加入前，每個物件都在等平台核對文件
-    verification_status: 'pending_verification',
+    // 對外狀態只由呼叫者自己組織的所有權節點決定，不讀 registry.anchors.status（ADR-0028 決議 2）。沒有節點就是等平台核對文件
+    verification_status: toPropertyVerificationStatus(ownership),
     name: row.name,
     address: row.address,
     type: row.type,
@@ -178,14 +180,20 @@ export async function listProperties(tx: OrgTx): Promise<Property[]> {
   const unitIds = rows.map((r) => r.rental_unit_id);
   const anchors = await fetchAnchors(tx, unitIds);
   const units = await fetchUnits(tx, unitIds);
-  return rows.map((r) => toProperty(r, anchors.get(r.rental_unit_id)?.anchor ?? null, units.get(r.rental_unit_id) ?? null));
+  const ownership = await fetchOwnershipStatuses(tx, [...new Set([...anchors.values()].map((a) => a.anchorId))]);
+  return rows.map((r) => {
+    const found = anchors.get(r.rental_unit_id);
+    return toProperty(r, found?.anchor ?? null, units.get(r.rental_unit_id) ?? null, found ? (ownership.get(found.anchorId) ?? null) : null);
+  });
 }
 
 export async function getProperty(tx: OrgTx, id: string): Promise<Property | null> {
   const { rows } = await tx.query<Row>(`SELECT ${COLUMNS} FROM org.properties WHERE id = $1`, [id]);
   if (!rows[0]) return null;
   const unitId = rows[0].rental_unit_id;
-  return toProperty(rows[0], (await fetchUnitAnchor(tx, unitId))?.anchor ?? null, (await fetchUnits(tx, [unitId])).get(unitId) ?? null);
+  const found = await fetchUnitAnchor(tx, unitId);
+  const ownership = found ? (await fetchOwnershipStatuses(tx, [found.anchorId])).get(found.anchorId) ?? null : null;
+  return toProperty(rows[0], found?.anchor ?? null, (await fetchUnits(tx, [unitId])).get(unitId) ?? null, ownership);
 }
 
 export type RegisterPropertyResult =
@@ -287,7 +295,9 @@ export type SetAnchorKeyResult =
   /** 登錄成立。anchor 是使用者填的鍵。鍵有沒有撞到別的組織，這裡看不出來（ADR-0028 決議 1）。 */
   | { kind: 'accepted'; anchor: PropertyAnchor }
   /** 鍵已被自己組織登錄。propertyId 是自己既有的物件，這個物件維持原樣。 */
-  | { kind: 'existing'; propertyId: string };
+  | { kind: 'existing'; propertyId: string }
+  /** 物件已通過核對，修正建號改送審核台（MIL-201）。anchor 仍是目前的鍵，物件維持已核對。 */
+  | { kind: 'rekey_requested'; anchor: PropertyAnchor };
 
 const SET_KEY_SAVEPOINT = 'set_anchor_key';
 
@@ -327,7 +337,7 @@ export async function setPropertyAnchorKey(tx: OrgTx, propertyId: string, key: A
   await tx.query(`RELEASE SAVEPOINT ${SET_KEY_SAVEPOINT}`);
   const anchor = (await fetchUnitAnchor(tx, unitId))?.anchor;
   if (!anchor) return { kind: 'not_found' };
-  return { kind: 'accepted', anchor };
+  return claim.kind === 'rekey_requested' ? { kind: 'rekey_requested', anchor } : { kind: 'accepted', anchor };
 }
 
 /** 修改物件。找不到（含別的組織的物件）回 null。不改租賃單位。 */
@@ -335,7 +345,7 @@ export async function updateProperty(tx: OrgTx, id: string, input: PropertyInput
   // 鎖住這一列再讀：兩個修改重疊時，後到的看到的是前一個提交後的值，稽核的 changed 才不會漏
   const { rows: current } = await tx.query<Row>(`SELECT ${COLUMNS} FROM org.properties WHERE id = $1 FOR UPDATE`, [id]);
   if (!current[0]) return null;
-  const before = toProperty(current[0], null, null);
+  const before = toProperty(current[0], null, null, null);
   await ensureNames(tx, input.equipment.map((i) => i.name));
   const { rows } = await tx.query<Row>(
     `UPDATE org.properties
@@ -347,11 +357,9 @@ export async function updateProperty(tx: OrgTx, id: string, input: PropertyInput
   );
   if (!rows[0]) return null;
   const afterUnitId = rows[0].rental_unit_id;
-  const after = toProperty(
-    rows[0],
-    (await fetchUnitAnchor(tx, afterUnitId))?.anchor ?? null,
-    (await fetchUnits(tx, [afterUnitId])).get(afterUnitId) ?? null,
-  );
+  const afterAnchor = await fetchUnitAnchor(tx, afterUnitId);
+  const afterOwnership = afterAnchor ? (await fetchOwnershipStatuses(tx, [afterAnchor.anchorId])).get(afterAnchor.anchorId) ?? null : null;
+  const after = toProperty(rows[0], afterAnchor?.anchor ?? null, (await fetchUnits(tx, [afterUnitId])).get(afterUnitId) ?? null, afterOwnership);
   // 沒有任何欄位改變時不寫事件：只會增加鏈頭的鎖競爭與雜訊
   const changed = changedFields(before, after);
   if (changed.length > 0) {

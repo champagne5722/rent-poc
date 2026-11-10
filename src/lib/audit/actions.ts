@@ -55,6 +55,7 @@ export const AUDIT_ACTIONS = [
   'property.anchor_collision_limited', // MIL-144：24 小時內的撞號回應超過上限，建立失敗。MIL-196 起不再寫入：超過次數改為審核台的內部警示。名稱保留，因為已寫入的事件刪不掉
   'property.sublet_create', // MIL-145：新增分租單位，payload 只放租賃單位 ID 與單位後綴，不放房號與地址
   'property.archive', // MIL-145：有合約的物件刪除時改為封存，payload 只放租賃單位 ID
+  'ownership.submit', // MIL-201：送出第二類謄本，寫在送件組織自己的鏈。payload 只放送件 ID、是否有信託登記與檔案大小，不放姓名與檔名
   'contract.create', // MIL-83：合約的建立、複製、刪除。payload 只放 ID 與類型，不放姓名、地址、租金
   'contract.copy',
   'contract.delete',

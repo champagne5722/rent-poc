@@ -57,11 +57,66 @@ export interface EquipmentAnnexRow {
 }
 
 /**
- * 物件對外的文件核對狀態（ADR-0028 決議 2）。只由文件核對決定，不讀 registry.anchors.status。
- * 目前沒有核對功能，所以只有「待平台核對文件」一種。MIL-201 加入「已核對」與「文件不符」。
+ * 物件對外的文件核對狀態（ADR-0028 決議 2，MIL-201）。只由所有權節點決定，不讀 registry.anchors.status。
+ * 待平台核對文件：還沒送文件、文件待核對，或節點已失效。已核對：說明文字固定為「平台已比對出租權源文件」。
+ * 文件不符：兩項比對有一項不符，使用者修正後能重新送出。
  */
-export const PROPERTY_VERIFICATION_STATUSES = ['pending_verification'] as const;
+export const PROPERTY_VERIFICATION_STATUSES = ['pending_verification', 'verified', 'failed'] as const;
 export type PropertyVerificationStatus = (typeof PROPERTY_VERIFICATION_STATUSES)[number];
+
+/** 所有權節點的狀態（ADR-0026 決議 2）。轉移規則在 src/lib/ownership/status.ts。 */
+export type OwnershipNodeStatus = 'pending_verification' | 'verified' | 'failed' | 'lapsed';
+
+/** 謄本顯示信託登記時，使用者補的四項資料（ADR-0026 決議 1）。 */
+export interface OwnershipTrustView {
+  registered_owner: string;
+  related_parties: string;
+  registration_status: string;
+  lease_clause: string;
+}
+
+/** 一次謄本送件。不含原檔的 key 與 SHA-256：原檔只經 GET /api/properties/[id]/ownership/file 讀，每次讀取寫稽核事件。 */
+export interface OwnershipSubmissionView {
+  id: string;
+  seq: number;
+  /** 使用者主張的所有權人（使用者自己填的），不是謄本上的姓名。 */
+  claimed_owner_name: string;
+  /** 謄本的取得時間。 */
+  acquired_at: string;
+  submitted_at: string;
+  /** 謄本沒有信託登記時是 null。 */
+  trust: OwnershipTrustView | null;
+  file_name: string;
+  content_type: string;
+  byte_size: number;
+}
+
+/**
+ * 物件頁「所有權文件」的狀態（MIL-201，GET /api/properties/[id]/ownership）。
+ * 只含呼叫者自己組織的資料。別的組織是否登錄過同一個鍵、核對是否因此停住，這裡看不出來（ADR-0028 決議 1）。
+ */
+export interface PropertyOwnership {
+  property_id: string;
+  /** 對外的核對狀態。畫面用狀態呈現表的 propertyVerification。 */
+  verification_status: PropertyVerificationStatus;
+  /** 節點狀態。還沒送過文件是 null。 */
+  node_status: OwnershipNodeStatus | null;
+  /** 給使用者看的固定文字，依序顯示。驗證失敗時是不符項目對應的訊息，文字在 src/lib/ownership/messages.ts。 */
+  messages: string[];
+  /** 已核對時固定為「平台已比對出租權源文件」，其餘是 null。 */
+  verified_note: string | null;
+  checked_at: string | null;
+  /** 營運者照謄本填的已遮罩登記名義人。只在已核對或驗證失敗時有值。 */
+  holder_masked: string | null;
+  /** 最新一次送件。 */
+  submission: OwnershipSubmissionView | null;
+  submission_count: number;
+  has_key: boolean;
+  /** 能送出謄本：有建號、物件未封存，而且沒有節點或節點驗證失敗。 */
+  can_submit: boolean;
+  /** 謄本與身分證件個資告知。agreed 為 true 才能開啟上傳頁。 */
+  consent: { notice_type: string; version: number; title: string; text: string; agreed: boolean };
+}
 
 /**
  * 物件頁的建號區塊用的物件摘要（MIL-143）。不含物件的 registry ID：它是跨組織的全域資料，畫面用不到。
