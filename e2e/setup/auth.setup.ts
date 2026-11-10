@@ -8,6 +8,7 @@ import { signUpAsOwner } from '../helpers/login';
 // 登入前先編譯登入會用到的頁面。dev server 編譯新路由時，已開著的頁面可能整頁重載，會洗掉輸入到一半的驗證碼。
 const BEFORE_LOGIN_PATHS = ['/demo/otp', '/login'];
 const AFTER_LOGIN_PATHS = ['/', '/properties', '/contracts', '/contracts/new'];
+const WARMUP_ONLY_PATHS = ['/desk', '/desk/ownership/warmup', '/desk/items/warmup', '/properties/warmup'];
 
 setup('登入並預熱頁面', async ({ page }) => {
   setup.setTimeout(300_000);
@@ -18,5 +19,8 @@ setup('登入並預熱頁面', async ({ page }) => {
     await page.goto(path);
     await expect(page).toHaveURL(new RegExp(path === '/' ? '' : path));
   }
+  // 審核台與物件頁的新路由也要先編譯。預熱帳號不是營運者，頁面可能導走或顯示找不到，所以只 goto 等 load，不斷言網址。
+  // 不預熱的話，流程測試中途第一次編譯會讓 dev server 整頁重載 /desk，打斷營運者的導覽（MIL-201）。
+  for (const path of WARMUP_ONLY_PATHS) await page.goto(path).catch(() => undefined);
   await page.context().storageState({ path: 'e2e-results/.auth/state.json' });
 });
