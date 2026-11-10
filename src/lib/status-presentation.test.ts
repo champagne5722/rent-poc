@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HANDOVER_STATES } from './handover/transitions';
+import { STATUTORY_CASE_KINDS } from './cases/case-kind';
 import { LEASE_CASE_STATES, MANAGEMENT_CASE_STATES } from './cases/transitions';
 import { QUEUE_STATUSES } from './practice-entities/queue-status';
 import {
@@ -17,6 +18,7 @@ import { CONTRACT_STATUSES } from './types';
 const SOURCES: { [K in StatusKind]: readonly StatusValueOf<K>[] } = {
   contract: CONTRACT_STATUSES,
   case: [...new Set([...LEASE_CASE_STATES, ...MANAGEMENT_CASE_STATES])],
+  caseKind: STATUTORY_CASE_KINDS,
   handover: HANDOVER_STATES,
   reviewItem: QUEUE_STATUSES,
   receivablePeriod: ['unpaid', 'partial', 'paid', 'overdue', 'cancelled'],
@@ -54,6 +56,11 @@ describe('狀態呈現表：名稱與色調對照（預期值取自 GLOSSARY 與
     ['case', 'aborted', '已放棄', 'neutral'],
     ['case', 'terminated', '已終止', 'warning'],
     ['case', 'expired', '已到期', 'warning'],
+    // 案件種類（MIL-195，ADR-0030 決議 1）：名稱取自 GLOSSARY，包租案件指屋主租給包租業者，轉租案件指包租業者轉租給承租人
+    ['caseKind', 'lease', '租賃案件', 'neutral'],
+    ['caseKind', 'management', '委託管理案件', 'neutral'],
+    ['caseKind', 'master_lease', '包租案件', 'neutral'],
+    ['caseKind', 'sublease', '轉租案件', 'neutral'],
     ['handover', 'draft', '草稿', 'neutral'],
     ['handover', 'owner_confirmed', '等待接收方接手', 'progress'],
     ['handover', 'accepted', '等待生效', 'progress'],

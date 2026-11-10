@@ -4,6 +4,7 @@
 // 所以名稱沿用 types.ts 的 CONTRACT_STATUS_LABELS，這裡只決定色調。
 // 新增狀態值時：型別（Record）會要求補進這張表，src/lib/status-presentation.test.ts 也會失敗。
 
+import type { StatutoryCaseKind } from './cases/case-kind';
 import type { CaseState } from './cases/transitions';
 import type { HandoverState } from './handover/transitions';
 import type { QueueStatus } from './practice-entities/queue-status';
@@ -20,6 +21,11 @@ export interface StatusValues {
   contract: ContractStatus;
   /** 案件狀態（租賃案件與委託管理案件）。 */
   case: CaseState;
+  /**
+   * 案件種類（ADR-0030）：租賃、委託管理、包租、轉租。不是狀態，但名稱與色調同樣只能有一份。
+   * 包租案件指屋主租給包租業者那一份。舊的業務類型值 `master_lease` 指轉租，見 cases/case-kind.ts。
+   */
+  caseKind: StatutoryCaseKind;
   /** 移交狀態。 */
   handover: HandoverState;
   /** 審核台項目的狀態。 */
@@ -60,6 +66,12 @@ const PRESENTATION: { [K in StatusKind]: Record<StatusValues[K], StatusView> } =
     aborted: { label: '已放棄', tone: 'neutral' },
     terminated: { label: '已終止', tone: 'warning' },
     expired: { label: '已到期', tone: 'warning' },
+  },
+  caseKind: {
+    lease: { label: '租賃案件', tone: 'neutral' },
+    management: { label: '委託管理案件', tone: 'neutral' },
+    master_lease: { label: '包租案件', tone: 'neutral' },
+    sublease: { label: '轉租案件', tone: 'neutral' },
   },
   handover: {
     draft: { label: '草稿', tone: 'neutral' },

@@ -1,4 +1,4 @@
-import type { BusinessType, CaseState, TenantRelation } from '../cases';
+import type { BusinessType, CaseState, StatutoryCaseKind, TenantRelation } from '../cases';
 import type { ContractStatus } from '../types';
 
 // 承租人端的資料形狀（MIL-121）。只放承租人該看到的欄位：不含 email、其他成員、完整建號、登記名義人。
@@ -10,6 +10,8 @@ export interface TenantCaseSummary {
   orgName: string;
   state: CaseState;
   businessType: BusinessType | null;
+  /** 案件種類（ADR-0030）。承租人端看得到的是租賃案件或轉租案件。 */
+  caseKind: StatutoryCaseKind;
   /** 物件名稱與地址的快照。 */
   title: string;
   leaseStart: string | null;
@@ -35,6 +37,7 @@ export interface TenantCaseDetail {
   orgName: string;
   state: CaseState;
   businessType: BusinessType | null;
+  caseKind: StatutoryCaseKind;
   title: string;
   leaseStart: string | null;
   leaseEnd: string | null;

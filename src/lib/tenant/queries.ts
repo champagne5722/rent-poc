@@ -14,6 +14,7 @@ interface CaseRow {
   org_name: string;
   state: CaseState;
   business_type: TenantCaseSummary['businessType'];
+  case_kind: TenantCaseSummary['caseKind'];
   title: string;
   lease_start: string | null;
   lease_end: string | null;
@@ -21,7 +22,7 @@ interface CaseRow {
   created_at: Date;
 }
 
-const CASE_COLUMNS = `k.id, o.name AS org_name, k.state, k.business_type, k.title,
+const CASE_COLUMNS = `k.id, o.name AS org_name, k.state, k.business_type, k.case_kind, k.title,
   to_char(k.lease_start, 'YYYY-MM-DD') AS lease_start, to_char(k.lease_end, 'YYYY-MM-DD') AS lease_end,
   k.monthly_rent, k.created_at`;
 
@@ -49,6 +50,7 @@ export async function selectTenantCases(tx: PartyTx, partyId: string): Promise<T
     orgName: r.org_name,
     state: r.state,
     businessType: r.business_type,
+    caseKind: r.case_kind,
     title: r.title,
     leaseStart: r.lease_start,
     leaseEnd: r.lease_end,
@@ -125,6 +127,7 @@ export async function readTenantCaseDetail(tx: CaseMemberTx): Promise<TenantCase
     orgName: row.org_name,
     state: row.state,
     businessType: row.business_type,
+    caseKind: row.case_kind,
     title: row.title,
     leaseStart: row.lease_start,
     leaseEnd: row.lease_end,
