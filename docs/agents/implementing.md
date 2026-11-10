@@ -67,7 +67,7 @@ E2E 是 UI 重構的安全網（MIL-167、ADR-0090）。它驗證使用者看得
 
 ### 內容
 
-- 3 條流程（`e2e/flows/`）：建約精靈建立草稿、合約送簽進入簽署中、物件列表建立物件。
+- 流程（`e2e/flows/`）：建約精靈建立草稿、合約送簽進入簽署中、物件列表建立物件、物件的出租權源文件核對（`ownership-review.e2e.ts`，含平台營運者在審核台判定）。
 - 截圖基準（`e2e/visual/`）：合約列表、合約詳情、建約精靈的第一、二、四步、物件列表。基準圖在 `e2e/screenshots/`。
 - 流程測試與截圖比對是兩個 npm script。重構票改外觀時，流程測試必須通過，截圖比對失敗是預期的。
 
@@ -144,7 +144,7 @@ node e2e/baseline/static-stats.mjs && node e2e/baseline/score.mjs && node e2e/ba
 ```
 
 - 腳本在 `e2e/baseline/`。它沒有斷言，不在 `npm run e2e` 與 `npm run e2e:visual` 裡。
-- 外殼替 dev server 設 `PLATFORM_OPERATOR_EMAILS`，所以測試能登入平台營運者。只有 `baseline` 會設。
+- 外殼替 dev server 設 `PLATFORM_OPERATOR_EMAILS`，所以測試能登入平台營運者。`baseline` 與 `flows` 會設，`visual` 不設。
 - 測試自己啟動 Chromium 並開 CDP port 9333，給 `impeccable detect --cdp` 掃渲染後的頁面。
 - 重跑後要看新截圖，更新 `e2e/baseline/score.mjs` 裡手填的「一致」「狀態」「回饋」。
 - 只重跑資料準備與驗收，加參數 `--grep "準備資料|前置|驗收|承租人端截圖"`。
@@ -224,7 +224,8 @@ docker stop rentpoc-pg-verify
 
 1. 執行 `git fetch origin && git merge origin/<主幹分支>`。
 2. 執行 `npm run verify`。它依序跑 typecheck、test、lint（`--max-warnings=10`），三項都必須通過。
-3. 單一步驟卡住超過 10 分鐘時，放棄那一步並寫進回報。
+3. PR 本文必須有「驗收條件對照」一節：把票上的驗收條件逐條列出，每條寫做到了沒有與對應的檔或測試。CI 的自動審查靠這一節對照 Spec（MIL-215，見 `docs/agents/pr-review.md`）。
+4. 單一步驟卡住超過 10 分鐘時，放棄那一步並寫進回報。
 
 ## 新增東西時的登記位置
 

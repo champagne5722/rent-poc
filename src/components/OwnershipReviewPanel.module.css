@@ -1,0 +1,28 @@
+/* 審核台的出租權源核對面板（MIL-201）。只放 antd 的 Flex 與 gap 排不出來的版面，尺寸與顏色引用 DESIGN.md 的 CSS 變數。 */
+
+/* 登錄方填的資料與使用者送的謄本資料並排比對。窄於 lg 時改成上下排 */
+.compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+@media (max-width: 992px) {
+  .compare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 單行輸入框與選項的最大寬度（spacing 的倍數） */
+.fieldNarrow {
+  max-width: calc(var(--space-xxl) * 7);
+}
+
+.fieldMedium {
+  max-width: calc(var(--space-xxl) * 12);
+}
+
+.messageList {
+  margin: 0;
+  padding-left: var(--space-lg);
+}

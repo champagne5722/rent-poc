@@ -1,0 +1,134 @@
+# PR 自動審查（MIL-215）。用 API 金鑰呼叫 Claude 一次，把 Standards、Spec、安全三面的審查結果貼成 PR 留言。
+# 使用說明、停用方式與上限值見 docs/agents/pr-review.md。提示詞在 .github/pr-review-prompt.md。
+#
+# 這個工作不是必要檢查，任何失敗都不影響 ci-deploy 的 check：
+# - 沒有 ANTHROPIC_API_KEY 時，印一行訊息後略過。
+# - 額度用完、金鑰失效或任何其他錯誤，腳本以結束碼 0 離開，並在留言寫「這次沒有審查」。
+# - 工作本身再加 continue-on-error，雙重保險。
+name: pr-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    # 只審 base 是主幹 dev 的 PR。含 draft PR。
+    branches: [dev]
+  # 手動重跑。這個事件只在工作流程檔位於預設分支時才會出現在 Actions 頁面。
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 要審查的 PR 編號
+        required: true
+        type: string
+
+# 權限最小化，每一項的用途：
+# - contents: read        用 actions/checkout 讀 repo。
+# - pull-requests: write  新增與更新 PR 上的審查留言（PR 留言走 issues comments API，需要這個權限）。
+# 沒有 id-token、issues、contents: write。工作不能推 commit，也不能改檔。
+permissions:
+  contents: read
+  pull-requests: write
+
+# 同一張 PR 的新一輪取消舊的一輪。
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: true
+
+# 上限與模型。要改這裡改。模型也能用 repo variable PR_REVIEW_MODEL 覆寫，不用改檔。
+env:
+  REVIEW_MODEL: ${{ vars.PR_REVIEW_MODEL || 'claude-sonnet-5-5' }}
+  # 思考深度。low、medium、high 都能用。越高越貴。
+  REVIEW_EFFORT: medium
+  # 回合數固定為 1：單次呼叫，不給工具，不迴圈。
+  # 輸入上限（token）。腳本先用免費的 count_tokens 量，超過就縮小 diff。
+  REVIEW_MAX_INPUT_TOKENS: '120000'
+  # 輸出上限（token）。含思考。
+  REVIEW_MAX_OUTPUT_TOKENS: '16000'
+  # 單次花費上限（美元）。最壞情況 = 輸入全價加輸出用滿，超過時輸入上限會被壓低。
+  REVIEW_MAX_COST_USD: '0.5'
+  # 送給模型的 diff 字元上限，以及單一檔案的上限。
+  REVIEW_MAX_DIFF_CHARS: '300000'
+  REVIEW_MAX_FILE_DIFF_CHARS: '40000'
+
+jobs:
+  review:
+    name: ai-review
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # 不是必要檢查，任何失敗都不能影響合併。
+    continue-on-error: true
+    # 來自 fork 的 PR 不執行。標籤 skip-ai-review 略過。base 與 draft 的判斷在腳本裡再檢查一次。
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-ai-review'))
+    steps:
+      - name: 檢查金鑰
+        id: key
+        env:
+          # 只傳「有沒有值」，不把金鑰放進這一步的環境。
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+        run: |
+          if [ "$HAS_KEY" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "沒有設定金鑰，略過審查"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 腳本、提示詞與依據文件都來自 base 分支，不執行 PR 裡的腳本。
+      # actions/checkout v7.0.1
+      - name: 取出 base 分支（可信）
+        if: steps.key.outputs.run == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.sha }}
+          path: trusted
+          fetch-depth: 1
+          persist-credentials: false
+
+      # PR 的合併 commit。只用 git diff 讀它，不執行裡面的任何東西。
+      # actions/checkout v7.0.1
+      - name: 取出 PR 的合併 commit（不可信，只當資料）
+        if: steps.key.outputs.run == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.sha || format('refs/pull/{0}/merge', inputs.pr_number) }}
+          path: pr
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: 檢查 base 分支有審查腳本
+        id: script
+        if: steps.key.outputs.run == 'true'
+        run: |
+          if [ -f trusted/scripts/ci/pr-review.mjs ] && [ -f trusted/scripts/ci/review-deps/package-lock.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "base 分支還沒有審查腳本，略過審查"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # actions/setup-node v7.1.0
+      - name: 安裝 Node
+        if: steps.script.outputs.present == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 26
+
+      # 只裝官方 SDK（版本與雜湊鎖在 package-lock.json），不跑任何安裝腳本。
+      - name: 安裝審查腳本的依賴
+        if: steps.script.outputs.present == 'true'
+        working-directory: trusted/scripts/ci/review-deps
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: 審查
+        if: steps.script.outputs.present == 'true'
+        continue-on-error: true
+        working-directory: trusted
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          TRUSTED_DIR: ${{ github.workspace }}/trusted
+          PR_DIR: ${{ github.workspace }}/pr
+        run: node scripts/ci/pr-review.mjs
