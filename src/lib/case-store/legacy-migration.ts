@@ -14,9 +14,9 @@ import {
 // 既有合約遷移成自管租賃案件（ADR-0023 決議 3，MIL-115）。
 //
 // 做法選「可重跑的程序」，不放在 migration 檔內，理由：
-// - A 線 MIL-90 在 migration 跑完之後才把 SQLite 的合約搬進 PostgreSQL。migration 跑的時候合約表還是空的，
-//   資料步驟什麼都遷不到。MIL-90 搬完資料，呼叫 migrateContractsToCases() 一次（或呼叫內部 job
-//   `migrate-contracts-to-cases`），之後新建的合約已經有案件，再跑是空操作。
+// - migration 跑的時候合約表可能還是空的，或合約在 migration 之後才進來，資料步驟遷不到。
+//   需要時呼叫 migrateContractsToCases() 一次（或呼叫內部 job `migrate-contracts-to-cases`），
+//   之後新建的合約已經有案件，再跑是空操作。demo 從空資料庫開始（MIL-90 已取消），不需要呼叫。
 // - 已經有案件的合約不動，所以可以重複執行，結果相同。部分組織失敗時修好重跑即可。
 // - migration 檔以 app_owner 執行，不受 RLS 限制，而這裡逐組織以 app_rw 加 RLS 執行，與應用程式同一條路徑。
 //

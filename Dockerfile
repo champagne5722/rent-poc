@@ -1,13 +1,11 @@
 # syntax=docker/dockerfile:1
-# 只支援 linux/amd64：Cloud Run 跑 amd64，Litestream 的 checksum 也只對應這個架構。
-# Apple Silicon 本機建置要加 --platform linux/amd64。
+# 目標平台是 linux/amd64（Cloud Run）。Apple Silicon 本機建置要加 --platform linux/amd64。
 ARG NODE_VERSION=26-slim
 
 FROM node:${NODE_VERSION} AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-# better-sqlite3 有 binding.gyp，npm 會隱含執行 node-gyp，slim 映像沒有 Python 會失敗。
-# prebuild 隨套件發佈，不需要編譯。
+# 不執行套件的 install script：slim 映像沒有編譯工具，建置也用不到。
 RUN npm ci --ignore-scripts
 
 FROM node:${NODE_VERSION} AS build
@@ -17,23 +15,14 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
-FROM node:${NODE_VERSION} AS litestream
-ADD --checksum=sha256:d3687b9fd0f2e9426bbd3da828429ff3f1dfc5c9b74d54fdf028e4ee510e7dea \
-  https://github.com/benbjohnson/litestream/releases/download/v0.5.18/litestream-0.5.18-linux-x86_64.tar.gz \
-  /tmp/litestream.tar.gz
-RUN mkdir /tmp/litestream \
-  && tar -xzf /tmp/litestream.tar.gz -C /tmp/litestream \
-  && find /tmp/litestream -type f -name litestream -exec install -m 0755 {} /usr/local/bin/litestream \;
-
 FROM node:${NODE_VERSION} AS run
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=8080
-COPY --from=litestream /usr/local/bin/litestream /usr/local/bin/litestream
 COPY --from=build --chown=node:node /app/.next/standalone ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
-COPY --chown=node:node deploy/entrypoint.mjs ./deploy/entrypoint.mjs
+# data/ 只給沒有設定 Cloud Storage 的本機檔案儲存用（映像冒煙測試）
 RUN mkdir -p data && chown node:node /app /app/data
 USER node
 EXPOSE 8080
-CMD ["node", "deploy/entrypoint.mjs"]
+CMD ["node", "server.js"]

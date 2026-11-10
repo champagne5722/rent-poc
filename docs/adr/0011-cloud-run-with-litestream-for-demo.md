@@ -4,6 +4,8 @@ status: accepted
 
 # 部署到 Cloud Run asia-east1，SQLite 階段用 Litestream
 
+**2026-11-10 更新（MIL-91）：** SQLite 與 Litestream 的部分已被 [ADR-0012](0012-postgresql-rls-organization-isolation.md) 的決議 9、11、12 與 2026-11-08 修訂段取代。下方決議 1、2、4、5 與 Consequences 的前兩點不再有效，`deploy/entrypoint.mjs` 與 Litestream 已從映像移除。仍有效的部分：部署到 Cloud Run asia-east1、Workload Identity Federation、應用層 Basic Auth（決議 3）。部署改成 push `demo` 才觸發，見 `docs/deployment.md`。
+
 demo 環境需要公開網址，點點簽 webhook 不再靠 ngrok。決議部署到 GCP Cloud Run（asia-east1），用 GitHub Actions 加 Workload Identity Federation 部署，repo 內不存金鑰。原因是 Cloud Run 能直接跑現有 Docker 映像，資料能留在台灣，之後能用 Cloud NAT 取得固定出口 IP。demo 預估每月約 US$0.4。評估全文見 `docs/research/hosting-evaluation.md`。
 
 PostgreSQL 遷移前，SQLite 放在容器內，用 Litestream 複寫到 Cloud Storage。這個階段只服務 demo，只放測試資料。

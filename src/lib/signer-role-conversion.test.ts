@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createContract, getContract } from './contracts';
-import { convertSignatureFieldsJson } from './legacy-signer-roles';
 import { withTx } from './pg/database';
 import { setupRouteDb, type RouteDb } from './pg/route-test-kit';
 import type { OrgTx } from './pg/with-tx';
@@ -10,7 +9,7 @@ import { loadContractRoutingFacts } from './signature-routing/repository';
 import { createDottedSignProvider, type DottedSignRequest } from './signing-module/dottedsign-adapter';
 import type { ContractFields, SignatureField } from './types';
 
-// 簽署角色資料轉換（MIL-55、ADR-0010 決議 6）。
+// 簽署角色改名後的座標快照（MIL-55、ADR-0010 決議 6）。
 // 下列座標是改名前的程式碼實際算出的快照，用來證明既有合約的簽名框位置不變。
 const A4 = { width: 595.28, height: 841.89 };
 
@@ -38,50 +37,8 @@ const LEGACY_FIELDS = {
   landlordEmail: 'landlord@example.com',
   tenantName: '王租客',
   tenantEmail: 'tenant@example.com',
-  // 修繕責任也用 landlord、tenant，屬於另一個值域，轉換不得碰
-  equipmentAnnex: [{ name: '冷氣', quantity: 1, repair: 'landlord', note: 'tenant 自購' }],
+    equipmentAnnex: [{ name: '冷氣', quantity: 1, repair: 'landlord', note: 'tenant 自購' }],
 };
-
-// 合約搬到 PostgreSQL 後，舊 SQLite 資料的轉換由搬資料腳本（MIL-90）呼叫 convertSignatureFieldsJson。
-describe('既有合約的簽署角色轉換（convertSignatureFieldsJson）', () => {
-  const convert = (fields: unknown[]) => {
-    const out = convertSignatureFieldsJson(JSON.stringify(fields));
-    return out === null ? null : JSON.parse(out);
-  };
-
-  it('landlord 改成 party_a、tenant 改成 party_b，頁碼與座標不變', () => {
-    expect(convert([LEGACY_LANDLORD_FIELD, LEGACY_TENANT_FIELD])).toEqual([
-      { ...LEGACY_LANDLORD_FIELD, signer: 'party_a' },
-      { ...LEGACY_TENANT_FIELD, signer: 'party_b' },
-    ]);
-  });
-
-  it('轉換後再轉一次不改任何東西（回 null）', () => {
-    const once = convertSignatureFieldsJson(JSON.stringify([LEGACY_LANDLORD_FIELD, LEGACY_TENANT_FIELD]))!;
-    expect(convertSignatureFieldsJson(once)).toBeNull();
-  });
-
-  it('新舊值混在同一份合約時，只改舊值', () => {
-    const converted = convert([{ ...LEGACY_LANDLORD_FIELD, signer: 'party_a' }, LEGACY_TENANT_FIELD]);
-    expect(converted.map((f: SignatureField) => f.signer)).toEqual(['party_a', 'party_b']);
-  });
-
-  it('沒有舊值的內容回 null，呼叫端就不寫回', () => {
-    expect(convertSignatureFieldsJson('[]')).toBeNull();
-    expect(convertSignatureFieldsJson('[ {"id":"p1", "signer":"party_a", "page":0} ]')).toBeNull();
-  });
-
-  it('內容不是合法 JSON 陣列時回 null，不丟錯', () => {
-    expect(convertSignatureFieldsJson('{not json')).toBeNull();
-    expect(convertSignatureFieldsJson('{"signer":"landlord"}')).toBeNull();
-  });
-
-  it('修繕責任也用 landlord、tenant，屬於另一個值域，只轉 signer 欄位', () => {
-    // 這個函式只收 signature_fields，不會碰合約欄位的 equipmentAnnex.repair
-    expect(LEGACY_FIELDS.equipmentAnnex[0].repair).toBe('landlord');
-    expect(convert([LEGACY_TENANT_FIELD])).toEqual([{ ...LEGACY_TENANT_FIELD, signer: 'party_b' }]);
-  });
-});
 
 let kit: RouteDb;
 beforeAll(async () => {
@@ -94,8 +51,10 @@ const inA = <T,>(fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId: 
 
 describe('轉換後的簽名框位置快照', () => {
   it('送給點點簽的 PDF 座標與轉換前相同', async () => {
-    // 舊資料經 convertSignatureFieldsJson 轉換後寫入 PostgreSQL（jsonb）
-    const converted = JSON.parse(convertSignatureFieldsJson(JSON.stringify([LEGACY_LANDLORD_FIELD, LEGACY_TENANT_FIELD]))!);
+    const converted = [
+      { ...LEGACY_LANDLORD_FIELD, signer: 'party_a' },
+      { ...LEGACY_TENANT_FIELD, signer: 'party_b' },
+    ] as SignatureField[];
     const id = await inA((tx) =>
       createContract(tx, { property_id: null, fields: LEGACY_FIELDS as unknown as ContractFields, signature_fields: converted }),
     );
