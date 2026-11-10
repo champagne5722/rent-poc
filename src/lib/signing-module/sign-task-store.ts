@@ -6,7 +6,8 @@ import type { CurrentSigner, SigningProviderId, SigningSubject, SigningSubjectTy
 // 簽署任務與簽署人的儲存（ADR-0010 決議 2，MIL-85 搬進 PostgreSQL）。表見 db/migrations/0006_sign_tasks.sql。
 //
 // 形狀照 src/lib/contracts/repository.ts：第一個參數是 withTx 給的 tx，不傳 org_id。
-// INSERT 取交易的 app.org_id，查詢靠 RLS 篩選，別的組織的簽署任務和不存在的沒有差別。
+// INSERT 取交易的 app.org_id。查詢與更新也明確帶 org_id 條件（MIL-89）：案件成員政策讓別的組織的簽署任務
+// 在 org 脈絡下也讀得到（MIL-115），只靠 RLS 篩選會讀到別的組織的列。
 // 簽署任務的 ID 是 ULID，subject_id 存簽署標的的 ULID。
 
 export type SignTaskStatus = 'in_progress' | 'completed' | 'declined' | 'voided';
@@ -80,7 +81,7 @@ function toTaskRecord(row: TaskRow, signers: SignerRecord[]): SignTaskRecord {
 async function toRecord(tx: OrgTx, row: TaskRow): Promise<SignTaskRecord> {
   const { rows } = await tx.query<SignerRow>(
     `SELECT role, name, email, status, signed_at, concurrent_roles FROM org.signers
-      WHERE sign_task_id = $1 ORDER BY position ASC`,
+      WHERE org_id = current_setting('app.org_id', true) AND sign_task_id = $1 ORDER BY position ASC`,
     [row.id],
   );
   return toTaskRecord(row, rows.map(toSignerRecord));
@@ -96,7 +97,7 @@ export async function findSignTask(
   options: { lock?: boolean } = {},
 ): Promise<SignTaskRecord | null> {
   const { rows } = await tx.query<TaskRow>(
-    `SELECT ${TASK_COLUMNS} FROM org.sign_tasks WHERE subject_type = $1 AND subject_id = $2${options.lock ? ' FOR UPDATE' : ''}`,
+    `SELECT ${TASK_COLUMNS} FROM org.sign_tasks WHERE org_id = current_setting('app.org_id', true) AND subject_type = $1 AND subject_id = $2${options.lock ? ' FOR UPDATE' : ''}`,
     [subject.type, subject.id],
   );
   return rows[0] ? toRecord(tx, rows[0]) : null;
@@ -121,14 +122,14 @@ export async function findSignTasks(
 
   const keys = [...new Set(subjects.map(signingSubjectKey))];
   const { rows: taskRows } = await tx.query<TaskRow>(
-    `SELECT ${TASK_COLUMNS} FROM org.sign_tasks WHERE (subject_type || ':' || subject_id) = ANY($1::text[])`,
+    `SELECT ${TASK_COLUMNS} FROM org.sign_tasks WHERE org_id = current_setting('app.org_id', true) AND (subject_type || ':' || subject_id) = ANY($1::text[])`,
     [keys],
   );
   if (taskRows.length === 0) return found;
 
   const { rows: signerRows } = await tx.query<SignerRow & { sign_task_id: string }>(
     `SELECT sign_task_id, role, name, email, status, signed_at, concurrent_roles FROM org.signers
-      WHERE sign_task_id = ANY($1::text[]) ORDER BY sign_task_id ASC, position ASC`,
+      WHERE org_id = current_setting('app.org_id', true) AND sign_task_id = ANY($1::text[]) ORDER BY sign_task_id ASC, position ASC`,
     [taskRows.map((t) => t.id)],
   );
   const signersByTask = new Map<string, SignerRecord[]>();
@@ -151,7 +152,7 @@ export async function findSignTaskByRef(
   taskRef: string,
 ): Promise<SignTaskRecord | null> {
   const { rows } = await tx.query<TaskRow>(
-    `SELECT ${TASK_COLUMNS} FROM org.sign_tasks WHERE provider = $1 AND provider_task_ref = $2`,
+    `SELECT ${TASK_COLUMNS} FROM org.sign_tasks WHERE org_id = current_setting('app.org_id', true) AND provider = $1 AND provider_task_ref = $2`,
     [provider, taskRef],
   );
   return rows[0] ? toRecord(tx, rows[0]) : null;
@@ -259,11 +260,11 @@ export async function saveProgress(tx: OrgTx, task: SignTaskRecord, next: Progre
     await tx.query(
       `UPDATE org.signers
           SET status = $1, signed_at = CASE WHEN $1 = 'signed' THEN COALESCE($2::timestamptz, now()) ELSE NULL END
-        WHERE sign_task_id = $3 AND position = $4`,
+        WHERE org_id = current_setting('app.org_id', true) AND sign_task_id = $3 AND position = $4`,
       [signer.status, signer.signedAt, task.id, position],
     );
   }
   if (next.status !== task.status) {
-    await tx.query('UPDATE org.sign_tasks SET status = $1, updated_at = now() WHERE id = $2', [next.status, task.id]);
+    await tx.query(`UPDATE org.sign_tasks SET status = $1, updated_at = now() WHERE org_id = current_setting('app.org_id', true) AND id = $2`, [next.status, task.id]);
   }
 }
