@@ -1,0 +1,8 @@
+/* 執業主體送件表單的欄寬（MIL-181）。antd 沒有欄寬 token，這裡取 DESIGN.md 的 spacing 倍數。 */
+.kindField {
+  flex: 1 1 calc(var(--space-xxl) * 5);
+}
+
+.permitField {
+  flex: 2 1 calc(var(--space-xxl) * 7);
+}

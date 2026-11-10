@@ -40,6 +40,8 @@ async function normalizeVolatileText(page: Page): Promise<void> {
       [/#[0-9A-Z]{6}/g, '#ABCDEF'],
       [/^[0-9A-Z]{6}$/, 'ABCDEF'],
       [/^\d{2}-\d{2} \d{2}:\d{2}$/, '01-01 00:00'],
+      // 合約歷程的「YYYY-MM-DD HH:mm」每次執行不同，換成固定樣本
+      [/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/g, '2026-01-01 00:00'],
       [/A02-[0-9A-HJKMNP-TV-Z]{6}/g, 'A02-ABCDEF'],
       [/建號 \d{5}-000/g, '建號 01234-000'],
     ];
