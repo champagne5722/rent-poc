@@ -21,12 +21,13 @@ import {
 import { PlusOutlined, FileAddOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { EquipmentItem, EquipmentVocabularyItem, Property } from '@/lib/types';
+import type { EquipmentItem, EquipmentVocabularyItem, Property, PropertyVerificationStatus } from '@/lib/types';
 import { PROPERTY_TYPES } from '@/lib/types';
 import { formatEquipmentItem } from '@/lib/equipment';
 import { AnchorSection } from '@/components/AnchorFields';
 import { DisplayCode } from '@/components/DisplayCode';
-import { anchorSummary, ANCHOR_STATUS_COLORS, ANCHOR_STATUS_LABELS } from '@/lib/properties/anchor-display';
+import StatusTag from '@/components/StatusTag';
+import { anchorSummary, registeredMessage } from '@/lib/properties/anchor-display';
 import { buildAnchorPayload } from '@/lib/properties/anchor-form';
 import { unitShortText } from '@/lib/properties/unit-display';
 
@@ -166,7 +167,7 @@ function PropertiesPage() {
     if (target === 'new') {
       form.resetFields();
     } else {
-      // 產權不在這裡改：補建號在詳情頁，已建號的鍵由平台營運者更正
+      // 建號不在這裡改：補建號與修正建號在詳情頁
       const { anchor: _anchor, unit: _unit, archived_at: _archivedAt, ...rest } = target;
       void _anchor;
       void _unit;
@@ -178,7 +179,7 @@ function PropertiesPage() {
   const save = async () => {
     const values = await form.validateFields();
     const isNew = editing === 'new';
-    // 只有建立時送產權；修改物件不動產權錨點
+    // 只有建立時送建號；修改物件不動建號
     const payload = isNew ? { ...values, anchor: buildAnchorPayload(values.anchor) } : { ...values, anchor: undefined };
     const res = await fetch(isNew ? '/api/properties' : `/api/properties/${(editing as Property).id}`, {
       method: isNew ? 'POST' : 'PUT',
@@ -189,20 +190,16 @@ function PropertiesPage() {
       message.error((await res.json()).error ?? '儲存失敗');
       return;
     }
-    const json = (await res.json().catch(() => ({}))) as { data?: { id?: string; existing?: boolean; review?: { ticket: string; message: string } } };
+    const json = (await res.json().catch(() => ({}))) as { data?: { id?: string; existing?: boolean; verification_status?: PropertyVerificationStatus } };
     setEditing(null);
     if (isNew && json.data?.existing && json.data.id) {
-      // 這個產權已由自己的組織登錄（MIL-144）：沒有建新物件，帶使用者到既有的那筆
-      message.info('這個產權你已經登錄過，已帶你到既有的物件');
+      // 這個鍵已由自己的組織登錄（MIL-144）：沒有建新物件，帶使用者到既有的那筆
+      message.info('這個物件你已經登錄過，已帶你到既有的物件');
       router.push(`/properties/${json.data.id}`);
       return;
     }
-    if (isNew && json.data?.review) {
-      // 撞到別的組織：物件已建立，產權維持待驗證。只顯示固定訊息與審核單號
-      message.info({ content: `${json.data.review.message}。審核單號：${json.data.review.ticket}`, duration: 8 });
-    } else {
-      message.success(isNew ? '物件已建立' : '物件已更新');
-    }
+    // 鍵有沒有與別的組織重複，訊息都一樣（ADR-0028 決議 2）
+    message.success(isNew ? registeredMessage(json.data?.verification_status ?? 'pending_verification') : '物件已更新');
     load();
   };
 
@@ -283,17 +280,11 @@ function PropertiesPage() {
             render: (_, record) => (record.unit ? unitShortText(record.unit) : '—'),
           },
           { title: '地址', dataIndex: 'address' },
+          { title: '建號', dataIndex: 'anchor', render: (_: unknown, record) => anchorSummary(record.anchor) },
           {
-            title: '產權',
-            dataIndex: 'anchor',
-            render: (_: unknown, record) =>
-              record.anchor?.status === 'keyed' ? (
-                anchorSummary(record.anchor)
-              ) : (
-                <Tag color={ANCHOR_STATUS_COLORS[record.anchor?.status ?? 'pending_verification']}>
-                  {ANCHOR_STATUS_LABELS[record.anchor?.status ?? 'pending_verification']}
-                </Tag>
-              ),
+            title: '核對狀態',
+            width: 140,
+            render: (_, record) => <StatusTag kind="propertyVerification" value={record.verification_status} />,
           },
           { title: '型態', dataIndex: 'type', width: 100 },
           { title: '坪數', dataIndex: 'size', width: 80, render: (v) => v ?? '—' },
@@ -380,7 +371,7 @@ function PropertiesPage() {
           {editing === 'new' ? (
             <AnchorSection form={form} />
           ) : (
-            <Typography.Text type="secondary">產權在物件詳情頁查看與補建號。</Typography.Text>
+            <Typography.Text type="secondary">建號在物件詳情頁查看與修正。</Typography.Text>
           )}
         </Form>
       </Modal>

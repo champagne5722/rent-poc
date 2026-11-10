@@ -27,7 +27,7 @@ const SUBLEASE_OK: PrimaryLeasingAuthorityFacts = {
 const BASE: LeasingAuthoritySendFacts = {
   rentalUnitId: '01JUNIT000000000000000000',
   primaryAuthority: OWNERSHIP_OK,
-  pendingKeyCollision: null,
+  propertyNotVerified: false,
   hasPendingSuspectedDuplicate: false,
 };
 
@@ -101,9 +101,9 @@ describe('checkLeasingAuthorityPreconditions：六項擋下原因', () => {
       expected: ['lessor_not_verified_practice_entity'],
     },
     {
-      name: '租賃單位有待審的撞號',
-      facts: { ...BASE, pendingKeyCollision: { reviewItemId: 'REV-0042' } },
-      expected: ['pending_key_collision'],
+      name: '物件尚未通過平台的文件核對',
+      facts: { ...BASE, propertyNotVerified: true },
+      expected: ['property_not_verified'],
     },
   ];
 
@@ -180,7 +180,7 @@ describe('checkLeasingAuthorityPreconditions：多重原因與說明', () => {
           upstream: [{ id: '01JAUTHUPSTREAM0000000000', kind: 'ownership', status: 'lapsed' }],
           lessorIsVerifiedPracticeEntity: false,
         },
-        pendingKeyCollision: { reviewItemId: 'REV-0042' },
+        propertyNotVerified: true,
         hasPendingSuspectedDuplicate: true,
       }),
     ).toEqual([
@@ -188,14 +188,14 @@ describe('checkLeasingAuthorityPreconditions：多重原因與說明', () => {
       'missing_documents',
       'upstream_not_verified',
       'lessor_not_verified_practice_entity',
-      'pending_key_collision',
+      'property_not_verified',
     ]);
   });
 
-  it('沒有主要出租權源加撞號待審，兩項都列出', () => {
-    expect(codes({ ...BASE, primaryAuthority: null, pendingKeyCollision: { reviewItemId: 'REV-0042' } })).toEqual([
+  it('沒有主要出租權源加物件尚未核對，兩項都列出', () => {
+    expect(codes({ ...BASE, primaryAuthority: null, propertyNotVerified: true })).toEqual([
       'no_primary_authority',
-      'pending_key_collision',
+      'property_not_verified',
     ]);
   });
 
@@ -233,13 +233,13 @@ describe('checkLeasingAuthorityPreconditions：多重原因與說明', () => {
     expect(reason.upstreamAuthorityIds).toEqual(['UP-B']);
   });
 
-  it('撞號原因帶審核單號，說明待審', () => {
+  it('物件尚未核對的原因說明要通過核對，不含審核單號，也不說明鍵重複（ADR-0028 決議 5）', () => {
     const [reason] = checkLeasingAuthorityPreconditions({
       ...BASE,
-      pendingKeyCollision: { reviewItemId: 'REV-0042' },
+      propertyNotVerified: true,
     }).reasons;
-    expect(reason.message).toContain('REV-0042');
-    expect(reason.message).toContain('審核');
+    expect(reason.message).toBe('物件尚未通過平台的文件核對。通過後才能送簽。');
+    expect(reason.message).not.toMatch(/審核單號|已在平台登錄|已送審核|撞號|重複/);
   });
 
   it('驗證失敗與已失效的說明不同', () => {

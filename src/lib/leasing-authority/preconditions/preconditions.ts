@@ -71,8 +71,11 @@ export type PrimaryLeasingAuthorityFacts =
 export interface LeasingAuthoritySendFacts {
   rentalUnitId: string;
   primaryAuthority: PrimaryLeasingAuthorityFacts | null;
-  /** 宣稱方的硬性撞號在審核台待審時，帶審核台項目編號（ADR-0025 決議 7）。 */
-  pendingKeyCollision: { reviewItemId: string } | null;
+  /**
+   * 租賃單位所屬的物件還沒通過平台的文件核對（ADR-0028 決議 5）。
+   * 由文件核對的結果決定，不得由鍵是否重複決定：送簽的結果不能讓使用者分辨別的組織是否登錄過同一個鍵。
+   */
+  propertyNotVerified: boolean;
   /** 疑似重複待審。不擋送簽，也不得顯示給使用者（ADR-0025 決議 10）。 */
   hasPendingSuspectedDuplicate: boolean;
 }
@@ -84,7 +87,7 @@ export type LeasingAuthorityBlockCode =
   | 'missing_documents'
   | 'upstream_not_verified'
   | 'lessor_not_verified_practice_entity'
-  | 'pending_key_collision';
+  | 'property_not_verified';
 
 export interface LeasingAuthorityBlockReason {
   code: LeasingAuthorityBlockCode;
@@ -160,7 +163,7 @@ function reason(
 }
 
 /**
- * 原因依固定順序排列：權源本身、文件、鏈條、出租人資格、撞號。
+ * 原因依固定順序排列：權源本身、文件、鏈條、出租人資格、物件核對。
  * 多項同時成立時全部列出，讓使用者一次補正。
  */
 export function checkLeasingAuthorityPreconditions(
@@ -216,13 +219,8 @@ export function checkLeasingAuthorityPreconditions(
     }
   }
 
-  if (facts.pendingKeyCollision !== null) {
-    reasons.push(
-      reason(
-        'pending_key_collision',
-        `此產權已在平台登錄，已送審核（審核單號 ${facts.pendingKeyCollision.reviewItemId}）。審核完成前不能送簽。`,
-      ),
-    );
+  if (facts.propertyNotVerified) {
+    reasons.push(reason('property_not_verified', '物件尚未通過平台的文件核對。通過後才能送簽。'));
   }
 
   // 疑似重複待審不擋送簽，也不得出現在原因或事實裡（ADR-0025 決議 10）

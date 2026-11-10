@@ -183,7 +183,7 @@ describe('evaluateSend：由指派與登錄資料組出送簽前檢查的輸入'
   it('出租權源的原因併進清單', async () => {
     const result = await evaluateSend(
       input({
-        leasingAuthority: { rentalUnitId: 'ru-1', primaryAuthority: null, pendingKeyCollision: null, hasPendingSuspectedDuplicate: false },
+        leasingAuthority: { rentalUnitId: 'ru-1', primaryAuthority: null, propertyNotVerified: false, hasPendingSuspectedDuplicate: false },
       }),
       seed,
     );

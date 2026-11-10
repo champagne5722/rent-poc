@@ -56,16 +56,20 @@ export interface EquipmentAnnexRow {
   note: string;
 }
 
-/** 錨點狀態（ADR-0013）。待驗證是還沒有建號、以門牌登錄。 */
-export const ANCHOR_STATUSES = ['pending_verification', 'keyed', 'merged', 'retired'] as const;
-export type AnchorStatus = (typeof ANCHOR_STATUSES)[number];
+/**
+ * 物件對外的文件核對狀態（ADR-0028 決議 2）。只由文件核對決定，不讀 registry.anchors.status。
+ * 目前沒有核對功能，所以只有「待平台核對文件」一種。MIL-201 加入「已核對」與「文件不符」。
+ */
+export const PROPERTY_VERIFICATION_STATUSES = ['pending_verification'] as const;
+export type PropertyVerificationStatus = (typeof PROPERTY_VERIFICATION_STATUSES)[number];
 
 /**
- * 物件頁的「產權」區塊用的產權錨點摘要（MIL-143）。不含錨點 ID：錨點是跨組織的全域資料，畫面用不到。
- * 待驗證的錨點五欄鍵與名稱都是 null。名稱一律是「臺」，來自 registry 的參照表。
+ * 物件頁的建號區塊用的物件摘要（MIL-143）。不含物件的 registry ID：它是跨組織的全域資料，畫面用不到。
+ * 沒有填建號的舊資料，五欄鍵與名稱都是 null。名稱一律是「臺」，來自 registry 的參照表。
+ * 鍵是使用者自己填的鍵。就算它與別的組織重複，這裡仍是使用者填的鍵（ADR-0028 決議 2）。
+ * 不含內部狀態：keyed 與 pending_verification 的差別只留在資料庫，對外不得出現。
  */
 export interface PropertyAnchor {
-  status: AnchorStatus;
   city_code: string | null;
   town_code: string | null;
   section_code: string | null;
@@ -77,18 +81,6 @@ export interface PropertyAnchor {
   section_name: string | null;
   latitude: number | null;
   longitude: number | null;
-  /**
-   * 這個產權的鍵撞到別的組織已登錄的鍵，正在審核台等待判定（MIL-144）。沒有待審的撞號時是 null。
-   * ticket 是審核單號。只有宣稱方自己讀得到，不含對方的任何資料。
-   */
-  collision_review: PropertyCollisionReview | null;
-}
-
-export interface PropertyCollisionReview {
-  /** 審核單號。 */
-  ticket: string;
-  /** 送審時間，ISO 字串。 */
-  created_at: string;
 }
 
 /** 租賃單位類型與狀態（ADR-0013 決議 5、6，ADR-0025 決議 14）。whole 是整戶，後綴固定 0000。 */
@@ -99,7 +91,7 @@ export type RentalUnitStatus = (typeof RENTAL_UNIT_STATUSES)[number];
 
 /**
  * 物件持有的租賃單位摘要（MIL-145）。不含單位 ID 與錨點 ID 之外的跨組織資料。
- * 顯示編碼不含段碼與建號（R13）。待驗證的錨點沒有縣市與鄉鎮編碼，顯示編碼是 null，補建號後才產生。
+ * 顯示編碼不含段碼與建號（R13）。沒有填建號的舊資料沒有縣市與鄉鎮編碼，顯示編碼是 null，補建號後才產生。
  */
 export interface PropertyUnit {
   /** 單位後綴 4 碼，整戶 `0000`，分租從 `0001` 起。房號不是後綴。 */
@@ -112,7 +104,7 @@ export interface PropertyUnit {
   display_code: string | null;
 }
 
-/** 同一產權錨點下，自己組織的一個物件與它的單位（物件頁「單位」分頁）。 */
+/** 同一物件下，自己組織的一個租賃單位與它的營運資料（物件頁「單位」分頁）。 */
 export interface SiblingUnit extends PropertyUnit {
   property_id: string;
   name: string;
@@ -127,8 +119,10 @@ export interface Property {
   unit: PropertyUnit | null;
   /** 封存時間。有任何合約的物件刪除時改為封存（P0-06 AC8）。封存的物件不得編輯與建約。 */
   archived_at: string | null;
-  /** 租賃單位所屬的產權錨點。讀不到時是 null（不應發生，畫面照樣能顯示）。 */
+  /** 租賃單位所屬物件的建號摘要。讀不到時是 null（不應發生，畫面照樣能顯示）。 */
   anchor: PropertyAnchor | null;
+  /** 物件對外的文件核對狀態。畫面一律用狀態呈現表的 propertyVerification。 */
+  verification_status: PropertyVerificationStatus;
   name: string;
   address: string;
   type: PropertyType;

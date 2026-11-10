@@ -118,17 +118,21 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
     expect(final).toHaveLength(EQUIPMENT_OPTIONS.length);
   });
 
-  describe('產權錨點（MIL-143）', () => {
+  describe('物件的建號（MIL-143、MIL-196）', () => {
     const key = { city: 'A', town: '02', section: '0021', buildingNo: '4242', subNo: '' };
     const keyedInput = (buildingNo: string) => input({ anchor: { key: { ...key, buildingNo } } });
+    const noInternalState = (anchor: object | null | undefined) => {
+      // 內部狀態與審核單號不得出現在讀取結果
+      expect(Object.keys(anchor ?? {})).not.toContain('status');
+      expect(Object.keys(anchor ?? {})).not.toContain('collision_review');
+    };
 
-    it('建立時填鍵：已建號，名稱取自參照表；補建號後一樣；pg 的座標是 number', async () => {
+    it('建立時填鍵：名稱取自參照表；補建號後一樣；pg 的座標是 number', async () => {
       const id = await withTx({ kind: 'org', orgId: orgA }, (tx) =>
         createProperty(tx, input({ anchor: { key: { ...key, buildingNo: '4201' }, latitude: 25.0338, longitude: 121.5435 } })),
       );
       const keyed = await withTx({ kind: 'org', orgId: orgA }, (tx) => getProperty(tx, id));
       expect(keyed!.anchor).toEqual({
-        status: 'keyed',
         city_code: 'A',
         town_code: '02',
         section_code: '0021',
@@ -139,47 +143,68 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
         section_name: '龍泉 一',
         latitude: 25.0338,
         longitude: 121.5435,
-        collision_review: null,
       });
+      expect(keyed!.verification_status).toBe('pending_verification');
 
-      const pendingId = await withTx({ kind: 'org', orgId: orgA }, (tx) => createProperty(tx, input()));
+      const noKeyId = await withTx({ kind: 'org', orgId: orgA }, (tx) => createProperty(tx, input()));
       const after = await withTx({ kind: 'org', orgId: orgA }, (tx) =>
-        setPropertyAnchorKey(tx, pendingId, { cityCode: 'A', townCode: '02', sectionCode: '0021', buildingNo: '04202', subNo: '000' }),
+        setPropertyAnchorKey(tx, noKeyId, { cityCode: 'A', townCode: '02', sectionCode: '0021', buildingNo: '04202', subNo: '000' }),
       );
-      expect(after).toMatchObject({ kind: 'keyed', anchor: { status: 'keyed', building_no: '04202' } });
+      expect(after).toMatchObject({ kind: 'accepted', anchor: { building_no: '04202' } });
     });
 
-    it('撞到別的組織：物件照樣建立，產權維持待驗證，回審核單號；既有登錄方不受影響（MIL-144）', async () => {
+    it('撞到別的組織：結果與不重複相同，讀得到自己填的鍵，內部狀態不外露；既有登錄方不受影響', async () => {
       const first = await withTx({ kind: 'org', orgId: orgA }, (tx) => registerProperty(tx, keyedInput('4243')));
-      expect(first.kind).toBe('created');
+      expect(first).toEqual({ kind: 'created', id: expect.any(String) });
       const second = await withTx({ kind: 'org', orgId: orgB }, (tx) => registerProperty(tx, keyedInput('4243')));
-      expect(second).toEqual({ kind: 'review_queued', id: expect.any(String), reviewTicket: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/) });
-      if (second.kind !== 'review_queued' || first.kind !== 'created') return;
-      const pending = await withTx({ kind: 'org', orgId: orgB }, (tx) => getProperty(tx, second.id));
-      expect(pending!.anchor).toMatchObject({ status: 'pending_verification', building_no: null, collision_review: { ticket: second.reviewTicket } });
-      const holder = await withTx({ kind: 'org', orgId: orgA }, (tx) => getProperty(tx, first.id));
-      expect(holder!.anchor).toMatchObject({ status: 'keyed', building_no: '04243', collision_review: null });
+      expect(second).toEqual({ kind: 'created', id: expect.any(String) });
+      const claimant = await withTx({ kind: 'org', orgId: orgB }, (tx) => getProperty(tx, (second as { id: string }).id));
+      expect(claimant!.anchor).toMatchObject({ building_no: '04243', city_name: '臺北市', section_name: '龍泉 一' });
+      expect(claimant!.verification_status).toBe('pending_verification');
+      expect(claimant!.unit!.display_code).not.toBeNull();
+      noInternalState(claimant!.anchor);
+      const holder = await withTx({ kind: 'org', orgId: orgA }, (tx) => getProperty(tx, (first as { id: string }).id));
+      expect(holder!.anchor).toMatchObject({ building_no: '04243' });
+      noInternalState(holder!.anchor);
+
+      // 內部：宣稱方的物件待驗證，宣稱的鍵在審核項目，既有登錄方的物件不變
+      const { rows } = await dbh.owner.query(
+        `SELECT a.status, a.building_no FROM registry.anchors a JOIN registry.rental_units u ON u.anchor_id = a.id JOIN org.properties p ON p.rental_unit_id = u.id WHERE p.id = ANY($1::text[]) ORDER BY p.id`,
+        [[(first as { id: string }).id, (second as { id: string }).id]],
+      );
+      expect(rows).toEqual([
+        { status: 'keyed', building_no: '04243' },
+        { status: 'pending_verification', building_no: null },
+      ]);
     });
 
-    it('撞到自己組織：回自己的物件，交易退回這次建立的列，不留半成品', async () => {
+    it('撞到自己組織：回自己的物件，交易退回這次建立的列與登錄事件，不留半成品', async () => {
       const first = await withTx({ kind: 'org', orgId: orgA }, (tx) => registerProperty(tx, keyedInput('4245')));
-      const before = (await dbh.owner.query('SELECT count(*)::int AS n FROM registry.anchors')).rows;
+      const countAnchors = async () => (await dbh.owner.query('SELECT count(*)::int AS n FROM registry.anchors')).rows;
+      const countCreateEvents = () =>
+        withTx({ kind: 'org', orgId: orgA }, async (tx) => (await tx.query(`SELECT count(*)::int AS n FROM audit.events WHERE action = 'property.create'`)).rows);
+      const before = { anchors: await countAnchors(), events: await countCreateEvents() };
       const again = await withTx({ kind: 'org', orgId: orgA }, (tx) => registerProperty(tx, keyedInput('4245')));
       expect(again).toEqual({ kind: 'existing', id: (first as { id: string }).id });
-      expect((await dbh.owner.query('SELECT count(*)::int AS n FROM registry.anchors')).rows).toEqual(before);
+      expect({ anchors: await countAnchors(), events: await countCreateEvents() }).toEqual(before);
     });
 
-    it('兩個交易同時搶同一個鍵：一個取得鍵，另一個走撞號流程，不得回傳唯一索引的錯誤', async () => {
+    it('兩個交易同時搶同一個鍵：一個取得鍵，另一個走撞號流程，兩邊回應相同，不得回傳唯一索引的錯誤', async () => {
       const results = await Promise.allSettled([
         withTx({ kind: 'org', orgId: orgA }, (tx) => registerProperty(tx, keyedInput('4244'))),
         withTx({ kind: 'org', orgId: orgB }, (tx) => registerProperty(tx, keyedInput('4244'))),
       ]);
       expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
-      const kinds = results.map((r) => (r as PromiseFulfilledResult<{ kind: string }>).value.kind).sort();
-      expect(kinds).toEqual(['created', 'review_queued']);
+      const kinds = results.map((r) => (r as PromiseFulfilledResult<{ kind: string }>).value.kind);
+      expect(kinds).toEqual(['created', 'created']);
+      // 內部：剛好一個撞號項目
+      const { rows } = await dbh.owner.query(
+        `SELECT count(*)::int AS n FROM registry.review_items WHERE type = 'anchor_collision' AND payload -> 'claimed_key' ->> 'building_no' = '04244'`,
+      );
+      expect(rows).toEqual([{ n: 1 }]);
     });
 
-    it('同一個組織並行撞號：額度在函式內檢查，並行請求不能同時通過（上限 2，4 個並行請求）', async () => {
+    it('同一個組織並行撞號：次數在函式內檢查，並行請求都成立，警示剛好累計 2 次（上限 2，4 個並行請求）', async () => {
       const racer = newUlid();
       await dbh.owner.query(`SET ROLE app_owner; INSERT INTO control.orgs (id, name, kind) VALUES ('${racer}', 'C', 'owner'); RESET ROLE`);
       await withTx({ kind: 'org', orgId: orgA }, (tx) => registerProperty(tx, keyedInput('4250')));
@@ -188,13 +213,18 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
         const results = await Promise.all(
           [1, 2, 3, 4].map(() => withTx({ kind: 'org', orgId: racer }, (tx) => registerProperty(tx, keyedInput('4250')))),
         );
-        const kinds = results.map((r) => r.kind).sort();
-        expect(kinds).toEqual(['rate_limited', 'rate_limited', 'review_queued', 'review_queued']);
-        const { rows } = await dbh.owner.query(
+        expect(results.map((r) => r.kind)).toEqual(['created', 'created', 'created', 'created']);
+        const items = await dbh.owner.query(
           `SELECT count(*)::int AS n FROM registry.review_items WHERE type = 'anchor_collision' AND payload ->> 'claimant_org_id' = $1`,
           [racer],
         );
-        expect(rows).toEqual([{ n: 2 }]);
+        expect(items.rows).toEqual([{ n: 4 }]);
+        // 前兩次在額度內，第三、四次超過：只累計 2 次，而且只有一張警示項目
+        const alert = await dbh.owner.query(
+          `SELECT payload ->> 'hits' AS hits FROM registry.review_items WHERE type = 'anchor_collision_limit' AND subject_id = $1`,
+          [racer],
+        );
+        expect(alert.rows).toEqual([{ hits: '2' }]);
       } finally {
         await dbh.owner.query(`UPDATE registry.platform_settings SET int_value = 50 WHERE key = 'anchor_collision_daily_limit'`);
       }

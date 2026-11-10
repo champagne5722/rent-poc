@@ -8,7 +8,7 @@ import { asRole, createTestDb, type TestDb } from './test-harness';
 import { newUlid } from './ulid';
 import { createWithTx, type OrgTx, type WithTx } from './with-tx';
 
-// MIL-144：撞號送審核台、固定回應、頻率限制。
+// MIL-144：撞號送審核台、頻率計數。MIL-196：對外回應一律相同，超過次數只通知營運者，鍵重複的稽核事件寫在平台鏈。
 // 一律以 app_rw 從外部觀察；看 registry 的列、調整設定值或改建立時間時，才用 asRole 換成 app_owner。
 
 const seed = seedJson as SectionCodeSeed;
@@ -72,13 +72,14 @@ async function claim(
   building = '1234',
   itemId: string = newUlid(),
 ): Promise<ClaimRow> {
-  const { rows } = await tx.query<ClaimRow>('SELECT * FROM registry.assign_anchor_key($1, $2, $3, $4, $5, NULL, $6)', [
+  const { rows } = await tx.query<ClaimRow>('SELECT * FROM registry.assign_anchor_key($1, $2, $3, $4, $5, NULL, $6, $7)', [
     anchorId,
     k.city,
     k.town,
     k.section,
     building,
     itemId,
+    newUlid(),
   ]);
   return rows[0];
 }
@@ -116,8 +117,22 @@ describe('registry.assign_anchor_key：沒有撞號', () => {
   });
 });
 
+
+/** 平台營運者身分。審核台函式與平台鏈都只有營運者讀得到。 */
+async function makeOperator() {
+  const operatorId = newUlid();
+  const partyId = newUlid();
+  await owner(async () => {
+    await db.query(`INSERT INTO control.parties (id, email, display_name) VALUES ($1, 'ops@example.com', '營運者')`, [partyId]);
+    await db.query(`INSERT INTO control.users (id, party_id) VALUES ($1, $2)`, [operatorId, partyId]);
+    await db.query(`INSERT INTO control.org_memberships (id, org_id, user_id, role) VALUES ($1, $2, $3, 'admin')`, [newUlid(), PLATFORM_ORG_ID, operatorId]);
+  });
+  return <T>(fn: (tx: OrgTx) => Promise<T>) =>
+    withTx({ kind: 'operator', operatorId, orgId: PLATFORM_ORG_ID, ticketId: 'desk:test' }, (tx) => fn(tx as OrgTx));
+}
+
 describe('registry.assign_anchor_key：撞到別的組織', () => {
-  it('回 collision_queued 與審核單號；B 的錨點維持待驗證且鍵不進唯一索引；審核單存宣稱的鍵', async () => {
+  it('回 collision_queued 與審核單號；B 的物件轉待驗證且鍵不進唯一索引；審核單存宣稱的鍵', async () => {
     const first = await registrantHolds();
     const second = await createProperty(orgB, '乙方的物件');
     const itemId = newUlid();
@@ -148,24 +163,28 @@ describe('registry.assign_anchor_key：撞到別的組織', () => {
     expect(JSON.stringify(result)).not.toMatch(/甲方|A 組織|01234/);
   });
 
-  it('既有登錄方的錨點、物件、通知都不變，也沒有人通知它', async () => {
+  it('既有登錄方的物件、營運資料、通知、稽核鏈都不變，也沒有人通知它', async () => {
     const first = await registrantHolds();
-    const snapshot = async () =>
-      owner(async () => ({
+    const snapshot = async () => ({
+      registry: await owner(async () => ({
         anchor: (await db.query('SELECT * FROM registry.anchors WHERE id = $1', [first.anchorId])).rows,
         units: (await db.query('SELECT * FROM registry.rental_units WHERE anchor_id = $1', [first.anchorId])).rows,
-      }));
+      })),
+      view: await withTx({ kind: 'org', orgId: orgA }, async (tx) => ({
+        notifications: (await tx.query('SELECT id FROM org.notifications')).rows,
+        audit: (await tx.query('SELECT seq, action FROM audit.events ORDER BY seq')).rows,
+        anchors: (await tx.query('SELECT * FROM registry.get_anchors_for_units($1::text[])', [[first.unitId]])).rows,
+        units: (await tx.query('SELECT * FROM registry.get_unit_details($1::text[])', [[first.unitId]])).rows,
+      })),
+    });
     const before = await snapshot();
     const second = await createProperty(orgB);
     await claimAs(orgB, second.anchorId);
     expect(await snapshot()).toEqual(before);
-    const notifications = await withTx({ kind: 'org', orgId: orgA }, async (tx) => (await tx.query('SELECT id FROM org.notifications')).rows);
-    expect(notifications).toEqual([]);
-    const asA = await withTx({ kind: 'org', orgId: orgA }, async (tx) => (await tx.query('SELECT * FROM registry.get_collision_reviews($1::text[])', [[first.unitId]])).rows);
-    expect(asA).toEqual([]);
+    expect(before.view.notifications).toEqual([]);
   });
 
-  it('同一個錨點再宣稱另一個撞號的鍵：舊審核單被取代，只剩一張待審', async () => {
+  it('同一個物件再宣稱另一個撞號的鍵：舊審核單被取代，只剩一張待審', async () => {
     await registrantHolds('1234');
     const another = await createProperty(orgC);
     await claimAs(orgC, another.anchorId, '5555'); // C 自己登錄 5555
@@ -179,31 +198,101 @@ describe('registry.assign_anchor_key：撞到別的組織', () => {
     expect(items.find((i) => i.id === first.item_id)).toMatchObject({ status: 'resolved', resolution: 'superseded' });
   });
 
-  it('撞號之後改登錄沒人用的鍵：錨點轉已建號，舊審核單被取代', async () => {
+  it('撞號之後改登錄沒人用的鍵：物件轉已建號，舊審核單被取代', async () => {
     await registrantHolds('1234');
     const second = await createProperty(orgB);
     const queued = await claimAs(orgB, second.anchorId, '1234');
     expect((await claimAs(orgB, second.anchorId, '7777')).outcome).toBe('keyed');
     expect((await itemRows(`WHERE id = '${queued.item_id}'`))[0]).toMatchObject({ status: 'resolved', resolution: 'superseded' });
   });
+});
 
-  it('撞號的物件只有宣稱方自己讀得到審核單號，且只讀得到自己提出的', async () => {
-    const first = await registrantHolds();
+describe('讀取：撞號的物件仍讀到自己宣稱的鍵（MIL-196）', () => {
+  const readAnchor = (orgId: string, unitId: string) =>
+    withTx({ kind: 'org', orgId }, async (tx) => ({
+      anchor: (await tx.query<Record<string, unknown>>('SELECT * FROM registry.get_anchors_for_units($1::text[])', [[unitId]])).rows,
+      unit: (await tx.query<Record<string, unknown>>('SELECT * FROM registry.get_unit_details($1::text[])', [[unitId]])).rows,
+    }));
+
+  it('撞號的物件與沒撞號的物件，讀到的鍵、名稱與顯示編碼用的縣市與鄉鎮市區格式相同', async () => {
+    const first = await registrantHolds('1234');
+    const second = await createProperty(orgB);
+    await claimAs(orgB, second.anchorId, '1234');
+    const clean = await createProperty(orgB);
+    await claimAs(orgB, clean.anchorId, '4321');
+    const colliding = await readAnchor(orgB, second.unitId);
+    const free = await readAnchor(orgB, clean.unitId);
+    expect(colliding.anchor).toEqual([
+      expect.objectContaining({ city_code: k.city, town_code: k.town, section_code: k.section, building_no: '01234', sub_no: '000' }),
+    ]);
+    expect(colliding.anchor[0].city_name).toBe(free.anchor[0].city_name);
+    expect(colliding.anchor[0].section_name).toBe(free.anchor[0].section_name);
+    expect(colliding.unit[0]).toMatchObject({ display_city_code: k.city, display_town_code: k.town });
+    expect(free.unit[0]).toMatchObject({ display_city_code: k.city, display_town_code: k.town });
+    // 既有登錄方讀到自己的鍵，與宣稱方的鍵相同，但看不到宣稱方的任何東西
+    const holder = await readAnchor(orgA, first.unitId);
+    expect(holder.anchor[0]).toMatchObject({ building_no: '01234' });
+  });
+
+  it('只讀得到自己提出的宣稱：別的組織拿宣稱方的單位 ID 查，與查不存在的 ID 相同', async () => {
+    await registrantHolds();
+    const second = await createProperty(orgB);
+    await claimAs(orgB, second.anchorId);
+    expect(await readAnchor(orgC, second.unitId)).toEqual(await readAnchor(orgC, newUlid()));
+    expect(await readAnchor(orgA, second.unitId)).toEqual(await readAnchor(orgA, newUlid()));
+  });
+
+  it('已刪除的函式：get_collision_reviews 與 record_collision_limit_hit 不存在，宣稱方讀不到自己的審核單號', async () => {
+    await withTx({ kind: 'org', orgId: orgB }, async (tx) => {
+      await expect(tx.query('SELECT * FROM registry.get_collision_reviews($1::text[])', [[newUlid()]])).rejects.toMatchObject({ code: '42883' });
+    });
+    await withTx({ kind: 'org', orgId: orgB }, async (tx) => {
+      await expect(tx.query('SELECT registry.record_collision_limit_hit($1)', [newUlid()])).rejects.toMatchObject({ code: '42883' });
+    });
+  });
+});
+
+describe('稽核事件（MIL-196）', () => {
+  it('鍵重複的事件寫在平台鏈，payload 只有宣稱方組織與審核單號；宣稱方的鏈沒有這筆事件', async () => {
+    await registrantHolds();
     const second = await createProperty(orgB);
     const queued = await claimAs(orgB, second.anchorId);
-    const read = (orgId: string, unitIds: string[]) =>
-      withTx({ kind: 'org', orgId }, async (tx) => (await tx.query<Record<string, unknown>>('SELECT * FROM registry.get_collision_reviews($1::text[])', [unitIds])).rows);
-    expect(await read(orgB, [second.unitId, first.unitId])).toEqual([
-      { unit_id: second.unitId, item_id: queued.item_id, created_at: expect.anything() },
+    const asOperator = await makeOperator();
+    const platform = await asOperator(async (tx) =>
+      (await tx.query<Record<string, unknown>>(`SELECT actor_type, action, object_type, object_id, payload FROM audit.events WHERE action = 'property.anchor_collision'`)).rows,
+    );
+    expect(platform).toEqual([
+      {
+        actor_type: 'system',
+        action: 'property.anchor_collision',
+        object_type: 'rental_unit',
+        object_id: second.unitId,
+        payload: { claimant_org_id: orgB, review_item_id: queued.item_id },
+      },
     ]);
-    // 別的組織拿 B 的單位 ID 查，與查不存在的 ID 相同
-    expect(await read(orgC, [second.unitId])).toEqual(await read(orgC, [newUlid()]));
-    expect(await read(orgA, [second.unitId])).toEqual([]);
+    expect(JSON.stringify(platform)).not.toMatch(/01234|甲方/);
+    for (const org of [orgA, orgB, orgC]) {
+      const mine = await withTx({ kind: 'org', orgId: org }, async (tx) => (await tx.query(`SELECT action FROM audit.events WHERE action = 'property.anchor_collision'`)).rows);
+      expect(mine, `組織 ${org} 的鏈不得有鍵重複事件`).toEqual([]);
+    }
+  });
+
+  it('app_rw 不能直接寫平台鏈：入口函式只開給擁有者', async () => {
+    await withTx({ kind: 'org', orgId: orgB }, async (tx) => {
+      await expect(tx.query(`SELECT audit.append_platform_anchor_collision($1, $2, $3)`, [orgB, newUlid(), newUlid()])).rejects.toThrow(/permission denied/);
+    });
+  });
+
+  it('沒撞號時平台鏈沒有事件', async () => {
+    await registrantHolds();
+    const asOperator = await makeOperator();
+    const platform = await asOperator(async (tx) => (await tx.query(`SELECT action FROM audit.events WHERE action = 'property.anchor_collision'`)).rows);
+    expect(platform).toEqual([]);
   });
 });
 
 describe('registry.assign_anchor_key：撞到自己的組織', () => {
-  it('回 own_existing 與自己的物件 ID，不建審核單', async () => {
+  it('回 own_existing 與自己的物件 ID，不建審核單，也不寫平台鏈', async () => {
     const first = await registrantHolds();
     const second = await createProperty(orgA, '重複建檔');
     const result = await claimAs(orgA, second.anchorId);
@@ -211,9 +300,11 @@ describe('registry.assign_anchor_key：撞到自己的組織', () => {
     expect(await itemRows()).toEqual([]);
     const { rows } = await owner(() => db.query('SELECT status, building_no FROM registry.anchors WHERE id = $1', [second.anchorId]));
     expect(rows).toEqual([{ status: 'pending_verification', building_no: null }]);
+    const asOperator = await makeOperator();
+    expect(await asOperator(async (tx) => (await tx.query(`SELECT action FROM audit.events WHERE action = 'property.anchor_collision'`)).rows)).toEqual([]);
   });
 
-  it('自己撞自己不算進頻率上限', async () => {
+  it('自己撞自己不算進次數', async () => {
     await setLimit(1);
     await registrantHolds();
     for (let i = 0; i < 3; i += 1) {
@@ -222,6 +313,7 @@ describe('registry.assign_anchor_key：撞到自己的組織', () => {
     }
     const other = await createProperty(orgB);
     expect((await claimAs(orgB, other.anchorId)).outcome).toBe('collision_queued');
+    expect(await itemRows(`WHERE type = 'anchor_collision_limit'`)).toEqual([]);
   });
 
   it('自己有多個物件在該錨點下時，優先回整戶（後綴 0000）、未封存的那筆', async () => {
@@ -239,114 +331,125 @@ describe('registry.assign_anchor_key：撞到自己的組織', () => {
   });
 });
 
-describe('registry.assign_anchor_key：頻率限制', () => {
-  it('同一個組織 24 小時內第 N+1 次撞號回 rate_limited，不建審核單', async () => {
-    await setLimit(2);
-    await registrantHolds();
-    for (let i = 0; i < 2; i += 1) {
-      const p = await createProperty(orgB);
-      expect((await claimAs(orgB, p.anchorId)).outcome).toBe('collision_queued');
-    }
-    const third = await createProperty(orgB);
-    expect(await claimAs(orgB, third.anchorId)).toEqual({ outcome: 'rate_limited', item_id: null, property_id: null });
-    expect(await itemRows(`WHERE type = 'anchor_collision'`)).toHaveLength(2);
+describe('registry.assign_anchor_key：修正建號', () => {
+  it('已建號的物件改成沒人用的鍵：仍回 keyed，鍵更新', async () => {
+    const { anchorId } = await createProperty(orgA);
+    await claimAs(orgA, anchorId, '1234');
+    expect((await claimAs(orgA, anchorId, '9')).outcome).toBe('keyed');
+    const { rows } = await owner(() => db.query('SELECT status, building_no FROM registry.anchors WHERE id = $1', [anchorId]));
+    expect(rows).toEqual([{ status: 'keyed', building_no: '00009' }]);
   });
 
-  it('額度按組織分開算：B 用完不影響 C', async () => {
-    await setLimit(1);
-    await registrantHolds();
-    const b1 = await createProperty(orgB);
-    const b2 = await createProperty(orgB);
-    const c1 = await createProperty(orgC);
-    expect((await claimAs(orgB, b1.anchorId)).outcome).toBe('collision_queued');
-    expect((await claimAs(orgB, b2.anchorId)).outcome).toBe('rate_limited');
-    expect((await claimAs(orgC, c1.anchorId)).outcome).toBe('collision_queued');
+  it('已建號的物件改成撞號的鍵：與撞號登錄相同，物件清掉原本的鍵，原本的鍵釋出', async () => {
+    await registrantHolds('1234');
+    const mine = await createProperty(orgB);
+    await claimAs(orgB, mine.anchorId, '7777');
+    expect((await claimAs(orgB, mine.anchorId, '1234')).outcome).toBe('collision_queued');
+    const { rows } = await owner(() => db.query('SELECT status, building_no FROM registry.anchors WHERE id = $1', [mine.anchorId]));
+    expect(rows).toEqual([{ status: 'pending_verification', building_no: null }]);
+    // 7777 已釋出：C 可以直接登錄
+    const c = await createProperty(orgC);
+    expect((await claimAs(orgC, c.anchorId, '7777')).outcome).toBe('keyed');
   });
 
-  it('超過 24 小時的撞號不算，額度回復', async () => {
-    await setLimit(1);
-    await registrantHolds();
-    const b1 = await createProperty(orgB);
-    const queued = await claimAs(orgB, b1.anchorId);
-    const b2 = await createProperty(orgB);
-    expect((await claimAs(orgB, b2.anchorId)).outcome).toBe('rate_limited');
-    await owner(() => db.query(`UPDATE registry.review_items SET created_at = now() - interval '25 hours' WHERE id = $1`, [queued.item_id]));
-    expect((await claimAs(orgB, b2.anchorId)).outcome).toBe('collision_queued');
+  it('物件已合併或停用：回 55000', async () => {
+    const { anchorId } = await createProperty(orgA);
+    await owner(() => db.query(`UPDATE registry.anchors SET status = 'retired' WHERE id = $1`, [anchorId]));
+    await expect(claimAs(orgA, anchorId, '9')).rejects.toMatchObject({ code: '55000', message: '物件目前不能修正建號' });
   });
 
-  it('被取代的舊審核單仍算進額度：反覆改宣稱不能繞過上限', async () => {
-    await setLimit(2);
-    await registrantHolds();
-    const b = await createProperty(orgB);
-    expect((await claimAs(orgB, b.anchorId)).outcome).toBe('collision_queued');
-    expect((await claimAs(orgB, b.anchorId)).outcome).toBe('collision_queued');
-    expect((await claimAs(orgB, b.anchorId)).outcome).toBe('rate_limited');
-  });
-
-  it('額度用完時沒有撞號的鍵照樣登錄成功（限制只管撞號回應）', async () => {
-    await setLimit(1);
-    await registrantHolds();
-    const b1 = await createProperty(orgB);
-    await claimAs(orgB, b1.anchorId);
-    const b2 = await createProperty(orgB);
-    expect((await claimAs(orgB, b2.anchorId, '9999')).outcome).toBe('keyed');
+  it('審核單號或警示編號沒給：回 22023', async () => {
+    const { anchorId } = await createProperty(orgA);
+    await expect(
+      withTx({ kind: 'org', orgId: orgA }, (tx) =>
+        tx.query('SELECT * FROM registry.assign_anchor_key($1, $2, $3, $4, $5, NULL, $6, NULL)', [anchorId, k.city, k.town, k.section, '1234', newUlid()]),
+      ),
+    ).rejects.toMatchObject({ code: '22023' });
   });
 });
 
-describe('registry.record_collision_limit_hit', () => {
-  const hit = (orgId: string, itemId = newUlid()) =>
-    withTx({ kind: 'org', orgId }, async (tx) => (await tx.query<{ v: string }>('SELECT registry.record_collision_limit_hit($1) AS v', [itemId])).rows[0].v);
-
-  async function reachLimit(orgId: string, n = 1) {
-    await setLimit(n);
+describe('registry.assign_anchor_key：次數超過設定值只通知營運者', () => {
+  it('超過次數時登錄照常成立，回傳與次數沒滿時相同，審核台出現一張警示', async () => {
+    await setLimit(2);
     await registrantHolds();
-    for (let i = 0; i < n; i += 1) await claimAs(orgId, (await createProperty(orgId)).anchorId);
-  }
+    const outcomes: ClaimRow[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      const p = await createProperty(orgB);
+      outcomes.push(await claimAs(orgB, p.anchorId));
+    }
+    expect(outcomes.map((o) => o.outcome)).toEqual(['collision_queued', 'collision_queued', 'collision_queued', 'collision_queued']);
+    expect(outcomes.every((o) => o.item_id !== null && o.property_id === null)).toBe(true);
+    expect(await itemRows(`WHERE type = 'anchor_collision'`)).toHaveLength(4);
+    const alerts = await itemRows(`WHERE type = 'anchor_collision_limit'`);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({ subject_type: 'org', subject_id: orgB, status: 'open' });
+    expect(alerts[0].payload).toMatchObject({ claimant_org_id: orgB, limit: 2, hits: 2 });
+  });
 
-  it('額度還沒用完時拒絕：沒有額度壓力的組織不能往營運者佇列塞項目', async () => {
-    await setLimit(5);
-    await expect(hit(orgB)).rejects.toMatchObject({ code: '55000' });
+  it('額度按組織分開算：B 超過不影響 C，C 沒有警示', async () => {
+    await setLimit(1);
+    await registrantHolds();
+    await claimAs(orgB, (await createProperty(orgB)).anchorId);
+    await claimAs(orgB, (await createProperty(orgB)).anchorId);
+    await claimAs(orgC, (await createProperty(orgC)).anchorId);
+    const alerts = await itemRows(`WHERE type = 'anchor_collision_limit'`);
+    expect(alerts.map((a) => a.subject_id)).toEqual([orgB]);
+  });
+
+  it('超過 24 小時的撞號不算，次數回復', async () => {
+    await setLimit(1);
+    await registrantHolds();
+    const queued = await claimAs(orgB, (await createProperty(orgB)).anchorId);
+    await owner(() => db.query(`UPDATE registry.review_items SET created_at = now() - interval '25 hours' WHERE id = $1`, [queued.item_id]));
+    await claimAs(orgB, (await createProperty(orgB)).anchorId);
+    expect(await itemRows(`WHERE type = 'anchor_collision_limit'`)).toEqual([]);
+  });
+
+  it('被取代的舊審核單仍算進次數：反覆改宣稱不能繞過計數', async () => {
+    await setLimit(2);
+    await registrantHolds();
+    const b = await createProperty(orgB);
+    await claimAs(orgB, b.anchorId);
+    await claimAs(orgB, b.anchorId);
+    await claimAs(orgB, b.anchorId);
+    expect(await itemRows(`WHERE type = 'anchor_collision_limit'`)).toHaveLength(1);
+  });
+
+  it('超過 24 小時還沒人處理的舊警示被取代，開新的一張', async () => {
+    await setLimit(1);
+    await registrantHolds();
+    await claimAs(orgB, (await createProperty(orgB)).anchorId);
+    await claimAs(orgB, (await createProperty(orgB)).anchorId);
+    const [old] = await itemRows(`WHERE type = 'anchor_collision_limit'`);
+    await owner(() => db.query(`UPDATE registry.review_items SET created_at = now() - interval '30 hours' WHERE id = $1`, [old.id]));
+    await claimAs(orgB, (await createProperty(orgB)).anchorId);
+    const all = await itemRows(`WHERE type = 'anchor_collision_limit' ORDER BY created_at`);
+    expect(all).toHaveLength(2);
+    expect(all.find((i) => i.id === old.id)).toMatchObject({ status: 'resolved', resolution: 'superseded' });
+  });
+
+  it('額度用完時沒有撞號的鍵照樣登錄成功，不增加警示', async () => {
+    await setLimit(1);
+    await registrantHolds();
+    await claimAs(orgB, (await createProperty(orgB)).anchorId);
+    const b2 = await createProperty(orgB);
+    expect((await claimAs(orgB, b2.anchorId, '9999')).outcome).toBe('keyed');
+    expect(await itemRows(`WHERE type = 'anchor_collision_limit'`)).toEqual([]);
+  });
+
+  it('警示函式只給補建號函式用：app_rw 不能直接呼叫', async () => {
+    await withTx({ kind: 'org', orgId: orgB }, async (tx) => {
+      await expect(tx.query('SELECT registry.raise_collision_limit_alert($1, 1, $2)', [orgB, newUlid()])).rejects.toThrow(/permission denied/);
+    });
     expect(await itemRows()).toEqual([]);
-  });
-
-  it('額度用完後寫一張撞號超限審核單；同一個組織反覆撞只累計次數，不增加項目', async () => {
-    await reachLimit(orgB);
-    const id1 = await hit(orgB);
-    const id2 = await hit(orgB);
-    expect(id2).toBe(id1);
-    const items = await itemRows(`WHERE type = 'anchor_collision_limit'`);
-    expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ id: id1, subject_type: 'org', subject_id: orgB, status: 'open' });
-    expect(items[0].payload).toMatchObject({ claimant_org_id: orgB, limit: 1, hits: 2 });
-  });
-
-  it('超過 24 小時還沒人處理的舊項目被取代，開新的一張', async () => {
-    await reachLimit(orgB);
-    const old = await hit(orgB);
-    await owner(() => db.query(`UPDATE registry.review_items SET created_at = now() - interval '30 hours' WHERE id = $1`, [old]));
-    const next = await hit(orgB);
-    expect(next).not.toBe(old);
-    expect((await itemRows(`WHERE id = '${old}'`))[0]).toMatchObject({ status: 'resolved', resolution: 'superseded' });
-  });
-
-  it('沒有組織脈絡時拒絕', async () => {
-    await expect(withTx({ kind: 'control' }, (tx) => tx.query('SELECT registry.record_collision_limit_hit($1)', [newUlid()]))).rejects.toThrow(/組織脈絡/);
   });
 });
 
 describe('審核台', () => {
-  let operatorId: string;
+  let asOperator: Awaited<ReturnType<typeof makeOperator>>;
   beforeEach(async () => {
-    operatorId = newUlid();
-    const partyId = newUlid();
-    await owner(async () => {
-      await db.query(`INSERT INTO control.parties (id, email, display_name) VALUES ($1, 'ops@example.com', '營運者')`, [partyId]);
-      await db.query(`INSERT INTO control.users (id, party_id) VALUES ($1, $2)`, [operatorId, partyId]);
-      await db.query(`INSERT INTO control.org_memberships (id, org_id, user_id, role) VALUES ($1, $2, $3, 'admin')`, [newUlid(), PLATFORM_ORG_ID, operatorId]);
-    });
+    asOperator = await makeOperator();
   });
-  const asOperator = <T>(fn: (tx: OrgTx) => Promise<T>) =>
-    withTx({ kind: 'operator', operatorId, orgId: PLATFORM_ORG_ID, ticketId: 'desk:test' }, (tx) => fn(tx as OrgTx));
 
   it('佇列列出撞號項目：宣稱方、宣稱的鍵與建立時間', async () => {
     await registrantHolds();
@@ -376,13 +479,14 @@ describe('審核台', () => {
     });
   });
 
-  it('撞號超限項目顯示宣稱方、上限與次數', async () => {
+  it('超過次數的警示顯示宣稱方、上限與次數', async () => {
     await setLimit(1);
     await registrantHolds();
     await claimAs(orgB, (await createProperty(orgB)).anchorId);
-    const itemId = await withTx({ kind: 'org', orgId: orgB }, async (tx) => (await tx.query<{ v: string }>('SELECT registry.record_collision_limit_hit($1) AS v', [newUlid()])).rows[0].v);
+    await claimAs(orgB, (await createProperty(orgB)).anchorId);
+    const [alert] = await itemRows(`WHERE type = 'anchor_collision_limit'`);
     const rows = await asOperator(async (tx) => (await tx.query<Record<string, any>>(`SELECT * FROM registry.review_queue('open', 200)`)).rows); // eslint-disable-line @typescript-eslint/no-explicit-any
-    expect(rows.find((r) => r.id === itemId)).toMatchObject({
+    expect(rows.find((r) => r.id === alert.id)).toMatchObject({
       type: 'anchor_collision_limit',
       summary: { claimant_org_name: '乙方管理公司', limit: 1, hits: 1 },
     });
@@ -394,18 +498,12 @@ describe('審核台', () => {
 });
 
 describe('既有行為不變', () => {
-  it('別的組織的錨點與不存在的錨點，錯誤完全相同', async () => {
+  it('別的組織的物件與不存在的物件，錯誤完全相同', async () => {
     const mine = await createProperty(orgA);
     const asB = await claimAs(orgB, mine.anchorId).catch((e) => e);
     const missing = await claimAs(orgB, newUlid()).catch((e) => e);
-    expect(asB).toMatchObject({ code: 'P0002' });
+    expect(asB).toMatchObject({ code: 'P0002', message: '物件不存在' });
     expect({ code: asB.code, message: asB.message }).toEqual({ code: missing.code, message: missing.message });
     expect(await itemRows()).toEqual([]);
-  });
-
-  it('已建號的錨點不能再補建號', async () => {
-    const { anchorId } = await createProperty(orgA);
-    await claimAs(orgA, anchorId);
-    await expect(claimAs(orgA, anchorId, '9')).rejects.toMatchObject({ code: '55000' });
   });
 });
