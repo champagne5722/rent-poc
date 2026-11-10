@@ -3,7 +3,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  BOT_LOGIN,
   MARKER,
+  NO_PRICE_NOTE,
   REVIEW_SCHEMA,
   buildRequest,
   buildUserText,
@@ -12,10 +14,13 @@ import {
   effectiveInputBudget,
   estimateCost,
   extractAvoidTerms,
+  findReviewComment,
   gate,
   hasAcceptanceSection,
+  isReviewBody,
   limitsFromEnv,
   parseReview,
+  renderRetainedReview,
   renderReview,
   renderSkip,
   sanitize,
@@ -216,13 +221,47 @@ test('結論：沒有問題時寫「沒有退回項」', () => {
 });
 
 test('每一面最多 10 項，結論的數量也只算顯示的項目', () => {
-  const many = Array.from({ length: 15 }, (_, i) => ({ location: `a.ts:${i}`, title: `問題 ${i}`, detail: 'd', rule: 'r', blocking: false }));
+  const many = Array.from({ length: 15 }, (_, i) => ({ location: `a.ts:${i}`, title: `問題 ${i}`, detail: 'd', rule: 'r', blocking: true }));
   const review = parseReview(JSON.stringify({ standards: { findings: many }, spec: { note: '', criteria: [], findings: many }, security: { applicable: false, checks: [] } }));
   assert.equal(countBlocking(review), 20);
   const body = renderReview(review, { model: 'm', effort: 'medium', hasAcceptance: true });
   assert.equal(body.split('\n')[1], '有 20 個退回項');
   assert.equal((body.match(/問題 \d+/g) ?? []).length, 20);
   assert.doesNotMatch(body, /問題 10/);
+});
+
+test('結論只算 blocking 為真的項目，blocking 為假的列在「建議」小節', () => {
+  const finding = (title, blocking) => ({ location: 'a.ts:1', title, detail: 'd', rule: 'r', blocking });
+  const review = parseReview(
+    JSON.stringify({
+      standards: { findings: [finding('必須修一', true), finding('建議一', false)] },
+      spec: { note: '', criteria: [], findings: [finding('建議二', false)] },
+      security: { applicable: false, checks: [] },
+    }),
+  );
+  assert.equal(countBlocking(review), 1);
+  const body = renderReview(review, { model: 'm', effort: 'medium', hasAcceptance: true });
+  assert.equal(body.split('\n')[1], '有 1 個退回項');
+  const [before, advice] = body.split('## 建議');
+  assert.match(before, /必須修一/);
+  assert.doesNotMatch(before, /建議一|建議二/);
+  assert.match(advice, /Standards：.*建議一/);
+  assert.match(advice, /Spec：.*建議二/);
+  assert.doesNotMatch(advice, /必須修一/);
+});
+
+test('只有 blocking 為假的項目時，結論寫「沒有退回項」', () => {
+  const review = parseReview(
+    JSON.stringify({
+      standards: { findings: [{ location: '', title: '小建議', detail: 'd', rule: '', blocking: false }] },
+      spec: { note: '', criteria: [{ criterion: 'A', status: 'met', evidence: 'x' }], findings: [] },
+      security: { applicable: false, checks: [] },
+    }),
+  );
+  assert.equal(countBlocking(review), 0);
+  const body = renderReview(review, { model: 'm', effort: 'medium', hasAcceptance: true });
+  assert.equal(body.split('\n')[1], '沒有退回項');
+  assert.match(body, /## 建議/);
 });
 
 test('安全面：動到 migration 時才出現，失敗的檢查點算退回項', () => {
@@ -254,8 +293,8 @@ test('PR 本文沒有驗收條件：留言寫明，並告訴模型', async () =>
 
 test('重跑時更新同一則留言，不新增', async () => {
   const github = fakeGithub([
-    { id: 11, body: '人寫的留言', user: { type: 'User' } },
-    { id: 22, body: `${MARKER}\n舊的審查`, user: { type: 'Bot' } },
+    { id: 11, body: '人寫的留言', user: { type: 'User', login: 'someone' } },
+    { id: 22, body: `${MARKER}\n舊的審查`, user: { type: 'Bot', login: BOT_LOGIN } },
   ]);
   const t = setup({ github });
   await runReview(t.deps);
@@ -265,10 +304,88 @@ test('重跑時更新同一則留言，不新增', async () => {
 });
 
 test('人貼了帶標記的留言時，不更新它', async () => {
-  const github = fakeGithub([{ id: 11, body: `${MARKER} 引用`, user: { type: 'User' } }]);
+  const github = fakeGithub([{ id: 11, body: `${MARKER} 引用`, user: { type: 'User', login: 'someone' } }]);
   await upsertComment(github, 7, '新留言');
   assert.equal(github.state.updated.length, 0);
   assert.equal(github.state.created.length, 1);
+});
+
+test('找既有留言：比對作者 login，其他機器人貼的帶標記留言不更新', async () => {
+  const other = { id: 5, body: `${MARKER}\n別的機器人`, user: { type: 'Bot', login: 'dependabot[bot]' } };
+  const mine = { id: 6, body: `${MARKER}\n我的審查`, user: { type: 'Bot', login: BOT_LOGIN } };
+  assert.equal(findReviewComment([other]), null);
+  assert.equal(findReviewComment([other, mine]).id, 6);
+  const github = fakeGithub([other]);
+  await upsertComment(github, 7, '新留言');
+  assert.equal(github.state.updated.length, 0);
+  assert.equal(github.state.created.length, 1);
+});
+
+const REVIEWED_BODY = `${MARKER}\n有 2 個退回項\n\n## Standards 面\n\n- 舊的問題`;
+const failingClient = (status, type, message) =>
+  fakeClient({
+    create: () => {
+      throw apiError(status, type, message);
+    },
+  });
+
+test('isReviewBody：審查留言是，「這次沒有審查」與人寫的不是', () => {
+  assert.equal(isReviewBody(REVIEWED_BODY), true);
+  assert.equal(isReviewBody(`${MARKER}\n沒有退回項\n`), true);
+  assert.equal(isReviewBody(renderSkip({ reason: '額度', detail: '', model: 'm', sha: 'abc' })), false);
+  assert.equal(isReviewBody('人寫的留言'), false);
+  assert.equal(isReviewBody(null), false);
+});
+
+test('renderRetainedReview：只在標記行後加一行，其餘原樣保留', () => {
+  const body = renderRetainedReview(REVIEWED_BODY, { reason: '額度用完', sha: 'abcdef1234567890' });
+  const lines = body.split('\n');
+  assert.equal(lines[0], MARKER);
+  assert.equal(lines[1], '最近一次（commit abcdef12）沒有審查：額度用完。下面是上一次的審查結果');
+  assert.deepEqual(lines.slice(2), REVIEWED_BODY.split('\n').slice(1));
+});
+
+test('失敗時 PR 上已有審查：保留原本的審查內容，開頭加一行說明', async () => {
+  const github = fakeGithub([{ id: 22, body: REVIEWED_BODY, user: { type: 'Bot', login: BOT_LOGIN } }]);
+  const t = setup({ github, client: failingClient(401, 'authentication_error', 'invalid x-api-key') });
+  const res = await runReview(t.deps);
+  assert.equal(res.kind, 'auth');
+  assert.equal(github.state.created.length, 0);
+  assert.equal(github.state.updated.length, 1);
+  const lines = github.state.updated[0].body.split('\n');
+  assert.equal(lines[0], MARKER);
+  assert.match(lines[1], /^最近一次（commit abcdef12）沒有審查：.*金鑰失效.*。下面是上一次的審查結果$/);
+  assert.deepEqual(lines.slice(2), REVIEWED_BODY.split('\n').slice(1));
+  // 工作摘要仍寫這次沒有審查
+  assert.equal(t.summaries[0].split('\n')[1], '這次沒有審查');
+});
+
+test('連續失敗兩次：說明行只留最新一行，仍保留最初的審查內容', async () => {
+  const github = fakeGithub([{ id: 22, body: REVIEWED_BODY, user: { type: 'Bot', login: BOT_LOGIN } }]);
+  await runReview(setup({ github, client: failingClient(500, 'api_error', 'boom') }).deps);
+  github.state.comments = [{ id: 22, body: github.state.updated[0].body, user: { type: 'Bot', login: BOT_LOGIN } }];
+  github.state.pull = makePr({ head: { sha: '1234567890abcdef', repo: { full_name: REPO } } });
+  await runReview(setup({ github, client: failingClient(500, 'api_error', 'boom') }).deps);
+  const body = github.state.updated[1].body;
+  assert.equal((body.match(/最近一次（commit /g) ?? []).length, 1);
+  assert.match(body.split('\n')[1], /最近一次（commit 12345678）/);
+  assert.match(body, /舊的問題/);
+});
+
+test('失敗時 PR 上沒有審查：寫「這次沒有審查」的留言', async () => {
+  const github = fakeGithub();
+  await runReview(setup({ github, client: failingClient(500, 'api_error', 'boom') }).deps);
+  assert.equal(github.state.created.length, 1);
+  assert.equal(github.state.created[0].body.split('\n')[1], '這次沒有審查');
+});
+
+test('失敗時 PR 上只有上一次的「這次沒有審查」：直接更新成新的失敗留言', async () => {
+  const old = renderSkip({ reason: '舊原因', detail: '', model: 'm', sha: 'abc' });
+  const github = fakeGithub([{ id: 22, body: old, user: { type: 'Bot', login: BOT_LOGIN } }]);
+  await runReview(setup({ github, client: failingClient(500, 'api_error', 'boom') }).deps);
+  assert.equal(github.state.updated.length, 1);
+  assert.equal(github.state.updated[0].body.split('\n')[1], '這次沒有審查');
+  assert.doesNotMatch(github.state.updated[0].body, /舊原因/);
 });
 
 // ---------------------------------------------------------------------------
@@ -495,7 +612,42 @@ test('預設上限與環境變數覆寫', () => {
 test('費用：Sonnet 5.5 每百萬 token 輸入 2 美元、輸出 10 美元、快取讀取 0.1 美元', () => {
   const c = estimateCost('claude-sonnet-5-5', { input_tokens: 1_000_000, output_tokens: 1_000_000, cache_read_input_tokens: 1_000_000, cache_creation_input_tokens: 0 });
   assert.equal(c, 12.1);
-  assert.equal(estimateCost('unknown-model', { input_tokens: 1 }), null);
+  assert.equal(estimateCost('unknown-model', { input_tokens: 1 }), 2 / 1_000_000);
+  assert.equal(estimateCost('claude-sonnet-5-5', null), null);
+});
+
+test('模型不在價格表：以價格表最貴的單價估算，不低估', () => {
+  const usage = { input_tokens: 1_000_000, output_tokens: 1_000_000, cache_read_input_tokens: 1_000_000, cache_creation_input_tokens: 1_000_000 };
+  // 最貴單價：輸入 2、快取寫入 2.5、快取讀取 0.2、輸出 10
+  assert.equal(estimateCost('some-future-model', usage), 2 + 2.5 + 0.2 + 10);
+  for (const known of ['claude-sonnet-5-5', 'claude-sonnet-5', 'claude-haiku-5-5']) {
+    assert.ok(estimateCost('some-future-model', usage) >= estimateCost(known, usage));
+  }
+});
+
+test('模型不在價格表：留言的用量寫明以最貴的單價估算，表內的模型不寫', () => {
+  const review = parseReview(JSON.stringify({ standards: { findings: [] }, spec: { note: '', criteria: [], findings: [] }, security: { applicable: false, checks: [] } }));
+  const usage = { input_tokens: 1000, output_tokens: 100 };
+  const unknown = renderReview(review, { model: 'some-future-model', effort: 'medium', usage, cost: estimateCost('some-future-model', usage), hasAcceptance: true });
+  assert.match(unknown, new RegExp(NO_PRICE_NOTE));
+  assert.doesNotMatch(unknown, /估計費用：未知/);
+  const known = renderReview(review, { model: 'claude-sonnet-5-5', effort: 'medium', usage, cost: estimateCost('claude-sonnet-5-5', usage), hasAcceptance: true });
+  assert.doesNotMatch(known, new RegExp(NO_PRICE_NOTE));
+});
+
+test('模型不在價格表：花費上限仍然限制輸入長度，最壞情況的費用不超過上限', async () => {
+  const limits = limitsFromEnv({ REVIEW_MAX_COST_USD: '0.2' });
+  const b = effectiveInputBudget('some-future-model', limits);
+  assert.equal(b.costCapApplied, true);
+  // 輸入全價（最貴單價 2.5）加輸出用滿（單價 10），不超過上限
+  const worst = (b.maxInputTokens * 2.5 + limits.maxOutputTokens * 10) / 1_000_000;
+  assert.ok(worst <= 0.2 + 1e-9);
+  // 整個流程：表外模型照常審查，留言有估計費用與說明
+  const t = setup({ env: { REVIEW_MODEL: 'some-future-model', REVIEW_MAX_COST_USD: '0.2' } });
+  const res = await runReview(t.deps);
+  assert.equal(res.status, 'reviewed');
+  assert.equal(typeof res.cost, 'number');
+  assert.match(t.github.state.created[0].body, new RegExp(NO_PRICE_NOTE));
 });
 
 test('花費上限推出輸入上限；未知模型只用 token 上限', () => {
@@ -503,7 +655,12 @@ test('花費上限推出輸入上限；未知模型只用 token 上限', () => {
   const b = effectiveInputBudget('claude-sonnet-5-5', limits);
   assert.equal(b.costCapApplied, true);
   assert.ok(b.maxInputTokens < 120_000 && b.maxInputTokens > 0);
-  assert.deepEqual(effectiveInputBudget('other', limits), { maxInputTokens: 120_000, costCapApplied: false });
+  // 模型不在價格表時用最貴的單價推算，上限更保守
+  const fallback = effectiveInputBudget('other', limits);
+  assert.equal(fallback.costCapApplied, true);
+  assert.ok(fallback.maxInputTokens <= b.maxInputTokens);
+  // 預設上限夠寬時，只剩 token 上限
+  assert.deepEqual(effectiveInputBudget('other', limitsFromEnv({})), { maxInputTokens: 120_000, costCapApplied: false });
 });
 
 test('extractAvoidTerms：只取有 _Avoid_ 的詞條', () => {
@@ -581,4 +738,13 @@ test('createGithubClient：分頁讀留言，標頭帶 token，錯誤訊息不�
   assert.equal(all.length, 101);
   assert.equal(seen[0].auth, 'Bearer ghs_secret');
   await assert.rejects(gh.getPull(7), (err) => err.status === 403 && !/ghs_secret/.test(err.message));
+});
+
+test('提示詞的義務詞規則：「不得」表示禁止是正確用詞，並限定只約束需求文字', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const prompt = await readFile(new URL('../../.github/pr-review-prompt.md', import.meta.url), 'utf8');
+  assert.match(prompt, /表示禁止時用「不得」/);
+  assert.match(prompt, /正例：「檔案不得超過 10 MB」/);
+  assert.match(prompt, /反例：.*「不可以」「不能」「禁止」/);
+  assert.match(prompt, /這條只約束 spec、票與需求描述。畫面文字與程式註解不照這條挑/);
 });

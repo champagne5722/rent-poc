@@ -3,6 +3,8 @@
 
 /** 留言的識別標記。重跑時用它找到同一則留言並更新。 */
 export const MARKER = '<!-- pr-review-bot:mil-215 -->';
+/** 審查留言的作者。GITHUB_TOKEN 發的留言，作者 login 固定是這個。 */
+export const BOT_LOGIN = 'github-actions[bot]';
 export const SKIP_LABEL = 'skip-ai-review';
 export const ALLOWED_BASES = ['dev'];
 
@@ -264,10 +266,22 @@ export function priceFor(model) {
   return PRICES[model] ?? null;
 }
 
-/** 回傳美元。沒有該模型的價格時回傳 null。 */
+/** 價格表裡每一欄最貴的單價。模型不在價格表時，用它估算，讓花費上限仍然有效。 */
+export function maxPrice() {
+  const all = Object.values(PRICES);
+  const top = (key) => Math.max(...all.map((p) => p[key]));
+  return { input: top('input'), cacheWrite: top('cacheWrite'), cacheRead: top('cacheRead'), output: top('output') };
+}
+
+/** 模型在價格表時回傳它的單價，不在時回傳最貴的單價。 */
+export function priceOrMax(model) {
+  return priceFor(model) ?? maxPrice();
+}
+
+/** 回傳美元。沒有用量時回傳 null。模型不在價格表時，以最貴的單價估算。 */
 export function estimateCost(model, usage) {
-  const p = priceFor(model);
-  if (!p || !usage) return null;
+  if (!usage) return null;
+  const p = priceOrMax(model);
   const M = 1_000_000;
   const input = usage.input_tokens ?? 0;
   const write = usage.cache_creation_input_tokens ?? 0;
@@ -278,11 +292,10 @@ export function estimateCost(model, usage) {
 
 /**
  * 由花費上限推出輸入 token 上限。最壞情況 = 輸入全價加上輸出用滿。
- * 回傳 { maxInputTokens, costCapApplied }。模型沒有價格資料時，只用 token 上限。
+ * 回傳 { maxInputTokens, costCapApplied }。模型沒有價格資料時，用價格表最貴的單價推算。
  */
 export function effectiveInputBudget(model, limits) {
-  const p = priceFor(model);
-  if (!p) return { maxInputTokens: limits.maxInputTokens, costCapApplied: false };
+  const p = priceOrMax(model);
   const outCost = (limits.maxOutputTokens * p.output) / 1_000_000;
   const room = limits.maxCostUsd - outCost;
   const byCost = Math.floor((Math.max(room, 0) * 1_000_000) / Math.max(p.input, p.cacheWrite));
@@ -425,17 +438,23 @@ function cell(text) {
   return sanitize(text).replace(/\|/g, '\\|');
 }
 
-function findingLine(f) {
+function findingLine(f, face = '') {
   const loc = f.location ? `\`${sanitize(f.location).replace(/`/g, '')}\` ` : '';
   const flag = f.blocking ? '（合併前必須修）' : '（建議）';
   const rule = f.rule ? ` 依據：${sanitize(f.rule)}。` : '';
-  return `- ${loc}${sanitize(f.title)}${flag}。${sanitize(f.detail)}${rule}`;
+  return `- ${face}${loc}${sanitize(f.title)}${flag}。${sanitize(f.detail)}${rule}`;
 }
 
-/** 計算退回項數量。Standards 與 Spec 的問題、Spec 未達成與部分達成的驗收條件、安全面失敗的檢查點。 */
+/** 取出每一面顯示的項目，依 blocking 分成必須修與建議。 */
+function shownFindings(list, limits) {
+  const shown = list.slice(0, limits.maxFindings);
+  return { must: shown.filter((f) => f.blocking), advice: shown.filter((f) => !f.blocking) };
+}
+
+/** 計算退回項數量。Standards 與 Spec 中 blocking 為真的問題、Spec 未達成與部分達成的驗收條件、安全面失敗的檢查點。建議項不算。 */
 export function countBlocking(review, limits = DEFAULT_LIMITS) {
-  const std = review.standards.findings.slice(0, limits.maxFindings).length;
-  const specFind = review.spec.findings.slice(0, limits.maxFindings).length;
+  const std = shownFindings(review.standards.findings, limits).must.length;
+  const specFind = shownFindings(review.spec.findings, limits).must.length;
   const crit = review.spec.criteria.filter((c) => c.status === 'not_met' || c.status === 'partial').length;
   const sec = review.security.applicable ? review.security.checks.filter((c) => c.status === 'fail').length : 0;
   return std + specFind + crit + sec;
@@ -454,9 +473,11 @@ export function renderReview(review, meta) {
   const n = countBlocking(review, limits);
   const out = [MARKER, conclusionLine(n), ''];
 
+  const std = shownFindings(review.standards.findings, limits);
+  const specFound = shownFindings(review.spec.findings, limits);
+
   out.push('## Standards 面', '');
-  const std = review.standards.findings.slice(0, limits.maxFindings);
-  out.push(...(std.length ? std.map(findingLine) : ['沒有發現問題。']), '');
+  out.push(...(std.must.length ? std.must.map(findingLine) : ['沒有發現必須修的問題。']), '');
 
   out.push('## Spec 面', '');
   if (!meta.hasAcceptance) {
@@ -470,9 +491,14 @@ export function renderReview(review, meta) {
     for (const c of criteria) out.push(`| ${cell(c.criterion)} | ${STATUS_TEXT[c.status]} | ${cell(c.evidence)} |`);
     out.push('');
   }
-  const spec = review.spec.findings.slice(0, limits.maxFindings);
-  if (spec.length) out.push(...spec.map(findingLine), '');
-  else if (!criteria.length && meta.hasAcceptance) out.push('沒有發現問題。', '');
+  if (specFound.must.length) out.push(...specFound.must.map(findingLine), '');
+  else if (!criteria.length && meta.hasAcceptance) out.push('沒有發現必須修的問題。', '');
+
+  if (std.advice.length || specFound.advice.length) {
+    out.push('## 建議', '', '以下項目不算退回項。', '');
+    out.push(...std.advice.map((f) => findingLine(f, 'Standards：')));
+    out.push(...specFound.advice.map((f) => findingLine(f, 'Spec：')), '');
+  }
 
   if (review.security.applicable) {
     out.push('## 安全面的檢查點', '');
@@ -490,6 +516,8 @@ export function renderReview(review, meta) {
   return out.join('\n');
 }
 
+export const NO_PRICE_NOTE = '這個模型沒有價格資料，以最貴的單價估算';
+
 function renderFooter(meta) {
   const lines = ['## 用量', ''];
   const u = meta.usage;
@@ -499,8 +527,9 @@ function renderFooter(meta) {
     lines.push(
       `- 模型：\`${meta.model}\`，effort：\`${meta.effort}\`，單次呼叫。`,
       `- 輸入 ${u.input_tokens ?? 0} token，快取寫入 ${write}，快取讀取 ${read}，輸出 ${u.output_tokens ?? 0} token。`,
-      `- 估計費用：${formatUsd(meta.cost)}${meta.cost === null ? '（該模型沒有價格資料）' : ''}。`,
+      `- 估計費用：${formatUsd(meta.cost)}${meta.cost === null ? '（沒有用量資料）' : ''}。`,
     );
+    if (typeof meta.cost === 'number' && !priceFor(meta.model)) lines.push(`- ${NO_PRICE_NOTE}。`);
   } else {
     lines.push(`- 模型：\`${meta.model}\`。`);
   }
@@ -520,9 +549,35 @@ function renderFooter(meta) {
   return lines;
 }
 
+export const SKIP_CONCLUSION = '這次沒有審查';
+const RETAINED_NOTICE_PREFIX = '最近一次（commit ';
+
+/** 是不是一則有效的審查留言：帶標記、不是「這次沒有審查」。 */
+export function isReviewBody(body) {
+  if (typeof body !== 'string' || !body.startsWith(MARKER)) return false;
+  const lines = body.split('\n');
+  const idx = lines[1]?.startsWith(RETAINED_NOTICE_PREFIX) ? 2 : 1;
+  const head = lines[idx] ?? '';
+  return head === conclusionLine(0) || /^有 \d+ 個退回項$/.test(head);
+}
+
+/** 找到審查機器人的留言。作者 login 必須是 github-actions[bot]，本文必須帶標記。 */
+export function findReviewComment(comments) {
+  return comments.find((c) => typeof c.body === 'string' && c.body.includes(MARKER) && c.user?.login === BOT_LOGIN) ?? null;
+}
+
+/** 保留上一次的審查內容，只在標記行後加一行說明最近一次為什麼沒有審查。 */
+export function renderRetainedReview(existingBody, { reason, sha }) {
+  const lines = existingBody.split('\n');
+  const rest = lines[1]?.startsWith(RETAINED_NOTICE_PREFIX) ? lines.slice(2) : lines.slice(1);
+  const short = sha ? String(sha).slice(0, 8) : '未知';
+  const notice = `${RETAINED_NOTICE_PREFIX}${short}）沒有審查：${sanitize(reason)}。下面是上一次的審查結果`;
+  return [MARKER, notice, ...rest].join('\n');
+}
+
 /** 組出「這次沒有審查」的留言。 */
 export function renderSkip({ reason, detail, model, sha }) {
-  const lines = [MARKER, '這次沒有審查', '', `原因：${sanitize(reason)}。`];
+  const lines = [MARKER, SKIP_CONCLUSION, '', `原因：${sanitize(reason)}。`];
   if (detail) lines.push(`錯誤資訊：${sanitize(detail)}。`);
   lines.push('', '主控請改用子代理審查這張 PR。');
   if (model) lines.push('', `模型：\`${model}\`。`);
