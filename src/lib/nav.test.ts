@@ -1,4 +1,7 @@
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { isAuthScreen } from './auth/auth-screens';
 import {
   NAV_ITEMS,
   CREATE_CONTRACT_HREF,
@@ -148,6 +151,36 @@ describe('resolvePageTitle（後台 header 標題，MIL-106）', () => {
 
   it('不認得的路徑沒有標題', () => {
     expect(resolvePageTitle('/nowhere')).toBe('');
+  });
+});
+
+// 頂部列左側顯示區域名稱（MIL-173、MIL-174）。後台殼層底下的每一頁都要有名稱，不能留空。
+// 路徑從 src/app 的 page.tsx 推出來，新增頁面時不用回來改測試。
+function adminPagePaths(): string[] {
+  const root = join(process.cwd(), 'src/app');
+  const paths: string[] = [];
+  const walk = (dir: string, segments: string[]) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      // 路由群組 (list) 不進網址；動態區段 [id] 換成範例值
+      const name = entry.name;
+      const next = name.startsWith('(') ? segments : [...segments, name.startsWith('[') ? 'x' : name];
+      if (existsSync(join(dir, name, 'page.tsx'))) paths.push(`/${next.join('/')}`);
+      walk(join(dir, name), next);
+    }
+  };
+  if (existsSync(join(root, 'page.tsx'))) paths.push('/');
+  walk(root, []);
+  return paths.filter((p) => !p.startsWith('/api') && !p.startsWith('/demo') && !isAuthScreen(p) && shellFor(p) === 'admin');
+}
+
+describe('後台每一頁都有頂部列的區域名稱（MIL-174）', () => {
+  it('找得到後台頁面', () => {
+    expect(adminPagePaths()).toEqual(expect.arrayContaining(['/', '/contracts', '/desk', '/practice', '/practitioner', '/settings/members']));
+  });
+
+  it.each(adminPagePaths())('%s 有區域名稱', (pathname) => {
+    expect(resolvePageTitle(pathname)).not.toBe('');
   });
 });
 

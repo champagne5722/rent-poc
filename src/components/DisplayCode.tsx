@@ -13,29 +13,10 @@ const HINT = '顯示編碼只供口頭溝通，不保證唯一';
 export function DisplayCode({ code }: { code: string | null | undefined }) {
   if (!code) return <Typography.Text type="secondary">補建號後產生</Typography.Text>;
   return (
-    <Typography.Text code title={HINT} style={{ whiteSpace: 'nowrap' }}>
+    <Typography.Text code title={HINT}>
       {code}
     </Typography.Text>
   );
-}
-
-/** 合約列表用：物件 ID 到顯示編碼的對照。物件載入前、讀不到的物件都不在對照表裡。 */
-export function useDisplayCodes(): Map<string, string | null> {
-  const [codes, setCodes] = useState<Map<string, string | null>>(new Map());
-  useEffect(() => {
-    let stale = false;
-    void (async () => {
-      const res = await fetch('/api/properties');
-      if (!res.ok || stale) return;
-      const json = (await res.json()) as { data?: Property[] };
-      if (stale) return;
-      setCodes(new Map((json.data ?? []).map((p) => [p.id, p.unit?.display_code ?? null])));
-    })();
-    return () => {
-      stale = true;
-    };
-  }, []);
-  return codes;
 }
 
 /** 合約詳情頁用：單一物件的顯示編碼。物件 ID 為空或讀不到時回 undefined（畫面不顯示這一列）。 */

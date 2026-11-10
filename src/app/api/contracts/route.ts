@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { authorize } from '@/lib/authorize';
 import { attachContract, createLeaseCase } from '@/lib/case-store';
+import { buildSigningProgress } from '@/lib/contract-list-load';
 import { createContract, listContracts } from '@/lib/contracts';
 import {
   CONTRACT_TYPES,
@@ -15,8 +16,6 @@ import { isUlid } from '@/lib/pg/ulid';
 import { getProperty } from '@/lib/properties';
 import { routingInputError } from '@/lib/signature-routing';
 import { jsonOk, jsonError } from '@/lib/http';
-import { contractSubject, signing, signingSubjectKey } from '@/lib/signing-module';
-import type { SigningProgressById } from '@/lib/signing-steps';
 
 // 清單與工作台共用。簽署進度一次批次查回整頁合約，以合約編號為鍵（MIL-72）。
 // 沒有簽署任務的合約（草稿、沒有回填的舊合約）不在 signing_progress 裡。
@@ -28,22 +27,7 @@ export async function GET() {
   });
   if (!read.ok) return read.response;
   const contracts = read.value;
-  // 簽署進度另開組織交易批次查，不佔著清單的連線。查詢次數與合約數量無關
-  const progress = await signing.getProgressBatch(contracts.map((c) => contractSubject(c.id)));
-  const signingProgress: Record<string, NonNullable<SigningProgressById[string]>> = {};
-  for (const c of contracts) {
-    const entry = progress.get(signingSubjectKey(contractSubject(c.id)));
-    if (!entry) continue;
-    signingProgress[c.id] = {
-      status: entry.status,
-      signers: entry.signers.map(({ role, name, status, concurrentRoles }) => ({
-        role,
-        name,
-        status,
-        ...(concurrentRoles ? { concurrentRoles } : {}),
-      })),
-    };
-  }
+  const signingProgress = await buildSigningProgress(contracts);
   return jsonOk({ data: contracts, signing_progress: signingProgress });
 }
 

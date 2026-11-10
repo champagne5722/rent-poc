@@ -181,7 +181,8 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
       </Layout.Sider>
 
       <Layout>
-        <ShellHeader start={<Typography.Text strong>{currentLabel}</Typography.Text>} />
+        {/* 頂部列左側是區域名稱，用次要文字色，不與頁首的頁面標題競爭。頁面標題由頁面的 PageHeader 負責（MIL-174） */}
+        <ShellHeader start={<Typography.Text type="secondary">{currentLabel}</Typography.Text>} />
         <Layout.Content className={styles.content}>{children}</Layout.Content>
       </Layout>
     </Layout>

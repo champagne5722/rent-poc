@@ -23,7 +23,7 @@ const CASE = ['src/components/CaseDetail.tsx'];
 
 export const PAGES: PageSpec[] = [
   { id: '01-workbench', title: '工作台', phase: 4, layout: '總覽', role: 'owner', route: '/', sources: ['src/app/page.tsx'] },
-  { id: '02-contracts-list', title: '合約列表', phase: 3, layout: '列表', role: 'owner', route: '/contracts', sources: ['src/app/contracts/page.tsx'] },
+  { id: '02-contracts-list', title: '合約列表', phase: 3, layout: '列表', role: 'owner', route: '/contracts', sources: ['src/app/contracts/(list)/page.tsx', 'src/components/ContractList.tsx'] },
   {
     id: '03-contract-detail-signing',
     title: '合約詳情（簽署中）',
