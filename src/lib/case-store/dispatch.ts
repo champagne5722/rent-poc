@@ -33,12 +33,14 @@ export interface DispatchOptions {
 export function snapshotOf(record: CaseRecord): CaseSnapshot {
   if (record.kind === 'lease') {
     if (record.businessType === null) throw new Error(`租賃案件 ${record.id} 沒有業務類型`);
+    if (record.caseKind === 'management') throw new Error(`租賃案件 ${record.id} 的案件種類不一致`);
     return {
       kind: 'lease',
       id: record.id,
       stateVersion: record.stateVersion,
       currentContractId: record.currentContractId,
       state: record.state as Extract<CaseSnapshot, { kind: 'lease' }>['state'],
+      caseKind: record.caseKind,
       businessType: record.businessType,
     };
   }

@@ -35,7 +35,7 @@
 | 主辦組織 | 案件主辦組織的成員 | `isHostOrgMember` 為真，且 `orgRole` 在該列 `hostRoles[變體]` 內 |
 | 案件成員 | 在 `case_members` 有關係的 party | `relations` 其中之一在該列 `relations[變體]` 內 |
 
-任一條通過就允許。都不通過時回傳第一條路徑的原因。變體是業務類型（`self_managed`、`managed`、`master_lease`），委託管理案件是 `management`。同一個關係在不同變體意義不同：`lessor` 在自管是出租人，在代管是屋主，在包租是包租業者。
+任一條通過就允許。都不通過時回傳第一條路徑的原因。變體由案件種類推出（MIL-198，`src/lib/cases/rule-variant.ts`）：`lease_self_managed`、`lease_managed`、`master_lease`（包租案件）、`sublease`（轉租案件）、`management`（委託管理案件）。租賃案件再依業務類型分自管與代管。包租案件沿用租賃自管的規則（待法務確認），轉租案件沿用原本業務類型 `master_lease` 的規則。同一個關係在不同變體意義不同：`lessor` 在租賃自管是出租人，在租賃代管是屋主，在轉租是包租業者。`src/lib/access/case-kind-equivalence.test.ts` 逐格比對改名前後的矩陣，任何一格的結果變了就是錯。
 
 ### 檢查順序與原因碼
 
@@ -92,7 +92,7 @@
 
 | 動作 | 對應 P0-09 列或 ADR |
 |---|---|
-| `case.read_summary` | 讀租期與狀態，包租案件的所有權人只有這一項（AC5） |
+| `case.read_summary` | 讀租期與狀態，轉租案件的所有權人只有這一項（AC5） |
 | `contract.read`、`ledger.read` | 讀合約與帳務 |
 | `contract.void`、`contract.copy`、`contract.resend`、`contract.sign_link`、`contract.refetch_files`、`contract.simulate_signing` | 合約生命週期（MIL-108 剩餘範圍）：與擬約送簽同一批人，差別在允許的案件狀態 |
 | `report.read_owner` | 讀屋主報表 |

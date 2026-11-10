@@ -63,6 +63,7 @@ function successor(overrides: Partial<SuccessorCaseInput> = {}): SuccessorCaseIn
     caseId: 'case-2',
     rentalUnitId: 'unit-1',
     predecessorCaseId: 'case-1',
+    predecessorCaseKind: 'lease',
     handoverId: 'ho-1',
     receiverOrg: { orgId: 'org-pm-2', kind: 'practice' },
     businessType: 'managed',
@@ -120,7 +121,7 @@ describe('decideCaseCreation：新租賃案件', () => {
   it('建立出來的 draft 案件接得上 decideCaseTransition：送簽進 signing', () => {
     const { case: created } = accepted(decideCaseCreation(newLease(), NOW));
     const next = decideCaseTransition(
-      { kind: 'lease', id: created.id, state: 'draft', stateVersion: created.stateVersion, businessType: 'self_managed', currentContractId: 'contract-1' },
+      { kind: 'lease', id: created.id, state: 'draft', stateVersion: created.stateVersion, caseKind: 'lease', businessType: 'self_managed', currentContractId: 'contract-1' },
       { type: 'contract_sent', contractId: 'contract-1' },
       NOW,
     );
@@ -561,10 +562,23 @@ describe('decideCaseCreation：後繼案件（ADR-0024 決議 2 到 4）', () =>
     expect(reasonCodes(decideCaseCreation(successor({ lesseePartyIds: ['  '] }), NOW))).toEqual(['invalid_party']);
   });
 
+  it('後繼案件沿用原案件的案件種類（MIL-198）：案件與案件事件都記原案件的種類', () => {
+    const result = accepted(decideCaseCreation(successor({ predecessorCaseKind: 'lease' }), NOW));
+    expect(result.case).toMatchObject({ kind: 'lease', caseKind: 'lease' });
+    expect(result.event.payload).toMatchObject({ caseKind: 'lease' });
+  });
+
+  it.each(['management', 'master_lease', 'sublease'] as const)(
+    '原案件是 %s：移交只適用租賃案件 → 擋下 case_kind_not_allowed',
+    (predecessorCaseKind) => {
+      expect(reasonCodes(decideCaseCreation(successor({ predecessorCaseKind }), NOW))).toEqual(['case_kind_not_allowed']);
+    },
+  );
+
   it('後繼案件是 active，接得上 decideCaseTransition：可發起退租', () => {
     const { case: created } = accepted(decideCaseCreation(successor(), NOW));
     const next = decideCaseTransition(
-      { kind: 'lease', id: created.id, state: 'active', stateVersion: 0, businessType: 'managed', currentContractId: null },
+      { kind: 'lease', id: created.id, state: 'active', stateVersion: 0, caseKind: 'lease', businessType: 'managed', currentContractId: null },
       { type: 'start_move_out' },
       NOW,
     );
@@ -572,7 +586,7 @@ describe('decideCaseCreation：後繼案件（ADR-0024 決議 2 到 4）', () =>
   });
 
   it('後繼案件沒有合約，合約輸入一律不接受', () => {
-    const snapshot = { kind: 'lease', id: 'case-2', state: 'active', stateVersion: 0, businessType: 'managed', currentContractId: null } as const;
+    const snapshot = { kind: 'lease', id: 'case-2', state: 'active', stateVersion: 0, caseKind: 'lease', businessType: 'managed', currentContractId: null } as const;
     expect(decideCaseTransition(snapshot, { type: 'contract_completed', contractId: 'contract-1' }, NOW)).toBeNull();
   });
 });

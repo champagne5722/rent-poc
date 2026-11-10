@@ -33,6 +33,7 @@ function lease(caseId: string, unitId: string, o: Partial<LeaseCaseFact> = {}): 
     caseId,
     orgId: OWNER_ORG,
     unitId,
+    caseKind: 'lease',
     businessType: 'self_managed',
     state: 'active',
     managerId: null,
@@ -172,14 +173,14 @@ describe('deriveOverview：代表案件與租約狀態', () => {
   it('只出現在委託標的清單的空置單位，業務類型是代管、經理人是受託人', () => {
     const f = facts({ units: [unit('u1')], mandateCases: [mandate('m1', ['u1'])] });
     const row = deriveOverview(f, TODAY).rows[0];
-    expect(row.businessType).toBe('managed');
+    expect(row).toMatchObject({ caseKind: 'lease', businessType: 'managed' });
     expect(row.manager?.name).toBe('甲山租賃管理股份有限公司');
   });
 
   it('只出現在屋主組織的空置單位是自管、沒有經理人', () => {
     const f = facts({ units: [unit('u1')], ownerOrgUnitIds: ['u1'] });
     const row = deriveOverview(f, TODAY).rows[0];
-    expect(row.businessType).toBe('self_managed');
+    expect(row).toMatchObject({ caseKind: 'lease', businessType: 'self_managed' });
     expect(row.manager).toBeNull();
   });
 });
@@ -435,7 +436,8 @@ describe('filterRows', () => {
     row('self-ok', {}, { leaseEnd: '2027-12-31' }),
     row('self-overdue', {}, { overdue: 5000 }),
     row('managed-expiring', {}, { businessType: 'managed', leaseEnd: '2026-12-01' }),
-    row('master-pending', { authority: 'pending' }, { businessType: 'master_lease' }),
+    // 包租案件在資料上是自管租賃，業務類型是 self_managed，由案件種類區分
+    row('master-pending', { authority: 'pending' }, { caseKind: 'master_lease', businessType: 'self_managed' }),
     row('managed-failed-overdue', { authority: 'failed' }, { businessType: 'managed', overdue: 100 }),
   ];
   const pick = (filter: Partial<OverviewFilter>) =>
@@ -443,13 +445,13 @@ describe('filterRows', () => {
 
   it.each([
     { name: '沒有條件時全部列出', filter: {}, expected: rows.map((r) => r.unitId) },
-    { name: '業務類型：自管', filter: { businessType: 'self_managed' }, expected: ['self-ok', 'self-overdue'] },
+    { name: '租賃案件（自管）', filter: { kind: 'lease_self_managed' }, expected: ['self-ok', 'self-overdue'] },
     {
-      name: '業務類型：代管',
-      filter: { businessType: 'managed' },
+      name: '租賃案件（代管）',
+      filter: { kind: 'lease_managed' },
       expected: ['managed-expiring', 'managed-failed-overdue'],
     },
-    { name: '業務類型：包租', filter: { businessType: 'master_lease' }, expected: ['master-pending'] },
+    { name: '包租案件', filter: { kind: 'master_lease' }, expected: ['master-pending'] },
     { name: '逾期', filter: { overdue: true }, expected: ['self-overdue', 'managed-failed-overdue'] },
     { name: '60 天內到期', filter: { expiringSoon: true }, expected: ['managed-expiring'] },
     {
@@ -459,10 +461,10 @@ describe('filterRows', () => {
     },
     {
       name: '條件同時成立才列出',
-      filter: { businessType: 'managed', overdue: true, authorityUnverified: true },
+      filter: { kind: 'lease_managed', overdue: true, authorityUnverified: true },
       expected: ['managed-failed-overdue'],
     },
-    { name: '沒有符合的列', filter: { businessType: 'master_lease', overdue: true }, expected: [] },
+    { name: '沒有符合的列', filter: { kind: 'master_lease', overdue: true }, expected: [] },
   ] satisfies { name: string; filter: Partial<OverviewFilter>; expected: string[] }[])(
     '$name',
     ({ filter, expected }) => {

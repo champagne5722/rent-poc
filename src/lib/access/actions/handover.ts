@@ -8,8 +8,8 @@ export const handoverActions = {
     scope: 'case',
     effect: 'write',
     states: OPERATING,
-    hostRoles: { managed: WRITE_ROLES, management: WRITE_ROLES },
-    relations: { managed: ['lessor'], management: ['mandator', 'mandatary'] },
+    hostRoles: { lease_managed: WRITE_ROLES, management: WRITE_ROLES },
+    relations: { lease_managed: ['lessor'], management: ['mandator', 'mandatary'] },
     onBehalfScope: null,
   },
 } as const satisfies Record<string, ActionRule>;

@@ -43,7 +43,19 @@ interface PersonaOpts {
   relations: CaseMemberRelation[];
 }
 
-function leasePersona(id: string, businessType: BusinessType, opts: PersonaOpts): Persona {
+/** 租賃資料列的案件種類與業務類型。轉租案件的業務類型欄位是舊值 `master_lease`（資料上的事實）。 */
+interface LeaseSpec {
+  caseKind: 'lease' | 'master_lease' | 'sublease';
+  businessType: BusinessType;
+}
+
+const SELF: LeaseSpec = { caseKind: 'lease', businessType: 'self_managed' };
+const MANAGED: LeaseSpec = { caseKind: 'lease', businessType: 'managed' };
+const SUBLEASE: LeaseSpec = { caseKind: 'sublease', businessType: 'master_lease' };
+/** 包租案件：資料上是自管租賃。沿用自管的規則（待法務確認），預期與 self 完全相同。 */
+const MASTER_LEASE: LeaseSpec = { caseKind: 'master_lease', businessType: 'self_managed' };
+
+function leasePersona(id: string, spec: LeaseSpec, opts: PersonaOpts): Persona {
   return {
     id,
     kind: 'lease',
@@ -52,10 +64,11 @@ function leasePersona(id: string, businessType: BusinessType, opts: PersonaOpts)
       caseFacts: {
         kind: 'lease',
         state: state as LeaseCaseState,
-        businessType,
+        caseKind: spec.caseKind,
+        businessType: spec.businessType,
         isHostOrgMember: opts.host,
         relations: opts.relations,
-        onBehalf: businessType === 'managed' ? FULL_MANDATE : null,
+        onBehalf: spec.caseKind === 'lease' && spec.businessType === 'managed' ? FULL_MANDATE : null,
       },
     }),
   };
@@ -77,11 +90,12 @@ function mgmtPersona(id: string, opts: PersonaOpts): Persona {
   };
 }
 
-const VARIANTS = [
-  ['self', 'self_managed'],
-  ['managed', 'managed'],
-  ['master', 'master_lease'],
-] as const;
+const VARIANTS: ReadonlyArray<readonly [string, LeaseSpec]> = [
+  ['self', SELF],
+  ['managed', MANAGED],
+  ['sublease', SUBLEASE],
+  ['mlease', MASTER_LEASE],
+];
 
 const PERSONAS: Persona[] = [
   ...VARIANTS.flatMap(([prefix, bt]) => [
@@ -93,13 +107,15 @@ const PERSONAS: Persona[] = [
     leasePersona(`${prefix}.broker`, bt, { role: 'staff', host: false, relations: ['broker'] }),
     leasePersona(`${prefix}.stranger`, bt, { role: 'admin', host: false, relations: [] }),
   ]),
-  // 出租人關係：自管是出租人、代管是屋主、包租是包租業者
-  leasePersona('self.lessor', 'self_managed', { role: 'admin', host: false, relations: ['lessor'] }),
-  leasePersona('self.co_lessee', 'self_managed', { role: null, host: false, relations: ['co_lessee'] }),
-  leasePersona('managed.owner', 'managed', { role: 'staff', host: false, relations: ['lessor'] }),
-  leasePersona('managed.owner_viewer', 'managed', { role: 'viewer', host: false, relations: ['lessor'] }),
-  leasePersona('master.lessor', 'master_lease', { role: 'admin', host: false, relations: ['lessor'] }),
-  leasePersona('master.owner', 'master_lease', { role: 'staff', host: false, relations: ['owner'] }),
+  // 出租人關係：租賃自管是出租人、租賃代管是屋主、轉租是包租業者
+  leasePersona('self.lessor', SELF, { role: 'admin', host: false, relations: ['lessor'] }),
+  leasePersona('self.co_lessee', SELF, { role: null, host: false, relations: ['co_lessee'] }),
+  leasePersona('managed.owner', MANAGED, { role: 'staff', host: false, relations: ['lessor'] }),
+  leasePersona('managed.owner_viewer', MANAGED, { role: 'viewer', host: false, relations: ['lessor'] }),
+  leasePersona('sublease.lessor', SUBLEASE, { role: 'admin', host: false, relations: ['lessor'] }),
+  leasePersona('sublease.owner', SUBLEASE, { role: 'staff', host: false, relations: ['owner'] }),
+  leasePersona('mlease.lessor', MASTER_LEASE, { role: 'admin', host: false, relations: ['lessor'] }),
+  leasePersona('mlease.co_lessee', MASTER_LEASE, { role: null, host: false, relations: ['co_lessee'] }),
   mgmtPersona('mgmt.host_admin', { role: 'admin', host: true, relations: [] }),
   mgmtPersona('mgmt.host_staff', { role: 'staff', host: true, relations: [] }),
   mgmtPersona('mgmt.host_viewer', { role: 'viewer', host: true, relations: [] }),
@@ -125,42 +141,42 @@ interface Expectation {
   states: { lease: CaseState[]; management: CaseState[] };
 }
 
-const CONTRACT_OPERATORS = [...hostWriters('self', 'managed', 'master', 'mgmt'), 'self.lessor', 'master.lessor'];
+const CONTRACT_OPERATORS = [...hostWriters('self', 'managed', 'sublease', 'mgmt'), 'self.lessor', 'sublease.lessor'];
 
 const CASE_EXPECTATIONS: Record<string, Expectation> = {
-  // 讀租期與狀態：所有成員，含包租案件的所有權人
+  // 讀租期與狀態：所有成員，含轉租案件的所有權人
   'case.read_summary': {
     personas: NOT_STRANGER,
     states: { lease: ALL_LEASE_STATES, management: ALL_MGMT_STATES },
   },
-  // 讀合約：除了包租案件的所有權人
+  // 讀合約：除了轉租案件的所有權人
   'contract.read': {
-    personas: NOT_STRANGER.filter((id) => id !== 'master.owner'),
+    personas: NOT_STRANGER.filter((id) => id !== 'sublease.owner'),
     states: { lease: ALL_LEASE_STATES, management: ALL_MGMT_STATES },
   },
   // 下載已簽合約（MIL-121）：與讀合約相同，結案後仍可
   'contract.download_signed': {
-    personas: NOT_STRANGER.filter((id) => id !== 'master.owner'),
+    personas: NOT_STRANGER.filter((id) => id !== 'sublease.owner'),
     states: { lease: ALL_LEASE_STATES, management: ALL_MGMT_STATES },
   },
   // 讀帳務：不含經紀業者、簽章人員、所有權人
   'ledger.read': {
     personas: [
-      ...hostReaders('self', 'managed', 'master'),
+      ...hostReaders('self', 'managed', 'sublease'),
       'self.lessor',
       'managed.owner',
       'managed.owner_viewer',
-      'master.lessor',
+      'sublease.lessor',
       'self.lessee',
       'self.co_lessee',
       'managed.lessee',
-      'master.lessee',
+      'sublease.lessee',
     ],
     states: { lease: ALL_LEASE_STATES, management: [] },
   },
-  // 屋主報表：自己的、自己產出的。包租業者否，所有權人是
+  // 屋主報表：自己的、自己產出的。轉租案件的包租業者否，所有權人是
   'report.read_owner': {
-    personas: [...hostReaders('self', 'managed'), 'self.lessor', 'managed.owner', 'managed.owner_viewer', 'master.owner'],
+    personas: [...hostReaders('self', 'managed'), 'self.lessor', 'managed.owner', 'managed.owner_viewer', 'sublease.owner'],
     states: { lease: ALL_LEASE_STATES, management: [] },
   },
   // 擬約與送簽：代管案件的屋主否，承租人否
@@ -169,63 +185,63 @@ const CASE_EXPECTATIONS: Record<string, Expectation> = {
     states: { lease: ['draft'], management: ['draft'] },
   },
   'ledger.record_payment': {
-    personas: [...hostWriters('self', 'managed', 'master'), 'self.lessor', 'master.lessor'],
+    personas: [...hostWriters('self', 'managed', 'sublease'), 'self.lessor', 'sublease.lessor'],
     states: { lease: OPERATING, management: [] },
   },
   'ledger.record_deposit': {
-    personas: [...hostWriters('self', 'managed', 'master'), 'self.lessor', 'master.lessor'],
+    personas: [...hostWriters('self', 'managed', 'sublease'), 'self.lessor', 'sublease.lessor'],
     states: { lease: OPERATING, management: [] },
   },
   // 案件的帳務設定（MIL-123）：匯款識別與預設收款帳戶。不是代操作，所以代管案件不查委託範圍
   'ledger.configure_case': {
-    personas: [...hostWriters('self', 'managed', 'master'), 'self.lessor', 'master.lessor'],
+    personas: [...hostWriters('self', 'managed', 'sublease'), 'self.lessor', 'sublease.lessor'],
     states: { lease: OPEN_LEASE, management: [] },
   },
   // 讀案件的帳務設定：主辦組織全部角色加出租人與屋主，不含承租人與所有權人
   'ledger.read_case_setup': {
-    personas: [...hostReaders('self', 'managed', 'master'), 'self.lessor', 'managed.owner', 'managed.owner_viewer', 'master.lessor'],
+    personas: [...hostReaders('self', 'managed', 'sublease'), 'self.lessor', 'managed.owner', 'managed.owner_viewer', 'sublease.lessor'],
     states: { lease: ALL_LEASE_STATES, management: [] },
   },
-  // 修改社宅代管旗標：代管與包租案件的主辦組織寫入角色。屋主與出租人本人否，自管案件否
+  // 修改社宅代管旗標：租賃代管與轉租案件的主辦組織寫入角色。屋主與出租人本人否，租賃自管與包租案件否
   'case.set_social_housing': {
-    personas: hostWriters('managed', 'master'),
+    personas: hostWriters('managed', 'sublease'),
     states: { lease: OPEN_LEASE, management: [] },
   },
   'ledger.send_overdue_reminder': {
-    personas: [...hostWriters('self', 'managed', 'master'), 'self.lessor', 'master.lessor'],
+    personas: [...hostWriters('self', 'managed', 'sublease'), 'self.lessor', 'sublease.lessor'],
     states: { lease: OPERATING, management: [] },
   },
   // 修繕：代管案件的屋主是，承租人限報修
   'repair.manage': {
-    personas: [...hostWriters('self', 'managed', 'master'), 'self.lessor', 'managed.owner', 'master.lessor'],
+    personas: [...hostWriters('self', 'managed', 'sublease'), 'self.lessor', 'managed.owner', 'sublease.lessor'],
     states: { lease: OPERATING, management: [] },
   },
   'repair.report': {
-    personas: ['self.lessee', 'self.co_lessee', 'managed.lessee', 'master.lessee'],
+    personas: ['self.lessee', 'self.co_lessee', 'managed.lessee', 'sublease.lessee'],
     states: { lease: OPERATING, management: [] },
   },
   // 確認點交：出租人、屋主、業者、承租人皆是，所有權人否
   'inspection.confirm': {
     personas: [
-      ...hostWriters('self', 'managed', 'master'),
+      ...hostWriters('self', 'managed', 'sublease'),
       'self.lessor',
       'managed.owner',
-      'master.lessor',
+      'sublease.lessor',
       'self.lessee',
       'self.co_lessee',
       'managed.lessee',
-      'master.lessee',
+      'sublease.lessee',
     ],
     states: { lease: ['active', 'move_out'], management: [] },
   },
   // 發起退租：承租人無此權限（ADR-0016 決議 7）
   'move_out.start': {
-    personas: [...hostWriters('self', 'managed', 'master'), 'self.lessor', 'managed.owner', 'master.lessor'],
+    personas: [...hostWriters('self', 'managed', 'sublease'), 'self.lessor', 'managed.owner', 'sublease.lessor'],
     states: { lease: ['active'], management: [] },
   },
   // 對押金扣抵標示異議：只有承租人
   'deposit.dispute': {
-    personas: ['self.lessee', 'self.co_lessee', 'managed.lessee', 'master.lessee'],
+    personas: ['self.lessee', 'self.co_lessee', 'managed.lessee', 'sublease.lessee'],
     states: { lease: ['move_out', 'settling'], management: [] },
   },
   // 發起移交：只適用代管租賃案件與它連結的委託管理案件（ADR-0024 決議 1）
@@ -261,7 +277,7 @@ const CASE_EXPECTATIONS: Record<string, Expectation> = {
   },
   // 成員管理（案件層）：主辦組織 admin、staff（ADR-0023 決議 5）
   'case_member.manage': {
-    personas: hostWriters('self', 'managed', 'master', 'mgmt'),
+    personas: hostWriters('self', 'managed', 'sublease', 'mgmt'),
     states: { lease: OPEN_LEASE, management: ['draft', 'signing', 'active'] },
   },
 };
@@ -316,7 +332,8 @@ describe('decideAccess 全矩陣：案件動作乘 persona 乘案件狀態', () 
   it.each(rows)('%s × %s', (action, personaId, exp, p) => {
     const states = p.kind === 'lease' ? ALL_LEASE_STATES : ALL_MGMT_STATES;
     const allowedStates = p.kind === 'lease' ? exp.states.lease : exp.states.management;
-    const isGrantee = exp.personas.includes(personaId);
+    // 包租案件沿用自管的規則：mlease.X 的預期與 self.X 相同
+    const isGrantee = exp.personas.includes(personaId.replace(/^mlease\./, 'self.'));
     for (const state of states) {
       const decision = decideAccess(p.make(state), action as ActionId);
       const expected = isGrantee && allowedStates.includes(state);
@@ -394,7 +411,7 @@ describe('decideAccess 拒絕原因', () => {
       allowed: false,
       reason: 'not_granted',
     });
-    expect(decideAccess(persona('master.owner').make('active'), 'contract.read')).toEqual({
+    expect(decideAccess(persona('sublease.owner').make('active'), 'contract.read')).toEqual({
       allowed: false,
       reason: 'not_granted',
     });
@@ -512,6 +529,7 @@ describe('decideAccess 代操作四個條件（ADR-0023 決議 7）', () => {
     caseFacts: {
       kind: 'lease',
       state: state as 'active',
+      caseKind: 'lease',
       businessType: 'managed',
       isHostOrgMember: true,
       relations: [],
@@ -573,11 +591,11 @@ describe('decideAccess 代操作四個條件（ADR-0023 決議 7）', () => {
     expect(decideAccess(managedHost(null), 'case_member.manage').allowed).toBe(true);
   });
 
-  it('代操作條件只適用代管案件的主辦組織，自管與包租的主辦組織不查', () => {
-    for (const businessType of ['self_managed', 'master_lease'] as const) {
+  it('代操作條件只適用租賃代管案件的主辦組織，租賃自管、包租與轉租案件的主辦組織不查', () => {
+    for (const spec of [SELF, MASTER_LEASE, SUBLEASE]) {
       const facts: AccessFacts = {
         orgRole: 'staff',
-        caseFacts: { kind: 'lease', state: 'active', businessType, isHostOrgMember: true, relations: [], onBehalf: null },
+        caseFacts: { kind: 'lease', state: 'active', ...spec, isHostOrgMember: true, relations: [], onBehalf: null },
       };
       expect(decideAccess(facts, 'ledger.record_deposit')).toEqual({ allowed: true, via: 'host_org', onBehalf: false });
     }
@@ -589,6 +607,7 @@ describe('decideAccess 代操作四個條件（ADR-0023 決議 7）', () => {
       caseFacts: {
         kind: 'lease',
         state: 'active',
+        caseKind: 'lease',
         businessType: 'managed',
         isHostOrgMember: false,
         relations: ['lessor'],

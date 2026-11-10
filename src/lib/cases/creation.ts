@@ -126,6 +126,13 @@ export interface NewManagementCaseInput {
   practice: PracticeFacts | null;
 }
 
+/** 可以有後繼案件的案件種類。移交只適用租賃案件（ADR-0024 決議 1）。 */
+const SUCCESSOR_CASE_KINDS: readonly NewLeaseCaseKind[] = ['lease'];
+
+function isSuccessorCaseKind(kind: StatutoryCaseKind): kind is NewLeaseCaseKind {
+  return (SUCCESSOR_CASE_KINDS as readonly string[]).includes(kind);
+}
+
 /** 移交生效時，接收方組織建立後繼案件（ADR-0024 決議 2 到 4）。 */
 export interface SuccessorCaseInput {
   type: 'successor_lease';
@@ -133,6 +140,11 @@ export interface SuccessorCaseInput {
   /** 與舊案件相同（ADR-0013 決議 9）。 */
   rentalUnitId: string;
   predecessorCaseId: string;
+  /**
+   * 原案件的案件種類。後繼案件沿用它（ADR-0030 決議 2，MIL-198）。
+   * 移交只適用租賃代管案件（ADR-0024 決議 1），所以只接受租賃案件。其他種類被擋下。
+   */
+  predecessorCaseKind: StatutoryCaseKind;
   handoverId: string;
   receiverOrg: HostOrg;
   businessType: BusinessType;
@@ -183,6 +195,7 @@ export interface NewCaseMember {
 
 export type CreationBlockCode =
   | 'business_type_not_allowed'
+  | 'case_kind_not_allowed'
   | 'host_org_not_allowed'
   | 'practice_entity_not_verified'
   | 'no_signable_manager'
@@ -202,6 +215,7 @@ export type CaseCreationResult =
   | { ok: false; reasons: CreationBlockReason[] };
 
 const MESSAGES: Record<CreationBlockCode, string> = {
+  case_kind_not_allowed: '移交只適用租賃案件。後繼案件沿用原案件的案件種類，其他種類的案件不得建立後繼案件。',
   business_type_not_allowed: '這個組織不得建立這種業務類型的案件。屋主組織只得建自管，執業主體組織只得建代管。',
   host_org_not_allowed: '這個組織不得建立這種案件。委託管理案件、包租案件與轉租案件只得由執業主體組織建立。',
   practice_entity_not_verified: '執業主體的對應業別不是已驗證，不得建立這種案件。',
@@ -358,12 +372,13 @@ function decideSuccessor(input: SuccessorCaseInput, now: Date): CaseCreationResu
   const { receiverOrg, businessType } = input;
 
   // 委託是否有效、接收方是否已驗證，由移交的擋下條件負責（ADR-0024 決議 12），這裡不重查
+  if (!isSuccessorCaseKind(input.predecessorCaseKind)) codes.push('case_kind_not_allowed');
   if (!SUCCESSOR_BUSINESS_TYPES[receiverOrg.kind].includes(businessType)) codes.push('business_type_not_allowed');
   if ([input.lessorPartyId, ...input.lesseePartyIds, ...input.coLesseePartyIds].some(isBlank)) {
     codes.push('invalid_party');
   }
 
-  if (codes.length > 0) return blocked(codes);
+  if (codes.length > 0 || !isSuccessorCaseKind(input.predecessorCaseKind)) return blocked(codes);
 
   const members: NewCaseMember[] = [{ partyId: input.lessorPartyId, relation: 'lessor' }];
   const lessees = new Set(input.lesseePartyIds);
@@ -383,7 +398,7 @@ function decideSuccessor(input: SuccessorCaseInput, now: Date): CaseCreationResu
       state: 'active',
       stateVersion: 0,
       currentContractId: null,
-      caseKind: 'lease',
+      caseKind: input.predecessorCaseKind,
       businessType,
       rentalUnitId: input.rentalUnitId,
       linkedMandateCaseId: null,
@@ -394,7 +409,7 @@ function decideSuccessor(input: SuccessorCaseInput, now: Date): CaseCreationResu
     members,
     event: buildCaseEvent('succeeded', now, {
       kind: 'lease',
-      caseKind: 'lease',
+      caseKind: input.predecessorCaseKind,
       businessType,
       rentalUnitId: input.rentalUnitId,
       predecessorCaseId: input.predecessorCaseId,

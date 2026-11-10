@@ -19,17 +19,22 @@
 
 ## `DEPOSIT_HOLDER_RULES`
 
-ADR-0014 決議 13 的 5 列。`control.deposit_holder_rules` 的 migration 直接讀這個常數寫入。條件欄位為 `null` 表示不限。
+ADR-0014 決議 13 的 5 列。`control.deposit_holder_rules` 的內容與這個常數一致，`holder-rules-store.test.ts` 逐欄比對。條件欄位為 `null` 表示不限。
 
-| rule_id | 版本 | 業務類型 | 社宅代管案件 | `holder_kind` | 委託範圍含押金 | 動作 | 通知委託人 |
-|---|---|---|---|---|---|---|---|
-| `DHR-01` | 1 | `managed` | 是 | `manager` | 不限 | `block` | 否 |
-| `DHR-02` | 1 | `managed` | 否 | `manager` | 是 | `warn` | 是 |
-| `DHR-03` | 1 | `managed` | 否 | `manager` | 否 | `warn_fix_mandate` | 是 |
-| `DHR-04` | 1 | `master_lease` | 否 | `lessor` | 不限 | `allow` | 否 |
-| `DHR-05` | 1 | 不限 | 不限 | 不限 | 不限 | `allow` | 否 |
+規則看案件種類，租賃案件再看業務類型（ADR-0030 決議 2、3，MIL-198）。規則的內容沒有改，只換判斷的依據。
 
-業務類型沿用 `src/lib/cases/transitions.ts` 的 `BUSINESS_TYPES`（`self_managed`、`managed`、`master_lease`），本模組重新匯出。`notifyMandator` 對應 ADR 的「通知委託人」，委託人依 GLOSSARY 是委託管理合約的甲方。
+| rule_id | 版本 | 案件種類 | 業務類型 | 社宅代管案件 | `holder_kind` | 委託範圍含押金 | 動作 | 通知委託人 |
+|---|---|---|---|---|---|---|---|---|
+| `DHR-01` | 1 | `lease`（租賃案件） | `managed` | 是 | `manager` | 不限 | `block` | 否 |
+| `DHR-02` | 1 | `lease` | `managed` | 否 | `manager` | 是 | `warn` | 是 |
+| `DHR-03` | 1 | `lease` | `managed` | 否 | `manager` | 否 | `warn_fix_mandate` | 是 |
+| `DHR-04` | 1 | `sublease`（轉租案件） | 不限 | 否 | `lessor` | 不限 | `allow` | 否 |
+| `DHR-05` | 1 | 不限 | 不限 | 不限 | 不限 | 不限 | `allow` | 否 |
+
+- `DHR-04` 原本的條件是業務類型 `master_lease`（舊值，指轉租），migration 0081 改成轉租案件。
+- 包租案件（`master_lease`）在資料上是自管租賃，沿用自管的規則，沒有專屬列，走 `DHR-05`。這個假設待法務確認。
+- 業務類型只有租賃案件有。其他案件種類比對時不看業務類型欄位。
+- 業務類型的型別沿用 `src/lib/cases/transitions.ts` 的 `BusinessType`，本模組重新匯出。`src/lib/deposit-rules/case-kind-equivalence.test.ts` 保留改名前的規則，逐一比對四種案件在所有組合下的結果。`notifyMandator` 對應 ADR 的「通知委託人」，委託人依 GLOSSARY 是委託管理合約的甲方。
 
 ## `evaluateHolderRule(rules, ctx)`
 
@@ -46,6 +51,8 @@ ADR-0014 決議 13 的 5 列。`control.deposit_holder_rules` 的 migration 直�
 ```
 
 規則陣列為空、缺列、沒有命中，或輸入在執行期不合法（欄位是 `null`、`undefined` 或未知字串）時，一律回傳 `warn`，`ruleId` 與 `ruleVersion` 為 `null`，`notifyMandator` 為 `true`，訊息鍵是 `deposit_holder.warn.rule_unmatched`。持有人確認紀錄的 `rule_id` 存 `null`。
+
+`ctx` 帶 `caseKind` 與 `businessType`。`businessType` 傳案件的欄位值，只有租賃案件的值有意義。租賃案件的業務類型不是自管或代管時視為輸入不合法，回 `warn`。
 
 `ctx.mandateIncludesDeposit` 在非代管案件沒有意義，傳 `false`。
 
