@@ -22,7 +22,8 @@ test('登入：輸入錯誤的驗證碼顯示錯誤，並能改用其他 email',
   await expect(page.getByRole('button', { name: /秒後可重寄/ })).toBeDisabled();
 
   await page.keyboard.type('000000');
-  await expect(page.getByRole('alert')).toBeVisible();
+  // Next 的路由宣告元素 next-route-announcer 也是 role=alert 但內容是空的，只取有文字的那個
+  await expect(page.getByRole('alert').filter({ hasText: /\S/ })).toBeVisible();
 
   await page.getByRole('button', { name: '改用其他 email' }).click();
   await expect(page.getByRole('button', { name: '寄送驗證碼' })).toBeVisible();
