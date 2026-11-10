@@ -78,6 +78,8 @@ Max 方案附的 API 額度涵蓋 Claude API、Managed Agents 與 Claude Agent S
 
 看到「這次沒有審查」時，主控改用子代理審查那張 PR。下一次推送成功審查後，同一則留言會更新成審查結果。
 
+PR 上已有一則有效的審查時，失敗不會蓋掉它。腳本保留原本的審查內容，只在標記行下加一行「最近一次（commit 前 8 碼）沒有審查：原因。下面是上一次的審查結果」。PR 上沒有審查留言時，才寫「這次沒有審查」。
+
 ## 上限值與模型
 
 全部在 `.github/workflows/pr-review.yml` 開頭的 `env`。
@@ -92,11 +94,11 @@ Max 方案附的 API 額度涵蓋 Claude API、Managed Agents 與 Claude Agent S
 | `REVIEW_MAX_DIFF_CHARS` | `300000` | 送出的 diff 字元上限。 |
 | `REVIEW_MAX_FILE_DIFF_CHARS` | `40000` | 單一檔案的 diff 字元上限。 |
 
-回合數固定為 1。腳本只呼叫一次模型，不給工具，不迴圈。
+回合數固定為 1。腳本只呼叫一次模型，不給工具，不迴圈。SDK 對逾時、429、5xx 最多重試 2 次，所以一次審查最多可能有 3 次計費的請求。
 
 截斷時的順序：lockfile、快照、圖片與字型先排除。其餘依優先序送出：migration 與 route 與登記檔最先，一般程式碼次之，測試再次之，文件最後。放不下的檔列在留言的「未送審」。
 
-改模型時，價格表在 `scripts/ci/pr-review-core.mjs` 的 `PRICES`。表上沒有的模型仍能跑，留言的費用寫「未知」，而且花費上限不生效，只剩 token 上限。
+改模型時，價格表在 `scripts/ci/pr-review-core.mjs` 的 `PRICES`。表上沒有的模型仍能跑。腳本改用價格表裡每一欄最貴的單價估算費用與花費上限，留言的用量寫「這個模型沒有價格資料，以最貴的單價估算」。
 
 ## 手動重跑
 
@@ -106,16 +108,19 @@ Max 方案附的 API 額度涵蓋 Claude API、Managed Agents 與 Claude Agent S
 
 ## 主控怎麼讀留言
 
-第一行是結論，只有兩種：`沒有退回項`、`有 N 個退回項`。N 是 Standards 與 Spec 的問題、未達成與部分達成的驗收條件、安全面失敗的檢查點加總。
+標記行的下一行是結論（上一次的審查被保留時，結論在那一行說明的下一行），只有兩種：`沒有退回項`、`有 N 個退回項`。N 是 Standards 與 Spec 中 `blocking` 為真的問題、未達成與部分達成的驗收條件、安全面失敗的檢查點加總。`blocking` 為假的項目列在「建議」小節，不算進 N。
 
 接著依序是：
 
 1. Standards 面：違反 `AGENTS.md`、`docs/agents/implementing.md`、`GLOSSARY.md` 的 `_Avoid_` 欄，以及程式碼壞味道的問題。
 2. Spec 面：逐條驗收條件的對照表，加上超出範圍的行為。
-3. 安全面的檢查點：只在 diff 動到 migration 或 route 時出現。
-4. 用量：模型、token、估計費用、送審與未送審的檔。
+3. 建議：`blocking` 為假的項目。沒有這類項目時不出現。
+4. 安全面的檢查點：只在 diff 動到 migration 或 route 時出現。
+5. 用量：模型、token、估計費用、送審與未送審的檔。
 
 每一面最多 10 項。只列模型有把握的問題。
+
+機器人留言的辨識：腳本找作者 login 是 `github-actions[bot]`、本文帶標記的留言。人貼的帶標記留言，或其他機器人的留言，都不會被更新。
 
 注意：
 

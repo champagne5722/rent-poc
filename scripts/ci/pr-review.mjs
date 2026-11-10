@@ -16,7 +16,6 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  MARKER,
   ReviewParseError,
   buildRequest,
   buildSystemText,
@@ -25,13 +24,16 @@ import {
   effectiveInputBudget,
   estimateCost,
   extractAvoidTerms,
+  findReviewComment,
   gate,
   hasAcceptanceSection,
   limitsFromEnv,
   parseReview,
   redact,
+  renderRetainedReview,
   renderReview,
   renderSkip,
+  isReviewBody,
   selectDiff,
 } from './pr-review-core.mjs';
 
@@ -89,8 +91,9 @@ export async function runReview(deps) {
     return { status: 'no-prompt' };
   }
 
-  const postComment = async (body) => {
-    writeSummary(body);
+  // body 可以是字串，或是收到既有留言本文（沒有時為 null）後回傳新本文的函式。
+  const postComment = async (summary, body) => {
+    writeSummary(summary);
     try {
       await upsertComment(github, number, body);
     } catch (err) {
@@ -99,7 +102,9 @@ export async function runReview(deps) {
   };
   const skip = async ({ reason, detail, kind }) => {
     log(`::warning::這次沒有審查（${kind}）：${reason}。${detail ?? ''}`);
-    await postComment(renderSkip({ reason, detail, model, sha }));
+    const skipBody = renderSkip({ reason, detail, model, sha });
+    // PR 上已有有效的審查時，保留它，只在開頭說明最近一次為什麼沒有審查。
+    await postComment(skipBody, (existingBody) => (isReviewBody(existingBody) ? renderRetainedReview(existingBody, { reason, sha }) : skipBody));
     return { status: 'skipped', kind };
   };
 
@@ -145,7 +150,7 @@ export async function runReview(deps) {
     const review = parseReview(text);
     const cost = estimateCost(model, response.usage);
     const body = renderReview(review, { model, effort, usage: response.usage, cost, sha, limits, selection, hasAcceptance, costCapApplied });
-    await postComment(body);
+    await postComment(body, body);
     log(`審查完成：${body.split('\n')[1]}，估計費用 ${cost === null ? '未知' : cost.toFixed(4)} 美元`);
     return { status: 'reviewed', conclusion: body.split('\n')[1], cost };
   } catch (err) {
@@ -167,12 +172,16 @@ async function countInputTokens(client, request, charCount) {
   return Math.ceil(charCount / 2);
 }
 
-/** 找到帶標記的機器人留言就更新，沒有就新增。 */
+/**
+ * 找到帶標記、作者 login 是 github-actions[bot] 的留言就更新，沒有就新增。
+ * body 可以是字串，或是收到既有留言本文（沒有時為 null）後回傳新本文的函式。
+ */
 export async function upsertComment(github, number, body) {
   const comments = await github.listComments(number);
-  const existing = comments.find((c) => typeof c.body === 'string' && c.body.includes(MARKER) && c.user?.type === 'Bot');
-  if (existing) await github.updateComment(existing.id, body);
-  else await github.createComment(number, body);
+  const existing = findReviewComment(comments);
+  const text = typeof body === 'function' ? body(existing ? existing.body : null) : body;
+  if (existing) await github.updateComment(existing.id, text);
+  else await github.createComment(number, text);
 }
 
 // ---------------------------------------------------------------------------
