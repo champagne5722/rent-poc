@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Empty, Flex, Segmented, Table, Tag, Typography } from 'antd';
 import Link from 'next/link';
 import { practitionerTitle, statutoryTitle, type LicenseKind } from '@/lib/labels';
-import { formatWaiting, isBacklogged, queueTypeLabel, resolutionLabel } from '@/lib/practice-entities/display';
+import { claimedKeyText, formatWaiting, isBacklogged, queueTypeLabel, resolutionLabel } from '@/lib/practice-entities/display';
 import type { QueueItem } from '@/lib/practice-entities/desk';
 
 // 審核台佇列（MIL-109，GLOSSARY「審核台」）：平台營運者處理待核對項目。
@@ -14,6 +14,9 @@ import type { QueueItem } from '@/lib/practice-entities/desk';
 type Status = 'open' | 'resolved';
 
 function describeKinds(item: QueueItem): string {
+  // 撞號項目（MIL-144）：宣稱的鍵。撞號超限項目顯示 24 小時內的上限與被擋次數
+  if (item.summary.claimedKey) return claimedKeyText(item.summary.claimedKey, item.summary.claimedKeyNames);
+  if (item.type === 'anchor_collision_limit') return `24 小時上限 ${item.summary.limit ?? '—'} 次，已被擋 ${item.summary.hits ?? '—'} 次`;
   if (item.summary.certificateKind) return practitionerTitle(item.summary.certificateKind);
   const kinds: LicenseKind[] = item.summary.kind ? [item.summary.kind] : (item.summary.kinds ?? []);
   return kinds.map((k) => statutoryTitle(k)).join('、') || '—';
@@ -82,10 +85,13 @@ export default function DeskQueue() {
         columns={[
           { title: '類型', dataIndex: 'type', width: 110, render: queueTypeLabel },
           {
-            title: '執業主體或人員',
+            title: '對象',
             key: 'entity',
             render: (_v, item) =>
-              item.summary.partyName ? (
+              item.summary.claimantOrgName ? (
+                // 撞號與撞號超限項目：宣稱方組織
+                <Typography.Text>{item.summary.claimantOrgName}</Typography.Text>
+              ) : item.summary.partyName ? (
                 // 證書、任職、同意書項目：主要是人員，任職與同意書另列執業主體
                 <Flex vertical>
                   <Typography.Text>{item.summary.partyName}</Typography.Text>
@@ -98,7 +104,7 @@ export default function DeskQueue() {
                 </Flex>
               ),
           },
-          { title: '業別或證書', key: 'kind', render: (_v, item) => describeKinds(item) },
+          { title: '業別、證書或鍵', key: 'kind', render: (_v, item) => describeKinds(item) },
           { title: '許可或登記證字號', key: 'permit', render: (_v, item) => item.summary.permitNo ?? '—' },
           status === 'open'
             ? {

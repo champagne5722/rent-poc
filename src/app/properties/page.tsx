@@ -189,8 +189,20 @@ function PropertiesPage() {
       message.error((await res.json()).error ?? '儲存失敗');
       return;
     }
-    message.success(isNew ? '物件已建立' : '物件已更新');
+    const json = (await res.json().catch(() => ({}))) as { data?: { id?: string; existing?: boolean; review?: { ticket: string; message: string } } };
     setEditing(null);
+    if (isNew && json.data?.existing && json.data.id) {
+      // 這個產權已由自己的組織登錄（MIL-144）：沒有建新物件，帶使用者到既有的那筆
+      message.info('這個產權你已經登錄過，已帶你到既有的物件');
+      router.push(`/properties/${json.data.id}`);
+      return;
+    }
+    if (isNew && json.data?.review) {
+      // 撞到別的組織：物件已建立，產權維持待驗證。只顯示固定訊息與審核單號
+      message.info({ content: `${json.data.review.message}。審核單號：${json.data.review.ticket}`, duration: 8 });
+    } else {
+      message.success(isNew ? '物件已建立' : '物件已更新');
+    }
     load();
   };
 

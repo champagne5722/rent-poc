@@ -53,13 +53,14 @@ const assignKey = (
   anchorId: string,
   key: { city?: string; town?: string; section?: string; building?: string; sub?: string | null } = {},
 ) =>
-  tx.query<{ assign_anchor_key: string }>('SELECT registry.assign_anchor_key($1, $2, $3, $4, $5, $6)', [
+  tx.query<{ outcome: string }>('SELECT * FROM registry.assign_anchor_key($1, $2, $3, $4, $5, $6, $7)', [
     anchorId,
     key.city ?? 'A',
     key.town ?? '02',
     key.section ?? '0001',
     key.building ?? '1234',
     key.sub === undefined ? null : key.sub,
+    newUlid(),
   ]);
 
 /** 第一個沒註銷、沒有別名的段，測試用。 */
@@ -207,7 +208,7 @@ describe('registry.assign_anchor_key（補建號）', () => {
     const { anchorId } = await createProperty(orgA);
     const status = await withTx({ kind: 'org', orgId: orgA }, async (tx) => {
       const { rows } = await assignKey(tx, anchorId, { ...k, building: '1234', sub: '' });
-      return rows[0].assign_anchor_key;
+      return rows[0].outcome;
     });
     expect(status).toBe('keyed');
     const { rows } = await asRole(db, 'app_owner', () =>
@@ -265,27 +266,6 @@ describe('registry.assign_anchor_key（補建號）', () => {
     ).rejects.toThrow(/段小段不存在/);
   });
 
-  it('撞到別的組織已登錄的鍵：固定錯誤，不含對方資料，錨點維持待驗證', async () => {
-    const first = await createProperty(orgA, '甲方的物件');
-    await withTx({ kind: 'org', orgId: orgA }, (tx) => assignKey(tx, first.anchorId, k));
-    const second = await createProperty(orgB, '乙方的物件');
-    const error = await withTx({ kind: 'org', orgId: orgB }, (tx) => assignKey(tx, second.anchorId, k)).catch((e) => e);
-    expect(error).toMatchObject({ code: '23505', message: expect.stringContaining('撞號處理尚未實作') });
-    expect(JSON.stringify({ message: error.message, detail: error.detail, hint: error.hint })).not.toMatch(/甲方|乙方|A 組織|B 組織|01234/);
-    const { rows } = await asRole(db, 'app_owner', () => db.query(`SELECT status FROM registry.anchors WHERE id = $1`, [second.anchorId]));
-    expect(rows).toEqual([{ status: 'pending_verification' }]);
-  });
-
-  it('撞到自己組織的鍵：同樣的固定錯誤（B3 才分流）', async () => {
-    const first = await createProperty(orgA);
-    await withTx({ kind: 'org', orgId: orgA }, (tx) => assignKey(tx, first.anchorId, k));
-    const second = await createProperty(orgA);
-    await expect(withTx({ kind: 'org', orgId: orgA }, (tx) => assignKey(tx, second.anchorId, k))).rejects.toMatchObject({
-      code: '23505',
-      message: expect.stringContaining('撞號處理尚未實作'),
-    });
-  });
-
   it('別的組織的錨點與不存在的錨點，錯誤完全相同', async () => {
     const mine = await createProperty(orgA);
     const asB = await withTx({ kind: 'org', orgId: orgB }, (tx) => assignKey(tx, mine.anchorId, k)).catch((e) => e);
@@ -306,7 +286,7 @@ describe('registry.assign_anchor_key（補建號）', () => {
 
   it('沒有組織脈絡時拒絕', async () => {
     const { anchorId } = await createProperty(orgA);
-    await expect(withTx({ kind: 'control' }, (tx) => tx.query('SELECT registry.assign_anchor_key($1, $2, $3, $4, $5, NULL)', [anchorId, k.city, k.town, k.section, '1']))).rejects.toThrow(/組織脈絡/);
+    await expect(withTx({ kind: 'control' }, (tx) => tx.query('SELECT * FROM registry.assign_anchor_key($1, $2, $3, $4, $5, NULL, $6)', [anchorId, k.city, k.town, k.section, '1', newUlid()]))).rejects.toThrow(/組織脈絡/);
   });
 });
 

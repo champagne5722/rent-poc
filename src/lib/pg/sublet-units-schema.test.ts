@@ -75,7 +75,7 @@ const addSublet = (orgId: string, sourceUnitId: string, label = '301', floor: st
 /** 以呼叫者組織的身分補建號（真實路徑），錨點轉 keyed。 */
 const keyAnchor = (orgId: string, anchorId: string, buildingNo = '1234') =>
   withTx({ kind: 'org', orgId }, (tx) =>
-    tx.query('SELECT registry.assign_anchor_key($1, $2, $3, $4, $5, NULL)', [anchorId, plain.cityCode, plain.townCode, plain.code, buildingNo]),
+    tx.query('SELECT * FROM registry.assign_anchor_key($1, $2, $3, $4, $5, NULL, $6)', [anchorId, plain.cityCode, plain.townCode, plain.code, buildingNo, newUlid()]),
   );
 
 const unitRow = (unitId: string) =>

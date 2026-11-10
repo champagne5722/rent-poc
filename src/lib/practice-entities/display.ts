@@ -31,6 +31,9 @@ const QUEUE_TYPES: Record<string, string> = {
   entity_recheck: '執業主體重查',
   employment_recheck: '任職重驗',
   entity_claim: '統編認領',
+  // 產權的項目（MIL-144）
+  anchor_collision: '撞號',
+  anchor_collision_limit: '撞號超限',
 };
 
 export const queueTypeLabel = (type: string): string => QUEUE_TYPES[type] ?? type;
@@ -77,3 +80,13 @@ const PRACTITIONER_PHASES: Record<PractitionerPhase, { label: string; tone: Tone
 };
 
 export const practitionerPhaseView = (phase: PractitionerPhase): { label: string; tone: Tone } => PRACTITIONER_PHASES[phase];
+
+/** 撞號項目宣稱的鍵，審核台顯示用，例如「臺北市 大安區 龍泉 一　建號 01234-000」。名稱缺少時退回編碼。 */
+export function claimedKeyText(
+  key: { cityCode: string; townCode: string; sectionCode: string; buildingNo: string; subNo: string },
+  names: { cityName: string | null; townName: string | null; sectionName: string | null; sectionSubName: string | null } | null | undefined,
+): string {
+  const section = [names?.sectionName, names?.sectionSubName].filter(Boolean).join(' ');
+  const place = [names?.cityName ?? key.cityCode, names?.townName ?? key.townCode, section || key.sectionCode].join(' ');
+  return `${place}　建號 ${key.buildingNo}-${key.subNo}`;
+}

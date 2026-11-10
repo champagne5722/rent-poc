@@ -77,6 +77,18 @@ export interface PropertyAnchor {
   section_name: string | null;
   latitude: number | null;
   longitude: number | null;
+  /**
+   * 這個產權的鍵撞到別的組織已登錄的鍵，正在審核台等待判定（MIL-144）。沒有待審的撞號時是 null。
+   * ticket 是審核單號。只有宣稱方自己讀得到，不含對方的任何資料。
+   */
+  collision_review: PropertyCollisionReview | null;
+}
+
+export interface PropertyCollisionReview {
+  /** 審核單號。 */
+  ticket: string;
+  /** 送審時間，ISO 字串。 */
+  created_at: string;
 }
 
 /** 租賃單位類型與狀態（ADR-0013 決議 5、6，ADR-0025 決議 14）。whole 是整戶，後綴固定 0000。 */

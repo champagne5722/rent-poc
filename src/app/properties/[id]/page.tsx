@@ -9,6 +9,7 @@ import { use, useEffect, useState } from 'react';
 import { Alert, App as AntApp, Button, Descriptions, Empty, Flex, Form, Input, Modal, Select, Space, Spin, Table, Tabs, Tag, theme, Typography } from 'antd';
 import { ArrowLeftOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { AnchorKeyFields } from '@/components/AnchorFields';
 import { DisplayCode } from '@/components/DisplayCode';
 import { shortUlid } from '@/lib/pg/ulid';
@@ -21,6 +22,7 @@ import { PROPERTY_TYPES } from '@/lib/types';
 
 function AnchorPanel({ property, onKeyed }: { property: Property; onKeyed: () => void }) {
   const { message } = AntApp.useApp();
+  const router = useRouter();
   const [form] = Form.useForm();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -43,9 +45,19 @@ function AnchorPanel({ property, onKeyed }: { property: Property; onKeyed: () =>
         message.error(json.error ?? '補建號失敗');
         return;
       }
-      message.success('已補上建號');
       setOpen(false);
       form.resetFields();
+      if (json.data?.existing) {
+        // 這個產權已由自己的組織登錄（MIL-144）：這個物件維持待驗證，帶使用者到既有的物件
+        message.info('這個產權你已經登錄過，已帶你到既有的物件');
+        router.push(`/properties/${json.data.id}`);
+        return;
+      }
+      if (json.data?.review) {
+        message.info({ content: `${json.data.review.message}。審核單號：${json.data.review.ticket}`, duration: 8 });
+      } else {
+        message.success('已補上建號');
+      }
       onKeyed();
     } finally {
       setSaving(false);
@@ -57,6 +69,22 @@ function AnchorPanel({ property, onKeyed }: { property: Property; onKeyed: () =>
 
   return (
     <Flex vertical gap="middle">
+      {anchor.collision_review && (
+        // 撞到別的組織已登錄的鍵（MIL-144）。只說已送審核與審核單號，不含對方的任何資料
+        <Alert
+          type="info"
+          showIcon
+          title="已送審核"
+          description={
+            <Flex vertical gap={4}>
+              <Typography.Text>此產權已在平台登錄，已送審核。審核期間，這個物件的產權維持待驗證。</Typography.Text>
+              <Typography.Text>
+                審核單號：<Typography.Text copyable>{anchor.collision_review.ticket}</Typography.Text>
+              </Typography.Text>
+            </Flex>
+          }
+        />
+      )}
       {anchor.status === 'pending_verification' && (
         <Alert
           type="warning"

@@ -60,6 +60,7 @@ const PENDING = {
   section_name: null,
   latitude: null,
   longitude: null,
+  collision_review: null,
 };
 
 describe('建立物件時登錄產權', () => {
@@ -82,6 +83,7 @@ describe('建立物件時登錄產權', () => {
       section_name: '龍泉 一',
       latitude: null,
       longitude: null,
+      collision_review: null,
     });
   });
 
@@ -151,27 +153,193 @@ describe('建立物件時登錄產權', () => {
     expect((await json(await getList())).data).toEqual([]);
   });
 
-  it('撞號：回 409 與固定訊息，整筆不建（不留半成品錨點與物件）', async () => {
-    await create(body({ anchor: { key: KEY } }));
-    const res = await post(body({ name: '重複的', anchor: { key: KEY } }));
-    expect(res.status).toBe(409);
-    expect(await json(res)).toEqual({ error: '撞號處理尚未實作' });
-    expect((await json(await getList())).data).toHaveLength(1);
-    const anchors = await kit.asOwner(async (db) => (await db.query<{ n: string }>('SELECT count(*)::text AS n FROM registry.anchors')).rows[0].n);
-    expect(anchors).toBe('1');
+  describe('撞號（MIL-144）', () => {
+    const NOTICE = '此產權已在平台登錄，已送審核';
+    const ownerRows = <T extends Record<string, unknown>>(sql: string, params: unknown[] = []) =>
+      kit.asOwner(async (db) => (await db.query<T>(sql, params)).rows);
+
+    it('撞到別的組織：照樣建立物件，回固定訊息與審核單號，物件的產權維持待驗證', async () => {
+      actAs(kit.orgB);
+      await create(body({ name: 'B 的秘密物件', anchor: { key: KEY } }));
+      actAs(kit.orgA);
+      const res = await post(body({ name: 'A 的物件', anchor: { key: KEY } }));
+      expect(res.status).toBe(201);
+      const { data } = await json(res);
+      expect(Object.keys(data).sort()).toEqual(['id', 'review']);
+      expect(data.review).toEqual({ ticket: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/), message: NOTICE });
+
+      // 物件已建立，掛在待驗證的產權上，物件頁讀得到審核單號
+      const anchor = await anchorOf(data.id);
+      expect(anchor).toMatchObject({ ...PENDING, collision_review: { ticket: data.review.ticket } });
+      expect((await json(await getList())).data.map((p: { id: string }) => p.id)).toEqual([data.id]);
+
+      // 宣稱的鍵存在審核台項目，不進唯一索引
+      const items = await ownerRows<{ id: string; type: string; payload: Record<string, any> }>( // eslint-disable-line @typescript-eslint/no-explicit-any
+        `SELECT id, type, payload FROM registry.review_items WHERE type = 'anchor_collision'`,
+      );
+      expect(items).toEqual([
+        {
+          id: data.review.ticket,
+          type: 'anchor_collision',
+          payload: expect.objectContaining({
+            claimant_org_id: kit.orgA,
+            claimed_key: { city_code: 'A', town_code: '02', section_code: '0021', building_no: '01234', sub_no: '000' },
+          }),
+        },
+      ]);
+    });
+
+    it('回應本文與錯誤都不含對方組織的名稱、統編、人員、物件與 ID', async () => {
+      actAs(kit.orgB);
+      const theirs = await create(body({ name: 'B 的秘密物件', anchor: { key: KEY } }));
+      const theirUnit = (await json(await get(theirs))).data.rental_unit_id;
+      actAs(kit.orgA);
+      const res = await post(body({ name: 'A 的物件', anchor: { key: KEY } }));
+      const text = await res.text();
+      expect(text).not.toMatch(/秘密|B 組織/);
+      expect(text).not.toContain(theirs);
+      expect(text).not.toContain(theirUnit);
+      // 對方的物件頁、清單與通知沒有任何變化
+      actAs(kit.orgB);
+      expect((await json(await getList())).data.map((p: { id: string }) => p.id)).toEqual([theirs]);
+      expect(await anchorOf(theirs)).toMatchObject({ status: 'keyed', building_no: '01234', collision_review: null });
+      const notifications = await withTx({ kind: 'org', orgId: kit.orgB }, async (tx) => (await tx.query('SELECT id FROM org.notifications')).rows);
+      expect(notifications).toEqual([]);
+    });
+
+    it('在撞號者的稽核鏈寫 property.anchor_collision，payload 不含鍵、地址與對方的任何資料', async () => {
+      actAs(kit.orgB);
+      await create(body({ name: 'B 的秘密物件', anchor: { key: KEY } }));
+      actAs(kit.orgA);
+      const { data } = await json(await post(body({ anchor: { key: KEY } })));
+      const rows = await withTx({ kind: 'org', orgId: kit.orgA }, async (tx) =>
+        (await tx.query<{ action: string; object_id: string; payload: Record<string, unknown> }>(
+          `SELECT action, object_id, payload FROM audit.events WHERE action LIKE 'property.%' ORDER BY seq`,
+        )).rows,
+      );
+      const unitId = (await json(await get(data.id))).data.rental_unit_id;
+      expect(rows).toEqual([
+        { action: 'property.create', object_id: data.id, payload: { rental_unit_id: unitId } },
+        { action: 'property.anchor_collision', object_id: data.id, payload: { rental_unit_id: unitId, review_item_id: data.review.ticket } },
+      ]);
+      expect(JSON.stringify(rows)).not.toMatch(/秘密|B 組織|01234/);
+    });
+
+    it('撞到自己組織：回自己的那筆物件，不建物件、錨點與審核台項目', async () => {
+      const first = await create(body({ name: '第一筆', anchor: { key: KEY } }));
+      const res = await post(body({ name: '重複的', anchor: { key: KEY } }));
+      expect(res.status).toBe(200);
+      expect(await json(res)).toEqual({ data: { id: first, existing: true } });
+      expect((await json(await getList())).data).toHaveLength(1);
+      expect(await ownerRows('SELECT id FROM registry.anchors')).toHaveLength(1);
+      expect(await ownerRows('SELECT id FROM registry.review_items')).toEqual([]);
+    });
+
+    it('超過上限：回 429 請使用者聯絡平台，不建物件，仍留稽核事件，並排一張審核台項目通知營運者', async () => {
+      await kit.asOwner((db) => db.query(`UPDATE registry.platform_settings SET int_value = 1`));
+      actAs(kit.orgB);
+      await create(body({ anchor: { key: KEY } }));
+      actAs(kit.orgA);
+      expect((await post(body({ name: '第一次', anchor: { key: KEY } }))).status).toBe(201);
+      const limited = await post(body({ name: '第二次', anchor: { key: KEY } }));
+      expect(limited.status).toBe(429);
+      expect(await json(limited)).toEqual({ error: expect.stringContaining('請聯絡平台') });
+      expect(JSON.stringify(await json(await post(body({ name: '第三次', anchor: { key: KEY } }))))).not.toMatch(/B 組織/);
+
+      // 第二次與第三次都沒有建物件，錨點也沒有留下半成品
+      expect((await json(await getList())).data.map((p: { name: string }) => p.name)).toEqual(['第一次']);
+      expect(await ownerRows('SELECT id FROM registry.anchors')).toHaveLength(2);
+
+      // 稽核事件沒有跟著回滾；營運者佇列有一張撞號超限項目，次數累計
+      const audit = await withTx({ kind: 'org', orgId: kit.orgA }, async (tx) =>
+        (await tx.query<{ action: string }>(`SELECT action FROM audit.events WHERE action = 'property.anchor_collision_limited'`)).rows,
+      );
+      expect(audit).toHaveLength(2);
+      const items = await ownerRows<{ type: string; subject_id: string; payload: Record<string, unknown> }>(
+        `SELECT type, subject_id, payload FROM registry.review_items WHERE type = 'anchor_collision_limit'`,
+      );
+      expect(items).toEqual([{ type: 'anchor_collision_limit', subject_id: kit.orgA, payload: expect.objectContaining({ limit: 1, hits: 2 }) }]);
+    });
+  });
+});
+
+describe('滲透：B 組織撞 A 組織的鍵（MIL-144）', () => {
+  // 關鍵：這個關係是 B 自己能建立的（B 可以對任何鍵宣稱），所以它不得解鎖 A 的任何資料。
+  // 檢查 B 拿得到的一切：撞號的回應、B 的稽核鏈、B 能呼叫的所有 registry 查詢、B 的物件與通知。再確認 A 這邊沒有任何變化。
+  const A_ADDRESS = '台北市大安區秘密路 99 號';
+
+  async function setup() {
+    actAs(kit.orgA);
+    const aId = await create(body({ name: 'A 的秘密物件', address: A_ADDRESS, anchor: { key: KEY } }));
+    const aUnit = (await json(await get(aId))).data.rental_unit_id as string;
+    const aAnchor = await kit.asOwner(async (db) => (await db.query<{ anchor_id: string }>('SELECT anchor_id FROM registry.rental_units WHERE id = $1', [aUnit])).rows[0].anchor_id);
+    const aSnapshot = await viewOf(kit.orgA, aUnit);
+    actAs(kit.orgB);
+    const res = await post(body({ name: 'B 的物件', address: '新北市板橋區文化路 1 號', anchor: { key: KEY } }));
+    expect(res.status).toBe(201);
+    const bText = await res.clone().text();
+    const bId = (await json(res)).data.id as string;
+    const bUnit = (await json(await get(bId))).data.rental_unit_id as string;
+    return { aId, aUnit, aAnchor, aSnapshot, bId, bUnit, bText };
+  }
+
+  /** 一個組織能讀到的一切：物件、通知、稽核鏈與 registry 的每個讀取函式（用它自己的單位 ID）。 */
+  async function viewOf(orgId: string, unitId: string) {
+    return withTx({ kind: 'org', orgId }, async (tx) => {
+      const rows = async (sql: string, params: unknown[] = []) => (await tx.query(sql, params)).rows;
+      return {
+        properties: await rows('SELECT * FROM org.properties ORDER BY id'),
+        notifications: await rows('SELECT * FROM org.notifications ORDER BY id'),
+        audit: await rows('SELECT chain_id, seq, action, object_type, object_id, payload FROM audit.events ORDER BY seq'),
+        anchors: await rows('SELECT * FROM registry.get_anchors_for_units($1::text[])', [[unitId]]),
+        units: await rows('SELECT * FROM registry.get_unit_details($1::text[])', [[unitId]]),
+        siblings: await rows('SELECT * FROM registry.get_sibling_units($1)', [unitId]),
+        collisions: await rows('SELECT * FROM registry.get_collision_reviews($1::text[])', [[unitId]]),
+      };
+    });
+  }
+
+  it('B 拿得到的一切都不含 A 的名稱、ID、物件與地址', async () => {
+    const ctxA = await setup();
+    const aMarkers = [kit.orgA, 'A 組織', 'A 的秘密物件', A_ADDRESS, '秘密路', ctxA.aId, ctxA.aUnit, ctxA.aAnchor];
+    const bView = await viewOf(kit.orgB, ctxA.bUnit);
+    const everything = JSON.stringify({ response: ctxA.bText, view: bView });
+    for (const marker of aMarkers) expect(everything, `B 看到了 ${marker}`).not.toContain(marker);
+    // B 拿 A 的 ID 去問，與問不存在的 ID 完全相同
+    const probe = async (ids: { unit: string; property: string }) =>
+      withTx({ kind: 'org', orgId: kit.orgB }, async (tx) => ({
+        anchors: (await tx.query('SELECT * FROM registry.get_anchors_for_units($1::text[])', [[ids.unit]])).rows,
+        units: (await tx.query('SELECT * FROM registry.get_unit_details($1::text[])', [[ids.unit]])).rows,
+        siblings: (await tx.query('SELECT * FROM registry.get_sibling_units($1)', [ids.unit])).rows,
+        collisions: (await tx.query('SELECT * FROM registry.get_collision_reviews($1::text[])', [[ids.unit]])).rows,
+        property: (await tx.query('SELECT * FROM org.properties WHERE id = $1', [ids.property])).rows,
+      }));
+    expect(await probe({ unit: ctxA.aUnit, property: ctxA.aId })).toEqual(await probe({ unit: newUlid(), property: newUlid() }));
   });
 
-  it('撞到別的組織與撞到自己組織，回應逐位元相同，不透露對方', async () => {
-    actAs(kit.orgB);
-    await create(body({ name: 'B 的秘密物件', anchor: { key: KEY } }));
-    actAs(kit.orgA);
-    const crossOrg = await post(body({ anchor: { key: KEY } }));
-    await create(body({ anchor: { key: { ...KEY, buildingNo: '99' } } }));
-    const sameOrg = await post(body({ anchor: { key: { ...KEY, buildingNo: '99' } } }));
-    expect(crossOrg.status).toBe(sameOrg.status);
-    const [a, b] = [await crossOrg.text(), await sameOrg.text()];
-    expect(a).toBe(b);
-    expect(a).not.toMatch(/秘密|B 組織/);
+  it('B 的稽核鏈只有 B 自己的事件，payload 不含 A 的任何資料也不含鍵', async () => {
+    const ctxA = await setup();
+    const events = await withTx({ kind: 'org', orgId: kit.orgB }, async (tx) => (await tx.query<{ action: string }>('SELECT * FROM audit.events ORDER BY seq')).rows);
+    expect(events.map((e: { action: string }) => e.action)).toEqual(['property.create', 'property.anchor_collision']);
+    const text = JSON.stringify(events);
+    for (const marker of [kit.orgA, ctxA.aId, ctxA.aUnit, ctxA.aAnchor, 'A 的秘密物件', A_ADDRESS, '01234']) expect(text).not.toContain(marker);
+  });
+
+  it('A 這邊沒有任何變化：物件、通知、稽核鏈、registry 讀取結果都與撞號前相同', async () => {
+    const ctxA = await setup();
+    expect(await viewOf(kit.orgA, ctxA.aUnit)).toEqual(ctxA.aSnapshot);
+    const anchor = await kit.asOwner(async (db) =>
+      (await db.query('SELECT id, status, city_code, building_no, updated_at FROM registry.anchors WHERE id = $1', [ctxA.aAnchor])).rows,
+    );
+    expect(anchor).toEqual([expect.objectContaining({ id: ctxA.aAnchor, status: 'keyed', building_no: '01234' })]);
+  });
+
+  it('B 反覆撞同一個鍵的回應逐位元相同（除了每次不同的審核單號與物件 ID），不會因為次數洩漏任何事', async () => {
+    await setup();
+    const strip = (t: string) => t.replace(/[0-9A-HJKMNP-TV-Z]{26}/g, '<id>');
+    const texts: string[] = [];
+    for (let i = 0; i < 3; i += 1) texts.push(strip(await (await post(body({ name: `B${i}`, anchor: { key: KEY } }))).text()));
+    expect(new Set(texts).size).toBe(1);
   });
 });
 
@@ -208,13 +376,63 @@ describe('POST /api/properties/[id]/anchor-key（補建號）', () => {
     expect(await anchorOf(id)).toMatchObject({ building_no: '01234' });
   });
 
-  it('撞號：回 409 與固定訊息，物件維持待驗證', async () => {
-    await create(body({ anchor: { key: KEY } }));
-    const id = await create();
-    const res = await setKey(id, KEY);
-    expect(res.status).toBe(409);
-    expect(await json(res)).toEqual({ error: '撞號處理尚未實作' });
-    expect((await anchorOf(id)).status).toBe('pending_verification');
+  describe('撞號（MIL-144）', () => {
+    const NOTICE = '此產權已在平台登錄，已送審核';
+
+    it('撞到別的組織：回固定訊息與審核單號，物件維持待驗證並顯示審核單號', async () => {
+      actAs(kit.orgB);
+      await create(body({ name: 'B 的秘密物件', anchor: { key: KEY } }));
+      actAs(kit.orgA);
+      const id = await create();
+      const res = await setKey(id, KEY);
+      expect(res.status).toBe(200);
+      const { data } = await json(res);
+      expect(Object.keys(data).sort()).toEqual(['anchor', 'id', 'review']);
+      expect(data.review).toEqual({ ticket: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/), message: NOTICE });
+      expect(data.anchor).toMatchObject({ status: 'pending_verification', building_no: null, collision_review: { ticket: data.review.ticket } });
+      expect(JSON.stringify(data)).not.toMatch(/秘密|B 組織/);
+      expect(await anchorOf(id)).toEqual(data.anchor);
+    });
+
+    it('撞到自己組織：回自己的那筆物件，補建號的物件維持待驗證，不建審核台項目', async () => {
+      const first = await create(body({ anchor: { key: KEY } }));
+      const id = await create();
+      const res = await setKey(id, KEY);
+      expect(res.status).toBe(200);
+      expect(await json(res)).toEqual({ data: { id: first, existing: true } });
+      expect((await anchorOf(id)).status).toBe('pending_verification');
+      const items = await kit.asOwner(async (db) => (await db.query('SELECT id FROM registry.review_items')).rows);
+      expect(items).toEqual([]);
+    });
+
+    it('改登錄沒人用的鍵：轉已建號，審核單號不再顯示', async () => {
+      actAs(kit.orgB);
+      await create(body({ anchor: { key: KEY } }));
+      actAs(kit.orgA);
+      const id = await create();
+      await setKey(id, KEY);
+      const res = await setKey(id, { ...KEY, buildingNo: '777' });
+      expect(res.status).toBe(200);
+      expect((await json(res)).data.anchor).toMatchObject({ status: 'keyed', building_no: '00777', collision_review: null });
+    });
+
+    it('超過上限：回 429，物件維持待驗證，留稽核事件', async () => {
+      await kit.asOwner((db) => db.query(`UPDATE registry.platform_settings SET int_value = 1`));
+      actAs(kit.orgB);
+      await create(body({ anchor: { key: KEY } }));
+      actAs(kit.orgA);
+      const first = await create();
+      const second = await create();
+      expect((await setKey(first, KEY)).status).toBe(200);
+      const limited = await setKey(second, KEY);
+      expect(limited.status).toBe(429);
+      expect(await json(limited)).toEqual({ error: expect.stringContaining('請聯絡平台') });
+      expect((await anchorOf(second)).status).toBe('pending_verification');
+      const audit = await withTx({ kind: 'org', orgId: kit.orgA }, async (tx) =>
+        (await tx.query(`SELECT action FROM audit.events WHERE action = 'property.anchor_collision_limited'`)).rows,
+      );
+      expect(audit).toHaveLength(1);
+    });
   });
 
   it('別的組織的 ID、不存在的 ID、格式錯誤的 ID，回應逐位元相同', async () => {
