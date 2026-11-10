@@ -4,6 +4,8 @@ status: accepted
 
 # PostgreSQL 與 RLS 組織隔離，直接切換不做 SQLite 非同步過渡
 
+> 2026-11-10：決議 8 第 4 項已由 ADR-0028 修訂。回應不得說明建號已在平台登錄。
+
 現有資料庫是 SQLite 單檔，沒有 RLS。P0-02 要求每張組織表以 RLS 隔離並設定 FORCE。決議：資料庫換成 PostgreSQL，採共用資料庫加 RLS，應用程式完全沒有 `BYPASSRLS`。呼叫點量測不改變這個選項，因為否決 SQLite 的原因是沒有 RLS，與工作量無關。遷移時不做 SQLite 的非同步過渡，直接寫 PostgreSQL 版 repository。其他 P0 線也要等 PostgreSQL，所以過渡狀態沒有使用者。
 
 本決議取代 ADR-0002 的「儲存用 SQLite（單檔、零安裝、schema 可讀）」一段。ADR-0002 的 Next.js 單一專案決議不變。
