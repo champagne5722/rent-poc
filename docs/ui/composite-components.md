@@ -150,6 +150,7 @@ export default function Loading() {
 版型固定的行為：
 
 - 表格 `size="middle"`。
+- 操作欄放最右，用文字連結（`Button type="link" size="small"`），不用有邊框的按鈕群。1440 寬、側欄展開時，欄位不必橫向捲動；窄於表格最小寬度時，操作欄固定在右側。
 - 分頁每頁 `LIST_PAGE_SIZE` 筆（20），不顯示筆數切換，只有一頁時隱藏，並顯示「共 N 筆」。
 - 表格沒有資料時：`filter.active` 為 `true` 顯示「沒有符合篩選條件的資料」加「清除篩選」，否則顯示 `empty`。
 

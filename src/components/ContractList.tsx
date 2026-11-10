@@ -231,16 +231,16 @@ function ContractListInner({ contracts, progress, displayCodes }: ContractListPr
           },
           { title: partyB.title, render: (_, r) => partyB.cell(r) },
           { title: '租金', width: 90, align: 'right', render: (_, r) => listRentLabel(r) },
-          { title: '租期', width: 190, render: (_, r) => listPeriodLabel(r) },
-          { title: '狀態', width: 90, render: (_, r) => <StatusTag kind="contract" value={r.status} /> },
+          { title: '租期', width: 215, render: (_, r) => listPeriodLabel(r) },
+          { title: '狀態', width: 84, render: (_, r) => <StatusTag kind="contract" value={r.status} /> },
           {
             title: '簽署進度',
-            width: 90,
+            width: 84,
             render: (_, r) => <SigningProgress contract={r} progress={progress[String(r.id)] ?? null} />,
           },
-          { title: '最後動作', width: 110, render: (_, r) => dayjs(lastActionAt(r)).format('MM-DD HH:mm') },
+          { title: '最後動作', width: 108, render: (_, r) => dayjs(lastActionAt(r)).format('MM-DD HH:mm') },
           // 操作欄固定在最右，表格橫向捲動時仍看得到（規格 39）
-          { title: '操作', width: 200, fixed: 'right', render: (_, r) => rowActions(r) },
+          { title: '操作', width: 170, fixed: 'right', render: (_, r) => rowActions(r) },
         ],
       }}
     />
