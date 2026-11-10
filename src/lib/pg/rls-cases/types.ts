@@ -126,13 +126,21 @@ export interface ControlTableException {
   appRw: ReadonlyArray<'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE'>;
 }
 
+/** audit schema 的表登記（MIL-89）。audit 的表歸 audit_owner，FORCE RLS，app_rw 只有登記的權限。 */
+export interface AuditTable {
+  /** 這張表放什麼，誰能讀寫。 */
+  reason: string;
+  /** app_rw 允許的直接權限。沒有列出的權限一律不得有，空陣列代表 app_rw 沒有任何權限，讀寫都經定義者函式。 */
+  appRw: ReadonlyArray<'SELECT'>;
+}
+
 export interface DefinerOnlyTable {
   /** 這張表放什麼，經哪些函式存取。 */
   reason: string;
 }
 
 /**
- * 一個模組在滲透測試清單的登記。六個欄位都可省略，模組只填自己有的部分。
+ * 一個模組在滲透測試清單的登記。七個欄位都可省略，模組只填自己有的部分。
  * 各欄位的規則見 `../rls-cases.ts` 對應常數上方的說明。
  */
 export interface RlsRegistration {
@@ -148,4 +156,6 @@ export interface RlsRegistration {
   controlTables?: Record<string, ControlTableException>;
   /** 對應 `DEFINER_ONLY_TABLES`。 */
   definerOnlyTables?: Record<string, DefinerOnlyTable>;
+  /** 對應 `AUDIT_TABLES`。 */
+  auditTables?: Record<string, AuditTable>;
 }
