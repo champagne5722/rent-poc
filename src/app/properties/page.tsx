@@ -18,7 +18,7 @@ import {
   theme,
   Typography,
 } from 'antd';
-import { PlusOutlined, FileAddOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { EquipmentItem, EquipmentVocabularyItem, Property, PropertyVerificationStatus } from '@/lib/types';
@@ -254,17 +254,19 @@ function PropertiesPage() {
         loading={loading}
         dataSource={visibleItems}
         pagination={false}
-        scroll={{ x: 'max-content' }}
+        // 欄寬明確，1440 寬、側欄展開時不必橫向捲動；視窗更窄時才捲動，操作欄固定在右側（比照合約列表）
+        scroll={{ x: 1000 }}
         columns={[
           {
             // 租賃單位的顯示編碼（GLOSSARY「顯示編碼」），不含建號，口頭溝通與客服對照用。不保證唯一
             title: '顯示編碼',
-            width: 130,
+            width: 128,
             render: (_, record) => <DisplayCode code={record.unit?.display_code} />,
           },
           {
             title: '名稱',
             dataIndex: 'name',
+            width: 100,
             render: (name: string, record) => (
               <Space size="small">
                 <Link href={`/properties/${record.id}`} style={{ color: token.colorPrimary }}>
@@ -276,27 +278,28 @@ function PropertiesPage() {
           },
           {
             title: '單位',
-            width: 120,
+            width: 60,
             render: (_, record) => (record.unit ? unitShortText(record.unit) : '—'),
           },
-          { title: '地址', dataIndex: 'address' },
-          { title: '建號', dataIndex: 'anchor', render: (_: unknown, record) => anchorSummary(record.anchor) },
+          { title: '地址', dataIndex: 'address', width: 116 },
+          { title: '建號', dataIndex: 'anchor', width: 126, render: (_: unknown, record) => anchorSummary(record.anchor) },
           {
             title: '核對狀態',
-            width: 140,
+            width: 132,
             render: (_, record) => <StatusTag kind="propertyVerification" value={record.verification_status} />,
           },
-          { title: '型態', dataIndex: 'type', width: 100 },
-          { title: '坪數', dataIndex: 'size', width: 80, render: (v) => v ?? '—' },
+          { title: '型態', dataIndex: 'type', width: 92 },
+          { title: '坪數', dataIndex: 'size', width: 60, render: (v) => v ?? '—' },
           {
             title: '預設租金',
             dataIndex: 'default_rent',
-            width: 110,
+            width: 100,
             render: (v) => (v != null ? `$${v.toLocaleString()}` : '—'),
           },
           {
             title: '設備',
             dataIndex: 'equipment',
+            width: 60,
             render: (eq: EquipmentItem[]) =>
               eq.length ? (
                 <>
@@ -309,21 +312,23 @@ function PropertiesPage() {
               ),
           },
           {
+            // 操作欄放最右並固定，用文字連結，最常用的動作放第一個（docs/ui/composite-components.md）
             title: '操作',
-            width: 240,
+            width: 190,
+            fixed: 'right',
             render: (_, record) =>
               record.archived_at ? (
                 <Typography.Text type="secondary">已封存，唯讀</Typography.Text>
               ) : (
-                <Space>
-                  <Button size="small" icon={<FileAddOutlined />} onClick={() => createContract(record.id)}>
+                <Space size={0}>
+                  <Button type="link" size="small" onClick={() => createContract(record.id)}>
                     建立合約
                   </Button>
-                  <Button size="small" onClick={() => openEditor(record)}>
+                  <Button type="link" size="small" onClick={() => openEditor(record)}>
                     編輯
                   </Button>
                   <Popconfirm title="確定刪除此物件？" description="有案件或合約的物件會改為封存，不會刪除。" onConfirm={() => remove(record.id)}>
-                    <Button size="small" danger>
+                    <Button type="link" size="small" danger>
                       刪除
                     </Button>
                   </Popconfirm>

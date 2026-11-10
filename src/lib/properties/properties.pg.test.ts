@@ -51,7 +51,9 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
       rental_unit_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/),
       unit: { suffix: '0000', label: null, floor: null, unit_type: 'whole', status: 'active', display_code: null },
       archived_at: null,
-      anchor: expect.objectContaining({ status: 'pending_verification', building_no: null, latitude: null }),
+      // 沒有建號的舊資料：鍵與座標都是空值。對外狀態是常數，不讀內部狀態（MIL-196）
+      anchor: expect.objectContaining({ building_no: null, latitude: null }),
+      verification_status: 'pending_verification',
       name: '物件',
       address: '台北市大安區某路 1 號',
       type: '整層住家',
@@ -121,10 +123,20 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
   describe('物件的建號（MIL-143、MIL-196）', () => {
     const key = { city: 'A', town: '02', section: '0021', buildingNo: '4242', subNo: '' };
     const keyedInput = (buildingNo: string) => input({ anchor: { key: { ...key, buildingNo } } });
-    const noInternalState = (anchor: object | null | undefined) => {
-      // 內部狀態與審核單號不得出現在讀取結果
-      expect(Object.keys(anchor ?? {})).not.toContain('status');
-      expect(Object.keys(anchor ?? {})).not.toContain('collision_review');
+    /** 讀取結果的 anchor 只有建號摘要的欄位，沒有內部狀態與審核單號。 */
+    const onlyKeySummary = (anchor: object | null | undefined) => {
+      expect(Object.keys(anchor ?? {}).sort()).toEqual([
+        'building_no',
+        'city_code',
+        'city_name',
+        'latitude',
+        'longitude',
+        'section_code',
+        'section_name',
+        'sub_no',
+        'town_code',
+        'town_name',
+      ]);
     };
 
     it('建立時填鍵：名稱取自參照表；補建號後一樣；pg 的座標是 number', async () => {
@@ -162,10 +174,10 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
       expect(claimant!.anchor).toMatchObject({ building_no: '04243', city_name: '臺北市', section_name: '龍泉 一' });
       expect(claimant!.verification_status).toBe('pending_verification');
       expect(claimant!.unit!.display_code).not.toBeNull();
-      noInternalState(claimant!.anchor);
+      onlyKeySummary(claimant!.anchor);
       const holder = await withTx({ kind: 'org', orgId: orgA }, (tx) => getProperty(tx, (first as { id: string }).id));
       expect(holder!.anchor).toMatchObject({ building_no: '04243' });
-      noInternalState(holder!.anchor);
+      onlyKeySummary(holder!.anchor);
 
       // 內部：宣稱方的物件待驗證，宣稱的鍵在審核項目，既有登錄方的物件不變
       const { rows } = await dbh.owner.query(
