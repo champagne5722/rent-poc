@@ -6,6 +6,9 @@
 // 2. `prepareContractSend(...)` 在交易外跑檢查。登錄（practiceRegistry）之後可能是外部查詢，不佔著連線。
 // 簽章紀錄（MIL-70）由合約訂閱者的 `onSent` 在送簽交易內寫入，資料走 `signing.send` 的 `context`。
 
+import { getContract } from '../contracts';
+import type { LeasingAuthoritySendFacts } from '../leasing-authority/preconditions';
+import { loadLeasingAuthorityFacts } from '../ownership/send-facts';
 import type { PdfPageMap } from '../pdf-layout';
 import type { PracticeRegistryResolution } from '../practice-registry';
 import type { OrgTx } from '../pg/with-tx';
@@ -40,12 +43,19 @@ export type PreparedContractSend =
 export interface SendInputs {
   routing: ContractRoutingLoad;
   assignments: PractitionerAssignment[];
+  /**
+   * 這個組織對合約的物件有沒有已驗證的所有權節點（MIL-205，ADR-0028 決議 5）。
+   * 由 `loadSendInputs` 從伺服器端的合約與物件載入。合約類型不綁物件時是 undefined，不檢查。
+   */
+  leasingAuthority?: LeasingAuthoritySendFacts;
 }
 
 export async function loadSendInputs(tx: OrgTx, contractId: string): Promise<SendInputs> {
+  const contract = await getContract(tx, contractId);
   return {
     routing: await loadContractRoutingFacts(tx, contractId),
     assignments: await getAssignments(tx, contractId),
+    leasingAuthority: contract ? await loadLeasingAuthorityFacts(tx, contract) : undefined,
   };
 }
 
@@ -71,7 +81,7 @@ export async function prepareContractSend(
   if (!routing.ok) return { ok: false, status: 400, error: routing.reason, reasons: [] };
 
   const evaluation = await evaluateSend(
-    { routing: routing.facts, contractType: contract.contract_type, fields: contract.fields, assignments, at },
+    { routing: routing.facts, contractType: contract.contract_type, fields: contract.fields, assignments, at, leasingAuthority: inputs.leasingAuthority },
     resolution,
   );
   // 未審閱範本的閘門（P0-10 AC5）：正式金鑰下擋下，與送簽前檢查的原因一起列出

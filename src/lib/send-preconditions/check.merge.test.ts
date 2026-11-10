@@ -80,7 +80,7 @@ const codes = (f: SendPreconditionFacts) => checkSendPreconditions(f).reasons.ma
 
 describe('checkSendPreconditions：同一人兼任合併後再檢查 email', () => {
   it('當事人簽署人與執業人員是同一人：合併，email 不算重複', () => {
-    expect(checkSendPreconditions(facts())).toEqual({ ok: true, reasons: [], notices: [], leasingAuthorityFacts: [] });
+    expect(checkSendPreconditions(facts())).toEqual({ ok: true, reasons: [], notices: [] });
   });
 
   it('居間加包租，兼任合併後仍可送簽', () => {

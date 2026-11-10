@@ -3,6 +3,7 @@ export {
   addCaseMember,
   attachContract,
   CaseCreationBlocked,
+  type CaseCreationBlockReason,
   caseTitleOf,
   createLeaseCase,
   replaceTenantMemberEmail,

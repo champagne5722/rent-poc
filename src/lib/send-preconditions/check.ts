@@ -21,7 +21,6 @@ import { practitionerTitle, type CertificateKind } from '../labels';
 import {
   checkLeasingAuthorityPreconditions,
   type LeasingAuthorityBlockReason,
-  type LeasingAuthoritySendFact,
   type LeasingAuthoritySendFacts,
 } from '../leasing-authority/preconditions';
 import { normalizeEmail } from '../signing-module/progress';
@@ -120,8 +119,6 @@ export interface SendPreconditionResult {
   ok: boolean;
   reasons: SendBlockReason[];
   notices: SendNotice[];
-  /** 權源未驗證的告知事實，電子簽署告知要載明（MIL-42 Q2 補充規則 1）。 */
-  leasingAuthorityFacts: LeasingAuthoritySendFact[];
 }
 
 function seatLabel(seat: PlannedSeat): string {
@@ -241,12 +238,9 @@ export function checkSendPreconditions(facts: SendPreconditionFacts): SendPrecon
     checkDuplicateEmails(seats, facts.signers, reasons);
   }
 
-  let leasingAuthorityFacts: LeasingAuthoritySendFact[] = [];
   if (facts.leasingAuthority) {
-    const authority = checkLeasingAuthorityPreconditions(facts.leasingAuthority);
-    reasons.push(...authority.reasons);
-    leasingAuthorityFacts = authority.facts;
+    reasons.push(...checkLeasingAuthorityPreconditions(facts.leasingAuthority).reasons);
   }
 
-  return { ok: reasons.length === 0, reasons, notices, leasingAuthorityFacts };
+  return { ok: reasons.length === 0, reasons, notices };
 }

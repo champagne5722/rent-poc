@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   checkLeasingAuthorityPreconditions,
   requiredDocumentsFor,
-  UNVERIFIED_AUTHORITY_TEXT,
   type LeasingAuthoritySendFacts,
   type PrimaryLeasingAuthorityFacts,
 } from './index';
@@ -35,12 +34,22 @@ function codes(facts: LeasingAuthoritySendFacts) {
   return checkLeasingAuthorityPreconditions(facts).reasons.map((reason) => reason.code);
 }
 
-describe('checkLeasingAuthorityPreconditions：六項擋下原因', () => {
+describe('checkLeasingAuthorityPreconditions：擋下原因', () => {
   const cases: Array<{ name: string; facts: LeasingAuthoritySendFacts; expected: string[] }> = [
     {
       name: '沒有主要出租權源',
       facts: { ...BASE, primaryAuthority: null },
       expected: ['no_primary_authority'],
+    },
+    {
+      name: '沒有主要出租權源且物件沒有節點（只列物件的原因）',
+      facts: { ...BASE, primaryAuthority: null, propertyNotVerified: true },
+      expected: ['property_not_verified'],
+    },
+    {
+      name: '主要出租權源待驗證',
+      facts: { ...BASE, primaryAuthority: { ...OWNERSHIP_OK, status: 'pending_verification' } },
+      expected: ['primary_authority_pending'],
     },
     {
       name: '主要出租權源驗證失敗',
@@ -140,31 +149,22 @@ describe('checkLeasingAuthorityPreconditions：放行', () => {
     { name: '只有疑似重複待審', facts: { ...BASE, hasPendingSuspectedDuplicate: true } },
   ];
 
-  it.each(cases)('$name 時放行且沒有事實', ({ facts }) => {
-    expect(checkLeasingAuthorityPreconditions(facts)).toEqual({ blocked: false, reasons: [], facts: [] });
+  it.each(cases)('$name 時放行', ({ facts }) => {
+    expect(checkLeasingAuthorityPreconditions(facts)).toEqual({ blocked: false, reasons: [] });
   });
 
-  it('主要出租權源待驗證時放行，事實帶「出租權源未驗證」', () => {
+  it('不再產生「出租權源未驗證」的告知事實（MIL-205）', () => {
     const result = checkLeasingAuthorityPreconditions({
       ...BASE,
       primaryAuthority: { ...OWNERSHIP_OK, status: 'pending_verification' },
     });
-    expect(result.blocked).toBe(false);
-    expect(result.reasons).toEqual([]);
-    expect(result.facts).toEqual([
-      { code: 'leasing_authority_unverified', text: '出租權源未驗證', authorityId: OWNERSHIP_OK.id },
-    ]);
-    expect(UNVERIFIED_AUTHORITY_TEXT).toBe('出租權源未驗證');
+    expect(result).not.toHaveProperty('facts');
   });
 
-  it('待驗證但另有擋下原因時，擋下並仍帶未驗證事實', () => {
-    const result = checkLeasingAuthorityPreconditions({
-      ...BASE,
-      primaryAuthority: { ...OWNERSHIP_OK, status: 'pending_verification', providedDocuments: [] },
-    });
-    expect(result.blocked).toBe(true);
-    expect(result.reasons.map((reason) => reason.code)).toEqual(['missing_documents']);
-    expect(result.facts.map((fact) => fact.code)).toEqual(['leasing_authority_unverified']);
+  it('待驗證又缺件時，兩項原因都列出', () => {
+    expect(
+      codes({ ...BASE, primaryAuthority: { ...OWNERSHIP_OK, status: 'pending_verification', providedDocuments: [] } }),
+    ).toEqual(['primary_authority_pending', 'missing_documents']);
   });
 });
 
@@ -192,11 +192,8 @@ describe('checkLeasingAuthorityPreconditions：多重原因與說明', () => {
     ]);
   });
 
-  it('沒有主要出租權源加物件尚未核對，兩項都列出', () => {
-    expect(codes({ ...BASE, primaryAuthority: null, propertyNotVerified: true })).toEqual([
-      'no_primary_authority',
-      'property_not_verified',
-    ]);
+  it('沒有主要出租權源加物件尚未核對，只列物件尚未核對', () => {
+    expect(codes({ ...BASE, primaryAuthority: null, propertyNotVerified: true })).toEqual(['property_not_verified']);
   });
 
   it('缺件原因列出全部缺件，含信託缺的項目', () => {
