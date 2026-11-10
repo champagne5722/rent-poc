@@ -53,13 +53,14 @@ const assignKey = (
   anchorId: string,
   key: { city?: string; town?: string; section?: string; building?: string; sub?: string | null } = {},
 ) =>
-  tx.query<{ outcome: string }>('SELECT * FROM registry.assign_anchor_key($1, $2, $3, $4, $5, $6, $7)', [
+  tx.query<{ outcome: string }>('SELECT * FROM registry.assign_anchor_key($1, $2, $3, $4, $5, $6, $7, $8)', [
     anchorId,
     key.city ?? 'A',
     key.town ?? '02',
     key.section ?? '0001',
     key.building ?? '1234',
     key.sub === undefined ? null : key.sub,
+    newUlid(),
     newUlid(),
   ]);
 
@@ -276,17 +277,27 @@ describe('registry.assign_anchor_key（補建號）', () => {
     expect(rows).toEqual([{ status: 'pending_verification' }]);
   });
 
-  it('已建號的錨點不能再補建號', async () => {
+  it('已建號的物件通過核對前能修正建號（MIL-196）：回 keyed，鍵更新', async () => {
     const { anchorId } = await createProperty(orgA);
     await withTx({ kind: 'org', orgId: orgA }, (tx) => assignKey(tx, anchorId, k));
-    await expect(withTx({ kind: 'org', orgId: orgA }, (tx) => assignKey(tx, anchorId, { ...k, building: '9' }))).rejects.toMatchObject({
+    const fixed = await withTx({ kind: 'org', orgId: orgA }, (tx) => assignKey(tx, anchorId, { ...k, building: '9' }));
+    expect(fixed.rows[0].outcome).toBe('keyed');
+    const { rows } = await asRole(db, 'app_owner', () => db.query(`SELECT status, building_no FROM registry.anchors WHERE id = $1`, [anchorId]));
+    expect(rows).toEqual([{ status: 'keyed', building_no: '00009' }]);
+  });
+
+  it('已合併或停用的物件不能修正建號：回 55000，訊息稱「物件」', async () => {
+    const { anchorId } = await createProperty(orgA);
+    await asRole(db, 'app_owner', () => db.query(`UPDATE registry.anchors SET status = 'retired' WHERE id = $1`, [anchorId]));
+    await expect(withTx({ kind: 'org', orgId: orgA }, (tx) => assignKey(tx, anchorId, k))).rejects.toMatchObject({
       code: '55000',
+      message: '物件目前不能修正建號',
     });
   });
 
   it('沒有組織脈絡時拒絕', async () => {
     const { anchorId } = await createProperty(orgA);
-    await expect(withTx({ kind: 'control' }, (tx) => tx.query('SELECT * FROM registry.assign_anchor_key($1, $2, $3, $4, $5, NULL, $6)', [anchorId, k.city, k.town, k.section, '1', newUlid()]))).rejects.toThrow(/組織脈絡/);
+    await expect(withTx({ kind: 'control' }, (tx) => tx.query('SELECT * FROM registry.assign_anchor_key($1, $2, $3, $4, $5, NULL, $6, $7)', [anchorId, k.city, k.town, k.section, '1', newUlid(), newUlid()]))).rejects.toThrow(/組織脈絡/);
   });
 });
 

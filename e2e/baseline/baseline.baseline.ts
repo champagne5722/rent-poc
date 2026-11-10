@@ -173,6 +173,10 @@ async function normalizeVolatileText(page: Page): Promise<void> {
     ];
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      // 不動 <style> 與 <script> 的文字：CSS 裡的 #232529 這類全數字色碼也符合 /#[0-9A-Z]{6}/，
+      // 換成 #ABCDEF 會讓文字色變成淡藍色（MIL-175 發現）
+      const tag = node.parentElement?.tagName;
+      if (tag === 'STYLE' || tag === 'SCRIPT' || tag === 'NOSCRIPT') continue;
       let text = node.nodeValue ?? '';
       for (const [pattern, sample] of replacements) text = text.replace(pattern, sample);
       if (text !== node.nodeValue) node.nodeValue = text;

@@ -6,8 +6,8 @@ import { normalizeAddress } from '@/lib/registry/address-match';
 import { formatDisplayCode } from '@/lib/registry/display-code';
 import { sectionLabel } from '@/lib/registry/section-code';
 import type { AnchorKey } from '@/lib/registry/section-code';
-import type { AnchorStatus, Property, PropertyAnchor, PropertyType, PropertyUnit, RentalUnitStatus, RentalUnitType, SiblingUnit } from '@/lib/types';
-import { auditCollisionQueued, claimAnchorKey, recordCollisionLimitHit } from './collision';
+import type { Property, PropertyAnchor, PropertyType, PropertyUnit, RentalUnitStatus, RentalUnitType, SiblingUnit } from '@/lib/types';
+import { claimAnchorKey } from './collision';
 import { hasActiveLeaseForProperty, hasCasesForProperty } from './contract-links';
 import type { PropertyInput } from './input';
 import type { SubletInput } from './sublet';
@@ -37,27 +37,18 @@ interface Row {
 const COLUMNS =
   'id, rental_unit_id, name, address, type, size, default_rent, note, equipment, archived_at, created_at, updated_at';
 
-export class AnchorAlreadyKeyedError extends Error {
+/** 物件已合併或停用，不能修正建號。通過核對後要送審核台的規則等核對功能（MIL-201）加入後再處理。 */
+export class AnchorKeyLockedError extends Error {
   constructor() {
-    super('產權已建號，不能再補建號');
+    super('物件目前不能修正建號');
   }
 }
 /** DB 端的鍵檢查沒過（段碼表與 seed 不同步、建號格式）。純函式已先驗過，所以正常不會發生。 */
 export class AnchorKeyRejectedError extends Error {}
 
-/**
- * createProperty（只回物件 ID 的簡化版）遇到頻率限制時丟出。route 用 registerProperty，不會看到它。
- * 簡化版的呼叫端不處理撞號的回應，所以額度用完就當錯誤，交易回滾。
- */
-export class CollisionRateLimitedError extends Error {
-  constructor() {
-    super('24 小時內遇到已登錄產權的次數已達上限');
-  }
-}
-
 function rethrowAnchorError(error: unknown): never {
   const { code, message } = error as { code?: string; message?: string };
-  if (code === '55000') throw new AnchorAlreadyKeyedError();
+  if (code === '55000') throw new AnchorKeyLockedError();
   if (code === '22023') throw new AnchorKeyRejectedError(message);
   throw error;
 }
@@ -65,7 +56,8 @@ function rethrowAnchorError(error: unknown): never {
 interface AnchorRow {
   unit_id: string;
   anchor_id: string;
-  status: AnchorStatus;
+  /** 內部狀態。對外的狀態只由文件核對決定，這個欄位不得進回應。 */
+  status: string;
   city_code: string | null;
   town_code: string | null;
   section_code: string | null;
@@ -84,22 +76,19 @@ interface UnitAnchor {
   anchor: PropertyAnchor;
 }
 
-/** 讀租賃單位所屬的錨點。registry 只能經函式讀，函式只回呼叫者組織有物件指向的單位。 */
+/**
+ * 讀租賃單位所屬物件的建號。registry 只能經函式讀，函式只回呼叫者組織有物件指向的單位。
+ * 鍵撞到別的組織時，函式回傳呼叫者宣稱的鍵，所以這裡看不出撞號。AnchorRow.status 是內部狀態，不得複製到回傳值。
+ */
 async function fetchAnchors(tx: OrgTx, unitIds: string[]): Promise<Map<string, UnitAnchor>> {
   if (unitIds.length === 0) return new Map();
   const { rows } = await tx.query<AnchorRow>('SELECT * FROM registry.get_anchors_for_units($1::text[])', [unitIds]);
-  const { rows: reviews } = await tx.query<{ unit_id: string; item_id: string; created_at: Date }>(
-    'SELECT * FROM registry.get_collision_reviews($1::text[])',
-    [unitIds],
-  );
-  const reviewByUnit = new Map(reviews.map((r) => [r.unit_id, { ticket: r.item_id, created_at: r.created_at.toISOString() }]));
   return new Map(
     rows.map((r) => [
       r.unit_id,
       {
         anchorId: r.anchor_id,
         anchor: {
-          status: r.status,
           city_code: r.city_code,
           town_code: r.town_code,
           section_code: r.section_code,
@@ -110,7 +99,6 @@ async function fetchAnchors(tx: OrgTx, unitIds: string[]): Promise<Map<string, U
           section_name: r.section_name === null ? null : sectionLabel({ name: r.section_name, subName: r.section_sub_name ?? '' }),
           latitude: r.latitude,
           longitude: r.longitude,
-          collision_review: reviewByUnit.get(r.unit_id) ?? null,
         },
       },
     ]),
@@ -170,6 +158,8 @@ function toProperty(row: Row, anchor: PropertyAnchor | null, unit: PropertyUnit 
     unit,
     archived_at: isoOrNull(row.archived_at),
     anchor,
+    // 對外狀態只由文件核對決定，不讀 registry.anchors.status。核對功能（MIL-201）加入前，每個物件都在等平台核對文件
+    verification_status: 'pending_verification',
     name: row.name,
     address: row.address,
     type: row.type,
@@ -199,14 +189,10 @@ export async function getProperty(tx: OrgTx, id: string): Promise<Property | nul
 }
 
 export type RegisterPropertyResult =
-  /** 物件已建立。有鍵的話，鍵沒人用，產權已建號。 */
+  /** 物件已建立。鍵有沒有撞到別的組織，這裡看不出來（ADR-0028 決議 1）。 */
   | { kind: 'created'; id: string }
-  /** 鍵撞到別的組織。物件照樣建立，產權維持待驗證，reviewTicket 是審核單號。 */
-  | { kind: 'review_queued'; id: string; reviewTicket: string }
   /** 鍵已被自己組織登錄。什麼都沒建，id 是自己既有的物件。 */
-  | { kind: 'existing'; id: string }
-  /** 24 小時內的撞號回應已達上限。什麼都沒建，但稽核事件與營運者的審核台項目已寫入，交易必須提交。 */
-  | { kind: 'rate_limited' };
+  | { kind: 'existing'; id: string };
 
 /** 建立物件的列：設備詞彙、待驗證錨點與 0000 單位、物件。不寫稽核，也不處理鍵。 */
 async function insertPropertyRows(tx: OrgTx, input: PropertyInput): Promise<{ id: string; anchorId: string; unitId: string }> {
@@ -245,14 +231,15 @@ async function insertPropertyRows(tx: OrgTx, input: PropertyInput): Promise<{ id
 const REGISTER_SAVEPOINT = 'register_property';
 
 /**
- * 建立物件（P0-06 AC5，ADR-0025 決議 7）。錨點、0000 單位、物件在同一個交易，任一失敗一起回滾。
+ * 建立物件（P0-06 AC5，ADR-0028 決議 1、2、6）。錨點、0000 單位、物件在同一個交易，任一失敗一起回滾。
  *
- * 有鍵時最後補建號，結果有四種（見 RegisterPropertyResult）。撞號不丟例外：
- * - 撞到別的組織：物件留著，產權維持待驗證，宣稱的鍵存在審核台項目。
- * - 撞到自己組織、超過上限：用 savepoint 把這次建立的列全部退掉。
- * 格式錯誤等例外仍原樣丟出，呼叫端必須讓交易回滾。
+ * 有鍵時最後登錄建號，結果只有兩種（見 RegisterPropertyResult）：
+ * - 鍵撞到自己組織：用 savepoint 把這次建立的列與稽核事件全部退掉，回自己既有的物件。這是唯一的例外。
+ * - 其他情況：物件留著，回傳相同的結果。鍵撞到別的組織時，審核台項目與平台鏈的事件由資料庫函式寫入。
+ * 格式錯誤等例外原樣丟出，呼叫端必須讓交易回滾。
  *
- * 為什麼用 savepoint 而不是丟例外：例外會讓整個交易回滾，超過上限時要寫的稽核事件與審核台項目也一起消失。
+ * 登錄事件寫在登錄建號之前：函式撞號時會寫平台鏈，鎖的順序要固定是組織鏈、平台鏈。
+ * 撞到自己組織時，savepoint 連同這筆事件一起退掉。
  */
 export async function registerProperty(tx: OrgTx, input: PropertyInput): Promise<RegisterPropertyResult> {
   const key = input.anchor?.key;
@@ -264,26 +251,20 @@ export async function registerProperty(tx: OrgTx, input: PropertyInput): Promise
 
   await tx.query(`SAVEPOINT ${REGISTER_SAVEPOINT}`);
   const { id, anchorId, unitId } = await insertPropertyRows(tx, input);
-  // 補建號要在物件列之後：函式確認呼叫者組織有物件指向這個錨點
+  await auditPropertyCreate(tx, id, unitId);
+  // 登錄建號要在物件列之後：函式確認呼叫者組織有物件指向這個錨點
   let claim;
   try {
     claim = await claimAnchorKey(tx, anchorId, key);
   } catch (error) {
     rethrowAnchorError(error);
   }
-  if (claim.kind === 'existing' || claim.kind === 'rate_limited') {
+  if (claim.kind === 'existing') {
     await tx.query(`ROLLBACK TO SAVEPOINT ${REGISTER_SAVEPOINT}`);
     await tx.query(`RELEASE SAVEPOINT ${REGISTER_SAVEPOINT}`);
-    if (claim.kind === 'existing') return { kind: 'existing', id: claim.propertyId };
-    await recordCollisionLimitHit(tx);
-    return { kind: 'rate_limited' };
+    return { kind: 'existing', id: claim.propertyId };
   }
   await tx.query(`RELEASE SAVEPOINT ${REGISTER_SAVEPOINT}`);
-  await auditPropertyCreate(tx, id, unitId);
-  if (claim.kind === 'review_queued') {
-    await auditCollisionQueued(tx, id, unitId, claim.reviewTicket);
-    return { kind: 'review_queued', id, reviewTicket: claim.reviewTicket };
-  }
   return { kind: 'created', id };
 }
 
@@ -293,30 +274,28 @@ async function auditPropertyCreate(tx: OrgTx, id: string, unitId: string): Promi
 }
 
 /**
- * 建立物件，回傳物件 ID。簡化版：撞到自己組織時回自己既有的物件 ID，撞到別的組織時回新物件 ID，
- * 額度用完丟 CollisionRateLimitedError。要分辨結果的呼叫端（route）用 registerProperty。
+ * 建立物件，回傳物件 ID。簡化版：撞到自己組織時回自己既有的物件 ID，其他情況回新物件 ID。
+ * 要分辨結果的呼叫端（route）用 registerProperty。
  */
 export async function createProperty(tx: OrgTx, input: PropertyInput): Promise<string> {
-  const result = await registerProperty(tx, input);
-  if (result.kind === 'rate_limited') throw new CollisionRateLimitedError();
-  return result.id;
+  return (await registerProperty(tx, input)).id;
 }
 
 export type SetAnchorKeyResult =
   /** 找不到物件（含別的組織的）。 */
   | { kind: 'not_found' }
-  | { kind: 'keyed'; anchor: PropertyAnchor }
-  /** 撞到別的組織。產權維持待驗證，anchor.collision_review 帶審核單號。 */
-  | { kind: 'review_queued'; anchor: PropertyAnchor; reviewTicket: string }
-  /** 鍵已被自己組織登錄。propertyId 是自己既有的物件，這個物件維持待驗證。 */
-  | { kind: 'existing'; propertyId: string }
-  /** 24 小時內的撞號回應已達上限。稽核事件與營運者的審核台項目已寫入，交易必須提交。 */
-  | { kind: 'rate_limited' };
+  /** 登錄成立。anchor 是使用者填的鍵。鍵有沒有撞到別的組織，這裡看不出來（ADR-0028 決議 1）。 */
+  | { kind: 'accepted'; anchor: PropertyAnchor }
+  /** 鍵已被自己組織登錄。propertyId 是自己既有的物件，這個物件維持原樣。 */
+  | { kind: 'existing'; propertyId: string };
+
+const SET_KEY_SAVEPOINT = 'set_anchor_key';
 
 /**
- * 補建號：待驗證的錨點補上鍵。找不到物件（含別的組織的）回 not_found。
- * 結果見 SetAnchorKeyResult。撞號不丟例外。已建號丟 AnchorAlreadyKeyedError，格式錯誤丟 AnchorKeyRejectedError，
+ * 補建號與修正建號：物件填上鍵。找不到物件（含別的組織的）回 not_found。
+ * 結果見 SetAnchorKeyResult。物件已合併或停用丟 AnchorKeyLockedError，格式錯誤丟 AnchorKeyRejectedError，
  * 這兩種呼叫端必須讓交易回滾，因為 PostgreSQL 在函式丟錯後交易已中止。
+ * 登錄事件寫在登錄建號之前，原因同 registerProperty。撞到自己組織時，savepoint 連同事件一起退掉。
  */
 export async function setPropertyAnchorKey(tx: OrgTx, propertyId: string, key: AnchorKey): Promise<SetAnchorKeyResult> {
   const { rows } = await tx.query<{ rental_unit_id: string }>(
@@ -327,29 +306,28 @@ export async function setPropertyAnchorKey(tx: OrgTx, propertyId: string, key: A
   const unitId = rows[0].rental_unit_id;
   const current = await fetchUnitAnchor(tx, unitId);
   if (!current) return { kind: 'not_found' };
+
+  await tx.query(`SAVEPOINT ${SET_KEY_SAVEPOINT}`);
+  await appendAudit(tx, {
+    action: 'property.anchor_key',
+    object: { type: 'property', id: propertyId },
+    payload: { rental_unit_id: unitId },
+  });
   let claim;
   try {
     claim = await claimAnchorKey(tx, current.anchorId, key);
   } catch (error) {
     rethrowAnchorError(error);
   }
-  if (claim.kind === 'existing') return { kind: 'existing', propertyId: claim.propertyId };
-  if (claim.kind === 'rate_limited') {
-    await recordCollisionLimitHit(tx);
-    return { kind: 'rate_limited' };
+  if (claim.kind === 'existing') {
+    await tx.query(`ROLLBACK TO SAVEPOINT ${SET_KEY_SAVEPOINT}`);
+    await tx.query(`RELEASE SAVEPOINT ${SET_KEY_SAVEPOINT}`);
+    return { kind: 'existing', propertyId: claim.propertyId };
   }
+  await tx.query(`RELEASE SAVEPOINT ${SET_KEY_SAVEPOINT}`);
   const anchor = (await fetchUnitAnchor(tx, unitId))?.anchor;
   if (!anchor) return { kind: 'not_found' };
-  if (claim.kind === 'review_queued') {
-    await auditCollisionQueued(tx, propertyId, unitId, claim.reviewTicket);
-    return { kind: 'review_queued', anchor, reviewTicket: claim.reviewTicket };
-  }
-  await appendAudit(tx, {
-    action: 'property.anchor_key',
-    object: { type: 'property', id: propertyId },
-    payload: { rental_unit_id: unitId },
-  });
-  return { kind: 'keyed', anchor };
+  return { kind: 'accepted', anchor };
 }
 
 /** 修改物件。找不到（含別的組織的物件）回 null。不改租賃單位。 */
@@ -495,7 +473,7 @@ async function findWholePropertyId(tx: OrgTx, unitId: string): Promise<string | 
   return rows.find((r) => r.suffix === '0000')?.property_id ?? null;
 }
 
-/** 與這個物件同一產權錨點的、呼叫者組織自己的物件與單位，依後綴排序。找不到物件回 null。 */
+/** 與這個營運資料同屬一個物件的、呼叫者組織自己的營運資料與租賃單位，依後綴排序。找不到回 null。 */
 export async function listSiblingUnits(tx: OrgTx, propertyId: string): Promise<SiblingUnit[] | null> {
   const { rows: own } = await tx.query<{ rental_unit_id: string }>('SELECT rental_unit_id FROM org.properties WHERE id = $1', [propertyId]);
   if (!own[0]) return null;

@@ -8,7 +8,7 @@ import type { CaseState } from './cases/transitions';
 import type { HandoverState } from './handover/transitions';
 import type { QueueStatus } from './practice-entities/queue-status';
 import type { PeriodStatus } from './receivables';
-import { CONTRACT_STATUS_LABELS, type ContractStatus } from './types';
+import { CONTRACT_STATUS_LABELS, type ContractStatus, type PropertyVerificationStatus } from './types';
 
 /** 色調只有 5 種，對應 DESIGN.md 的語意色：中性（灰階）、進行中（primary）、成功、警告、錯誤。 */
 export const STATUS_TONES = ['neutral', 'progress', 'success', 'warning', 'error'] as const;
@@ -26,6 +26,8 @@ export interface StatusValues {
   reviewItem: QueueStatus;
   /** 應收期別的入帳狀態（MIL-125）。逾期是顯示狀態：每日排程已判定逾期，而且期別仍未足額。 */
   receivablePeriod: PeriodStatus | 'overdue';
+  /** 物件對外的文件核對狀態（MIL-196，ADR-0028 決議 2）。只由文件核對決定，不讀 registry.anchors.status。 */
+  propertyVerification: PropertyVerificationStatus;
 }
 export type StatusKind = keyof StatusValues;
 export type StatusValueOf<K extends StatusKind> = StatusValues[K];
@@ -79,6 +81,10 @@ const PRESENTATION: { [K in StatusKind]: Record<StatusValues[K], StatusView> } =
     paid: { label: '已入帳', tone: 'success' },
     overdue: { label: '逾期', tone: 'error' },
     cancelled: { label: '已取消', tone: 'neutral' },
+  },
+  propertyVerification: {
+    // 「已核對」「文件不符」由核對功能（MIL-201）加入。「已核對」的字樣固定為「平台已比對出租權源文件」，不寫成保證
+    pending_verification: { label: '待平台核對文件', tone: 'progress' },
   },
 };
 

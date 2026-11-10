@@ -1,6 +1,5 @@
 {
   "src/app/cases/page.tsx": 1,
-  "src/app/contracts/[id]/page.tsx": 23,
   "src/app/contracts/new/page.tsx": 10,
   "src/app/demo/mail/DemoMailList.tsx": 3,
   "src/app/handovers/OrgHandoverList.tsx": 2,

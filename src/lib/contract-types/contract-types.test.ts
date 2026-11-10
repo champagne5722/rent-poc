@@ -20,6 +20,7 @@ const PROPERTY: Property = {
   unit: null,
   archived_at: null,
   anchor: null,
+  verification_status: 'pending_verification',
   name: '信義小宅',
   address: '台北市信義區松仁路 1 號',
   type: '套房',

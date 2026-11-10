@@ -5,7 +5,7 @@ import { getDepositLedger, listPeriods } from '@/lib/case-ledger';
 import { getCase, listCaseEvents, listCaseMembers } from '@/lib/case-store';
 import { DATA_DIR } from '@/lib/db';
 import { withTx } from '@/lib/pg/database';
-import { actAs, actAsContext, setupRouteDb, TEST_PARTY_ID, TEST_USER_ID, type RouteDb } from '@/lib/pg/route-test-kit';
+import { actAs, actAsContext, nextAnchorKey, setupRouteDb, TEST_PARTY_ID, TEST_USER_ID, type RouteDb } from '@/lib/pg/route-test-kit';
 import { POST as advance } from '../mock/advance/route';
 import { POST as createProperty } from '../properties/route';
 import { PUT, DELETE } from '../contracts/[id]/route';
@@ -67,7 +67,7 @@ async function newDraft(fields: Record<string, unknown> = READY_FIELDS): Promise
   const propertyRes = await createProperty(
     new NextRequest('http://localhost/api/properties', {
       method: 'POST',
-      body: JSON.stringify({ name: '大安區溫馨兩房', address: '台北市大安區某路 1 號', default_rent: 20000, equipment: [] }),
+      body: JSON.stringify({ name: '大安區溫馨兩房', address: '台北市大安區某路 1 號', default_rent: 20000, equipment: [], anchor: { key: nextAnchorKey() } }),
     }),
   );
   const propertyId = (await json(propertyRes)).data.id;

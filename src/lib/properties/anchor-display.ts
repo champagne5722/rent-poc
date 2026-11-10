@@ -1,24 +1,11 @@
-import type { AnchorStatus, PropertyAnchor } from '@/lib/types';
+import { statusPresentation } from '@/lib/status-presentation';
+import type { PropertyAnchor, PropertyVerificationStatus } from '@/lib/types';
 
-// 物件頁「產權」區塊的顯示文字。純函式，前端可直接匯入（不要從 '@/lib/properties' 匯入：那裡有伺服器端的程式）。
+// 物件頁建號區塊的顯示文字。純函式，前端可直接匯入（不要從 '@/lib/properties' 匯入：那裡有伺服器端的程式）。
 // 名稱來自 registry 的參照表，已經是「臺」，這裡不再轉換。
+// 物件的核對狀態不在這裡：它由 src/lib/status-presentation.ts 的 propertyVerification 決定，畫面用 StatusTag。
 
-export const ANCHOR_STATUS_LABELS: Record<AnchorStatus, string> = {
-  pending_verification: '待驗證',
-  keyed: '已建號',
-  merged: '已合併',
-  retired: '已停用',
-};
-
-/** 狀態標籤的 antd Tag 顏色，只用 DESIGN.md 的語意色：已建號成功、待驗證警告，其餘預設。 */
-export const ANCHOR_STATUS_COLORS: Record<AnchorStatus, 'success' | 'warning' | 'default'> = {
-  pending_verification: 'warning',
-  keyed: 'success',
-  merged: 'default',
-  retired: 'default',
-};
-
-/** 縣市、鄉鎮市區、段小段，以空白分隔。沒有行政區（待驗證）回 null。 */
+/** 縣市、鄉鎮市區、段小段，以空白分隔。沒有行政區（沒有填建號的舊資料）回 null。 */
 export function anchorLocationText(anchor: PropertyAnchor | null): string | null {
   if (!anchor?.city_name || !anchor.town_name || !anchor.section_name) return null;
   return `${anchor.city_name} ${anchor.town_name} ${anchor.section_name}`;
@@ -30,10 +17,18 @@ export function anchorKeyText(anchor: PropertyAnchor | null): string | null {
   return `${anchor.building_no}-${anchor.sub_no ?? '000'}`;
 }
 
+/** 沒有填建號的舊資料，摘要顯示這句。 */
+export const NO_KEY_TEXT = '尚未填建號';
+
 /** 一行摘要，列表用。 */
 export function anchorSummary(anchor: PropertyAnchor | null): string {
   const location = anchorLocationText(anchor);
   const key = anchorKeyText(anchor);
-  if (!location || !key) return ANCHOR_STATUS_LABELS.pending_verification;
+  if (!location || !key) return NO_KEY_TEXT;
   return `${location} 建號 ${key}`;
+}
+
+/** 登錄物件或修正建號成功後顯示的訊息。不論鍵有沒有與別的組織重複，文字都一樣（ADR-0028 決議 2）。 */
+export function registeredMessage(status: PropertyVerificationStatus): string {
+  return `已登錄，${statusPresentation('propertyVerification', status).label}`;
 }

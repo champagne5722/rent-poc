@@ -24,11 +24,11 @@ beforeEach(() => kit.reset());
 
 const json = (res: Response) => res.json() as Promise<Record<string, any>>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const KEY = { city: 'A', town: '02', section: '0021', buildingNo: '1234', subNo: '' };
-const create = (name: string) =>
+const create = (name: string, key = KEY) =>
   createProperty(
     new NextRequest('http://localhost/api/properties', {
       method: 'POST',
-      body: JSON.stringify({ name, address: '台北市大安區和平東路二段 100 號', equipment: [], anchor: { key: KEY } }),
+      body: JSON.stringify({ name, address: '台北市大安區和平東路二段 100 號', equipment: [], anchor: { key } }),
     }),
   );
 
@@ -43,7 +43,10 @@ async function collide(): Promise<string> {
   actAs(kit.kit.orgB);
   const res = await create('B 的物件');
   expect(res.status).toBe(201);
-  return (await json(res)).data.review.ticket;
+  // 回應不再帶審核單號（ADR-0028 決議 2）。測試從資料庫讀出審核單號，模擬營運者在審核台看到的項目
+  const rows = await kit.kit.asOwner(async (db) => (await db.query<{ id: string }>(`SELECT id FROM registry.review_items WHERE type = 'anchor_collision'`)).rows);
+  expect(rows).toHaveLength(1);
+  return rows[0].id;
 }
 
 describe('審核台列出撞號項目', () => {
@@ -94,11 +97,16 @@ describe('審核台列出撞號項目', () => {
     expect(data.evidence).toEqual([]);
   });
 
-  it('撞號超限項目：顯示宣稱方、上限與次數', async () => {
+  it('撞號超限項目：顯示宣稱方、上限與次數。超過次數時登錄照常成立', async () => {
     await kit.kit.asOwner((db) => db.query(`UPDATE registry.platform_settings SET int_value = 1`));
     await collide();
-    expect((await create('B 的第二個物件')).status).toBe(429);
-    expect((await create('B 的第三個物件')).status).toBe(429);
+    // 同一個組織撞同一個鍵第二次會得到自己既有的物件，所以第二、三次撞 A 的另外兩個鍵
+    const keys = [{ ...KEY, buildingNo: '2222' }, { ...KEY, buildingNo: '3333' }];
+    actAs(kit.kit.orgA);
+    for (const key of keys) expect((await create('A 的另一個物件', key)).status).toBe(201);
+    actAs(kit.kit.orgB);
+    expect((await create('B 的第二個物件', keys[0])).status).toBe(201);
+    expect((await create('B 的第三個物件', keys[1])).status).toBe(201);
     await actAsOperator();
     const items = (await json(await queueRoute(new Request('http://localhost/api/desk/queue?status=open')))).data.items;
     const limited = items.find((i: { type: string }) => i.type === 'anchor_collision_limit');

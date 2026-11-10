@@ -2,9 +2,9 @@ import type { AnchorKey, AnchorKeyInput } from '@/lib/registry/section-code';
 import { normalizeAnchorKey } from '@/lib/registry/section-code';
 import { SECTION_CODE_SEED } from '@/lib/registry/section-code/seed-data';
 
-// 物件的產權錨點輸入（MIL-143）。請求本文的驗證與鍵正規化，純函式，建立與補建號共用。
+// 物件的建號輸入（MIL-143）。請求本文的驗證與鍵正規化，純函式，建立與補建號共用。
 
-/** 建立物件時的產權輸入。key 為 null 表示「暫無建號」，只靠門牌登錄。 */
+/** 建立物件時的建號輸入。key 為 null 表示沒有給鍵：登錄新物件時由 parsePropertyCreateInput 擋下，修改物件時不使用。 */
 export interface AnchorInput {
   key: AnchorKey | null;
   latitude: number | null;
@@ -18,11 +18,11 @@ const KEY_FIELDS = ['city', 'town', 'section', 'buildingNo', 'subNo'] as const;
 
 /** 驗證並正規化使用者填的鍵。所有欄位的錯誤一次回傳。 */
 export function parseAnchorKey(raw: unknown): AnchorKeyParseResult {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { ok: false, error: '產權欄位格式有誤' };
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { ok: false, error: '建號欄位格式有誤' };
   const record = raw as Record<string, unknown>;
   for (const field of KEY_FIELDS) {
     const value = record[field];
-    if (value != null && typeof value !== 'string') return { ok: false, error: '產權欄位必須是文字' };
+    if (value != null && typeof value !== 'string') return { ok: false, error: '建號欄位必須是文字' };
   }
   const input: AnchorKeyInput = {
     city: (record.city as string | undefined) ?? '',
@@ -39,10 +39,10 @@ export function parseAnchorKey(raw: unknown): AnchorKeyParseResult {
 const isCoordinate = (value: unknown, limit: number): value is number =>
   typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= limit;
 
-/** 驗證建立物件時的 anchor 欄位。沒給（undefined）視為暫無建號、沒有座標。 */
+/** 驗證建立物件時的 anchor 欄位。沒給（undefined）視為沒有鍵、沒有座標。 */
 export function parseAnchorInput(raw: unknown): AnchorInputParseResult {
   if (raw == null) return { ok: true, value: { key: null, latitude: null, longitude: null } };
-  if (typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, error: '產權欄位格式有誤' };
+  if (typeof raw !== 'object' || Array.isArray(raw)) return { ok: false, error: '建號欄位格式有誤' };
   const { key, latitude, longitude } = raw as Record<string, unknown>;
 
   let parsedKey: AnchorKey | null = null;

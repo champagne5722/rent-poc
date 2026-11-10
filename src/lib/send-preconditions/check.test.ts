@@ -314,7 +314,7 @@ describe('checkSendPreconditions：ADR-0018 決議 10 的 7 項', () => {
     const noAuthority: LeasingAuthoritySendFacts = {
       rentalUnitId: 'ru-1',
       primaryAuthority: null,
-      pendingKeyCollision: null,
+      propertyNotVerified: false,
       hasPendingSuspectedDuplicate: false,
     };
     it('權源的原因接在後面，全部列給使用者', () => {
@@ -334,7 +334,7 @@ describe('checkSendPreconditions：ADR-0018 決議 10 的 7 項', () => {
           providedDocuments: ['registry_transcript', 'transcript_obtained_at'],
           trust: { registered: false },
         },
-        pendingKeyCollision: null,
+        propertyNotVerified: false,
         hasPendingSuspectedDuplicate: false,
       };
       const result = checkSendPreconditions(facts({ leasingAuthority: pending }));
