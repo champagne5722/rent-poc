@@ -9,7 +9,7 @@ import {
 import type { CaseState } from '../../cases';
 
 /**
- * 合約生命週期動作：與擬約送簽同一批人（主辦組織的 admin、staff，自管與包租的出租人），
+ * 合約生命週期動作：與擬約送簽同一批人（主辦組織的 admin、staff，租賃自管、包租與轉租案件的出租人），
  * 差別只在允許的案件狀態。送簽後撤回或拒簽，案件回 `draft`（cases README），所以複製為新草稿在 `draft`。
  * 代管案件的屋主不在內（P0-09：代管案件的屋主不得擬約與送簽）。
  */
@@ -19,12 +19,13 @@ function contractLifecycle(states: readonly CaseState[]): CaseActionRule {
     effect: 'write',
     states,
     hostRoles: {
-      self_managed: WRITE_ROLES,
-      managed: WRITE_ROLES,
+      lease_self_managed: WRITE_ROLES,
       master_lease: WRITE_ROLES,
+      lease_managed: WRITE_ROLES,
+      sublease: WRITE_ROLES,
       management: WRITE_ROLES,
     },
-    relations: { self_managed: ['lessor'], master_lease: ['lessor'] },
+    relations: { lease_self_managed: ['lessor'], master_lease: ['lessor'], sublease: ['lessor'] },
     onBehalfScope: null,
     uncased: 'uncased_contract.write',
   };
@@ -46,21 +47,23 @@ const CONTRACT_LIFECYCLE = {
 } as const satisfies Record<string, CaseActionRule>;
 
 export const contractActions = {
-  // 讀合約：包租案件的所有權人讀不到（P0-09 AC5）。經紀業者只得讀合約（ADR-0016 決議 14）。
+  // 讀合約：轉租案件的所有權人讀不到（P0-09 AC5）。經紀業者只得讀合約（ADR-0016 決議 14）。
   'contract.read': {
     scope: 'case',
     effect: 'read',
     states: ALL_STATES,
     hostRoles: {
-      self_managed: ALL_ROLES,
-      managed: ALL_ROLES,
+      lease_self_managed: ALL_ROLES,
       master_lease: ALL_ROLES,
+      lease_managed: ALL_ROLES,
+      sublease: ALL_ROLES,
       management: ALL_ROLES,
     },
     relations: {
-      self_managed: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
-      managed: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
+      lease_self_managed: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
       master_lease: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
+      lease_managed: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
+      sublease: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
       management: ['mandator', 'mandatary', 'practitioner'],
     },
     onBehalfScope: null,
@@ -73,15 +76,17 @@ export const contractActions = {
     effect: 'read',
     states: ALL_STATES,
     hostRoles: {
-      self_managed: ALL_ROLES,
-      managed: ALL_ROLES,
+      lease_self_managed: ALL_ROLES,
       master_lease: ALL_ROLES,
+      lease_managed: ALL_ROLES,
+      sublease: ALL_ROLES,
       management: ALL_ROLES,
     },
     relations: {
-      self_managed: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
-      managed: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
+      lease_self_managed: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
       master_lease: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
+      lease_managed: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
+      sublease: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
       management: ['mandator', 'mandatary', 'practitioner'],
     },
     onBehalfScope: null,
@@ -92,12 +97,13 @@ export const contractActions = {
     effect: 'write',
     states: ['draft'],
     hostRoles: {
-      self_managed: WRITE_ROLES,
-      managed: WRITE_ROLES,
+      lease_self_managed: WRITE_ROLES,
       master_lease: WRITE_ROLES,
+      lease_managed: WRITE_ROLES,
+      sublease: WRITE_ROLES,
       management: WRITE_ROLES,
     },
-    relations: { self_managed: ['lessor'], master_lease: ['lessor'] },
+    relations: { lease_self_managed: ['lessor'], master_lease: ['lessor'], sublease: ['lessor'] },
     onBehalfScope: null,
     uncased: 'uncased_contract.write',
   },

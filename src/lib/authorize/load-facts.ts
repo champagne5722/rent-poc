@@ -1,5 +1,5 @@
 import { actionForUncasedObject, type AccessFacts, type ActionId, type CaseAccessFacts } from '../access';
-import type { BusinessType, CaseMemberRelation, LeaseCaseState, ManagementCaseState } from '../cases';
+import type { BusinessType, CaseMemberRelation, LeaseCaseState, ManagementCaseState, StatutoryCaseKind } from '../cases';
 import type { Tx } from '../pg/with-tx';
 import type { RequestContext } from '../request-context';
 import type { AuthObject } from './types';
@@ -54,8 +54,14 @@ async function resolveObject(t: Tx, rc: RequestContext, object: AuthObject): Pro
  * - 事實欄位來源見 `src/lib/access/README.md`。
  */
 async function loadCaseFacts(t: Tx, rc: RequestContext, caseId: string): Promise<CaseAccessFacts> {
-  const { rows } = await t.query<{ org_id: string; kind: 'lease' | 'management'; state: string; business_type: BusinessType | null }>(
-    'SELECT org_id, kind, state, business_type FROM org.cases WHERE id = $1',
+  const { rows } = await t.query<{
+    org_id: string;
+    kind: 'lease' | 'management';
+    state: string;
+    business_type: BusinessType | null;
+    case_kind: StatutoryCaseKind;
+  }>(
+    'SELECT org_id, kind, state, business_type, case_kind FROM org.cases WHERE id = $1',
     [caseId],
   );
   const row = rows[0];
@@ -72,7 +78,15 @@ async function loadCaseFacts(t: Tx, rc: RequestContext, caseId: string): Promise
     return { kind: 'management', state: row.state as ManagementCaseState, ...base };
   }
   if (row.business_type === null) throw new Error(`租賃案件 ${caseId} 沒有業務類型`);
-  return { kind: 'lease', state: row.state as LeaseCaseState, businessType: row.business_type, onBehalf: null, ...base };
+  if (row.case_kind === 'management') throw new Error(`租賃案件 ${caseId} 的案件種類不一致`);
+  return {
+    kind: 'lease',
+    state: row.state as LeaseCaseState,
+    caseKind: row.case_kind,
+    businessType: row.business_type,
+    onBehalf: null,
+    ...base,
+  };
 }
 
 export type LoadedFacts =

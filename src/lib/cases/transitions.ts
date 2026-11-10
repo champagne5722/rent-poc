@@ -2,6 +2,9 @@
 // 純函式，沒有 I/O。不接受時回傳 null，寫法沿用 src/lib/transitions.ts 的 decideTransition。
 // 寫入、樂觀鎖、input_rejected 事件與 outbox 由之後的 dispatch() 負責，見同目錄 README.md。
 
+import type { StatutoryCaseKind } from './case-kind';
+import { caseRuleVariantOf, isManagerOperated } from './rule-variant';
+
 export const CASE_KINDS = ['lease', 'management'] as const;
 export type CaseKind = (typeof CASE_KINDS)[number];
 
@@ -13,7 +16,7 @@ export type ManagementCaseState = (typeof MANAGEMENT_CASE_STATES)[number];
 
 export type CaseState = LeaseCaseState | ManagementCaseState;
 
-/** 業務類型：自管、代管、包租。識別字與 src/lib/owner-overview.ts 相同。 */
+/** 業務類型：自管、代管、轉租（舊值 master_lease）。新程式碼判斷轉租看案件種類（case-kind.ts）。 */
 export const BUSINESS_TYPES = ['self_managed', 'managed', 'master_lease'] as const;
 export type BusinessType = (typeof BUSINESS_TYPES)[number];
 
@@ -48,6 +51,8 @@ interface CaseSnapshotBase {
 export interface LeaseCaseSnapshot extends CaseSnapshotBase {
   kind: 'lease';
   state: LeaseCaseState;
+  /** 案件種類（MIL-198）。退租與移交的規則看它，租賃案件再加業務類型。這裡是租賃資料列，所以不含委託管理案件。 */
+  caseKind: Exclude<StatutoryCaseKind, 'management'>;
   businessType: BusinessType;
 }
 
@@ -64,7 +69,7 @@ export type CaseSnapshot = LeaseCaseSnapshot | ManagementCaseSnapshot;
 export interface UnsettledFacts {
   depositBalanceNonZero: boolean;
   settlementStatementIncomplete: boolean;
-  /** 只有代管與包租案件有退還證明。自管案件傳 false。 */
+  /** 只有租賃代管與轉租案件有退還證明。租賃自管與包租案件傳 false。 */
   returnProofIncomplete: boolean;
 }
 
@@ -226,7 +231,7 @@ function decideLease(
       return state === 'settling' ? decideClose(snapshot, input.unsettled, input.unsettledReason, now) : null;
     case 'handover_effective': {
       // 移交只適用代管租賃案件（ADR-0024 決議 1），舊案件轉 closed（決議 3）
-      if (snapshot.businessType !== 'managed') return null;
+      if (variantOf(snapshot) !== 'lease_managed') return null;
       if (state !== 'active' && state !== 'move_out' && state !== 'settling') return null;
       if (!isOnOrAfter(now, input.effectiveDate)) return null;
       const payload = { handoverId: input.handoverId, effectiveDate: input.effectiveDate };
@@ -243,17 +248,21 @@ function decideLease(
   }
 }
 
+function variantOf(snapshot: LeaseCaseSnapshot) {
+  return caseRuleVariantOf({ caseKind: snapshot.caseKind, businessType: snapshot.businessType });
+}
+
 function decideClose(
   snapshot: LeaseCaseSnapshot,
   unsettled: UnsettledFacts,
   unsettledReason: string | null,
   now: Date,
 ): CaseTransitionDecision<LeaseCaseState> | null {
-  // 自管案件沒有退還證明，不列入
+  // 租賃自管與包租案件沒有退還證明，不列入（包租案件沿用自管的規則，待法務確認）
   const items = {
     depositBalanceNonZero: unsettled.depositBalanceNonZero,
     settlementStatementIncomplete: unsettled.settlementStatementIncomplete,
-    returnProofIncomplete: snapshot.businessType !== 'self_managed' && unsettled.returnProofIncomplete,
+    returnProofIncomplete: isManagerOperated(variantOf(snapshot)) && unsettled.returnProofIncomplete,
   };
   const hasUnsettled = Object.values(items).some(Boolean);
   if (!hasUnsettled) return decision('closed', 'closed', now, { ...items, unsettledReason: null });

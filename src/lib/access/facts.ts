@@ -6,6 +6,7 @@ import type {
   CaseMemberRelation,
   LeaseCaseState,
   ManagementCaseState,
+  StatutoryCaseKind,
 } from '../cases';
 import type { MandateScope, OrgRole } from './actions';
 
@@ -39,10 +40,16 @@ interface CaseAccessFactsBase {
 export interface LeaseCaseAccessFacts extends CaseAccessFactsBase {
   kind: 'lease';
   state: LeaseCaseState;
+  /**
+   * 案件種類（`org.cases.case_kind`）。權限的判斷看它，租賃案件再加業務類型（MIL-198）。
+   * 這裡是租賃資料列的案件種類，所以不含委託管理案件。
+   */
+  caseKind: Exclude<StatutoryCaseKind, 'management'>;
+  /** 舊欄位。只有租賃案件用它區分自管與代管，其他案件種類的規則不看它。 */
   businessType: BusinessType;
   /**
-   * 連結的委託管理案件的事實。只有代管案件需要。
-   * 代管案件沒有連結的委託管理案件時是 `null`。其他業務類型忽略這個欄位。
+   * 連結的委託管理案件的事實。只有租賃代管案件需要。
+   * 租賃代管案件沒有連結的委託管理案件時是 `null`。其他案件種類忽略這個欄位。
    */
   onBehalf: OnBehalfFacts | null;
 }

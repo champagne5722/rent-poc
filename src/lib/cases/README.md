@@ -13,7 +13,17 @@
 | `transitions.ts` | 常數與型別、`decideCaseTransition()` |
 | `creation.ts` | `decideCaseCreation()` 與它的輸入、輸出型別 |
 | `case-kind.ts` | 案件種類四個值、舊欄位推出種類的 `caseKindOf()`、各種案件的主辦組織（MIL-195） |
-| `index.ts` | 三個檔案的匯出 |
+| `rule-variant.ts` | 帳務、押金與權限規則的分類 `caseRuleVariantOf()`（MIL-198） |
+| `index.ts` | 各檔案的匯出 |
+
+## 規則分類（MIL-198，ADR-0030 決議 2、3）
+
+帳務、押金帳戶規則、退租、移交與權限矩陣看案件種類。`caseRuleVariantOf({ caseKind, businessType })` 推出五種分類：`lease_self_managed`、`lease_managed`、`master_lease`、`sublease`、`management`。租賃案件的自管與代管規則不同，所以租賃案件再依業務類型分兩種，其他案件種類沒有業務類型。
+
+- 規則的內容不變，只換判斷的依據。包租案件沿用自管的規則，轉租案件沿用原本業務類型 `master_lease` 的規則。包租案件沿用自管的假設待法務確認。
+- `isManagerOperated(variant)`：租賃代管與轉租案件是。它們有管理人員簽章的點交證明與退還證明，社宅旗標適用，退租要等點交證明完成。
+- 租賃案件的業務類型不是自管或代管時丟 `RangeError`，資料不一致時不猜。
+- 後繼案件沿用原案件的案件種類：`SuccessorCaseInput.predecessorCaseKind` 必須是租賃案件（移交只適用租賃代管案件），其他種類被擋下（`case_kind_not_allowed`）。
 
 ## 案件種類（MIL-195，ADR-0030）
 
@@ -107,6 +117,7 @@
 ### `successor_lease` 的檢查
 
 - 接收方是屋主組織時業務類型必須是 `self_managed`，是執業主體組織時必須是 `managed`。
+- 後繼案件的案件種類沿用原案件（`predecessorCaseKind`），目前只接受租賃案件。
 - 委託是否有效、接收方是否已驗證，不在這裡重查。這兩項由 F 線的 `checkHandoverPreconditions()` 在屋主確認、接手、生效處理三個時點檢查（ADR-0024 決議 12）。
 - 成員：`lessor`，加上舊案件的 `lessee` 與 `co_lessee`（相同 party 只留一筆）。後繼案件沒有合約列，租期與租金欄位由呼叫端寫入案件。
 

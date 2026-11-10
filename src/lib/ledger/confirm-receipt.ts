@@ -16,6 +16,7 @@
 import { appendAudit } from '../audit';
 import { linkedMandateCaseId, notifyMandators } from '../case-ledger/mandator';
 import { listPeriods } from '../case-ledger/reads';
+import type { StatutoryCaseKind } from '../cases';
 import { evaluateHolderRule, type BusinessType, type HolderKind } from '../deposit-rules';
 import { DEPOSIT_HOLDER_MESSAGE_TEXT } from '../labels/case-ledger-labels';
 import { assertPaymentAccountsInOrg, getPaymentAccount, loadHolderRules, HOLDER_KIND_LABELS } from '../payment-accounts';
@@ -65,6 +66,7 @@ function validateCandidate(c: ReceiptCandidate): string | null {
 }
 
 interface CaseFacts {
+  case_kind: StatutoryCaseKind;
   business_type: BusinessType | null;
   social_housing: boolean;
   title: string;
@@ -101,7 +103,7 @@ export async function confirmReceipt(tx: OrgTx, candidate: ReceiptCandidate): Pr
   if (problem) return invalid(problem);
 
   const found = await tx.query<CaseFacts>(
-    `SELECT business_type, social_housing, title FROM org.cases WHERE id = $1 AND kind = 'lease'`,
+    `SELECT case_kind, business_type, social_housing, title FROM org.cases WHERE id = $1 AND kind = 'lease'`,
     [candidate.caseId],
   );
   const facts = found.rows[0];
@@ -127,6 +129,7 @@ export async function confirmReceipt(tx: OrgTx, candidate: ReceiptCandidate): Pr
   let notifyMandator = false;
   if (candidate.purpose === 'security_deposit' && facts.business_type !== null) {
     const evaluation = evaluateHolderRule(await loadHolderRules(tx), {
+      caseKind: facts.case_kind,
       businessType: facts.business_type,
       socialHousing: facts.social_housing,
       holderKind: account.holderKind,

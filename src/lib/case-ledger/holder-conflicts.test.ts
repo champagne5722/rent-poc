@@ -39,13 +39,15 @@ describe('listHolderConflicts', () => {
 
   const inA = <T>(fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId: orgA }, fn);
 
-  async function newCase(over: { businessType?: string; socialHousing?: boolean } = {}): Promise<void> {
-    await inA((tx) =>
-      tx.query(
+  async function newCase(over: { businessType?: string; caseKind?: string; socialHousing?: boolean } = {}): Promise<void> {
+    await inA(async (tx) => {
+      await tx.query(
         `INSERT INTO org.cases (id, org_id, kind, state, business_type, title, social_housing) VALUES ($1, $2, 'lease', 'active', $3, '測試', $4)`,
         [CASE, orgA, over.businessType ?? 'managed', over.socialHousing ?? true],
-      ),
-    );
+      );
+      // 沒傳 caseKind 時由 trigger 依舊欄位補值。包租案件必須明寫（資料上是自管租賃）
+      if (over.caseKind) await tx.query(`UPDATE org.cases SET case_kind = $2 WHERE id = $1`, [CASE, over.caseKind]);
+    });
   }
 
   async function newAccount(holderKind: 'lessor' | 'owner' | 'manager', name: string): Promise<string> {
@@ -96,6 +98,20 @@ describe('listHolderConflicts', () => {
         messageKey: 'deposit_holder.block.social_housing_manager',
       },
     ]);
+  });
+
+  // MIL-198：規則看案件種類。改名前後的結果相同：只有租賃代管案件有衝突，
+  // 包租案件沿用自管的規則（待法務確認），轉租案件原本就沒有對應的規則列。
+  it.each([
+    ['租賃案件（自管）', { businessType: 'self_managed' }, []],
+    ['租賃案件（代管）', { businessType: 'managed' }, ['DHR-01']],
+    ['包租案件', { businessType: 'self_managed', caseKind: 'master_lease' }, []],
+    ['轉租案件', { businessType: 'master_lease' }, []],
+  ] as const)('社宅旗標開、押金收在代管業者的帳戶：%s', async (_name, over, expectedRules) => {
+    await newCase(over);
+    await depositMove(await newAccount('manager', '業者帳戶'), 60000);
+    const conflicts = await inA((tx) => listHolderConflicts(tx, CASE));
+    expect(conflicts.map((c) => c.ruleId)).toEqual(expectedRules);
   });
 
   it('押金收在屋主或出租人的帳戶：沒有衝突', async () => {

@@ -1,6 +1,7 @@
 // decideAccess：權限判斷的純函式（ADR-0023 決議 6、7）。
 // 沒有 I/O，不碰時鐘。事實由 authorize() 載入，見同目錄 README.md。
 
+import { caseRuleVariantOf } from '../cases';
 import {
   ACTIONS,
   TERMINAL_CASE_STATES,
@@ -43,7 +44,7 @@ function decideOrgAction(facts: AccessFacts, rule: OrgActionRule): AccessDecisio
 }
 
 function variantOf(c: CaseAccessFacts): CaseVariant {
-  return c.kind === 'lease' ? c.businessType : 'management';
+  return c.kind === 'lease' ? caseRuleVariantOf({ caseKind: c.caseKind, businessType: c.businessType }) : 'management';
 }
 
 function decideCaseAction(facts: AccessFacts, rule: CaseActionRule): AccessDecision {
@@ -84,7 +85,7 @@ function checkPath(
   if (rule.effect === 'write' && TERMINAL_CASE_STATES.includes(c.state)) return deny('case_closed_read_only');
   if (!rule.states.includes(c.state)) return deny('state_not_allowed');
 
-  const isOnBehalf = via === 'host_org' && variant === 'managed' && rule.onBehalfScope !== null;
+  const isOnBehalf = via === 'host_org' && variant === 'lease_managed' && rule.onBehalfScope !== null;
   if (isOnBehalf && c.kind === 'lease') {
     const failure = checkOnBehalf(c.onBehalf, rule.onBehalfScope);
     if (failure !== null) return deny(failure);

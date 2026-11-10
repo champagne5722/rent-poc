@@ -315,7 +315,8 @@ const PREPARE: Record<string, Prepare> = {
     await page.waitForTimeout(800);
   },
   '15-case-detail-ledger': async (page) => {
-    await page.getByRole('tab', { name: '帳務設定' }).click({ timeout: 10_000 });
+    // 帳務設定在可收合區段，預設展開（MIL-184）；已收合時才點標題
+    await openLedgerSection(page);
     await page.getByText('押金台帳').first().waitFor({ timeout: 20_000 }).catch(() => undefined);
     await page.waitForLoadState('networkidle').catch(() => undefined);
   },
@@ -517,6 +518,13 @@ async function visit(context: BrowserContext, url: string): Promise<Page> {
   return page;
 }
 
+// 帳務設定在案件詳情的可收合區段（MIL-184）。預設展開，收合時點標題展開
+async function openLedgerSection(page: Page): Promise<void> {
+  const header = page.getByRole('button', { name: '帳務設定' });
+  await header.waitFor({ timeout: 20_000 });
+  if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click();
+}
+
 async function expectText(page: Page, text: string | RegExp, timeout = 8_000): Promise<void> {
   await expect(page.getByText(text).first()).toBeVisible({ timeout });
 }
@@ -526,7 +534,7 @@ test('驗收 MIL-123：案件的帳務設定分頁', async () => {
   const caseId = world.completedCaseId;
   if (!caseId) return record('MIL-123', '案件頁', '不通過', '資料準備沒有產生案件');
   const page = await visit(ctx.owner, `/cases/${caseId}`);
-  await page.getByRole('tab', { name: '帳務設定' }).click();
+  await openLedgerSection(page);
   await page.getByText('押金台帳').first().waitFor({ timeout: 20_000 }).catch(() => undefined);
   const base = await shot(page, 'mil123-ledger');
   await accept('MIL-123', '案件頁有「帳務設定」分頁，內容分五區', base, async () => {

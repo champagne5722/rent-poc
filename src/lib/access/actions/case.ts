@@ -2,21 +2,23 @@
 import { ALL_ROLES, ALL_STATES, OPEN, WRITE_ROLES, type ActionRule } from './rules';
 
 export const caseActions = {
-  // 讀租期與狀態：所有成員，含包租案件的所有權人（P0-09 AC5）。
+  // 讀租期與狀態：所有成員，含轉租案件的所有權人（P0-09 AC5，這裡的「包租案件」在表裡是轉租案件）。
   'case.read_summary': {
     scope: 'case',
     effect: 'read',
     states: ALL_STATES,
     hostRoles: {
-      self_managed: ALL_ROLES,
-      managed: ALL_ROLES,
+      lease_self_managed: ALL_ROLES,
       master_lease: ALL_ROLES,
+      lease_managed: ALL_ROLES,
+      sublease: ALL_ROLES,
       management: ALL_ROLES,
     },
     relations: {
-      self_managed: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
-      managed: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
-      master_lease: ['lessor', 'owner', 'lessee', 'co_lessee', 'practitioner', 'broker'],
+      lease_self_managed: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
+      master_lease: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
+      lease_managed: ['lessor', 'lessee', 'co_lessee', 'practitioner', 'broker'],
+      sublease: ['lessor', 'owner', 'lessee', 'co_lessee', 'practitioner', 'broker'],
       management: ['mandator', 'mandatary', 'practitioner'],
     },
     onBehalfScope: null,
@@ -27,9 +29,10 @@ export const caseActions = {
     effect: 'write',
     states: OPEN,
     hostRoles: {
-      self_managed: WRITE_ROLES,
-      managed: WRITE_ROLES,
+      lease_self_managed: WRITE_ROLES,
       master_lease: WRITE_ROLES,
+      lease_managed: WRITE_ROLES,
+      sublease: WRITE_ROLES,
       management: WRITE_ROLES,
     },
     relations: {},

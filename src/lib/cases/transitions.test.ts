@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BUSINESS_TYPES,
   LEASE_CASE_STATES,
   MANAGEMENT_CASE_STATES,
   decideCaseTransition,
@@ -16,12 +15,21 @@ import {
 const NOW = new Date('2026-11-08T02:00:00Z'); // 台灣時間 2026-11-08 10:00
 const NOW_ISO = '2026-11-08T02:00:00.000Z';
 
+// 規則看案件種類，租賃案件再看業務類型（MIL-198）。轉租案件的業務類型欄位是舊值 master_lease（資料上的事實）。
+// 包租案件在資料上是自管租賃，沿用自管的規則（待法務確認）。
+type Combination = Pick<LeaseCaseSnapshot, 'caseKind' | 'businessType'>;
+const LEASE_SELF: Combination = { caseKind: 'lease', businessType: 'self_managed' };
+const LEASE_MANAGED: Combination = { caseKind: 'lease', businessType: 'managed' };
+const MASTER_LEASE: Combination = { caseKind: 'master_lease', businessType: 'self_managed' };
+const SUBLEASE: Combination = { caseKind: 'sublease', businessType: 'master_lease' };
+
 function lease(overrides: Partial<LeaseCaseSnapshot> = {}): LeaseCaseSnapshot {
   return {
     kind: 'lease',
     id: 'case-1',
     state: 'draft',
     stateVersion: 3,
+    caseKind: 'lease',
     businessType: 'managed',
     currentContractId: 'contract-1',
     ...overrides,
@@ -206,7 +214,7 @@ describe('租賃案件：advance_after_notice', () => {
 });
 
 describe('租賃案件：結案的未結事項（ADR-0016 決議 6）', () => {
-  const settling = (businessType: LeaseCaseSnapshot['businessType']) => lease({ state: 'settling', businessType });
+  const settling = (combination: Combination) => lease({ state: 'settling', ...combination });
   const close = (unsettled: Partial<typeof NO_UNSETTLED>, unsettledReason: string | null): CaseInput => ({
     type: 'close',
     unsettled: { ...NO_UNSETTLED, ...unsettled },
@@ -214,7 +222,7 @@ describe('租賃案件：結案的未結事項（ADR-0016 決議 6）', () => {
   });
 
   it('全部結清：直接結案，不需要原因，不寫稽核', () => {
-    expect(decideCaseTransition(settling('managed'), close({}, null), NOW)).toEqual({
+    expect(decideCaseTransition(settling(LEASE_MANAGED), close({}, null), NOW)).toEqual({
       state: 'closed',
       event: {
         type: 'closed',
@@ -235,8 +243,8 @@ describe('租賃案件：結案的未結事項（ADR-0016 決議 6）', () => {
     ['settlementStatementIncomplete'],
     ['returnProofIncomplete'],
   ] as const)('%s 未結且沒填原因 → 不接受', (item) => {
-    expect(decideCaseTransition(settling('managed'), close({ [item]: true }, null), NOW)).toBeNull();
-    expect(decideCaseTransition(settling('managed'), close({ [item]: true }, '  '), NOW)).toBeNull();
+    expect(decideCaseTransition(settling(LEASE_MANAGED), close({ [item]: true }, null), NOW)).toBeNull();
+    expect(decideCaseTransition(settling(LEASE_MANAGED), close({ [item]: true }, '  '), NOW)).toBeNull();
   });
 
   it.each([
@@ -244,21 +252,27 @@ describe('租賃案件：結案的未結事項（ADR-0016 決議 6）', () => {
     ['settlementStatementIncomplete'],
     ['returnProofIncomplete'],
   ] as const)('%s 未結且填了原因 → 結案並寫稽核任務', (item) => {
-    const decision = decideCaseTransition(settling('managed'), close({ [item]: true }, ' 押金爭議中 '), NOW);
+    const decision = decideCaseTransition(settling(LEASE_MANAGED), close({ [item]: true }, ' 押金爭議中 '), NOW);
     expect(decision?.state).toBe('closed');
     expect(decision?.event.payload).toMatchObject({ [item]: true, unsettledReason: '押金爭議中' });
     expect(decision?.outbox).toEqual([{ type: 'audit_unsettled_close', caseId: 'case-1', reason: '押金爭議中' }]);
   });
 
-  it('自管案件沒有退還證明，returnProofIncomplete 不列入', () => {
-    const decision = decideCaseTransition(settling('self_managed'), close({ returnProofIncomplete: true }, null), NOW);
+  it.each([
+    ['租賃自管', LEASE_SELF],
+    ['包租（沿用自管的規則，待法務確認）', MASTER_LEASE],
+  ])('%s案件沒有退還證明，returnProofIncomplete 不列入', (_name, combination) => {
+    const decision = decideCaseTransition(settling(combination), close({ returnProofIncomplete: true }, null), NOW);
     expect(decision?.state).toBe('closed');
     expect(decision?.event.payload).toMatchObject({ returnProofIncomplete: false });
     expect(decision?.outbox).toEqual([]);
   });
 
-  it.each(['managed', 'master_lease'] as const)('%s 案件的退還證明未完成要計入', (businessType) => {
-    expect(decideCaseTransition(settling(businessType), close({ returnProofIncomplete: true }, null), NOW)).toBeNull();
+  it.each([
+    ['租賃代管', LEASE_MANAGED],
+    ['轉租', SUBLEASE],
+  ])('%s案件的退還證明未完成要計入', (_name, combination) => {
+    expect(decideCaseTransition(settling(combination), close({ returnProofIncomplete: true }, null), NOW)).toBeNull();
   });
 });
 
@@ -277,8 +291,12 @@ describe('租賃案件：handover_effective（ADR-0024 決議 1、3）', () => {
     });
   });
 
-  it.each(BUSINESS_TYPES.filter((t) => t !== 'managed'))('%s 案件不適用移交 → 不接受', (businessType) => {
-    expect(decideCaseTransition(lease({ state: 'active', businessType }), handover('2026-11-08'), NOW)).toBeNull();
+  it.each([
+    ['租賃自管', LEASE_SELF],
+    ['包租', MASTER_LEASE],
+    ['轉租', SUBLEASE],
+  ])('%s案件不適用移交 → 不接受', (_name, combination) => {
+    expect(decideCaseTransition(lease({ state: 'active', ...combination }), handover('2026-11-08'), NOW)).toBeNull();
   });
 
   it('生效日在未來 → 不接受', () => {

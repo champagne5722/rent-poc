@@ -61,7 +61,10 @@ describe('confirmReceipt', () => {
     return result.id;
   }
 
-  async function newCase(id: string, over: { orgId?: string; businessType?: string; socialHousing?: boolean; open?: boolean; linked?: string } = {}) {
+  async function newCase(
+    id: string,
+    over: { orgId?: string; businessType?: string; caseKind?: string; socialHousing?: boolean; open?: boolean; linked?: string } = {},
+  ) {
     const orgId = over.orgId ?? orgA;
     await inOrg(orgId, async (tx) => {
       await tx.query(
@@ -69,6 +72,8 @@ describe('confirmReceipt', () => {
          VALUES ($1, $2, 'lease', 'active', $3, '板橋區某某路 3 樓', $4, $5)`,
         [id, orgId, over.businessType ?? 'self_managed', over.socialHousing ?? false, over.linked ?? null],
       );
+      // 沒傳 caseKind 時由 trigger 依舊欄位補值。包租案件必須明寫（資料上是自管租賃）
+      if (over.caseKind) await tx.query(`UPDATE org.cases SET case_kind = $2 WHERE id = $1`, [id, over.caseKind]);
       if (over.open !== false) await openCaseLedger(tx, id, TERMS);
     });
   }
@@ -307,11 +312,32 @@ describe('confirmReceipt', () => {
       expect(await countOf('org.deposit_holder_acknowledgments')).toBe(0);
     });
 
-    it('包租案件、持有人是出租人（包租業者）：不警告', async () => {
+    it('轉租案件、持有人是出租人（包租業者）：不警告', async () => {
       await newCase(CASE, { businessType: 'master_lease' });
       const result = await mustConfirm(candidate({ purpose: 'security_deposit' }));
       expect(result.holderAcknowledgmentId).toBeNull();
       expect(result.notices).toEqual([]);
+    });
+
+    it('包租案件、持有人是出租人：沿用自管的規則（待法務確認），不警告', async () => {
+      await newCase(CASE, { businessType: 'self_managed', caseKind: 'master_lease' });
+      const result = await mustConfirm(candidate({ purpose: 'security_deposit' }));
+      expect(result.holderAcknowledgmentId).toBeNull();
+      expect(result.notices).toEqual([]);
+    });
+
+    // MIL-198 改名前後：社宅旗標開、押金收在代管業者的帳戶，只有租賃代管案件被阻擋。
+    // 包租案件沿用自管的規則，轉租案件原本就沒有對應的規則列，兩者都放行，與改名前相同。
+    it.each([
+      ['租賃案件（自管）', { businessType: 'self_managed' }, true],
+      ['租賃案件（代管）', { businessType: 'managed' }, false],
+      ['包租案件', { businessType: 'self_managed', caseKind: 'master_lease' }, true],
+      ['轉租案件', { businessType: 'master_lease' }, true],
+    ] as const)('社宅旗標開、押金收在代管業者的帳戶：%s', async (_name, over, allowed) => {
+      await newCase(CASE, { ...over, socialHousing: true });
+      const result = await confirm(candidate({ purpose: 'security_deposit', paymentAccountId: managerAccount }));
+      if (allowed) expect(result).toMatchObject({ ok: true });
+      else expect(result).toMatchObject({ ok: false, failure: { code: 'holder_blocked', notice: { ruleId: 'DHR-01' } } });
     });
 
     it('社宅代管案件、持有人是代管業者：阻擋，回範本依據，什麼都不寫', async () => {
