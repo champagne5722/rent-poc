@@ -16,6 +16,7 @@
 | `remitters.ts` | `addRemitterId`、`listRemitterIds`、`removeRemitterId` | 匯款識別。戶名與末五碼先正規化再存（`remitter-input.ts`） |
 | `default-accounts.ts` | `getDefaultAccounts`、`setDefaultAccounts` | 租金與押金的預設收款帳戶。帳戶必須屬於本組織且啟用中 |
 | `social-housing.ts` | `changeSocialHousing`、`listSocialHousingChanges`、`resolveSocialHousingDefault` | 社宅旗標。修改必須填原因，同交易寫紀錄、稽核並用 `notify()` 通知委託人 |
+| `mandator.ts` | `notifyMandators(tx, mandateCaseId, notice)`、`mandatorEmails`、`linkedMandateCaseId` | 通知委託人：第一則帶站內通知，每位委託人另寄一封 email，寄件名義是主辦組織。社宅旗標修改與押金持有人確認（MIL-125）共用 |
 | `holder-conflicts.ts` | `listHolderConflicts(tx, caseId)` | 押金所在的收款帳戶中，押金帳戶規則不是 allow 的那些 |
 
 ## 接線

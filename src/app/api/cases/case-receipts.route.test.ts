@@ -125,7 +125,7 @@ describe('POST /api/cases/[id]/receipts', () => {
       ['2026-12', 'unpaid', 30000],
       ['2027-01', 'unpaid', 30000],
     ]);
-    expect(ledger.receipts).toEqual([expect.objectContaining({ purpose: 'rent', amount: 30000, accountName: '王先生的帳戶', isCash: false, reversed: false, holderAcknowledged: false })]);
+    expect(ledger.receipts).toEqual([expect.objectContaining({ purpose: 'rent', amount: 30000, accountName: '王先生的帳戶', isCash: false, recordedByName: '路由測試帳號', reversed: false, holderAcknowledged: false })]);
   });
 
   it('部分入帳：期別是部分入帳並顯示差額', async () => {
