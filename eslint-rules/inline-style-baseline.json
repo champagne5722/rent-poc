@@ -9,7 +9,6 @@
   "src/app/owner/handovers/[id]/HandoverDetailView.tsx": 9,
   "src/app/owner/handovers/new/StartHandoverForm.tsx": 6,
   "src/app/owner/not-found.tsx": 1,
-  "src/app/page.tsx": 10,
   "src/app/payment-accounts/page.tsx": 4,
   "src/app/properties/[id]/page.tsx": 5,
   "src/app/properties/page.tsx": 10,

@@ -1,0 +1,6 @@
+/* 工作台（MIL-178）。尺寸與顏色引用 DESIGN.md 的 CSS 變數。 */
+/* 概況的數字整塊可點，文字色不被連結色蓋掉 */
+.stat {
+  display: block;
+  color: inherit;
+}

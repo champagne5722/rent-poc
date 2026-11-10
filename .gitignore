@@ -63,3 +63,4 @@ next-env.d.ts
 /.next-e2e-*/
 /e2e-results/
 /playwright-report/
+vitest-report.json

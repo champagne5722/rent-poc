@@ -1,5 +1,4 @@
-import type { PGliteInterface } from '@electric-sql/pglite';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pgliteDriver } from './drivers';
 import {
   CONTROL_TABLE_EXCEPTIONS,
@@ -13,9 +12,14 @@ import {
   registryTablesWithoutCase,
   tablesWithoutCase,
 } from './rls-cases';
+import {
+  describeForeignKeyPenetration,
+  describeOrgTablePenetration,
+  describeRegistryFunctionPenetration,
+  type PenetrationEnv,
+} from './rls-penetration-suite';
 import { asRole, createTestDb, type TestDb } from './test-harness';
-import { newUlid } from './ulid';
-import { createWithTx, type Tx, type WithTx } from './with-tx';
+import { createWithTx } from './with-tx';
 
 // 滲透測試骨架（MIL-81，ADR-0012 決議 6）。MIL-89 在這個骨架上加系統目錄檢查與表專屬探測。
 
@@ -212,73 +216,18 @@ describe('registry 與 vault 的表（只經定義者函式，MIL-109）', () =>
   });
 });
 
-describe.each(Object.entries(ORG_TABLE_CASES))('%s 的跨組織探測', (table, testCase) => {
-  let db: PGliteInterface;
-  let withTx: WithTx;
-  const orgA = newUlid();
-  const orgB = newUlid();
-
-  beforeEach(async () => {
-    db = await testDb.fresh();
-    withTx = createWithTx(pgliteDriver(db));
+// 通用探測的本體在 rls-penetration-suite.ts，真實 PostgreSQL 版是 rls-penetration.pg.test.ts。
+const penetrationEnv: PenetrationEnv = {
+  async prepare(orgA, orgB) {
+    const db = await testDb.fresh();
     await asRole(db, 'app_owner', async () => {
       await db.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, 'A', 'owner'), ($2, 'B', 'owner')`, [orgA, orgB]);
     });
-  });
-
-  const seedA = () => withTx({ kind: 'org', orgId: orgA }, (tx) => testCase.seed(tx, orgA));
-  const asB = <T>(fn: (tx: Tx<'org'>) => Promise<T>) => withTx({ kind: 'org', orgId: orgB }, fn);
-
-  it('自己看得到這一列', async () => {
-    const id = await seedA();
-    const rows = await withTx({ kind: 'org', orgId: orgA }, (tx) => tx.query(`SELECT id FROM ${table} WHERE id = $1`, [id]));
-    expect(rows.rows).toHaveLength(1);
-  });
-
-  it('別的組織看不到、改不到、刪不到', async () => {
-    const id = await seedA();
-    expect((await asB((tx) => tx.query(`SELECT id FROM ${table} WHERE id = $1`, [id]))).rows).toEqual([]);
-    expect((await asB((tx) => tx.query(`SELECT count(*)::int AS n FROM ${table}`))).rows).toEqual([{ n: 0 }]);
-    if (testCase.appendOnly) {
-      // 只增不改的表：app_rw 沒有 UPDATE 與 DELETE 權限，連別的組織的列也不必碰就被擋
-      await expect(asB((tx) => tx.query(`UPDATE ${table} SET org_id = org_id WHERE id = $1 RETURNING id`, [id]))).rejects.toThrow(/permission denied/);
-      await expect(asB((tx) => tx.query(`DELETE FROM ${table} WHERE id = $1 RETURNING id`, [id]))).rejects.toThrow(/permission denied/);
-    } else {
-      expect((await asB((tx) => tx.query(`UPDATE ${table} SET org_id = org_id WHERE id = $1 RETURNING id`, [id]))).rows).toEqual([]);
-      expect((await asB((tx) => tx.query(`DELETE FROM ${table} WHERE id = $1 RETURNING id`, [id]))).rows).toEqual([]);
-    }
-    const stillThere = await withTx({ kind: 'org', orgId: orgA }, (tx) => tx.query(`SELECT id FROM ${table} WHERE id = $1`, [id]));
-    expect(stillThere.rows).toHaveLength(1);
-  });
-
-  it('不能把列的 org_id 改成別的組織', async () => {
-    const id = await seedA();
-    await expect(
-      withTx({ kind: 'org', orgId: orgA }, (tx) => tx.query(`UPDATE ${table} SET org_id = $2 WHERE id = $1`, [id, orgB])),
-    ).rejects.toThrow(testCase.appendOnly ? /permission denied/ : (testCase.blockedUpdateMessage ?? /row-level security/));
-  });
-
-  it('在自己的脈絡寫入別的組織的 org_id，被 RLS 擋下', async () => {
-    await expect(withTx({ kind: 'org', orgId: orgA }, (tx) => testCase.seed(tx, orgB))).rejects.toThrow(/row-level security/);
-  });
-
-  it('沒有組織脈絡（control）時 0 筆', async () => {
-    await seedA();
-    const rows = await withTx({ kind: 'control' }, (tx) => tx.query(`SELECT count(*)::int AS n FROM ${table}`));
-    expect(rows.rows).toEqual([{ n: 0 }]);
-  });
-
-  it('只有 party 脈絡（承租人）時 0 筆', async () => {
-    await seedA();
-    const rows = await withTx({ kind: 'party', partyId: newUlid() }, (tx) => tx.query(`SELECT count(*)::int AS n FROM ${table}`));
-    expect(rows.rows).toEqual([{ n: 0 }]);
-  });
-
-  it('兩個組織用同一組業務鍵各寫一列都成功，撞號不會洩漏別的組織有這一列（陷阱 6）', async () => {
-    await seedA();
-    await expect(asB((tx) => testCase.seed(tx, orgB))).resolves.toBeTruthy();
-  });
-});
+    return createWithTx(pgliteDriver(db));
+  },
+};
+describeOrgTablePenetration(penetrationEnv);
+describeForeignKeyPenetration(penetrationEnv);
 
 // registry 的表與函式（MIL-143）。registry 不掛組織 RLS，隔離靠「app_rw 不能直接碰表」與「函式不分辨別人的 ID 與不存在的 ID」。
 describe('registry 的表與函式', () => {
@@ -324,38 +273,5 @@ describe('registry 的表與函式', () => {
     }
   });
 
-  describe.each(Object.entries(REGISTRY_FUNCTION_CASES).filter(([, c]) => c.probe !== null))(
-    '%s 的跨組織探測',
-    (_name, fnCase) => {
-      it('B 組織探測 A 組織的 ID，與探測不存在的 ID，結果逐位元相同', async () => {
-        const db = await testDb.fresh();
-        try {
-          const withTx = createWithTx(pgliteDriver(db));
-          const orgA = newUlid();
-          const orgB = newUlid();
-          await asRole(db, 'app_owner', () =>
-            db.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, 'A', 'owner'), ($2, 'B', 'owner')`, [orgA, orgB]),
-          );
-          const target = await withTx({ kind: 'org', orgId: orgA }, async (tx) => {
-            const anchorId = newUlid();
-            const unitId = newUlid();
-            await tx.query('SELECT * FROM registry.create_pending_anchor($1, $2, $3)', [anchorId, unitId, '滲透測試地址']);
-            await tx.query(
-              'INSERT INTO org.properties (id, org_id, rental_unit_id, name, address) VALUES ($1, $2, $3, $4, $5)',
-              [newUlid(), orgA, unitId, '滲透測試物件', '滲透測試地址'],
-            );
-            return { anchorId, unitId };
-          });
-          const outcome = (t: { anchorId: string; unitId: string }) =>
-            withTx({ kind: 'org', orgId: orgB }, (tx) => fnCase.probe!(tx, t)).then(
-              (value) => ({ value }),
-              (error: { code?: string; message?: string }) => ({ error: { code: error.code, message: error.message } }),
-            );
-          expect(await outcome(target)).toEqual(await outcome({ anchorId: newUlid(), unitId: newUlid() }));
-        } finally {
-          await db.close();
-        }
-      });
-    },
-  );
+  describeRegistryFunctionPenetration(penetrationEnv);
 });

@@ -1,0 +1,82 @@
+import { NextRequest } from 'next/server';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { POST as createContractRoute } from '@/app/api/contracts/route';
+import { POST as createProperty } from '@/app/api/properties/route';
+import { actAs, actAsParty, actAsError, nextAnchorKey, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
+import { Unauthenticated } from '@/lib/request-context';
+import { loadWorkbench } from './workbench-load';
+
+vi.mock('@/lib/current-request-context', async () => ({
+  requestContext: (await import('@/lib/pg/route-test-kit')).stubRequestContext,
+}));
+
+// 工作台在 server component 載入資料（MIL-178）。載入函式用現有的合約、簽署進度與物件讀取。
+
+let kit: RouteDb;
+beforeAll(async () => {
+  kit = await setupRouteDb();
+});
+afterAll(() => kit.close());
+beforeEach(async () => {
+  await kit.reset();
+  actAs(kit.orgA);
+});
+
+async function newContract(): Promise<string> {
+  return (await newContractWithProperty()).contractId;
+}
+
+async function newContractWithProperty(): Promise<{ contractId: string; propertyId: string }> {
+  const property = await createProperty(
+    new NextRequest('http://localhost/api/properties', {
+      method: 'POST',
+      body: JSON.stringify({ name: '大安區溫馨兩房', address: '台北市大安區某路 1 號', default_rent: 20000, equipment: [], anchor: { key: nextAnchorKey() } }),
+    }),
+  );
+  const propertyId = ((await property.json()) as { data: { id: string } }).data.id;
+  const res = await createContractRoute(
+    new NextRequest('http://localhost/api/contracts', { method: 'POST', body: JSON.stringify({ property_id: propertyId }) }),
+  );
+  return { contractId: ((await res.json()) as { data: { id: string } }).data.id, propertyId };
+}
+
+describe('loadWorkbench', () => {
+  it('沒有合約時回空清單與空進度', async () => {
+    expect(await loadWorkbench()).toEqual({ kind: 'ok', contracts: [], progress: {}, propertyCount: 0 });
+  });
+
+  it('列出自己組織的合約，新的在前；草稿沒有簽署進度', async () => {
+    const first = await newContract();
+    const second = await newContract();
+    const result = await loadWorkbench();
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.contracts.map((c) => c.id)).toEqual([second, first]);
+    expect(result.contracts[0]).toMatchObject({ status: 'draft', contract_type: 'lease' });
+    expect(result.progress).toEqual({});
+  });
+
+  it('別的組織的合約不會出現', async () => {
+    actAs(kit.orgB);
+    await newContract();
+    actAs(kit.orgA);
+    expect(await loadWorkbench()).toEqual({ kind: 'ok', contracts: [], progress: {}, propertyCount: 0 });
+  });
+
+  it('帶回物件筆數', async () => {
+    await newContract();
+    const result = await loadWorkbench();
+    if (result.kind !== 'ok') throw new Error('應該載入成功');
+    expect(result.propertyCount).toBe(1);
+  });
+
+  it('不是組織身分時回 forbidden，不丟錯', async () => {
+    actAsParty();
+    expect(await loadWorkbench()).toEqual({ kind: 'forbidden' });
+  });
+
+  it('沒登入時丟 Unauthenticated，讓頁面導向登入', async () => {
+    actAsError(new Unauthenticated());
+    await expect(loadWorkbench()).rejects.toBeInstanceOf(Unauthenticated);
+  });
+});
