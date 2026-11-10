@@ -183,7 +183,7 @@ CREATE TABLE org.ownership_submissions (
   uploaded_by               text NOT NULL CHECK (uploaded_by ~ '^[0-9A-HJKMNP-TV-Z]{26}$'),
   submitted_at              timestamptz NOT NULL DEFAULT now(),
   UNIQUE (org_id, id),
-  UNIQUE (node_id, seq),
+  UNIQUE (org_id, node_id, seq),
   FOREIGN KEY (org_id, node_id) REFERENCES org.ownership_nodes (org_id, id),
   -- key 以 org/<org_id>/ 開頭：組織前綴由資料庫保證（同 org.sign_task_files）
   CONSTRAINT ownership_submissions_key_has_org CHECK (starts_with(object_key, 'org/' || org_id || '/')),
