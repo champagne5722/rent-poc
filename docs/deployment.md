@@ -72,6 +72,8 @@ demo 得先切換，條件是不放真實個資。開放給真實使用者或 pi
 
 如果沒有設定 `GCP_PROJECT_ID`，`deploy` 會略過，`demo` 不會失敗。
 
+PR 的自動審查在另一個檔 `.github/workflows/pr-review.yml`，不屬於這 3 個 job，也不是必要檢查。金鑰名稱、停用方式與額度用完後的行為見 [`docs/agents/pr-review.md`](agents/pr-review.md)。
+
 ### 映像冒煙測試
 
 `deploy/smoke-test.sh <映像>` 在宿主機起一個 PostgreSQL 18 容器，依序檢查：

@@ -224,7 +224,8 @@ docker stop rentpoc-pg-verify
 
 1. 執行 `git fetch origin && git merge origin/<主幹分支>`。
 2. 執行 `npm run verify`。它依序跑 typecheck、test、lint（`--max-warnings=10`），三項都必須通過。
-3. 單一步驟卡住超過 10 分鐘時，放棄那一步並寫進回報。
+3. PR 本文必須有「驗收條件對照」一節：把票上的驗收條件逐條列出，每條寫做到了沒有與對應的檔或測試。CI 的自動審查靠這一節對照 Spec（MIL-215，見 `docs/agents/pr-review.md`）。
+4. 單一步驟卡住超過 10 分鐘時，放棄那一步並寫進回報。
 
 ## 新增東西時的登記位置
 
