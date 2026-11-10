@@ -352,7 +352,7 @@ describe('DELETE /api/properties/[id]（刪除或封存）', () => {
   });
 });
 
-describe('整戶改分租沿用同一產權錨點', () => {
+describe('整戶改分租沿用同一個物件', () => {
   it('整戶物件刪除後單位 retired，原錨點不變；再從別的來源新增分租，後綴不重用 0000', async () => {
     const wholeId = await createKeyed();
     const first = (await json(await sublet(wholeId, { label: '301' }))).data.id;
