@@ -58,7 +58,6 @@ const eslintConfig = defineConfig([
     files: [
       "src/app/contracts/[[]id]/page.tsx", // floating 4、misused 12
       "src/app/contracts/new/page.tsx", // floating 1、misused 1
-      "src/app/contracts/page.tsx", // floating 1、misused 2
       "src/app/page.tsx", // floating 1
       "src/app/properties/page.tsx", // floating 5、misused 4
       "src/components/ContractWizard.tsx", // floating 1、misused 3

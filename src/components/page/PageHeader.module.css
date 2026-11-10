@@ -1,0 +1,13 @@
+/* 頁首的返回連結（MIL-174）。顏色引用 DESIGN.md 的 CSS 變數：平時是次要文字，hover 才轉主文色。 */
+.back {
+  color: var(--color-ink-muted);
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--color-ink);
+}
+
+.title {
+  min-width: 0;
+}

@@ -1,0 +1,24 @@
+/* 簽署進度點（MIL-72、MIL-174）。顏色引用 DESIGN.md 的 CSS 變數：完成是成功色，目前輪到的是強調色，尚未輪到的是灰階。 */
+.dot {
+  display: inline-block;
+  width: var(--space-sm);
+  height: var(--space-sm);
+  border-radius: 50%;
+}
+
+.done {
+  background: var(--color-semantic-success);
+}
+
+.current {
+  background: var(--color-primary);
+}
+
+.pending {
+  background: var(--color-hairline-strong);
+}
+
+/* 物件下拉的寬度。antd Select 沒有寬度 token，這裡取 DESIGN.md 的 spacing 倍數 */
+.propertySelect {
+  min-width: calc(var(--space-xxl) * 4);
+}
