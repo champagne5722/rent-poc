@@ -31,6 +31,9 @@ beforeEach(async () => {
 
 const KEY = { city: 'A', town: '02', section: '0021', buildingNo: '1234', subNo: '' };
 const OTHER_KEY = { ...KEY, buildingNo: '4321' };
+/** A 登錄的第二、第三個鍵。B 反覆登錄同一個鍵會得到自己既有的那一筆，所以要撞多次得有多個鍵。 */
+const KEY_2 = { ...KEY, buildingNo: '2222' };
+const KEY_3 = { ...KEY, buildingNo: '3333' };
 const body = (overrides: Record<string, unknown> = {}) => ({
   name: '大安區溫馨兩房',
   address: '台北市大安區和平東路二段 100 號 3 樓',
@@ -191,15 +194,16 @@ describe('建立物件時登錄建號', () => {
 });
 
 describe('登錄回應一律相同（MIL-196，ADR-0028 決議 1、2、6）', () => {
-  /** A 先登錄 KEY，之後 B 分別登錄沒人用的鍵、A 已登錄的鍵、超過次數後 A 已登錄的鍵。 */
+  /** A 先登錄 KEY 與 KEY_2，之後 B 分別登錄沒人用的鍵、A 已登錄的鍵、超過次數後 A 的另一個已登錄的鍵。 */
   async function threeRegistrations() {
     actAs(kit.orgA);
     const aId = await create(body({ name: 'A 的秘密物件' }));
+    await create(body({ name: 'A 的第二個秘密物件', anchor: { key: KEY_2 } }));
     actAs(kit.orgB);
     const freshRes = await post(body({ name: 'B 的物件', anchor: { key: OTHER_KEY } }));
     const collidingRes = await post(body({ name: 'B 的物件', anchor: { key: KEY } }));
     await setLimit(1);
-    const overRes = await post(body({ name: 'B 的物件', anchor: { key: KEY } }));
+    const overRes = await post(body({ name: 'B 的物件', anchor: { key: KEY_2 } }));
     const results = await Promise.all(
       [freshRes, collidingRes, overRes].map(async (res) => {
         const text = await res.text();
@@ -232,7 +236,7 @@ describe('登錄回應一律相同（MIL-196，ADR-0028 決議 1、2、6）', ()
     }
     // 撞號者仍看到自己填的建號與名稱，與沒撞號的物件只差在建號本身
     expect(c.anchor).toEqual({ ...f.anchor, building_no: '01234' });
-    expect(o.anchor).toEqual(c.anchor);
+    expect(o.anchor).toEqual({ ...f.anchor, building_no: '02222' });
     expect(f.anchor.building_no).toBe('04321');
   });
 
@@ -278,12 +282,12 @@ describe('登錄回應一律相同（MIL-196，ADR-0028 決議 1、2、6）', ()
   it('超過次數時 route 不回 429，登錄照常成立；審核台出現內部警示，宣稱方的物件、稽核事件與回應都沒有警示', async () => {
     await setLimit(1);
     actAs(kit.orgA);
-    await create(body());
+    for (const key of [KEY, KEY_2, KEY_3]) await create(body({ anchor: { key } }));
     actAs(kit.orgB);
     const statuses: number[] = [];
     const texts: string[] = [];
-    for (let i = 0; i < 3; i += 1) {
-      const res = await post(body({ name: `B${i}` }));
+    for (const [i, key] of [KEY, KEY_2, KEY_3].entries()) {
+      const res = await post(body({ name: `B${i}`, anchor: { key } }));
       statuses.push(res.status);
       texts.push(stripIds(await res.text()));
     }
@@ -342,6 +346,26 @@ describe('登錄回應一律相同（MIL-196，ADR-0028 決議 1、2、6）', ()
     expect(await ownerRows('SELECT id FROM registry.review_items')).toEqual([]);
     expect(await ownAudit(kit.orgA)).toHaveLength(events);
     expect(await platformCollisionEvents()).toEqual([]);
+  });
+
+  it('同一個組織登錄同一個鍵第二次：鍵沒人用與撞到別的組織，回應相同（不能用第二次的回應探測）', async () => {
+    actAs(kit.orgA);
+    await create(body());
+    actAs(kit.orgB);
+    const secondOf = async (key: typeof KEY) => {
+      const first = await post(body({ name: '第一次', anchor: { key } }));
+      const second = await post(body({ name: '第二次', anchor: { key } }));
+      return { first, second, firstId: (await json(first.clone())).data.id as string, text: stripIds(await second.text()) };
+    };
+    const free = await secondOf(OTHER_KEY);
+    const colliding = await secondOf(KEY);
+    expect([free.second.status, colliding.second.status]).toEqual([200, 200]);
+    expect(colliding.text).toBe(free.text);
+    expect(JSON.parse(colliding.text)).toEqual({ data: { id: '<id>', existing: true } });
+    expect((await json(await getList())).data).toHaveLength(2);
+    // 第二次回的是自己第一次登錄的那一筆
+    const again = await post(body({ name: '第三次', anchor: { key: KEY } }));
+    expect((await json(again)).data.id).toBe(colliding.firstId);
   });
 
   it('回應本文與錯誤都不含對方組織的名稱、統編、人員、物件與 ID', async () => {
@@ -431,11 +455,12 @@ describe('滲透：B 組織登錄 A 組織已登錄的鍵（MIL-144、MIL-196）
     expect(anchor).toEqual([expect.objectContaining({ id: ctxA.aAnchor, status: 'keyed', building_no: '01234' })]);
   });
 
-  it('B 反覆登錄同一個鍵的回應逐位元相同（除了每次不同的物件 ID），不會因為次數洩漏任何事', async () => {
+  it('B 反覆登錄同一個鍵：第一次之後都回自己既有的那一筆，回應逐位元相同，不會因為次數洩漏任何事', async () => {
     await setup();
     const texts: string[] = [];
     for (let i = 0; i < 3; i += 1) texts.push(stripIds(await (await post(body({ name: `B${i}` }))).text()));
     expect(new Set(texts).size).toBe(1);
+    expect(JSON.parse(texts[0])).toEqual({ data: { id: '<id>', existing: true } });
   });
 });
 
@@ -484,12 +509,13 @@ describe('POST /api/properties/[id]/anchor-key（補建號與修正建號）', (
     async function threeFixes() {
       actAs(kit.orgA);
       await create(body());
+      await create(body({ anchor: { key: KEY_2 } }));
       actAs(kit.orgB);
       const ids = [await legacyNoKey(kit.orgB), await legacyNoKey(kit.orgB), await legacyNoKey(kit.orgB)];
       const fresh = await setKey(ids[0], OTHER_KEY);
       const colliding = await setKey(ids[1], KEY);
       await setLimit(1);
-      const over = await setKey(ids[2], KEY);
+      const over = await setKey(ids[2], KEY_2);
       const results = await Promise.all([fresh, colliding, over].map(async (res) => ({ status: res.status, text: await res.text() })));
       return { ids, fresh: results[0], colliding: results[1], over: results[2] };
     }
@@ -506,7 +532,7 @@ describe('POST /api/properties/[id]/anchor-key（補建號與修正建號）', (
       // 撞號者的回應帶自己填的建號，與沒撞號時只差在建號本身
       const body_ = (text: string) => JSON.parse(text).data;
       expect(body_(colliding.text).anchor).toEqual({ ...body_(fresh.text).anchor, building_no: '01234' });
-      expect(body_(over.text).anchor).toEqual(body_(colliding.text).anchor);
+      expect(body_(over.text).anchor).toEqual({ ...body_(colliding.text).anchor, building_no: '02222' });
       for (const r of [fresh, colliding, over]) expect(r.text).not.toMatch(/已在平台登錄|已送審核|審核單號|review|ticket/);
     });
 

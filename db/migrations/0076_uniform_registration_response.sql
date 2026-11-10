@@ -97,7 +97,7 @@ DROP FUNCTION registry.assign_anchor_key(text, text, text, text, text, text, tex
 -- 回傳一列 (outcome, item_id, property_id)：
 --   keyed            鍵沒人用，物件轉已建號。item_id、property_id 都是 NULL。
 --   collision_queued 鍵已被別的組織登錄。宣稱的鍵存進審核項目 p_item_id，物件轉待驗證並清掉鍵。
---   own_existing     鍵已被自己組織登錄。property_id 是自己的物件，不建審核項目，不算進次數。
+--   own_existing     鍵已被自己組織登錄，或自己先前宣稱過（撞到別的組織，鍵存在審核項目）。property_id 是自己的物件，不建審核項目，不算進次數。
 --   不再有 rate_limited。
 -- 對外的呼叫端（TypeScript）把 keyed 與 collision_queued 當成同一種結果，兩者只留在內部。
 -- 為什麼回傳而不是 RAISE：RAISE 會讓同一個交易的稽核事件回滾。
@@ -181,6 +181,29 @@ BEGIN
   END IF;
   IF v_canceled THEN
     RAISE EXCEPTION '段碼已註銷，必須改選現行的段' USING ERRCODE = '22023';
+  END IF;
+
+  -- 自己組織先前宣稱過這個鍵（撞到別的組織，鍵只存在審核項目）：與自己持有這個鍵相同，回自己的物件。
+  -- 少了這一步，同一個組織登錄同一個鍵兩次，鍵沒人用時第二次回「自己既有的物件」，撞到別的組織時第二次卻照常登錄，
+  -- 呼叫者就能用第二次的回應分辨別的組織是否登錄過這個鍵。
+  -- 呼叫者自己的審核項目只有自己的組織 ID，所以這裡讀不到別的組織的任何東西。整戶、未封存的優先
+  SELECT p.id INTO v_own
+    FROM registry.review_items r
+    JOIN registry.rental_units u ON u.anchor_id = r.subject_id
+    JOIN org.properties p ON p.rental_unit_id = u.id
+   WHERE r.type = 'anchor_collision' AND r.status = 'open'
+     AND r.payload ->> 'claimant_org_id' = v_org
+     AND r.subject_id <> p_anchor_id
+     AND r.payload #>> '{claimed_key,city_code}' = p_city_code
+     AND r.payload #>> '{claimed_key,town_code}' = p_town_code
+     AND r.payload #>> '{claimed_key,section_code}' = p_section
+     AND r.payload #>> '{claimed_key,building_no}' = v_building
+     AND r.payload #>> '{claimed_key,sub_no}' = v_sub
+   ORDER BY (p.archived_at IS NOT NULL), u.suffix, p.id
+   LIMIT 1;
+  IF v_own IS NOT NULL THEN
+    RETURN QUERY SELECT 'own_existing'::text, NULL::text, v_own;
+    RETURN;
   END IF;
 
   -- 先看鍵有沒有人用。沒人用就直接登錄；兩個交易同時搶時，後到的在 UPDATE 撞唯一索引，改走下面的撞號流程

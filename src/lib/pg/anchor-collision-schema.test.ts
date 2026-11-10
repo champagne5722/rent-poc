@@ -92,6 +92,17 @@ const setLimit = (n: number) =>
 const itemRows = (sql = '') =>
   owner(async () => (await db.query<Record<string, any>>(`SELECT * FROM registry.review_items ${sql}`)).rows); // eslint-disable-line @typescript-eslint/no-explicit-any
 
+/** A 先登錄 n 個不同的鍵（建號 2000 起），回傳建號。B 反覆撞同一個鍵會得到自己既有的物件，所以要撞多次得有多個鍵。 */
+async function registrantHoldsMany(n: number): Promise<string[]> {
+  const buildings: string[] = [];
+  for (let i = 0; i < n; i += 1) {
+    const building = String(2000 + i);
+    await registrantHolds(building);
+    buildings.push(building);
+  }
+  return buildings;
+}
+
 /** A 先登錄一個鍵。 */
 async function registrantHolds(building = '1234') {
   const first = await createProperty(orgA, '甲方的物件');
@@ -304,6 +315,21 @@ describe('registry.assign_anchor_key：撞到自己的組織', () => {
     expect(await asOperator(async (tx) => (await tx.query(`SELECT action FROM audit.events WHERE action = 'property.anchor_collision'`)).rows)).toEqual([]);
   });
 
+  it('自己先前宣稱過的鍵（撞到別的組織）再登錄一次：回 own_existing，與鍵沒人用時相同，不能用第二次的回應探測', async () => {
+    await registrantHolds('1234');
+    const first = await createProperty(orgB, '乙方第一次');
+    expect((await claimAs(orgB, first.anchorId, '1234')).outcome).toBe('collision_queued');
+    const second = await createProperty(orgB, '乙方第二次');
+    expect(await claimAs(orgB, second.anchorId, '1234')).toEqual({ outcome: 'own_existing', item_id: null, property_id: first.propertyId });
+    // 對照：鍵沒人用時，第二次也是 own_existing
+    const free1 = await createProperty(orgB);
+    expect((await claimAs(orgB, free1.anchorId, '7777')).outcome).toBe('keyed');
+    const free2 = await createProperty(orgB);
+    expect(await claimAs(orgB, free2.anchorId, '7777')).toEqual({ outcome: 'own_existing', item_id: null, property_id: free1.propertyId });
+    // 第二次沒有建審核項目，也沒有寫平台鏈
+    expect(await itemRows(`WHERE type = 'anchor_collision'`)).toHaveLength(1);
+  });
+
   it('自己撞自己不算進次數', async () => {
     await setLimit(1);
     await registrantHolds();
@@ -371,11 +397,11 @@ describe('registry.assign_anchor_key：修正建號', () => {
 describe('registry.assign_anchor_key：次數超過設定值只通知營運者', () => {
   it('超過次數時登錄照常成立，回傳與次數沒滿時相同，審核台出現一張警示', async () => {
     await setLimit(2);
-    await registrantHolds();
+    const keys = await registrantHoldsMany(4);
     const outcomes: ClaimRow[] = [];
-    for (let i = 0; i < 4; i += 1) {
+    for (const building of keys) {
       const p = await createProperty(orgB);
-      outcomes.push(await claimAs(orgB, p.anchorId));
+      outcomes.push(await claimAs(orgB, p.anchorId, building));
     }
     expect(outcomes.map((o) => o.outcome)).toEqual(['collision_queued', 'collision_queued', 'collision_queued', 'collision_queued']);
     expect(outcomes.every((o) => o.item_id !== null && o.property_id === null)).toBe(true);
@@ -388,20 +414,20 @@ describe('registry.assign_anchor_key：次數超過設定值只通知營運者',
 
   it('額度按組織分開算：B 超過不影響 C，C 沒有警示', async () => {
     await setLimit(1);
-    await registrantHolds();
-    await claimAs(orgB, (await createProperty(orgB)).anchorId);
-    await claimAs(orgB, (await createProperty(orgB)).anchorId);
-    await claimAs(orgC, (await createProperty(orgC)).anchorId);
+    const [k1, k2, k3] = await registrantHoldsMany(3);
+    await claimAs(orgB, (await createProperty(orgB)).anchorId, k1);
+    await claimAs(orgB, (await createProperty(orgB)).anchorId, k2);
+    await claimAs(orgC, (await createProperty(orgC)).anchorId, k3);
     const alerts = await itemRows(`WHERE type = 'anchor_collision_limit'`);
     expect(alerts.map((a) => a.subject_id)).toEqual([orgB]);
   });
 
   it('超過 24 小時的撞號不算，次數回復', async () => {
     await setLimit(1);
-    await registrantHolds();
-    const queued = await claimAs(orgB, (await createProperty(orgB)).anchorId);
+    const [k1, k2] = await registrantHoldsMany(2);
+    const queued = await claimAs(orgB, (await createProperty(orgB)).anchorId, k1);
     await owner(() => db.query(`UPDATE registry.review_items SET created_at = now() - interval '25 hours' WHERE id = $1`, [queued.item_id]));
-    await claimAs(orgB, (await createProperty(orgB)).anchorId);
+    await claimAs(orgB, (await createProperty(orgB)).anchorId, k2);
     expect(await itemRows(`WHERE type = 'anchor_collision_limit'`)).toEqual([]);
   });
 
@@ -417,12 +443,12 @@ describe('registry.assign_anchor_key：次數超過設定值只通知營運者',
 
   it('超過 24 小時還沒人處理的舊警示被取代，開新的一張', async () => {
     await setLimit(1);
-    await registrantHolds();
-    await claimAs(orgB, (await createProperty(orgB)).anchorId);
-    await claimAs(orgB, (await createProperty(orgB)).anchorId);
+    const [k1, k2, k3] = await registrantHoldsMany(3);
+    await claimAs(orgB, (await createProperty(orgB)).anchorId, k1);
+    await claimAs(orgB, (await createProperty(orgB)).anchorId, k2);
     const [old] = await itemRows(`WHERE type = 'anchor_collision_limit'`);
     await owner(() => db.query(`UPDATE registry.review_items SET created_at = now() - interval '30 hours' WHERE id = $1`, [old.id]));
-    await claimAs(orgB, (await createProperty(orgB)).anchorId);
+    await claimAs(orgB, (await createProperty(orgB)).anchorId, k3);
     const all = await itemRows(`WHERE type = 'anchor_collision_limit' ORDER BY created_at`);
     expect(all).toHaveLength(2);
     expect(all.find((i) => i.id === old.id)).toMatchObject({ status: 'resolved', resolution: 'superseded' });
@@ -481,9 +507,9 @@ describe('審核台', () => {
 
   it('超過次數的警示顯示宣稱方、上限與次數', async () => {
     await setLimit(1);
-    await registrantHolds();
-    await claimAs(orgB, (await createProperty(orgB)).anchorId);
-    await claimAs(orgB, (await createProperty(orgB)).anchorId);
+    const [k1, k2] = await registrantHoldsMany(2);
+    await claimAs(orgB, (await createProperty(orgB)).anchorId, k1);
+    await claimAs(orgB, (await createProperty(orgB)).anchorId, k2);
     const [alert] = await itemRows(`WHERE type = 'anchor_collision_limit'`);
     const rows = await asOperator(async (tx) => (await tx.query<Record<string, any>>(`SELECT * FROM registry.review_queue('open', 200)`)).rows); // eslint-disable-line @typescript-eslint/no-explicit-any
     expect(rows.find((r) => r.id === alert.id)).toMatchObject({

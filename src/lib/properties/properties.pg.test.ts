@@ -207,11 +207,13 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
     it('同一個組織並行撞號：次數在函式內檢查，並行請求都成立，警示剛好累計 2 次（上限 2，4 個並行請求）', async () => {
       const racer = newUlid();
       await dbh.owner.query(`SET ROLE app_owner; INSERT INTO control.orgs (id, name, kind) VALUES ('${racer}', 'C', 'owner'); RESET ROLE`);
-      await withTx({ kind: 'org', orgId: orgA }, (tx) => registerProperty(tx, keyedInput('4250')));
+      // 4 個不同的鍵：同一個組織撞同一個鍵第二次會得到自己既有的物件，並行的請求才不會因為先後而得到不同的結果
+      const keys = ['4250', '4251', '4252', '4253'];
+      for (const building of keys) await withTx({ kind: 'org', orgId: orgA }, (tx) => registerProperty(tx, keyedInput(building)));
       await dbh.owner.query(`UPDATE registry.platform_settings SET int_value = 2 WHERE key = 'anchor_collision_daily_limit'`);
       try {
         const results = await Promise.all(
-          [1, 2, 3, 4].map(() => withTx({ kind: 'org', orgId: racer }, (tx) => registerProperty(tx, keyedInput('4250')))),
+          keys.map((building) => withTx({ kind: 'org', orgId: racer }, (tx) => registerProperty(tx, keyedInput(building)))),
         );
         expect(results.map((r) => r.kind)).toEqual(['created', 'created', 'created', 'created']);
         const items = await dbh.owner.query(
