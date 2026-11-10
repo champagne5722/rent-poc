@@ -422,6 +422,7 @@ pause "按 Enter 繼續。"
 stage "建立 Cloud SQL 執行個體（開始計費）"
 warn "下一步會建立 Cloud SQL 執行個體，從建立當下開始計費。"
 say "規格：PostgreSQL 18、Enterprise 版、db-f1-micro、SSD 10 GiB、單區、公開 IP、${REGION}。"
+note "每日自動備份（台灣時間 02:00）。公開 IP 沒有授權網路，只有 Auth Proxy 與 Cloud Run 連得進去。"
 say "預估每月約 US\$${MONTHLY_ESTIMATE}。GCP 試用額度 US\$300 足以涵蓋。"
 note "不指定 Enterprise 版時，預設是 Enterprise Plus，費用高很多。腳本已明確指定。"
 note "db-f1-micro 是 shared core，沒有 SLA，demo 接受。pilot 前升規格。"
@@ -433,7 +434,8 @@ else
   gcloud sql instances create "$DB_INSTANCE_NAME" \
     --database-version=POSTGRES_18 --edition=ENTERPRISE --tier=db-f1-micro \
     --region="$REGION" --storage-type=SSD --storage-size=10GB \
-    --availability-type=ZONAL --assign-ip --quiet
+    --availability-type=ZONAL --assign-ip \
+    --backup --backup-start-time=18:00 --quiet
 fi
 create_if_missing "資料庫 $DB_NAME" \
   "gcloud sql databases describe '$DB_NAME' --instance='$DB_INSTANCE_NAME'" \
