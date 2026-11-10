@@ -2,14 +2,13 @@
 // 純函式，沒有 I/O。推進動作本身屬案件狀態機（src/lib/cases/）。
 // 這裡不檢查案件是否在 move_out，也不看時間。
 
-import { BUSINESS_TYPES, type BusinessType } from '../cases';
+import { caseRuleVariantOf, isManagerOperated, type CaseRuleFacts } from '../cases';
 import { handoverConfirmations, type HandoverRecordState } from './handover-record';
 
-export interface SettlingFacts {
-  businessType: BusinessType;
+export interface SettlingFacts extends CaseRuleFacts {
   /** 退租點交紀錄的狀態。還沒建立是 null。 */
   moveOutRecordState: HandoverRecordState | null;
-  /** 代管與包租的點交證明是否已全員完成簽署。自管不適用。 */
+  /** 租賃代管與轉租案件的點交證明是否已全員完成簽署。租賃自管與包租案件不適用。 */
   certificateCompleted: boolean;
   /** 是否已登錄催告（一方未會同）。系統只記錄，不判定法律效果。 */
   demandNoticeRecorded: boolean;
@@ -27,16 +26,15 @@ export type SettlingResult =
   | { ok: false; missing: SettlingPrerequisite[] };
 
 /**
- * 自管：雙方已確認。代管與包租：點交證明已完成。任一種都能改走登錄催告。
- * 主要路徑與催告同時成立時，回報主要路徑。
+ * 租賃自管與包租案件：雙方已確認（包租案件沿用自管的規則，待法務確認）。
+ * 租賃代管與轉租案件：點交證明已完成。任一種都能改走登錄催告。
+ * 主要路徑與催告同時成立時，回報主要路徑。案件種類或業務類型不合法時丟 RangeError。
  */
 export function canAdvanceToSettling(facts: SettlingFacts): SettlingResult {
-  if (!BUSINESS_TYPES.includes(facts.businessType)) {
-    throw new RangeError(`不認得的業務類型：${String(facts.businessType)}`);
-  }
+  const managerOperated = isManagerOperated(caseRuleVariantOf(facts));
   const missing: SettlingPrerequisite[] = [];
 
-  if (facts.businessType === 'self_managed') {
+  if (!managerOperated) {
     if (facts.moveOutRecordState === null) {
       missing.push('move_out_record_missing');
     } else {

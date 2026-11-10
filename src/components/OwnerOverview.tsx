@@ -16,14 +16,15 @@ import {
   type AttentionItem,
   type AttentionKind,
   type AuthorityStatus,
-  type BusinessType,
   type DepositHolder,
   type LeaseState,
   type OverviewFilter,
+  type OverviewKind,
   type OverviewRow,
   type OverviewSummary,
   type PracticeEntityStatus,
 } from '@/lib/owner-overview';
+import { caseKindLabel, leaseBusinessTypeLabel } from '@/lib/case-display';
 import { statusPresentation } from '@/lib/status-presentation';
 import EmptyState from './page/EmptyState';
 import FilterBar from './page/FilterBar';
@@ -35,10 +36,11 @@ const { Text } = Typography;
 
 const HANDOVERS_HREF = '/owner/handovers';
 
-const BUSINESS_TYPE_LABEL: Record<BusinessType, string> = {
-  self_managed: '自管',
-  managed: '代管',
-  master_lease: '包租',
+/** 篩選選項對應的案件事實，名稱取自案件種類的法定名稱（MIL-198）。 */
+const OVERVIEW_KIND_FACTS: Record<OverviewKind, Pick<OverviewRow, 'caseKind' | 'businessType'>> = {
+  lease_self_managed: { caseKind: 'lease', businessType: 'self_managed' },
+  lease_managed: { caseKind: 'lease', businessType: 'managed' },
+  master_lease: { caseKind: 'master_lease', businessType: 'self_managed' },
 };
 
 const MANAGER_STATUS_LABEL: Record<PracticeEntityStatus, string> = {
@@ -199,7 +201,18 @@ function PractitionerInfo({ row }: { row: OverviewRow }) {
       ) : (
         <Text type="secondary">屋主自管</Text>
       )}
-      {row.businessType === 'master_lease' && <Text type="secondary">屋主與包租業者的合約</Text>}
+      {row.caseKind === 'master_lease' && <Text type="secondary">屋主與包租業者的合約</Text>}
+    </Flex>
+  );
+}
+
+/** 案件種類的法定名稱。租賃案件加業務類型（自管或代管），其他案件種類沒有業務類型。 */
+function CaseKindTags({ row }: { row: OverviewRow }) {
+  const businessTypeLabel = leaseBusinessTypeLabel(row.caseKind, row.businessType);
+  return (
+    <Flex wrap gap="var(--space-xxs)">
+      <StatusTag kind="caseKind" value={row.caseKind} />
+      {businessTypeLabel && <Tag>{businessTypeLabel}</Tag>}
     </Flex>
   );
 }
@@ -260,12 +273,12 @@ function AuthorityTag({ status }: { status: AuthorityStatus }) {
 const COLUMNS: ColumnsType<OverviewRow> = [
   { title: '租賃單位', key: 'unit', render: (_, r) => <UnitCell row={r} /> },
   {
-    title: '業務類型與業者',
+    title: '案件種類與業者',
     key: 'manager',
     width: 220,
     render: (_, r) => (
       <Flex vertical gap="var(--space-xxs)" align="flex-start">
-        <Tag>{BUSINESS_TYPE_LABEL[r.businessType]}</Tag>
+        <CaseKindTags row={r} />
         <PractitionerInfo row={r} />
       </Flex>
     ),
@@ -312,7 +325,7 @@ function UnitCard({ row }: { row: OverviewRow }) {
       <Flex vertical gap="small">
         <UnitCell row={row} />
         <Flex wrap gap="var(--space-xxs)">
-          <Tag>{BUSINESS_TYPE_LABEL[row.businessType]}</Tag>
+          <CaseKindTags row={row} />
           <LeaseStateTag state={row.leaseState} />
         </Flex>
         <Descriptions
@@ -333,9 +346,11 @@ function UnitCard({ row }: { row: OverviewRow }) {
   );
 }
 
-const BUSINESS_TYPE_OPTIONS: { value: OverviewFilter['businessType']; label: string }[] = [
+const KIND_OPTIONS: { value: OverviewFilter['kind']; label: string }[] = [
   { value: 'all', label: '全部' },
-  ...(Object.entries(BUSINESS_TYPE_LABEL) as [BusinessType, string][]).map(([value, label]) => ({ value, label })),
+  ...(Object.entries(OVERVIEW_KIND_FACTS) as [OverviewKind, (typeof OVERVIEW_KIND_FACTS)[OverviewKind]][]).map(
+    ([value, facts]) => ({ value, label: caseKindLabel(facts.caseKind, facts.businessType) }),
+  ),
 ];
 
 function UnitFilters({ filter, onChange }: { filter: OverviewFilter; onChange: (next: OverviewFilter) => void }) {
@@ -345,11 +360,11 @@ function UnitFilters({ filter, onChange }: { filter: OverviewFilter; onChange: (
     </Checkbox>
   );
   return (
-    <FilterBar<OverviewFilter['businessType']>
+    <FilterBar<OverviewFilter['kind']>
       status={{
-        value: filter.businessType,
-        options: BUSINESS_TYPE_OPTIONS,
-        onChange: (value) => onChange({ ...filter, businessType: value }),
+        value: filter.kind,
+        options: KIND_OPTIONS,
+        onChange: (value) => onChange({ ...filter, kind: value }),
       }}
       active={JSON.stringify(filter) !== JSON.stringify(EMPTY_FILTER)}
       onClear={() => onChange(EMPTY_FILTER)}

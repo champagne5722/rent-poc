@@ -1,12 +1,14 @@
 // 押金帳戶規則（ADR-0014 決議 13）。
 // 純函式與常數，沒有 I/O。`control.deposit_holder_rules` 的 migration 直接讀 DEPOSIT_HOLDER_RULES。
 
-import { BUSINESS_TYPES, type BusinessType } from '../cases/transitions';
+import { isStatutoryCaseKind, type StatutoryCaseKind } from '../cases/case-kind';
+import { caseRuleVariantOf, type LeaseBusinessType } from '../cases/rule-variant';
+import type { BusinessType } from '../cases/transitions';
 import { DEPOSIT_HOLDER_MESSAGE_KEYS, type DepositHolderMessageKey } from './messages';
 
-// 業務類型沿用案件模組的定義，值是 self_managed、managed、master_lease。
-export { BUSINESS_TYPES };
-export type { BusinessType };
+// 規則看案件種類（ADR-0030 決議 2、3，MIL-198）。租賃案件再看業務類型（自管、代管），其他案件種類沒有業務類型。
+// 業務類型的型別沿用案件模組的定義，匯出給既有的呼叫端。
+export type { BusinessType, StatutoryCaseKind };
 
 /** 收款帳戶持有人的種類（ADR-0014 決議 9）。 */
 export const HOLDER_KINDS = ['lessor', 'owner', 'manager', 'other'] as const;
@@ -22,7 +24,10 @@ export type HolderRuleAction = (typeof HOLDER_RULE_ACTIONS)[number];
 export interface DepositHolderRule {
   ruleId: string;
   version: number;
-  businessType: BusinessType | null;
+  /** 案件種類。null 表示不限。 */
+  caseKind: StatutoryCaseKind | null;
+  /** 業務類型，只有租賃案件有。null 表示不限。 */
+  businessType: LeaseBusinessType | null;
   socialHousing: boolean | null;
   holderKind: HolderKind | null;
   mandateIncludesDeposit: boolean | null;
@@ -30,11 +35,16 @@ export interface DepositHolderRule {
   notifyMandator: boolean;
 }
 
-/** ADR-0014 決議 13 的 5 列。比對時取最具體的命中列，與陣列順序無關。 */
+/**
+ * ADR-0014 決議 13 的 5 列。比對時取最具體的命中列，與陣列順序無關。
+ * 規則的內容沒有改，只換判斷的依據（MIL-198）：DHR-01 到 DHR-03 管租賃代管案件，
+ * DHR-04 管轉租案件（原本是業務類型 `master_lease`）。包租案件沿用自管的規則，走萬用列 DHR-05（待法務確認）。
+ */
 export const DEPOSIT_HOLDER_RULES: readonly DepositHolderRule[] = [
   {
     ruleId: 'DHR-01',
     version: 1,
+    caseKind: 'lease',
     businessType: 'managed',
     socialHousing: true,
     holderKind: 'manager',
@@ -45,6 +55,7 @@ export const DEPOSIT_HOLDER_RULES: readonly DepositHolderRule[] = [
   {
     ruleId: 'DHR-02',
     version: 1,
+    caseKind: 'lease',
     businessType: 'managed',
     socialHousing: false,
     holderKind: 'manager',
@@ -55,6 +66,7 @@ export const DEPOSIT_HOLDER_RULES: readonly DepositHolderRule[] = [
   {
     ruleId: 'DHR-03',
     version: 1,
+    caseKind: 'lease',
     businessType: 'managed',
     socialHousing: false,
     holderKind: 'manager',
@@ -65,7 +77,8 @@ export const DEPOSIT_HOLDER_RULES: readonly DepositHolderRule[] = [
   {
     ruleId: 'DHR-04',
     version: 1,
-    businessType: 'master_lease',
+    caseKind: 'sublease',
+    businessType: null,
     socialHousing: false,
     holderKind: 'lessor',
     mandateIncludesDeposit: null,
@@ -75,6 +88,7 @@ export const DEPOSIT_HOLDER_RULES: readonly DepositHolderRule[] = [
   {
     ruleId: 'DHR-05',
     version: 1,
+    caseKind: null,
     businessType: null,
     socialHousing: null,
     holderKind: null,
@@ -85,7 +99,12 @@ export const DEPOSIT_HOLDER_RULES: readonly DepositHolderRule[] = [
 ];
 
 export interface HolderRuleContext {
-  businessType: BusinessType;
+  caseKind: StatutoryCaseKind;
+  /**
+   * 案件的業務類型欄位，原樣傳入。只有租賃案件的值有意義，其他案件種類不看它。
+   * 租賃案件的值不是自管或代管時視為不合法，不放行。
+   */
+  businessType: BusinessType | null;
   /** 是否為社宅代管案件。 */
   socialHousing: boolean;
   holderKind: HolderKind;
@@ -119,9 +138,15 @@ const UNMATCHED: HolderRuleEvaluation = {
   messageKey: DEPOSIT_HOLDER_MESSAGE_KEYS.warnRuleUnmatched,
 };
 
+/** 規則比對用的業務類型：只有租賃案件有，其他案件種類是 null。 */
+function leaseBusinessTypeOf(ctx: HolderRuleContext): LeaseBusinessType | null {
+  return ctx.caseKind === 'lease' ? (ctx.businessType as LeaseBusinessType | null) : null;
+}
+
 function matches(rule: DepositHolderRule, ctx: HolderRuleContext): boolean {
   return (
-    (rule.businessType === null || rule.businessType === ctx.businessType) &&
+    (rule.caseKind === null || rule.caseKind === ctx.caseKind) &&
+    (rule.businessType === null || rule.businessType === leaseBusinessTypeOf(ctx)) &&
     (rule.socialHousing === null || rule.socialHousing === ctx.socialHousing) &&
     (rule.holderKind === null || rule.holderKind === ctx.holderKind) &&
     (rule.mandateIncludesDeposit === null || rule.mandateIncludesDeposit === ctx.mandateIncludesDeposit)
@@ -130,15 +155,25 @@ function matches(rule: DepositHolderRule, ctx: HolderRuleContext): boolean {
 
 /** 規則列有幾個條件欄位不是「不限」。數字越大越具體。 */
 function specificity(rule: DepositHolderRule): number {
-  return [rule.businessType, rule.socialHousing, rule.holderKind, rule.mandateIncludesDeposit].filter(
+  return [rule.caseKind, rule.businessType, rule.socialHousing, rule.holderKind, rule.mandateIncludesDeposit].filter(
     (condition) => condition !== null,
   ).length;
+}
+
+function isValidCaseFacts(ctx: HolderRuleContext): boolean {
+  if (!isStatutoryCaseKind(ctx.caseKind)) return false;
+  try {
+    caseRuleVariantOf(ctx);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** 輸入在執行期不合法（例如從資料庫讀出 null 或未知字串）時，不放行。 */
 function isValidContext(ctx: HolderRuleContext): boolean {
   return (
-    (BUSINESS_TYPES as readonly string[]).includes(ctx.businessType) &&
+    isValidCaseFacts(ctx) &&
     (HOLDER_KINDS as readonly string[]).includes(ctx.holderKind) &&
     typeof ctx.socialHousing === 'boolean' &&
     typeof ctx.mandateIncludesDeposit === 'boolean'

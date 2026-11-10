@@ -9,9 +9,10 @@ export const repairActions = {
     states: OPERATING,
     hostRoles: {},
     relations: {
-      self_managed: ['lessee', 'co_lessee'],
-      managed: ['lessee', 'co_lessee'],
+      lease_self_managed: ['lessee', 'co_lessee'],
       master_lease: ['lessee', 'co_lessee'],
+      lease_managed: ['lessee', 'co_lessee'],
+      sublease: ['lessee', 'co_lessee'],
     },
     onBehalfScope: null,
   },
@@ -20,8 +21,8 @@ export const repairActions = {
     scope: 'case',
     effect: 'write',
     states: OPERATING,
-    hostRoles: { self_managed: WRITE_ROLES, managed: WRITE_ROLES, master_lease: WRITE_ROLES },
-    relations: { self_managed: ['lessor'], managed: ['lessor'], master_lease: ['lessor'] },
+    hostRoles: { lease_self_managed: WRITE_ROLES, master_lease: WRITE_ROLES, lease_managed: WRITE_ROLES, sublease: WRITE_ROLES },
+    relations: { lease_self_managed: ['lessor'], master_lease: ['lessor'], lease_managed: ['lessor'], sublease: ['lessor'] },
     onBehalfScope: 'repair',
   },
 } as const satisfies Record<string, ActionRule>;

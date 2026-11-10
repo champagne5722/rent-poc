@@ -1,4 +1,5 @@
-import type { BusinessType, DepositHolderRule, HolderKind, HolderRuleAction } from '../deposit-rules';
+import type { DepositHolderRule, HolderKind, HolderRuleAction } from '../deposit-rules';
+import type { LeaseBusinessType, StatutoryCaseKind } from '../cases';
 import type { OrgTx } from '../pg/with-tx';
 
 // 讀 control.deposit_holder_rules（MIL-118，ADR-0014 決議 13）。
@@ -7,7 +8,8 @@ import type { OrgTx } from '../pg/with-tx';
 interface Row {
   rule_id: string;
   version: number;
-  business_type: BusinessType | null;
+  case_kind: StatutoryCaseKind | null;
+  business_type: LeaseBusinessType | null;
   social_housing: boolean | null;
   holder_kind: HolderKind | null;
   mandate_includes_deposit: boolean | null;
@@ -16,12 +18,13 @@ interface Row {
 }
 
 const COLUMNS =
-  'rule_id, version, business_type, social_housing, holder_kind, mandate_includes_deposit, action, notify_mandator';
+  'rule_id, version, case_kind, business_type, social_housing, holder_kind, mandate_includes_deposit, action, notify_mandator';
 
 function toRule(row: Row): DepositHolderRule {
   return {
     ruleId: row.rule_id,
     version: row.version,
+    caseKind: row.case_kind,
     businessType: row.business_type,
     socialHousing: row.social_housing,
     holderKind: row.holder_kind,

@@ -78,6 +78,7 @@ const BINGCHEN = 'pe-bingchen';
 function demoPortfolio(ownerOrgId: string, today: string): Omit<OverviewFacts, 'asOf'> {
   const d = (days: number) => addDays(today, days);
   const base = {
+    caseKind: 'lease',
     contractId: null,
     awaitingSigner: null,
     receivableThisMonth: 0,
@@ -225,7 +226,8 @@ function demoPortfolio(ownerOrgId: string, today: string): Omit<OverviewFacts, '
         caseId: 'lc-gongyi',
         orgId: ownerOrgId,
         unitId: '6600-0456-0000',
-        businessType: 'master_lease',
+        caseKind: 'master_lease',
+        businessType: 'self_managed',
         state: 'active',
         managerId: BINGCHEN,
         contractId: '3',

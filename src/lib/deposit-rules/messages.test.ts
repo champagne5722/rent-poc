@@ -28,8 +28,9 @@ describe('押金帳戶規則的訊息鍵', () => {
     ['managed', false, 'manager', true, 'deposit_holder.warn.manager_holds_deposit'],
     ['managed', false, 'manager', false, 'deposit_holder.warn.fix_mandate'],
     ['self_managed', false, 'lessor', false, null],
-  ] as const)('評估結果帶對應的訊息鍵：%s、社宅 %s、%s、含押金 %s → %s', (businessType, socialHousing, holderKind, mandate, key) => {
+  ] as const)('評估結果帶對應的訊息鍵：租賃案件 %s、社宅 %s、%s、含押金 %s → %s', (businessType, socialHousing, holderKind, mandate, key) => {
     const result = evaluateHolderRule(DEPOSIT_HOLDER_RULES, {
+      caseKind: 'lease',
       businessType,
       socialHousing,
       holderKind,
