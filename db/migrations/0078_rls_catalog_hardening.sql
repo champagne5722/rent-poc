@@ -1,0 +1,11 @@
+-- 系統目錄檢查找到的機械式違規（MIL-89）。由 runner 以 app_owner 執行。
+-- 檢查在 src/lib/pg/rls-catalog-kit.ts，跑在 PGlite 與真實 PostgreSQL。
+--
+-- 違規：org.deposit_balances 是 view，app_rw 卻有 INSERT、UPDATE、DELETE。
+-- 原因：0001 對 org schema 設了預設權限，app_owner 之後建的每個物件都自動給 app_rw 四種 DML。
+-- 0056 只授予 SELECT，沒有撤除預設給的三種。
+-- 影響：這個 view 含 GROUP BY，不是可更新的 view，所以 DML 本來就會被資料庫拒絕。
+-- 但 view 只該有 SELECT，之後有人改成可更新時不能因此多出寫入路徑。
+--
+-- 沒有改變任何行為：應用程式對這個 view 只做 SELECT。
+REVOKE INSERT, UPDATE, DELETE ON org.deposit_balances FROM app_rw;

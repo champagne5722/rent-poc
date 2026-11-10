@@ -1,4 +1,5 @@
 import type {
+  AuditTable,
   ControlTableException,
   DefinerOnlyTable,
   OrgTableCase,
@@ -7,6 +8,7 @@ import type {
   CaseScopedRead,
   RlsRegistration,
 } from './rls-cases/types';
+import { auditRls } from './rls-cases/audit';
 import { casesRls } from './rls-cases/cases';
 import { consentRls } from './rls-cases/consent';
 import { contractsRls } from './rls-cases/contracts';
@@ -25,6 +27,7 @@ import { signingRls } from './rls-cases/signing';
 import { vaultCredentialsRls } from './rls-cases/vault-credentials';
 
 export type {
+  AuditTable,
   ControlTableException,
   DefinerOnlyTable,
   DisclosureFixture,
@@ -63,6 +66,7 @@ export type {
 // 同一個表名或函式名只能由一個模組登記。重複登記會在載入時丟出錯誤。
 
 const RLS_MODULES: readonly RlsRegistration[] = [
+  auditRls,
   casesRls,
   consentRls,
   contractsRls,
@@ -170,3 +174,19 @@ export const DEFINER_ONLY_TABLES: Record<string, DefinerOnlyTable> = compose('de
 export function definerOnlyTablesWithoutEntry(tables: readonly string[]): string[] {
   return tables.filter((t) => !(t in DEFINER_ONLY_TABLES));
 }
+
+// audit schema 的表（MIL-89）。歸 audit_owner，全部 FORCE RLS，app_rw 只有登記的直接權限。
+// rls-catalog.test.ts 從系統目錄列出 audit 的表，缺登記、擁有者不對、沒有 FORCE RLS 或權限與登記不符都讓 CI 失敗。
+// 之後新增 audit 表的人在自己模組檔的 `auditTables` 加進來。
+
+export const AUDIT_TABLES: Record<string, AuditTable> = compose('auditTables');
+
+/**
+ * 組織表之間唯一鍵的例外（MIL-89，ADR-0012 決議 6 的陷阱 6）。
+ * org schema 的業務唯一鍵必須含 org_id，否則唯一鍵撞號會洩漏別的組織有這一列。
+ * 跨組織唯一只留給兩種：registry（整個 schema，不在 org）與主要出租權源（ADR-0013 決議 10、ADR-0026 決議 3）。
+ * org 表上不含 org_id 的唯一索引，必須用「schema.索引名」登記在這裡，並寫一句理由。不在清單內的讓 CI 失敗。
+ * registry 的索引不屬於 org schema，檢查不看它們，所以不必逐一登記。
+ * 主要出租權源的部分唯一索引目前還沒有 migration（ADR-0026 決議 3 的表尚未建立）。建立時在這裡加一列。
+ */
+export const CROSS_ORG_UNIQUE_KEY_EXCEPTIONS: Record<string, { reason: string }> = {};
