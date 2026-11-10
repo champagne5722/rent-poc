@@ -40,7 +40,9 @@
     ".next-preview/types/**/*.ts",
     ".next-preview/dev/types/**/*.ts",
     ".next-smoke-3211/types/**/*.ts",
-    ".next-smoke-3211/dev/types/**/*.ts"
+    ".next-smoke-3211/dev/types/**/*.ts",
+    ".next-e2e-3410/types/**/*.ts",
+    ".next-e2e-3410/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

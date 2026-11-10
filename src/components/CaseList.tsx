@@ -69,7 +69,7 @@ export default function CaseList({ rows }: { rows: CaseListRow[] }) {
           { title: '案件', render: (_, r) => <Link href={`/cases/${r.id}`}>{r.title || '（未命名案件）'}</Link> },
           { title: '案件種類', width: 120, render: (_, r) => caseKindLabel(r.caseKind, r.businessType) },
           { title: '狀態', width: 96, render: (_, r) => <StatusTag kind="case" value={r.state} /> },
-          { title: '承租人', render: (_, r) => r.lesseeNames ?? '—' },
+          { title: '承租人', width: 120, render: (_, r) => r.lesseeNames ?? '—' },
           { title: '租期', width: 200, render: (_, r) => leasePeriodLabel(r.leaseStart, r.leaseEnd) },
           { title: '月租金', width: 100, align: 'right', render: (_, r) => monthlyRentLabel(r.monthlyRent) },
           {

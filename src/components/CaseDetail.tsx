@@ -154,6 +154,8 @@ function CaseDetailBody({ caseId, detail, readOnly = false, backHref, backLabel 
           }
         />
       }
+      // 帳務設定與案件事件本身很高，放在兩欄下方橫跨全寬，才不會讓主要內容欄比側欄高出一截
+      wide={collapsibleItems.length > 0 ? <Collapse items={collapsibleItems} defaultActiveKey={showLedger ? ['ledger'] : []} /> : undefined}
       aside={
         <Card size="small" title="案件屬性">
           <Descriptions
@@ -208,8 +210,8 @@ function CaseDetailBody({ caseId, detail, readOnly = false, backHref, backLabel 
             {canEdit && (
               <>
                 <Divider />
+                <Typography.Text strong>加入共同承租人</Typography.Text>
                 <Form form={form} layout="inline" onFinish={(values) => void addMember(values)}>
-                  <Typography.Text strong>加入共同承租人</Typography.Text>
                   <Form.Item name="name" label="姓名" rules={[{ required: true, message: '請填寫姓名' }]}>
                     <Input />
                   </Form.Item>
@@ -270,9 +272,6 @@ function CaseDetailBody({ caseId, detail, readOnly = false, backHref, backLabel 
         </Card>
       )}
 
-      {collapsibleItems.length > 0 && (
-        <Collapse items={collapsibleItems} defaultActiveKey={showLedger ? ['ledger'] : []} />
-      )}
     </DetailPage>
   );
 }
