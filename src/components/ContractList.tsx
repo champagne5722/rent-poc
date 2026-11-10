@@ -11,14 +11,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
-import {
-  CopyOutlined,
-  DownloadOutlined,
-  EditOutlined,
-  FolderOpenOutlined,
-  PlusOutlined,
-  RollbackOutlined,
-} from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -129,14 +122,19 @@ function ContractListInner({ contracts, progress, displayCodes }: ContractListPr
     const isSigning = isSigningStatus(c.status);
     const busy = busyId === c.id;
     return (
-      <Space size="small">
+      <Space size={0}>
         {c.status === 'draft' && (
           <Link href={`/contracts/${c.id}/edit`}>
-            <Button size="small" icon={<EditOutlined />}>
+            <Button type="link" size="small">
               繼續編輯
             </Button>
           </Link>
         )}
+        <Link href={`/contracts/${c.id}`}>
+          <Button type="link" size="small">
+            開啟
+          </Button>
+        </Link>
         {isSigning && (
           <Popconfirm
             title="撤回後需複製為新草稿重新送簽，確定？"
@@ -144,31 +142,26 @@ function ContractListInner({ contracts, progress, displayCodes }: ContractListPr
             cancelText="取消"
             onConfirm={() => void act(c, `/api/contracts/${c.id}/void`, `合約 #${shortUlid(c.id)} 已撤回`)}
           >
-            <Button size="small" danger icon={<RollbackOutlined />} loading={busy}>
+            <Button type="link" size="small" danger loading={busy}>
               撤回
             </Button>
           </Popconfirm>
         )}
         {c.status === 'completed' && (
-          <Button size="small" icon={<DownloadOutlined />} href={`/api/contracts/${c.id}/signed-pdf`}>
+          <Button type="link" size="small" href={`/api/contracts/${c.id}/signed-pdf`}>
             已簽 PDF
           </Button>
         )}
         {(c.status === 'declined' || c.status === 'voided') && (
           <Button
+            type="link"
             size="small"
-            icon={<CopyOutlined />}
             loading={busy}
             onClick={() => void act(c, `/api/contracts/${c.id}/copy`, `已複製合約 #${shortUlid(c.id)} 為新草稿`)}
           >
             複製為新草稿
           </Button>
         )}
-        <Link href={`/contracts/${c.id}`}>
-          <Button size="small" type="primary" ghost icon={<FolderOpenOutlined />}>
-            開啟
-          </Button>
-        </Link>
       </Space>
     );
   };
@@ -216,13 +209,13 @@ function ContractListInner({ contracts, progress, displayCodes }: ContractListPr
       table={{
         rowKey: 'id',
         dataSource: rows,
-        scroll: { x: 'max-content' },
+        scroll: { x: 1100 },
         columns: [
           {
             // 合約 ID（ULID）的末 6 碼，口頭溝通與客服對照用，不保證唯一；系統內與網址一律用完整 ULID。
             title: 'ID 末碼',
             dataIndex: 'id',
-            width: 110,
+            width: 90,
             render: (id: string) => (
               <Typography.Text type="secondary" code title={id}>
                 {shortUlid(id)}
@@ -232,22 +225,22 @@ function ContractListInner({ contracts, progress, displayCodes }: ContractListPr
           { title: '物件', render: (_, r) => listPropertyLabel(r) },
           {
             title: '顯示編碼',
-            width: 130,
+            width: 110,
             render: (_, r) =>
               r.property_id && r.property_id in displayCodes ? <DisplayCode code={displayCodes[r.property_id]} /> : '—',
           },
           { title: partyB.title, render: (_, r) => partyB.cell(r) },
-          { title: '租金', width: 100, align: 'right', render: (_, r) => listRentLabel(r) },
-          { title: '租期', width: 210, render: (_, r) => listPeriodLabel(r) },
-          { title: '狀態', width: 100, render: (_, r) => <StatusTag kind="contract" value={r.status} /> },
+          { title: '租金', width: 90, align: 'right', render: (_, r) => listRentLabel(r) },
+          { title: '租期', width: 190, render: (_, r) => listPeriodLabel(r) },
+          { title: '狀態', width: 90, render: (_, r) => <StatusTag kind="contract" value={r.status} /> },
           {
             title: '簽署進度',
-            width: 100,
+            width: 90,
             render: (_, r) => <SigningProgress contract={r} progress={progress[String(r.id)] ?? null} />,
           },
-          { title: '最後動作', width: 120, render: (_, r) => dayjs(lastActionAt(r)).format('MM-DD HH:mm') },
+          { title: '最後動作', width: 110, render: (_, r) => dayjs(lastActionAt(r)).format('MM-DD HH:mm') },
           // 操作欄固定在最右，表格橫向捲動時仍看得到（規格 39）
-          { title: '操作', width: 250, fixed: 'right', render: (_, r) => rowActions(r) },
+          { title: '操作', width: 200, fixed: 'right', render: (_, r) => rowActions(r) },
         ],
       }}
     />

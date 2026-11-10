@@ -38,6 +38,7 @@
 - server component 載入資料，用 `redirect()` 處理 `Unauthenticated`。
 - 載入函式不丟 `Forbidden`。它回傳 `{ kind: 'forbidden' }`，由頁面決定畫面。
 - 列上操作成功後，client component 呼叫 `router.refresh()`，server component 重新載入。
+- 操作欄放最右並固定，用文字連結（`Button type="link" size="small"`），不用有邊框的按鈕群。最常用的動作放第一個，危險動作加 `danger`。
 - 不在 client component 用 `useEffect` 加 `fetch` 載入首屏資料。
 
 ## PageHeader
