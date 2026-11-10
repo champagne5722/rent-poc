@@ -10,10 +10,13 @@ import { queueTypeLabel, resolutionLabel, stateLabel } from '@/lib/practice-enti
 import type { DeskCheck, ReviewDetail } from '@/lib/practice-entities/desk';
 import type { EvidenceMeta } from '@/lib/practice-entities/evidence';
 import { NOTE_MAX, QUERY_SOURCE_MAX } from '@/lib/practice-entities/rules';
+import CollisionReviewPanel from './CollisionReviewPanel';
 import CredentialReviewPanel from './CredentialReviewPanel';
 
 // 證書、任職、同意書項目（MIL-111）有自己的核對畫面。
 const CREDENTIAL_ITEM_TYPES = ['certificate', 'employment', 'consent'];
+// 撞號與撞號超限項目（MIL-144）只列出與顯示，判定屬 MIL-146。
+const COLLISION_ITEM_TYPES = ['anchor_collision', 'anchor_collision_limit'];
 
 // 審核項目的核對畫面（MIL-109）。業別核對：查商工登記與 resim 後，登錄營業項目、登記狀態與結果（ADR-0017 決議 10）。
 // 統編認領：同時列出登錄者與認領方，由營運者判定歸屬。證據檔在這裡開啟，每次開啟都寫稽核事件。
@@ -191,6 +194,7 @@ function DeskItemPanelInner({ itemId }: { itemId: string }) {
   if (!detail) return <Typography.Text type="secondary">載入中…</Typography.Text>;
 
   if (CREDENTIAL_ITEM_TYPES.includes(detail.item.type)) return <CredentialReviewPanel itemId={itemId} />;
+  if (COLLISION_ITEM_TYPES.includes(detail.item.type)) return <CollisionReviewPanel detail={detail} />;
 
   const { item, entity, license, claim } = detail;
   const open = item.status === 'open';

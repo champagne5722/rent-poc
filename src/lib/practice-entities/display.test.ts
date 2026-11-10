@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatWaiting, isBacklogged, phaseView, queueTypeLabel, resolutionLabel, stateLabel } from './display';
+import { claimedKeyText, formatWaiting, isBacklogged, phaseView, queueTypeLabel, resolutionLabel, stateLabel } from './display';
 
 describe('formatWaiting：審核佇列的等待時間', () => {
   it.each([
@@ -47,5 +47,25 @@ describe('標籤', () => {
     expect(resolutionLabel('match')).toBe('相符');
     expect(resolutionLabel('claim_to_claimant')).toBe('改歸認領方');
     expect(resolutionLabel(null)).toBe('');
+  });
+});
+
+describe('撞號項目的顯示（MIL-144）', () => {
+  const key = { cityCode: 'A', townCode: '02', sectionCode: '0021', buildingNo: '01234', subNo: '000' };
+
+  it('類型標籤用審核台的詞，畫面不出現「錨點」', () => {
+    expect(queueTypeLabel('anchor_collision')).toBe('撞號');
+    expect(queueTypeLabel('anchor_collision_limit')).toBe('撞號超限');
+  });
+
+  it('宣稱的鍵：縣市、鄉鎮市區、段小段名稱加建號與分號', () => {
+    expect(claimedKeyText(key, { cityName: '臺北市', townName: '大安區', sectionName: '龍泉', sectionSubName: '一' })).toBe(
+      '臺北市 大安區 龍泉 一　建號 01234-000',
+    );
+  });
+
+  it('參照表查不到名稱時退回編碼', () => {
+    expect(claimedKeyText(key, null)).toBe('A 02 0021　建號 01234-000');
+    expect(claimedKeyText(key, { cityName: null, townName: null, sectionName: null, sectionSubName: null })).toBe('A 02 0021　建號 01234-000');
   });
 });

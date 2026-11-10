@@ -43,8 +43,49 @@ export interface QueueItem {
     partyName?: string;
     certificateKind?: CertificateKind;
     consentRequired?: boolean;
+    /** 撞號與撞號超限項目（MIL-144）：宣稱方組織名稱。 */
+    claimantOrgName?: string;
+    /** 撞號項目：宣稱的五欄鍵與名稱。 */
+    claimedKey?: ClaimedKey;
+    claimedKeyNames?: ClaimedKeyNames;
+    /** 撞號超限項目：24 小時內的上限與被擋次數。 */
+    limit?: number;
+    hits?: number;
   };
 }
+
+/** 撞號項目宣稱的五欄鍵（編碼）。 */
+export interface ClaimedKey {
+  cityCode: string;
+  townCode: string;
+  sectionCode: string;
+  buildingNo: string;
+  subNo: string;
+}
+
+/** 宣稱的鍵對應的名稱，取自參照表。找不到時是 null。 */
+export interface ClaimedKeyNames {
+  cityName: string | null;
+  townName: string | null;
+  sectionName: string | null;
+  sectionSubName: string | null;
+}
+
+interface RawClaimedKey {
+  city_code: string;
+  town_code: string;
+  section_code: string;
+  building_no: string;
+  sub_no: string;
+}
+
+const toClaimedKey = (k: RawClaimedKey): ClaimedKey => ({
+  cityCode: k.city_code,
+  townCode: k.town_code,
+  sectionCode: k.section_code,
+  buildingNo: k.building_no,
+  subNo: k.sub_no,
+});
 
 interface QueueRow {
   id: string;
@@ -58,6 +99,8 @@ interface QueueRow {
   summary: {
     entity_name?: string; tax_id?: string; entity_type?: EntityType; kind?: LicenseKind; kinds?: LicenseKind[]; permit_no?: string | null; state?: CredentialState;
     party_name?: string; certificate_kind?: CertificateKind; consent_required?: boolean;
+    claimant_org_name?: string; claimed_key?: RawClaimedKey; city_name?: string | null; town_name?: string | null;
+    section_name?: string | null; section_sub_name?: string | null; limit?: number; hits?: number;
   };
 }
 
@@ -89,6 +132,16 @@ export async function listQueue(tx: OrgTx, status: QueueStatus, now: Date): Prom
         partyName: r.summary.party_name,
         certificateKind: r.summary.certificate_kind,
         consentRequired: r.summary.consent_required,
+        claimantOrgName: r.summary.claimant_org_name,
+        claimedKey: r.summary.claimed_key && toClaimedKey(r.summary.claimed_key),
+        claimedKeyNames: r.summary.claimed_key && {
+          cityName: r.summary.city_name ?? null,
+          townName: r.summary.town_name ?? null,
+          sectionName: r.summary.section_name ?? null,
+          sectionSubName: r.summary.section_sub_name ?? null,
+        },
+        limit: r.summary.limit,
+        hits: r.summary.hits,
       },
     };
   });
@@ -148,6 +201,22 @@ export interface ReviewDetail {
   checks: DeskCheck[];
   /** 證據檔中繼資料：license 項目是該業別的，claim 項目是認領項目的。 */
   evidence: EvidenceMeta[];
+  /** 撞號與撞號超限項目（MIL-144）。其他種類是 null。判定尚未開放，這裡只有顯示用的資料。 */
+  collision: DeskCollision | null;
+}
+
+/**
+ * 撞號項目的顯示資料。只有宣稱方的資料：撞到的既有登錄方留在項目內部，等 MIL-146 判定時才用。
+ * claimedKey 有值是撞號項目，limit 與 hits 有值是撞號超限項目。
+ */
+export interface DeskCollision {
+  claimantOrgId: string;
+  claimantOrgName: string | null;
+  claimedKey: ClaimedKey | null;
+  claimedKeyNames: ClaimedKeyNames | null;
+  limit: number | null;
+  hits: number | null;
+  lastHitAt: string | null;
 }
 
 interface RawDetail {
@@ -163,6 +232,11 @@ interface RawDetail {
     submissions: Record<string, { permit_no: string; submitted_at: string }>; resolution_note: string | null;
   };
   checks: Array<{ id: string; subject_id: string; channel: string; query_source: string; observed: Record<string, unknown>; result: DeskCheck['result']; note: string; checked_by: string; checked_at: string }>;
+  collision?: null | {
+    claimant_org_id: string; claimant_org_name: string | null; claimed_key?: RawClaimedKey;
+    city_name?: string | null; town_name?: string | null; section_name?: string | null; section_sub_name?: string | null;
+    limit?: number; hits?: number; last_hit_at?: string | null;
+  };
 }
 
 const toLicense = (l: { id: string; kind: LicenseKind; state: CredentialState; permit_no: string | null; submitted_at: string | null }): DeskLicense => ({
@@ -207,6 +281,24 @@ export async function getReviewDetail(tx: OrgTx, itemId: string): Promise<Review
       result: c.result, note: c.note, checkedBy: c.checked_by, checkedAt: iso(c.checked_at),
     })),
     evidence,
+    collision: raw.collision
+      ? {
+          claimantOrgId: raw.collision.claimant_org_id,
+          claimantOrgName: raw.collision.claimant_org_name,
+          claimedKey: raw.collision.claimed_key ? toClaimedKey(raw.collision.claimed_key) : null,
+          claimedKeyNames: raw.collision.claimed_key
+            ? {
+                cityName: raw.collision.city_name ?? null,
+                townName: raw.collision.town_name ?? null,
+                sectionName: raw.collision.section_name ?? null,
+                sectionSubName: raw.collision.section_sub_name ?? null,
+              }
+            : null,
+          limit: raw.collision.limit ?? null,
+          hits: raw.collision.hits ?? null,
+          lastHitAt: raw.collision.last_hit_at ? iso(raw.collision.last_hit_at) : null,
+        }
+      : null,
   };
 }
 

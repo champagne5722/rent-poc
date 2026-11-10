@@ -319,7 +319,7 @@ describe('滲透：B 組織撞 A 組織的鍵（MIL-144）', () => {
 
   it('B 的稽核鏈只有 B 自己的事件，payload 不含 A 的任何資料也不含鍵', async () => {
     const ctxA = await setup();
-    const events = await withTx({ kind: 'org', orgId: kit.orgB }, async (tx) => (await tx.query('SELECT * FROM audit.events ORDER BY seq')).rows);
+    const events = await withTx({ kind: 'org', orgId: kit.orgB }, async (tx) => (await tx.query<{ action: string }>('SELECT * FROM audit.events ORDER BY seq')).rows);
     expect(events.map((e: { action: string }) => e.action)).toEqual(['property.create', 'property.anchor_collision']);
     const text = JSON.stringify(events);
     for (const marker of [kit.orgA, ctxA.aId, ctxA.aUnit, ctxA.aAnchor, 'A 的秘密物件', A_ADDRESS, '01234']) expect(text).not.toContain(marker);
