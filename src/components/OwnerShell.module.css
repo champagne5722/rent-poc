@@ -1,67 +1,36 @@
-/* 屋主端殼層的版面。只放結構與間距（DESIGN.md spacing），顏色由 antd token 在元件內帶入。 */
+/* 屋主端殼層的版面（MIL-94，MIL-173）。頂部列的版面在 ShellHeader.module.css，這裡只放外框、品牌連結、頂部選單與內容區。
+   數值引用 DESIGN.md 的 CSS 變數。選擇器帶元素名稱是為了壓過 antd 的元件樣式（特異性 0,1,0），不選取 antd 的內部 class。 */
 
-.bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  column-gap: 24px; /* lg */
-  padding: 0 24px; /* lg，與後台 Header 相同 */
+div.root {
+  min-height: 100vh;
 }
 
 .brand {
-  order: 1;
-  min-height: 56px;
   display: flex;
   align-items: center;
   white-space: nowrap;
 }
 
-.nav {
-  order: 2;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.identity {
-  order: 3;
-  display: flex;
-  align-items: center;
-  gap: 8px; /* xs */
-  margin-left: auto;
-  min-width: 0;
-  max-width: 40%;
-}
-
-/* 顯示名稱過長時讓 Typography 的 ellipsis 生效（第 2 個子元素是名稱，後面是身分切換器、成員、登出鈕，MIL-103、MIL-106） */
-.identity > :nth-child(2) {
-  min-width: 0;
+/* antd 的橫向選單固定畫一條底線，行高也由 antd 的 controlHeight 推算，兩者都沒有 token 能改（行高 token 只收數字，會變成無單位行高）。
+   頂部列自己有 hairline，所以關掉底線。行高取 spacing xl（32px），選單項目高度與側欄的項目高度（Menu.itemHeight）一致。 */
+/* 類別名稱重複一次，把特異性提到 0,2,1，壓過 antd 橫向選單的行高規則 */
+ul.menu.menu {
+  border-bottom: 0;
+  line-height: var(--space-xl);
 }
 
 .content {
-  padding: 24px; /* lg，與後台 Content 相同 */
+  padding: var(--space-xl);
   min-width: 0;
 }
 
-/* antd md 斷點以下：品牌與屋主名稱一列，選單換到第二列 */
+.empty {
+  padding-block: var(--space-xxl);
+}
+
+/* antd md 斷點以下縮小內容區外框。手機版不在 ADR-0090 的範圍，這裡只保證不水平捲動（MIL-94）。 */
 @media (max-width: 767.98px) {
-  .bar {
-    column-gap: 12px; /* sm */
-    padding: 0 16px; /* md */
-  }
-
-  .identity {
-    order: 2;
-    max-width: 100%;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-
-  .nav {
-    order: 3;
-    flex-basis: 100%;
-  }
-
   .content {
-    padding: 16px; /* md */
+    padding: var(--space-md);
   }
 }

@@ -1,0 +1,37 @@
+/* 後台殼層的版面（MIL-173）。只放結構與間距，數值引用 DESIGN.md 的 CSS 變數；顏色、高度與選中態由 antd 的 Layout、Menu token 帶入。
+   選擇器帶元素名稱是為了壓過 antd 的元件樣式（特異性 0,1,0），不選取 antd 的內部 class。 */
+
+div.root {
+  min-height: 100vh;
+}
+
+/* 亮色側欄與畫布之間用 hairline 分隔，層級靠亮度差與邊線，不用陰影 */
+aside.sider {
+  border-inline-end: 1px solid var(--color-hairline);
+}
+
+.brand,
+.brandCollapsed {
+  display: flex;
+  align-items: center;
+  padding: var(--space-md);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.brandCollapsed {
+  justify-content: center;
+}
+
+.cta {
+  padding: 0 var(--space-md) var(--space-sm);
+}
+
+.ctaCollapsed {
+  padding: 0 var(--space-xs) var(--space-sm);
+}
+
+.content {
+  padding: var(--space-xl);
+  min-width: 0;
+}
