@@ -322,7 +322,7 @@ function TranscriptForm({ ownership, onSubmitted }: { ownership: PropertyOwnersh
           className={styles.fieldNarrow}
           rules={[{ required: true, message: '請填謄本的取得時間' }]}
         >
-          <DatePicker format="YYYY-MM-DD" placeholder="例：2026-11-10" disabledDate={(date) => date.isAfter(dayjs(), 'day')} allowClear={false} />
+          <DatePicker format="YYYY-MM-DD" placeholder="選擇日期" disabledDate={(date) => date.isAfter(dayjs(), 'day')} allowClear={false} />
         </Form.Item>
         <Form.Item name="hasTrust" valuePropName="checked">
           <Checkbox>謄本顯示信託登記</Checkbox>

@@ -16,7 +16,7 @@
 #
 # baseline（MIL-170）專用：平台營運者沒有自助註冊，由環境變數建立，所以外殼替 dev server 設
 # PLATFORM_OPERATOR_EMAILS（BASELINE_OPERATOR_EMAIL，預設 e2e-operator@example.com）。
-# 只有 baseline 會設，flows 與 visual 的環境不變。baseline 要開 CDP port 給 impeccable detect，
+# flows 也會設（MIL-201 的出租權源核對流程要平台營運者登入），visual 的環境不變。baseline 要開 CDP port 給 impeccable detect，
 # port 由 BASELINE_CDP_PORT 指定（預設 9333），瀏覽器由測試自己啟動，結束時跟著測試關閉。
 set -u
 export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH
@@ -66,7 +66,7 @@ PG_PID=$!
 wait_for "$PG_LOG" ready 120 || exit 1
 
 OPERATOR_ENV=""
-[ "$PROJECT" = baseline ] && OPERATOR_ENV="PLATFORM_OPERATOR_EMAILS=${BASELINE_OPERATOR_EMAIL:-e2e-operator@example.com}"
+[ "$PROJECT" = baseline ] || [ "$PROJECT" = flows ] && OPERATOR_ENV="PLATFORM_OPERATOR_EMAILS=${BASELINE_OPERATOR_EMAIL:-e2e-operator@example.com}"
 env -u DOTTEDSIGN_CLIENT_ID -u DOTTEDSIGN_CLIENT_SECRET $OPERATOR_ENV \
   NEXT_DIST_DIR=$DIST DATABASE_URL="postgres://app_rw:x@127.0.0.1:$PG_PORT/postgres" PG_POOL_MAX=1 \
   MAILER_ADAPTER=log NEXT_TELEMETRY_DISABLED=1 \

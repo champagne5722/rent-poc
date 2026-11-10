@@ -53,7 +53,7 @@ function nextStepFor(detail: OwnershipReviewDetail, hasSubmission: boolean) {
   const { item } = detail;
   const status = ownershipItemStatus(item);
   const tone = statusPresentation('ownershipItem', status).tone;
-  const waiting = `已等待 ${formatWaiting(item.waitingBusinessMs)}（只算週一到週五）。目標是 1 個工作日內完成核對。`;
+  const waiting = `等待時間：${formatWaiting(item.waitingBusinessMs)}（只算週一到週五）。目標是 1 個工作日內完成核對。`;
   if (!hasSubmission) {
     return { tone, headline: '審核修正建號', owner: '平台營運者', detail: '這個項目沒有謄本，審核動作尚未提供。' };
   }
