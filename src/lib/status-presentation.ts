@@ -11,6 +11,7 @@ import type { LicensePhase } from './practice-entities/applicant';
 import type { QueueStatus } from './practice-entities/queue-status';
 import type { CredentialState } from './registry-rules';
 import type { PractitionerPhase } from './practice-entities/display';
+import type { AuthorityStatus, LeaseState } from './owner-overview';
 import type { PeriodStatus } from './receivables';
 import { CONTRACT_STATUS_LABELS, type ContractStatus, type PropertyVerificationStatus } from './types';
 
@@ -45,6 +46,10 @@ export interface StatusValues {
   practitionerPhase: PractitionerPhase;
   /** 業別或證書的驗證狀態（MIL-181）：待驗證、已驗證、已失效。 */
   credentialState: CredentialState;
+  /** 屋主資產總覽每個租賃單位的合約狀態（MIL-182）。 */
+  leaseState: LeaseState;
+  /** 租賃單位的出租權源驗證狀態（MIL-182）。 */
+  leaseAuthority: AuthorityStatus;
 }
 export type StatusKind = keyof StatusValues;
 export type StatusValueOf<K extends StatusKind> = StatusValues[K];
@@ -134,6 +139,20 @@ const PRESENTATION: { [K in StatusKind]: Record<StatusValues[K], StatusView> } =
     pending: { label: '待驗證', tone: 'neutral' },
     verified: { label: '已驗證', tone: 'success' },
     lapsed: { label: '已失效', tone: 'error' },
+  },
+  leaseState: {
+    vacant: { label: '空置', tone: 'neutral' },
+    draft: { label: '草擬中', tone: 'neutral' },
+    signing: { label: '簽約中', tone: 'progress' },
+    active: { label: '出租中', tone: 'success' },
+    move_out: { label: '退租中', tone: 'progress' },
+    settling: { label: '押金結算中', tone: 'progress' },
+  },
+  leaseAuthority: {
+    verified: { label: '已驗證', tone: 'success' },
+    pending: { label: '待驗證', tone: 'warning' },
+    failed: { label: '驗證失敗', tone: 'error' },
+    expired: { label: '已失效', tone: 'error' },
   },
 };
 

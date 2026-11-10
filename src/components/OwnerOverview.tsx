@@ -8,21 +8,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import {
-  Alert,
-  Button,
-  Card,
-  Checkbox,
-  Descriptions,
-  Empty,
-  Flex,
-  Segmented,
-  Statistic,
-  Table,
-  Tag,
-  Typography,
-  theme,
-} from 'antd';
+import { Alert, Button, Card, Checkbox, Descriptions, Flex, Statistic, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   EMPTY_FILTER,
@@ -38,9 +24,14 @@ import {
   type OverviewSummary,
   type PracticeEntityStatus,
 } from '@/lib/owner-overview';
+import { statusPresentation } from '@/lib/status-presentation';
+import EmptyState from './page/EmptyState';
+import FilterBar from './page/FilterBar';
+import PageHeader from './page/PageHeader';
+import StatusTag from './StatusTag';
 import styles from './OwnerOverview.module.css';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const HANDOVERS_HREF = '/owner/handovers';
 
@@ -48,22 +39,6 @@ const BUSINESS_TYPE_LABEL: Record<BusinessType, string> = {
   self_managed: '自管',
   managed: '代管',
   master_lease: '包租',
-};
-
-const LEASE_STATE: Record<LeaseState, { label: string; color: string }> = {
-  vacant: { label: '空置', color: 'default' },
-  draft: { label: '草擬中', color: 'default' },
-  signing: { label: '簽約中', color: 'processing' },
-  active: { label: '出租中', color: 'success' },
-  move_out: { label: '退租中', color: 'processing' },
-  settling: { label: '押金結算中', color: 'processing' },
-};
-
-const AUTHORITY: Record<AuthorityStatus, { label: string; color: string }> = {
-  verified: { label: '已驗證', color: 'success' },
-  pending: { label: '待驗證', color: 'warning' },
-  failed: { label: '驗證失敗', color: 'error' },
-  expired: { label: '已失效', color: 'error' },
 };
 
 const MANAGER_STATUS_LABEL: Record<PracticeEntityStatus, string> = {
@@ -99,7 +74,7 @@ function attentionFact(item: AttentionItem): string {
       return `逾期 ${(item.amount ?? 0).toLocaleString('zh-TW')} 元，是全部已逾期期別的累計未足額。`;
     case 'authority_problem':
     case 'authority_pending':
-      return `出租權源${AUTHORITY[item.authority ?? 'pending'].label}。`;
+      return `出租權源${statusPresentation('leaseAuthority', item.authority ?? 'pending').label}。`;
     case 'collected_funds_overdue':
       return `代收的租金或押金超過約定日數 ${item.days} 天未交付。`;
     case 'deposit_settlement':
@@ -113,47 +88,32 @@ function attentionFact(item: AttentionItem): string {
 
 // ─── 頁首 ──────────────────────────────────────────────────────────
 
-function OverviewHeader({ summary, asOfLabel }: { summary: OverviewSummary; asOfLabel: string }) {
-  const { token } = theme.useToken();
+function OverviewStats({ summary }: { summary: OverviewSummary }) {
   const stat = (title: string, value: number, danger = false) => (
     <Statistic
       title={title}
       value={value}
       groupSeparator=","
-      styles={{
-        content: {
-          fontSize: token.fontSizeHeading4,
-          fontVariantNumeric: 'tabular-nums',
-          color: danger ? token.colorError : undefined,
-        },
-      }}
+      classNames={{ content: danger ? `${styles.statValue} ${styles.statDanger}` : styles.statValue }}
     />
   );
 
   return (
-    <Card>
-      <Flex vertical gap={16}>
-        <Flex justify="space-between" align="baseline" wrap gap={8}>
-          <Title level={4} style={{ margin: 0 }}>
-            資產總覽
-          </Title>
-          <Text type="secondary">資料截至 {asOfLabel}。金額以銀行紀錄為準。</Text>
-        </Flex>
-        <div className={styles.stats}>
-          <div className={styles.statGroup}>
-            {stat('單位數', summary.unitCount)}
-            {stat('出租中', summary.leased)}
-            {stat('空置', summary.vacant)}
-          </div>
-          <div className={styles.statGroup}>
-            {stat('本月應收', summary.receivable)}
-            {stat('已入帳', summary.received)}
-            {stat('逾期', summary.overdue, summary.overdue > 0)}
-            {stat('押金餘額', summary.depositBalance)}
-            {stat('未完成修繕', summary.openRepairs)}
-          </div>
+    <Card size="small">
+      <div className={styles.stats}>
+        <div className={styles.statGroup}>
+          {stat('單位數', summary.unitCount)}
+          {stat('出租中', summary.leased)}
+          {stat('空置', summary.vacant)}
         </div>
-      </Flex>
+        <div className={styles.statGroup}>
+          {stat('本月應收', summary.receivable)}
+          {stat('已入帳', summary.received)}
+          {stat('逾期', summary.overdue, summary.overdue > 0)}
+          {stat('押金餘額', summary.depositBalance)}
+          {stat('未完成修繕', summary.openRepairs)}
+        </div>
+      </div>
     </Card>
   );
 }
@@ -167,7 +127,7 @@ function RevokedManagerBanners({ summary }: { summary: OverviewSummary }) {
       title={`${manager.legalTitle}「${manager.name}」的執業主體已失效，影響 ${unitCount} 個租賃單位`}
       // 按鈕放在說明下方：放在右側 action 時，375px 寬的標題會被擠成四行
       description={
-        <Flex vertical gap={8} align="flex-start">
+        <Flex vertical gap="small" align="flex-start">
           <span>請發起移交，選擇新受託人或改為自管。</span>
           {/* TODO(MIL-108)：依 C 線的 authorize() 結果決定是否顯示，這張票先一律顯示 */}
           <Button href={HANDOVERS_HREF}>發起移交</Button>
@@ -180,23 +140,18 @@ function RevokedManagerBanners({ summary }: { summary: OverviewSummary }) {
 // ─── 需要注意清單 ───────────────────────────────────────────────────
 
 function AttentionList({ items }: { items: AttentionItem[] }) {
-  const { token } = theme.useToken();
   return (
-    <Card title={`需要注意（${items.length} 件）`}>
+    <Card size="small" title={`需要注意（${items.length} 件）`}>
       {items.length === 0 ? (
-        <Text type="secondary">目前沒有需要注意的項目。</Text>
+        <EmptyState description="目前沒有需要注意的項目。" />
       ) : (
         <div>
-          {items.map((item, index) => (
-            <div
-              key={item.key}
-              className={styles.attentionItem}
-              style={{ borderTop: index === 0 ? undefined : `1px solid ${token.colorSplit}` }}
-            >
+          {items.map((item) => (
+            <div key={item.key} className={styles.attentionItem}>
               <Tag color={ERROR_KINDS.has(item.kind) ? 'error' : 'warning'} className={styles.attentionTag}>
                 {ATTENTION_LABEL[item.kind]}
               </Tag>
-              <Flex vertical gap={4} className={styles.attentionBody}>
+              <Flex vertical gap="var(--space-xxs)" className={styles.attentionBody}>
                 <Text>
                   {item.address}
                   <Text type="secondary">，{item.unitLabel}</Text>
@@ -221,7 +176,7 @@ function AttentionList({ items }: { items: AttentionItem[] }) {
 
 function UnitCell({ row }: { row: OverviewRow }) {
   return (
-    <Flex vertical gap={4}>
+    <Flex vertical gap="var(--space-xxs)">
       {row.href ? <Link href={row.href}>{row.address}</Link> : <Text>{row.address}</Text>}
       <Text type="secondary" className={styles.num}>
         {row.unitLabel}・{row.unitId}
@@ -233,7 +188,7 @@ function UnitCell({ row }: { row: OverviewRow }) {
 /** 業者的名稱、法定稱謂與驗證狀態（GLOSSARY「經理人」：介面顯示法定稱謂）。表格與卡片共用。 */
 function PractitionerInfo({ row }: { row: OverviewRow }) {
   return (
-    <Flex vertical gap={4} align="flex-start">
+    <Flex vertical gap="var(--space-xxs)" align="flex-start">
       {row.manager ? (
         <>
           <Text>{row.manager.name}</Text>
@@ -250,13 +205,13 @@ function PractitionerInfo({ row }: { row: OverviewRow }) {
 }
 
 function LeaseStateTag({ state }: { state: LeaseState }) {
-  return <Tag color={LEASE_STATE[state].color}>{LEASE_STATE[state].label}</Tag>;
+  return <StatusTag kind="leaseState" value={state} />;
 }
 
 /** 合約狀態下方的說明：簽約中先寫等待誰簽署，再寫到期日。 */
 function LeaseNotes({ row }: { row: OverviewRow }) {
   return (
-    <Flex vertical gap={4} align="flex-start">
+    <Flex vertical gap="var(--space-xxs)" align="flex-start">
       {row.leaseState === 'signing' && row.awaitingSigner && <Text>等待{row.awaitingSigner}簽署</Text>}
       <Text type="secondary" className={styles.num}>
         {row.leaseEnd ? `${row.leaseEnd} 到期` : '無到期日'}
@@ -268,7 +223,7 @@ function LeaseNotes({ row }: { row: OverviewRow }) {
 function RentCell({ row, align }: { row: OverviewRow; align: 'flex-start' | 'flex-end' }) {
   if (row.receivable === 0 && row.overdue === 0) return <Text type="secondary">無應收</Text>;
   return (
-    <Flex vertical gap={4} align={align}>
+    <Flex vertical gap="var(--space-xxs)" align={align}>
       <span>
         {money(row.received)} / {money(row.receivable)}
       </span>
@@ -287,7 +242,7 @@ function HolderLabel({ holder }: { holder: DepositHolder | null }) {
 function DepositCell({ row, align }: { row: OverviewRow; align: 'flex-start' | 'flex-end' }) {
   if (row.depositExpected === 0 && row.depositBalance === 0) return <Text type="secondary">無押金</Text>;
   return (
-    <Flex vertical gap={4} align={align}>
+    <Flex vertical gap="var(--space-xxs)" align={align}>
       <span>
         {money(row.depositBalance)} / {money(row.depositExpected)}
       </span>
@@ -297,8 +252,7 @@ function DepositCell({ row, align }: { row: OverviewRow; align: 'flex-start' | '
 }
 
 function AuthorityTag({ status }: { status: AuthorityStatus }) {
-  const a = AUTHORITY[status];
-  return <Tag color={a.color}>{a.label}</Tag>;
+  return <StatusTag kind="leaseAuthority" value={status} />;
 }
 
 // ─── 全部租賃單位 ───────────────────────────────────────────────────
@@ -310,7 +264,7 @@ const COLUMNS: ColumnsType<OverviewRow> = [
     key: 'manager',
     width: 220,
     render: (_, r) => (
-      <Flex vertical gap={4} align="flex-start">
+      <Flex vertical gap="var(--space-xxs)" align="flex-start">
         <Tag>{BUSINESS_TYPE_LABEL[r.businessType]}</Tag>
         <PractitionerInfo row={r} />
       </Flex>
@@ -321,7 +275,7 @@ const COLUMNS: ColumnsType<OverviewRow> = [
     key: 'lease',
     width: 150,
     render: (_, r) => (
-      <Flex vertical gap={4} align="flex-start">
+      <Flex vertical gap="var(--space-xxs)" align="flex-start">
         <LeaseStateTag state={r.leaseState} />
         <LeaseNotes row={r} />
       </Flex>
@@ -355,9 +309,9 @@ const COLUMNS: ColumnsType<OverviewRow> = [
 function UnitCard({ row }: { row: OverviewRow }) {
   return (
     <Card size="small">
-      <Flex vertical gap={8}>
+      <Flex vertical gap="small">
         <UnitCell row={row} />
-        <Flex wrap gap={4}>
+        <Flex wrap gap="var(--space-xxs)">
           <Tag>{BUSINESS_TYPE_LABEL[row.businessType]}</Tag>
           <LeaseStateTag state={row.leaseState} />
         </Flex>
@@ -391,19 +345,19 @@ function UnitFilters({ filter, onChange }: { filter: OverviewFilter; onChange: (
     </Checkbox>
   );
   return (
-    <div className={styles.filters} role="group" aria-label="篩選租賃單位">
-      <Segmented<OverviewFilter['businessType']>
-        aria-label="業務類型"
-        options={BUSINESS_TYPE_OPTIONS}
-        value={filter.businessType}
-        onChange={(value) => onChange({ ...filter, businessType: value })}
-      />
-      <Flex wrap gap={8}>
-        {toggle('overdue', '逾期')}
-        {toggle('expiringSoon', '60 天內到期')}
-        {toggle('authorityUnverified', '權源未驗證')}
-      </Flex>
-    </div>
+    <FilterBar<OverviewFilter['businessType']>
+      status={{
+        value: filter.businessType,
+        options: BUSINESS_TYPE_OPTIONS,
+        onChange: (value) => onChange({ ...filter, businessType: value }),
+      }}
+      active={JSON.stringify(filter) !== JSON.stringify(EMPTY_FILTER)}
+      onClear={() => onChange(EMPTY_FILTER)}
+    >
+      {toggle('overdue', '逾期')}
+      {toggle('expiringSoon', '60 天內到期')}
+      {toggle('authorityUnverified', '權源未驗證')}
+    </FilterBar>
   );
 }
 
@@ -414,22 +368,21 @@ function UnitList({ rows }: { rows: OverviewRow[] }) {
   const filtered = visible.length !== rows.length;
 
   const noMatch = (
-    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="沒有符合篩選條件的租賃單位">
-      <Button onClick={() => setFilter(EMPTY_FILTER)}>清除篩選</Button>
-    </Empty>
+    <EmptyState
+      description="沒有符合篩選條件的租賃單位"
+      action={<Button onClick={() => setFilter(EMPTY_FILTER)}>清除篩選</Button>}
+    />
   );
 
   return (
-    <Flex vertical gap={12}>
-      <Flex justify="space-between" align="baseline" wrap gap={8}>
-        <Title level={5} style={{ margin: 0 }}>
-          全部租賃單位（{rows.length}）
-        </Title>
+    <Flex vertical gap="middle">
+      <Flex justify="space-between" align="baseline" wrap gap="small">
+        <h2 className="type-section-title">全部租賃單位（{rows.length}）</h2>
         {filtered && <Text type="secondary">符合篩選 {visible.length} 個</Text>}
       </Flex>
       <UnitFilters filter={filter} onChange={setFilter} />
 
-      <Card className={styles.table} styles={{ body: { padding: 0 } }}>
+      <Card size="small" className={styles.table} styles={{ body: { padding: 0 } }}>
         <Table<OverviewRow>
           rowKey="unitId"
           size="middle"
@@ -440,7 +393,7 @@ function UnitList({ rows }: { rows: OverviewRow[] }) {
           // 屋主組織的列可點；其他組織的列等 C 線的案件頁（MIL-94）
           onRow={(r) => ({
             onClick: r.href ? () => router.push(r.href as string) : undefined,
-            style: r.href ? { cursor: 'pointer' } : undefined,
+            className: r.href ? styles.clickRow : undefined,
           })}
         />
       </Card>
@@ -465,18 +418,17 @@ export default function OwnerOverview({
   attention: AttentionItem[];
   asOfLabel: string;
 }) {
+  const header = <PageHeader title="資產總覽" />;
+
   if (rows.length === 0) {
     // 沒有任何租賃單位時不顯示全為 0 的彙總，只留標題與說明
     return (
-      <Flex vertical gap={24}>
-        <Title level={4} style={{ margin: 0 }}>
-          資產總覽
-        </Title>
-        <Card>
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
+      <Flex vertical gap="large">
+        {header}
+        <Card size="small">
+          <EmptyState
             description={
-              <Flex vertical gap={4}>
+              <Flex vertical gap="xs">
                 <Text strong>還沒有任何租賃單位</Text>
                 <Text type="secondary">
                   你自己的物件、你出租中的租賃單位，以及委託代管業者管理的租賃單位，都會列在這裡。
@@ -490,8 +442,10 @@ export default function OwnerOverview({
   }
 
   return (
-    <Flex vertical gap={24}>
-      <OverviewHeader summary={summary} asOfLabel={asOfLabel} />
+    <Flex vertical gap="large">
+      {header}
+      <Text type="secondary">資料截至 {asOfLabel}。金額以銀行紀錄為準。</Text>
+      <OverviewStats summary={summary} />
       <RevokedManagerBanners summary={summary} />
       <AttentionList items={attention} />
       <UnitList rows={rows} />

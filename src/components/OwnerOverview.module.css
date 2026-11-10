@@ -9,23 +9,27 @@
 .stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px 32px; /* md xl */
+  gap: var(--space-md) var(--space-xl);
 }
 
 .statGroup {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px 24px; /* md lg */
+  gap: var(--space-md) var(--space-lg);
 }
 
 /* 需要注意清單的每一項：標籤、內容、動作三欄 */
 .attentionItem {
   display: grid;
-  grid-template-columns: 112px minmax(0, 1fr) auto;
+  grid-template-columns: 7rem minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 12px; /* sm */
-  row-gap: 4px; /* xxs */
-  padding-block: 12px; /* sm */
+  column-gap: var(--space-sm);
+  row-gap: var(--space-xxs);
+  padding-block: var(--space-sm);
+}
+
+.attentionItem + .attentionItem {
+  border-top: 1px solid var(--color-hairline);
 }
 
 .attentionTag {
@@ -33,16 +37,23 @@
   justify-self: start;
 }
 
+/* 彙總數字：字級用 DESIGN.md 的區段標題字階，逾期為錯誤色 */
+.statValue {
+  font-size: var(--type-section-title-size);
+  font-variant-numeric: tabular-nums;
+}
+
+.statDanger {
+  color: var(--color-semantic-error);
+}
+
+.clickRow {
+  cursor: pointer;
+}
+
 /* 全部租賃單位：寬螢幕用表格，窄螢幕每個單位一張卡片（P0-20 規則 6） */
 .cards {
   display: none;
-}
-
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px; /* xs md */
 }
 
 @media (max-width: 991.98px) {
@@ -53,7 +64,7 @@
   .cards {
     display: flex;
     flex-direction: column;
-    gap: 12px; /* sm */
+    gap: var(--space-sm);
   }
 }
 
@@ -69,6 +80,6 @@
   }
 
   .stats {
-    gap: 16px; /* md */
+    gap: var(--space-md);
   }
 }

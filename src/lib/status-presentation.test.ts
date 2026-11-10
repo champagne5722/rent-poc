@@ -27,6 +27,8 @@ const SOURCES: { [K in StatusKind]: readonly StatusValueOf<K>[] } = {
   licensePhase: ['not_submitted', 'awaiting_review', 'needs_resubmission', 'verified', 'lapsed'],
   practitionerPhase: ['not_submitted', 'awaiting_review', 'needs_resubmission', 'verified', 'lapsed', 'ended'],
   credentialState: ['pending', 'verified', 'lapsed'],
+  leaseState: ['vacant', 'draft', 'signing', 'active', 'move_out', 'settling'],
+  leaseAuthority: ['verified', 'pending', 'failed', 'expired'],
 };
 
 describe('狀態呈現表：每個狀態值都有名稱與色調', () => {
@@ -95,6 +97,10 @@ describe('狀態呈現表：名稱與色調對照（預期值取自 GLOSSARY 與
     ['receivablePeriod', 'paid', '已入帳', 'success'],
     ['receivablePeriod', 'overdue', '逾期', 'error'],
     ['receivablePeriod', 'cancelled', '已取消', 'neutral'],
+    ['leaseState', 'active', '出租中', 'success'],
+    ['leaseState', 'signing', '簽約中', 'progress'],
+    ['leaseAuthority', 'pending', '待驗證', 'warning'],
+    ['leaseAuthority', 'expired', '已失效', 'error'],
   ] as const)('%s %s：%s、%s', (kind, value, label, tone) => {
     expect(statusPresentation(kind, value as never)).toEqual({ label, tone });
   });

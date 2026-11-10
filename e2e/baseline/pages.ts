@@ -72,7 +72,7 @@ export const PAGES: PageSpec[] = [
   { id: '16-payment-accounts', title: '收款帳戶', phase: 4, layout: '列表', role: 'owner', route: '/payment-accounts', sources: ['src/app/payment-accounts/(list)/page.tsx', 'src/components/PaymentAccountList.tsx'] },
   { id: '17-notifications', title: '站內通知', phase: 4, layout: '列表', role: 'owner', route: '/notifications', sources: ['src/app/notifications/(list)/page.tsx', 'src/components/NotificationList.tsx'] },
   { id: '18-members', title: '成員設定', phase: 4, layout: '面板', role: 'owner', route: '/settings/members', sources: ['src/app/settings/members/(list)/page.tsx', 'src/components/MembersPanel.tsx'] },
-  { id: '19-owner-overview', title: '屋主資產總覽', phase: 4, layout: '總覽', role: 'owner', route: '/owner', sources: ['src/app/owner/page.tsx', 'src/components/OwnerOverview.tsx', 'src/components/OwnerOverview.module.css'] },
+  { id: '19-owner-overview', title: '屋主資產總覽', phase: 4, layout: '總覽', role: 'owner', route: '/owner', sources: ['src/app/owner/(overview)/page.tsx', 'src/components/OwnerOverview.tsx', 'src/components/OwnerOverview.module.css'] },
   { id: '20-owner-handovers', title: '屋主端 移交清單', phase: 4, layout: '列表', role: 'owner', route: '/owner/handovers', sources: ['src/app/owner/handovers/(list)', 'src/app/owner/handovers/HandoverParts.tsx', 'src/app/owner/handovers/handovers.module.css'] },
   { id: '21-owner-handover-new', title: '屋主端 發起移交', phase: 4, layout: '表單', role: 'owner', route: '/owner/handovers/new', sources: ['src/app/owner/handovers/new'] },
   { id: '22-owner-handover-detail', title: '屋主端 移交詳情', phase: 4, layout: '詳情', role: 'owner', route: '/owner/handovers/{handover}', sources: ['src/app/owner/handovers/[id]/(detail)', 'src/app/owner/handovers/HandoverParts.tsx'] },
