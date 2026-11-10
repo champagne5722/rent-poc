@@ -4,6 +4,7 @@ import { Empty, Flex, Table, Tag, Typography } from 'antd';
 import Link from 'next/link';
 import { leasePeriodLabel, monthlyRentLabel } from '@/lib/case-display';
 import { CASE_STATE_COLORS, CASE_STATE_LABELS } from '@/lib/labels/case-labels';
+import { statusPresentation, toneTagColor } from '@/lib/status-presentation';
 import type { TenantCaseSummary } from '@/lib/tenant';
 import { tenantContractStatusLabel } from '@/lib/tenant/labels';
 import { TENANT_ROOT_HREF } from '@/lib/nav';
@@ -12,11 +13,6 @@ import { TENANT_ROOT_HREF } from '@/lib/nav';
 // 沒有案件時只顯示「沒有案件」，不說明原因（P0-21 AC6）。
 // 可互動列表用 Table（DESIGN.md「Components」）。手機寬度放不下多欄，所以只有一欄：欄內堆疊標題、組織、狀態與租期，
 // 整格是連結，表頭不顯示。這樣 375px 不需要水平捲動。
-
-const CONTRACT_COLORS: Record<string, 'success' | 'processing' | 'default'> = {
-  completed: 'success',
-  awaiting_tenant: 'processing',
-};
 
 export default function TenantCaseList({ cases }: { cases: TenantCaseSummary[] }) {
   return (
@@ -45,7 +41,7 @@ export default function TenantCaseList({ cases }: { cases: TenantCaseSummary[] }
                       {CASE_STATE_LABELS[item.state]}
                     </Tag>
                     {item.contractStatus !== null && (
-                      <Tag color={CONTRACT_COLORS[item.contractStatus] ?? 'default'} style={{ marginInlineEnd: 0 }}>
+                      <Tag color={toneTagColor(statusPresentation('contract', item.contractStatus).tone)} style={{ marginInlineEnd: 0 }}>
                         合約：{tenantContractStatusLabel(item.contractStatus)}
                       </Tag>
                     )}

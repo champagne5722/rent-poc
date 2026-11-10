@@ -10,7 +10,6 @@ import {
   Select,
   Space,
   Table,
-  Tag,
   Tooltip,
   Typography,
 } from 'antd';
@@ -27,6 +26,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import type { Contract, ContractStatus } from '@/lib/types';
 import { shortUlid } from '@/lib/pg/ulid';
 import type { SigningProgressById, SigningProgressInput } from '@/lib/signing-steps';
+import StatusTag from '@/components/StatusTag';
 import { CONTRACT_STATUS_LABELS, isSigningStatus } from '@/lib/types';
 import {
   countByStatus,
@@ -41,16 +41,6 @@ import {
   statusTabs,
   type ContractListFilter,
 } from '@/lib/contract-list';
-
-const STATUS_COLORS: Record<ContractStatus, string> = {
-  draft: 'default',
-  awaiting_tenant: 'processing',
-  awaiting_landlord: 'processing',
-  awaiting_practitioner: 'processing',
-  completed: 'success',
-  declined: 'error',
-  voided: 'warning',
-};
 
 const DOT_DONE = '#52c41a';
 const DOT_CURRENT = '#1677ff';
@@ -271,7 +261,7 @@ function ContractList() {
           {
             title: '狀態',
             width: 100,
-            render: (_, r) => <Tag color={STATUS_COLORS[r.status]}>{CONTRACT_STATUS_LABELS[r.status]}</Tag>,
+            render: (_, r) => <StatusTag kind="contract" value={r.status} />,
           },
           { title: '簽署進度', width: 100, render: (_, r) => <SigningProgress contract={r} progress={progress[String(r.id)] ?? null} /> },
           {

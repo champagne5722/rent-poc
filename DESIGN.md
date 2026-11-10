@@ -232,7 +232,7 @@ components:
 
 ### 使用慣例
 
-- **Table**：`size="middle"`，一定給 `rowKey`；操作欄放最右、用文字連結不用按鈕群；狀態欄用 `Tag`。
+- **Table**：`size="middle"`，一定給 `rowKey`；操作欄放最右、用文字連結不用按鈕群；狀態欄用 `StatusTag`（`src/components/StatusTag.tsx`）。合約、案件、移交、審核台項目的狀態名稱與色調只在 `src/lib/status-presentation.ts` 定義，頁面不另寫顏色對照。
 - **Form**：`layout="vertical"`；必填靠 rules 標示；送出鈕在表單底部靠左，primary 一顆。
 - **Button**：每個畫面至多一顆 primary（當前主要動作）；危險動作（撤回、刪除）用 `danger` 並掛 `Popconfirm`；次要動作用 default。
 - **回饋**：操作結果用 `message`，需要打斷的確認用 `Modal.confirm`，頁面級空態用 `Empty`。
