@@ -3,6 +3,8 @@ import { authorize } from '@/lib/authorize';
 import { jsonOk, jsonError } from '@/lib/http';
 import { inOrgTx, readJson } from '@/lib/org-route';
 import { isUlid } from '@/lib/pg/ulid';
+import { getOwnershipNodeStatus } from '@/lib/ownership';
+import { REKEY_LOCKED_WHILE_PENDING_MESSAGE, REKEY_REVIEW_MESSAGE } from '@/lib/ownership/messages';
 import { AnchorKeyLockedError, AnchorKeyRejectedError, getProperty, parseAnchorKey, setPropertyAnchorKey } from '@/lib/properties';
 import { propertyNotFound } from '@/lib/properties/not-found';
 
@@ -15,6 +17,8 @@ type Ctx = { params: Promise<{ id: string }> };
  * 補建號與修正建號（MIL-143、MIL-196）。物件通過文件核對前，使用者能自行填入或修正建號。
  * 回應與登錄物件相同（ADR-0028 決議 1）：鍵有沒有撞到別的組織、有沒有超過次數，回應都一樣。
  * 唯一的例外是鍵已被自己的組織登錄：回自己既有的那一筆。
+ * 物件已通過文件核對時，鍵不直接改：回 change_requested: true，修正送審核台（MIL-201）。
+ * 文件正在核對時回 409 review_in_progress。
  */
 export async function POST(request: NextRequest, { params }: Ctx) {
   const { id } = await params;
@@ -27,6 +31,10 @@ export async function POST(request: NextRequest, { params }: Ctx) {
       const current = await getProperty(tx, id);
       if (!current) return propertyNotFound();
       if (current.archived_at) return jsonError(409, '物件已封存，不能補建號');
+      // 文件正在核對時不能修正：營運者拿送件當下的鍵比對謄本。只取決於自己組織的節點，與別的組織無關
+      if ((await getOwnershipNodeStatus(tx, id)) === 'pending_verification') {
+        return jsonError(409, REKEY_LOCKED_WHILE_PENDING_MESSAGE, 'review_in_progress');
+      }
       const key = parseAnchorKey(body);
       if (!key.ok) return jsonError(400, key.error);
       const result = await setPropertyAnchorKey(tx, id, key.value);
@@ -34,7 +42,12 @@ export async function POST(request: NextRequest, { params }: Ctx) {
         case 'not_found':
           return propertyNotFound();
         case 'accepted':
-          return jsonOk({ data: { id, anchor: result.anchor, verification_status: 'pending_verification' } });
+          return jsonOk({ data: { id, anchor: result.anchor, verification_status: current.verification_status } });
+        case 'rekey_requested':
+          // 物件已通過核對：鍵維持原樣，修正改送審核台。只取決於自己組織的核對結果（MIL-201）
+          return jsonOk({
+            data: { id, anchor: result.anchor, verification_status: current.verification_status, change_requested: true, message: REKEY_REVIEW_MESSAGE },
+          });
         case 'existing':
           return jsonOk({ data: { id: result.propertyId, existing: true } });
       }
