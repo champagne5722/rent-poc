@@ -37,8 +37,8 @@ function makeContract(status: ContractStatus): LeaseContract {
 
 const SELF_MANAGED: RoutingFacts = {
   documentType: 'lease',
+  caseKind: 'lease',
   businessType: 'self_managed',
-  lesseeIsMasterLessor: false,
   brokerMediated: false,
 };
 
@@ -68,19 +68,19 @@ describe('prepareContractSigners（送簽的簽署序列，來自規則表）', 
   });
 
   it('規則要求執業人員但合約沒有指派時擋下，不略過這位簽署人', () => {
-    const facts: RoutingFacts = { ...SELF_MANAGED, businessType: 'master_lease' };
+    const facts: RoutingFacts = { documentType: 'lease', caseKind: 'sublease', brokerMediated: false };
     expect(prepareContractSigners(makeContract('draft'), facts)).toMatchObject({ ok: false, status: 400 });
   });
 
   it('規則表拒絕的組合不產生序列', () => {
-    const facts: RoutingFacts = { documentType: 'management', businessType: 'self_managed' };
+    const facts: RoutingFacts = { documentType: 'management', caseKind: 'lease', businessType: 'self_managed' };
     const result = prepareContractSigners(makeContract('draft'), facts);
     expect(result).toMatchObject({ ok: false, status: 400 });
     expect(result).not.toHaveProperty('signers');
   });
 
   it('不送簽的組合不產生序列', () => {
-    const facts: RoutingFacts = { documentType: 'handover_certificate', businessType: 'self_managed' };
+    const facts: RoutingFacts = { documentType: 'handover_certificate', caseKind: 'lease', businessType: 'self_managed' };
     expect(prepareContractSigners(makeContract('draft'), facts)).toMatchObject({ ok: false, status: 400 });
   });
 });

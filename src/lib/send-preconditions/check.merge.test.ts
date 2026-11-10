@@ -16,11 +16,10 @@ const GOOD_CREDENTIAL: CredentialFacts = {
 
 const MASTER_LEASE: RoutingFacts = {
   documentType: 'lease',
-  businessType: 'master_lease',
-  lesseeIsMasterLessor: false,
+  caseKind: 'sublease',
   brokerMediated: false,
 };
-const BROKERED: RoutingFacts = { ...MASTER_LEASE, brokerMediated: true } as RoutingFacts;
+const BROKERED: RoutingFacts = { documentType: 'lease', caseKind: 'sublease', brokerMediated: true };
 
 const CHEN = { partyId: 'party-chen', entityId: 'org-a' };
 const CHEN_EMAIL = 'chen@beichen.example.com';

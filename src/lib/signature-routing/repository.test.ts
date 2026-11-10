@@ -58,25 +58,25 @@ describe('loadContractRoutingFacts', () => {
     expect(await inA((tx) => loadContractRoutingFacts(tx, id))).toEqual({
       ok: true,
       contractType: 'lease',
-      facts: { documentType: 'lease', businessType: 'self_managed', lesseeIsMasterLessor: false, brokerMediated: false },
+      facts: { documentType: 'lease', caseKind: 'lease', businessType: 'self_managed', brokerMediated: false },
     });
   });
 
-  it('讀取合約上快照的分流條件', async () => {
+  it('讀取合約上快照的分流條件，業務類型 master_lease 換成轉租案件', async () => {
     const id = await seed({ routing: { businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: true } });
     const result = await inA((tx) => loadContractRoutingFacts(tx, id));
     expect(result).toMatchObject({
       ok: true,
-      facts: { documentType: 'lease', businessType: 'master_lease', brokerMediated: true },
+      facts: { documentType: 'lease', caseKind: 'sublease', brokerMediated: true },
     });
   });
 
-  it('委託管理合約的文件類型是 management，沒有分流條件時業務類型是代管', async () => {
+  it('委託管理合約的文件類型是 management，沒有分流條件時案件種類是委託管理案件', async () => {
     const id = await seed({}, 'management');
     expect(await inA((tx) => loadContractRoutingFacts(tx, id))).toEqual({
       ok: true,
       contractType: 'management',
-      facts: { documentType: 'management', businessType: 'managed' },
+      facts: { documentType: 'management', caseKind: 'management' },
     });
   });
 

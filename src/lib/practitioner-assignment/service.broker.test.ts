@@ -13,8 +13,7 @@ const seed: PracticeRegistryResolution = {
 };
 const BROKERED: RoutingFacts = {
   documentType: 'lease',
-  businessType: 'master_lease',
-  lesseeIsMasterLessor: false,
+  caseKind: 'sublease',
   brokerMediated: true,
 };
 

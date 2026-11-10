@@ -17,27 +17,46 @@
 
 ## 規則表的 13 列
 
-列在 `rules.ts` 的 `SEQUENCE_RULES`（12 列）與 `BROKER_APPEND_RULE`（第 6 列）。
+列在 `rules.ts` 的 `SEQUENCE_RULES`（12 列）與 `BROKER_APPEND_RULE`（第 6 列）。條件看文件類型與案件種類（ADR-0030 決議 2、3，MIL-197）。
 
-| 列 | 文件類型 | 條件 | 簽署序列 |
-| -- | -- | -- | -- |
-| 1 | `management` | `managed` | 甲方、執業人員、乙方 |
-| 2 | `lease` | `self_managed` | 乙方、甲方 |
-| 3 | `lease` | `managed` | 乙方、甲方 |
-| 4 | `lease` | `master_lease` | 乙方、執業人員、甲方 |
-| 5 | `lease` | `self_managed`，承租人是包租業者 | 甲方、執業人員、乙方 |
-| 6 | `lease` | 有經紀業者居間 | 上列序列之後加經紀人 |
-| 7 | `handover_certificate` | `self_managed` | 不送簽（`not_required`） |
-| 8 | `handover_certificate` | `managed` | 乙方、甲方、執業人員 |
-| 9 | `handover_certificate` | `master_lease` | 乙方、執業人員、甲方 |
-| 10 | `deposit_settlement` | 全部 | 乙方、甲方 |
-| 11 | `deposit_refund_certificate` | `self_managed` | 乙方、甲方 |
-| 12 | `deposit_refund_certificate` | `managed` | 乙方、甲方、執業人員 |
-| 13 | `deposit_refund_certificate` | `master_lease` | 乙方、執業人員、甲方 |
+列的 id 沒有改名。已凍結的簽章紀錄與簽署區域 `slot` 存的是 id，所以 id 沿用舊名。讀 id 時照下面的對照表換讀：
+
+- id 中的 `master_lease` 是舊業務類型，指轉租案件。
+- id 中的 `lessee_master_lessor` 指包租案件，也就是屋主租給包租業者那一份。
+- 條件欄的 `master_lease` 是案件種類，指包租案件。
+
+| 列 | 文件類型 | 條件（案件種類） | 列 id | 簽署序列 |
+| -- | -- | -- | -- | -- |
+| 1 | `management` | 委託管理案件 | `management.managed` | 甲方、執業人員、乙方 |
+| 2 | `lease` | 租賃案件，業務類型自管 | `lease.self_managed` | 乙方、甲方 |
+| 3 | `lease` | 租賃案件，業務類型代管 | `lease.managed` | 乙方、甲方 |
+| 4 | `lease` | 轉租案件（`sublease`） | `lease.master_lease` | 乙方、執業人員、甲方 |
+| 5 | `lease` | 包租案件（`master_lease`） | `lease.self_managed_lessee_master_lessor` | 甲方、執業人員、乙方 |
+| 6 | `lease` | 有經紀業者居間 | `lease.broker` | 上列序列之後加經紀人 |
+| 7 | `handover_certificate` | 租賃案件自管，或包租案件 | `handover_certificate.self_managed` | 不送簽（`not_required`） |
+| 8 | `handover_certificate` | 租賃案件代管 | `handover_certificate.managed` | 乙方、甲方、執業人員 |
+| 9 | `handover_certificate` | 轉租案件 | `handover_certificate.master_lease` | 乙方、執業人員、甲方 |
+| 10 | `deposit_settlement` | 租賃案件、包租案件、轉租案件 | `deposit_settlement.all` | 乙方、甲方 |
+| 11 | `deposit_refund_certificate` | 租賃案件自管，或包租案件 | `deposit_refund_certificate.self_managed` | 乙方、甲方 |
+| 12 | `deposit_refund_certificate` | 租賃案件代管 | `deposit_refund_certificate.managed` | 乙方、甲方、執業人員 |
+| 13 | `deposit_refund_certificate` | 轉租案件 | `deposit_refund_certificate.master_lease` | 乙方、執業人員、甲方 |
+
+業務類型（自管、代管）只留給租賃案件（ADR-0030 決議 3），所以只有租賃案件的列再看業務類型。其他案件種類沒有業務類型。
+
+第 7 與第 11 列的包租案件沿用自管那一列。版本 1 的點交證明、押金結算單與退還證明不帶「承租人是否為包租業者」，包租案件當時走自管那一列，版本 2 維持相同的序列。這個沿用待法務確認。
+
+### 規則表版本
+
+- 版本 1：條件看業務類型與「承租人是否為包租業者」。
+- 版本 2：條件改看案件種類。列 id、席位、順序與依據都沒有改。
+
+`SIGNATURE_RULES_VERSION` 是新送簽的序列帶的版本。`SUPPORTED_RULE_VERSIONS` 是仍能解讀的版本，目前是 1 與 2。`findSeatRule(ruleId, ruleVersion)` 由已凍結的 `rule_id` 找回規則列與席位。版本 2 只換條件，所以兩個版本共用同一份規則表。以後有列改了 id、席位或順序，必須保留舊版的列，並讓 `findSeatRule` 依版本找。
 
 ## routeSignatures 的輸入與輸出
 
-輸入 `RoutingFacts`。只有 `lease` 帶 `lesseeIsMasterLessor` 與 `brokerMediated`，缺少時拒絕。其他四種文件只帶 `documentType` 與 `businessType`，E 線不必傳其他旗標。
+輸入 `RoutingFacts`。每一份都帶 `documentType` 與 `caseKind`（案件種類）。`caseKind` 是 `lease` 時另帶 `businessType`（自管或代管）。只有 `lease` 文件帶 `brokerMediated`，缺少時拒絕。E 線不必傳其他旗標。
+
+「承租人是否為包租業者」不再是分流事實，它已併入案件種類 `master_lease`（包租案件）。分流不讀 `lesseeIsMasterLessor`。
 
 `documentType` 的值：`lease`、`management`、`handover_certificate`、`deposit_settlement`、`deposit_refund_certificate`。前兩個與 `contracts.contract_type` 相同。
 
@@ -47,7 +66,7 @@
 | -- | -- |
 | `sequence` | 有簽署序列。`plan.seats` 依簽署順序排列 |
 | `not_required` | 規則表有定義，但不送簽（點交證明，自管） |
-| `rejected` | 規則表沒有這個組合。沒有預設序列 |
+| `rejected` | 規則表沒有這個組合，或事實不合法（不認得的文件類型、案件種類、業務類型）。沒有預設序列 |
 
 每個席位（`PlannedSeat`）有 `ruleId`、`role`、`statuteRef`、`verifyMethods`、`requiredFieldPages`。執業人員席位另有 `practitioner`：`certificateKinds`、`fullTime`、`entitySource`。
 
@@ -67,10 +86,12 @@ fields.routing = {
 
 讀取規則：
 
-- 沒有 `fields.routing` 的 `lease` 合約，視為 `self_managed`、承租人不是包租業者、無居間。
-- 沒有 `fields.routing` 的 `management` 合約，業務類型視為 `managed`。
+- 沒有 `fields.routing` 的 `lease` 合約，視為租賃案件自管、無居間。
+- 沒有 `fields.routing` 的 `management` 合約，視為委託管理案件。
 - 三個鍵必須都在，且型別正確。形狀不對時 `loadContractRoutingFacts` 回傳 `invalid_routing`，不退回預設值。
 - 文件類型由 `contracts.contract_type` 決定，不存在 `fields.routing`。
+- 快照換成案件種類（`facts.ts`，換法同 `caseKindOf`）：自管且承租人是包租業者是包租案件，業務類型 `master_lease` 是轉租案件，其餘是租賃案件。
+- 欄位互相矛盾的快照換不成案件種類：代管或轉租搭承租人是包租業者，委託管理合約搭代管以外的業務類型。`routingFactsOf` 回 `undefined_combination`，不給預設序列。存草稿時不擋，畫面與送簽時擋下。
 
 寫入者：建約 wizard 第一步（MIL-67）。`/contracts/new` 建草稿時隨 `POST /api/contracts` 寫入，草稿的第①步改條件時隨 `PUT` 存回。C 線建案件後，值改由案件提供，既有合約維持快照。
 

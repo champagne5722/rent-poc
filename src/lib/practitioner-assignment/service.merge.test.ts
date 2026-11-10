@@ -12,7 +12,7 @@ const seed: PracticeRegistryResolution = {
   registry: createSeedPracticeRegistry({ today: () => '2026-11-09' }),
 };
 
-const MASTER_LEASE: RoutingFacts = { documentType: 'lease', businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: false };
+const MASTER_LEASE: RoutingFacts = { documentType: 'lease', caseKind: 'sublease', brokerMediated: false };
 const BROKERED: RoutingFacts = { ...MASTER_LEASE, brokerMediated: true } as RoutingFacts;
 const MANAGER_SLOT = 'lease.master_lease.practitioner';
 const PARTY_A_SLOT = 'lease.master_lease.party_a';
@@ -81,7 +81,7 @@ describe('evaluateSend：同一人兼任', () => {
   });
 
   it('自管但承租人是包租業者：乙方的當事人簽署人兼任專任管理人員', async () => {
-    const reversed: RoutingFacts = { documentType: 'lease', businessType: 'self_managed', lesseeIsMasterLessor: true, brokerMediated: false };
+    const reversed: RoutingFacts = { documentType: 'lease', caseKind: 'master_lease', brokerMediated: false };
     const slot = 'lease.self_managed_lessee_master_lessor.practitioner';
     const result = await evaluateSend(
       input({
