@@ -1,31 +1,20 @@
 'use client';
 
 // 移交清單與詳情共用的小元件。屋主端與後台（src/app/handovers）都用。
-import { Button, Flex, Tag, Typography, theme } from 'antd';
+import { Alert, Button, Flex, Tag, Typography } from 'antd';
 import { CheckCircleFilled, ClockCircleOutlined, DownloadOutlined } from '@ant-design/icons';
-import { HANDOVER_STATE_COLORS, HANDOVER_STATE_LABELS, formatSnapshotValue } from '@/lib/handover/labels';
+import { formatSnapshotValue } from '@/lib/handover/labels';
 import { missingKey, type HandoverSnapshot } from '@/lib/handover/snapshot';
-import type { HandoverState, HandoverSides } from '@/lib/handover/transitions';
+import type { HandoverSides } from '@/lib/handover/transitions';
 import styles from './handovers.module.css';
-
-export function HandoverStateTag({ state }: { state: HandoverState }) {
-  return (
-    <Tag color={HANDOVER_STATE_COLORS[state]} style={{ marginInlineEnd: 0 }}>
-      {HANDOVER_STATE_LABELS[state]}
-    </Tag>
-  );
-}
 
 /** 一側是否完成（ADR-0015 後果段、ADR-0024 決議 8：中間狀態要顯示完成與否）。 */
 export function SideStatus({ label, done }: { label: string; done: boolean }) {
-  const { token } = theme.useToken();
   return (
-    <Flex gap={4 /* xxs */} align="center" style={{ whiteSpace: 'nowrap' }}>
-      {done ? (
-        <CheckCircleFilled style={{ color: token.colorSuccess }} aria-hidden />
-      ) : (
-        <ClockCircleOutlined style={{ color: token.colorTextTertiary }} aria-hidden />
-      )}
+    <Flex gap="small" align="center" className={styles.nowrap}>
+      <Typography.Text type={done ? 'success' : 'secondary'}>
+        {done ? <CheckCircleFilled aria-hidden /> : <ClockCircleOutlined aria-hidden />}
+      </Typography.Text>
       <Typography.Text type={done ? undefined : 'secondary'}>
         {label}
         {done ? '已完成' : '未完成'}
@@ -36,7 +25,7 @@ export function SideStatus({ label, done }: { label: string; done: boolean }) {
 
 export function SidesStatus({ sides }: { sides: HandoverSides }) {
   return (
-    <Flex gap={12 /* sm */} wrap>
+    <Flex gap="middle" wrap>
       <SideStatus label="交出側" done={sides.released} />
       <SideStatus label="接收側" done={sides.received} />
     </Flex>
@@ -52,12 +41,11 @@ export function SnapshotContent({
   /** 屋主確認時勾選知悉的缺項，確認後在缺項旁標示。 */
   acknowledged?: string[];
 }) {
-  const { token } = theme.useToken();
   return (
-    <div className={styles.categories} style={{ ['--handover-hairline' as string]: token.colorSplit }}>
+    <div className={styles.categories}>
       {snapshot.categories.map((category) => (
         <section key={category.key} aria-labelledby={`cat-${category.key}`}>
-          <Typography.Title level={5} id={`cat-${category.key}`} style={{ marginTop: 0 }}>
+          <Typography.Title level={5} id={`cat-${category.key}`} className={styles.categoryTitle}>
             {category.label}
           </Typography.Title>
           {category.items.map((item) => (
@@ -66,7 +54,7 @@ export function SnapshotContent({
               <span className={styles.wrap}>
                 {item.status === 'present' && <Typography.Text>{formatSnapshotValue(category.key, item)}</Typography.Text>}
                 {item.status === 'missing' && (
-                  <Tag color="warning" style={{ marginInlineEnd: 0 }}>
+                  <Tag color="warning">
                     {acknowledged.includes(missingKey(category.key, item.key)) ? '缺項，屋主已知悉' : '缺項'}
                   </Tag>
                 )}
@@ -77,6 +65,25 @@ export function SnapshotContent({
         </section>
       ))}
     </div>
+  );
+}
+
+/** 沒有完成的原因清單。屋主端與後台共用。 */
+export function ErrorList({ title, errors }: { title: string; errors: string[] }) {
+  if (errors.length === 0) return null;
+  return (
+    <Alert
+      type="error"
+      showIcon
+      title={title}
+      description={
+        <ul className={styles.errorList}>
+          {errors.map((error) => (
+            <li key={error}>{error}</li>
+          ))}
+        </ul>
+      }
+    />
   );
 }
 

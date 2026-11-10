@@ -1,12 +1,16 @@
 'use client';
 
-// 後台「移交」清單（MIL-98）：移交給我的案件與我交出的案件。每列顯示兩側是否完成。
-import { Card, Empty, Flex, Table, Typography, type TableColumnsType } from 'antd';
-import Link from 'next/link';
+// 後台「移交」列表（MIL-98、MIL-182）：移交給我的案件與我交出的案件，各一張表。每列顯示兩側是否完成。
+import { Button, Flex, Typography, type TableColumnsType } from 'antd';
+import EmptyState from '@/components/page/EmptyState';
+import ListTable from '@/components/page/ListTable';
+import SettingsPage from '@/components/page/SettingsPage';
+import SettingsSection from '@/components/page/SettingsSection';
+import StatusTag from '@/components/StatusTag';
 import { targetLabel } from '@/lib/handover/labels';
 import type { HandoverListItem } from '@/lib/handover/service';
-import { HandoverStateTag, SidesStatus } from '../owner/handovers/HandoverParts';
-import styles from '../owner/handovers/handovers.module.css';
+import { SidesStatus } from '../../owner/handovers/HandoverParts';
+import styles from '../../owner/handovers/handovers.module.css';
 
 type Side = 'incoming' | 'outgoing';
 
@@ -32,8 +36,8 @@ function columns(side: Side): TableColumnsType<HandoverListItem> {
             <Typography.Text type="secondary">
               {partyTitle}：{counterpart(side, item)}
             </Typography.Text>
-            <Flex gap={8 /* xs */} wrap align="center">
-              <HandoverStateTag state={item.record.state} />
+            <Flex gap="small" wrap align="center">
+              <StatusTag kind="handover" value={item.record.state} />
               {item.record.effectiveDate && (
                 <Typography.Text type="secondary">生效日 {item.record.effectiveDate}</Typography.Text>
               )}
@@ -57,7 +61,7 @@ function columns(side: Side): TableColumnsType<HandoverListItem> {
       title: '狀態',
       key: 'state',
       responsive: ['md'],
-      render: (_, item) => <HandoverStateTag state={item.record.state} />,
+      render: (_, item) => <StatusTag kind="handover" value={item.record.state} />,
     },
     {
       title: '兩側',
@@ -77,9 +81,9 @@ function columns(side: Side): TableColumnsType<HandoverListItem> {
       key: 'action',
       align: 'right',
       render: (_, item) => (
-        <Link href={`/handovers/${item.record.id}`} style={{ whiteSpace: 'nowrap' }}>
+        <Button type="link" size="small" href={`/handovers/${item.record.id}`} className={styles.nowrap}>
           {actionLabel(side, item)}
-        </Link>
+        </Button>
       ),
     },
   ];
@@ -97,16 +101,12 @@ function Section({
   empty: string;
 }) {
   return (
-    <Card title={`${title}（${items.length}）`} styles={{ body: { padding: 0 } }}>
-      <Table<HandoverListItem>
-        size="middle"
-        rowKey={(item) => item.record.id}
-        columns={columns(side)}
-        dataSource={items}
-        pagination={false}
-        locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={empty} /> }}
+    <SettingsSection title={`${title}（${items.length}）`}>
+      <ListTable<HandoverListItem>
+        table={{ rowKey: (item) => item.record.id, columns: columns(side), dataSource: items }}
+        emptyNode={<EmptyState description={empty} />}
       />
-    </Card>
+    </SettingsSection>
   );
 }
 
@@ -121,18 +121,17 @@ export default function OrgHandoverList({
 }) {
   const waiting = incoming.filter((item) => item.record.state === 'owner_confirmed').length;
   return (
-    <Flex vertical gap={24 /* lg */}>
-      <Flex vertical gap={4 /* xxs */} className={styles.wrap}>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          移交
-        </Typography.Title>
-        <Typography.Text type="secondary">
+    <SettingsPage
+      header={{ title: '移交列表' }}
+      notices={
+        <Typography.Text type="secondary" className={styles.wrap}>
           {orgName}
           {waiting > 0 ? `。有 ${waiting} 個案件等你確認接手。` : ''}
         </Typography.Text>
-      </Flex>
-      <Section side="incoming" title="移交給我的案件" items={incoming} empty="目前沒有移交給你的案件" />
-      <Section side="outgoing" title="我交出的案件" items={outgoing} empty="目前沒有你交出的案件" />
-    </Flex>
+      }
+    >
+      <Section side="incoming" title="移交給我的案件" items={incoming} empty="目前沒有移交給你的案件。屋主發起移交後，會列在這裡。" />
+      <Section side="outgoing" title="我交出的案件" items={outgoing} empty="目前沒有你交出的案件。" />
+    </SettingsPage>
   );
 }

@@ -1,8 +1,7 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import {
-  Alert,
   App as AntApp,
   Button,
   Card,
@@ -17,22 +16,20 @@ import {
   Select,
   Typography,
 } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
-import Link from 'next/link';
 import dayjs, { type Dayjs } from 'dayjs';
+import DetailPage from '@/components/page/DetailPage';
+import NextStep from '@/components/page/NextStep';
+import StatusTag from '@/components/StatusTag';
 import { PRACTICE_ENTITY_STATUS_LABELS, RECEIVER_MANDATE_LABELS, targetLabel } from '@/lib/handover/labels';
+import { handoverNextStep } from '@/lib/handover/next-step';
 import { checkHandoverPreconditions, type HandoverTargetFacts } from '@/lib/handover/preconditions';
 import type { ConfirmTargetInput, HandoverDetail } from '@/lib/handover/service';
 import type { HandoverManualFields } from '@/lib/handover/snapshot';
-import { cancelHandoverAction, confirmHandoverAction, saveManualFieldsAction } from '../actions';
-import { ExportPackageButton, HandoverStateTag, SidesStatus, SnapshotContent } from '../HandoverParts';
-import styles from '../handovers.module.css';
+import { cancelHandoverAction, confirmHandoverAction, saveManualFieldsAction } from '../../actions';
+import { ErrorList, ExportPackageButton, SidesStatus, SnapshotContent } from '../../HandoverParts';
+import styles from '../../handovers.module.css';
 
-const NEXT_STEP: Partial<Record<HandoverDetail['record']['state'], string>> = {
-  owner_confirmed: '等待新受託人確認接手並指定生效日。',
-  accepted: '等待生效日。生效日到達時，系統會先完成交出側，再完成接收側。',
-  released: '交出側已完成，接收側處理中。這個階段不能取消。',
-};
+// 屋主端移交詳情（MIL-97、MIL-182）：詳情頁版型。頂端寫出移交進度與下一步，左側是移交包與表單，右側是移交屬性。
 
 function CancelButton({ id, onDone }: { id: string; onDone: (errors: string[]) => void }) {
   const [pending, startTransition] = useTransition();
@@ -60,7 +57,17 @@ function CancelButton({ id, onDone }: { id: string; onDone: (errors: string[]) =
 
 type TargetKind = 'mandatary' | 'self_managed';
 
-function DraftForm({ detail, today }: { detail: HandoverDetail; today: string }) {
+function DraftForm({
+  detail,
+  today,
+  setErrors,
+  onReasons,
+}: {
+  detail: HandoverDetail;
+  today: string;
+  setErrors: (errors: string[]) => void;
+  onReasons: (messages: string[]) => void;
+}) {
   const { message } = AntApp.useApp();
   const { record, snapshot } = detail;
   const [manual, setManual] = useState<HandoverManualFields>(record.manual);
@@ -70,7 +77,6 @@ function DraftForm({ detail, today }: { detail: HandoverDetail; today: string })
   const [effectiveDate, setEffectiveDate] = useState<Dayjs | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [evidenceNote, setEvidenceNote] = useState('');
-  const [errors, setErrors] = useState<string[]>([]);
   const [saving, startSave] = useTransition();
   const [confirming, startConfirm] = useTransition();
 
@@ -101,6 +107,10 @@ function DraftForm({ detail, today }: { detail: HandoverDetail; today: string })
       today,
     });
   }, [kind, candidate, effectiveDate, detail.hasActiveSigningTask, today]);
+
+  // 擋下原因顯示在頁面頂端的提醒區，這裡把訊息交給父層
+  const reasonMessages = useMemo(() => reasons.map((r) => r.message), [reasons]);
+  useEffect(() => onReasons(reasonMessages), [reasonMessages, onReasons]);
 
   const allAcknowledged = snapshot.missing.every((m) => acknowledged.includes(m.key));
   const targetReady =
@@ -138,28 +148,13 @@ function DraftForm({ detail, today }: { detail: HandoverDetail; today: string })
   };
 
   return (
-    <Flex vertical gap={24 /* lg */}>
-      {reasons.length > 0 && (
-        <Alert
-          type="error"
-          showIcon
-          title={`這個案件目前不能移交，原因有 ${reasons.length} 項`}
-          description={
-            <ul style={{ margin: 0, paddingInlineStart: 24 /* lg */ }}>
-              {reasons.map((reason) => (
-                <li key={reason.code}>{reason.message}</li>
-              ))}
-            </ul>
-          }
-        />
-      )}
-
-      <Card title="移交包內容">
+    <>
+      <Card size="small" title="移交包內容">
         <SnapshotContent snapshot={snapshot} />
       </Card>
 
-      <Card title="實物與行政（手填）">
-        <Form layout="vertical" component="div" style={{ maxWidth: 560 }}>
+      <Card size="small" title="實物與行政（手填）">
+        <Form layout="vertical" component="div" className={styles.formBody}>
           <Form.Item label="鑰匙交付紀錄" htmlFor="manual-keys">
             <Input
               id="manual-keys"
@@ -190,16 +185,16 @@ function DraftForm({ detail, today }: { detail: HandoverDetail; today: string })
         </Form>
       </Card>
 
-      <Card title={`缺項（${snapshot.missing.length}）`}>
+      <Card size="small" title={`缺項（${snapshot.missing.length}）`}>
         {snapshot.missing.length === 0 ? (
           <Typography.Text type="secondary">沒有缺項。</Typography.Text>
         ) : (
-          <Flex vertical gap={12 /* sm */}>
+          <Flex vertical gap="middle">
             <Typography.Text type="secondary">
               缺項不會中斷移交，但每一項都要勾選知悉才能確認。缺項會列在移交包的索引。
             </Typography.Text>
             <Checkbox.Group value={acknowledged} onChange={(values) => setAcknowledged(values as string[])}>
-              <Flex vertical gap={8 /* xs */}>
+              <Flex vertical gap="small">
                 {snapshot.missing.map((m) => (
                   <Checkbox key={m.key} value={m.key}>
                     我知道「{m.category}：{m.label}」沒有資料
@@ -211,22 +206,22 @@ function DraftForm({ detail, today }: { detail: HandoverDetail; today: string })
         )}
       </Card>
 
-      <Card title="誰接手">
-        <Flex vertical gap={16 /* md */}>
+      <Card size="small" title="誰接手">
+        <Flex vertical gap="middle">
           <Radio.Group value={kind} onChange={(e) => setKind(e.target.value)}>
-            <Flex vertical gap={8 /* xs */}>
+            <Flex vertical gap="small">
               <Radio value="mandatary">交給新受託人</Radio>
               <Radio value="self_managed">改為自管</Radio>
             </Flex>
           </Radio.Group>
 
           {kind === 'mandatary' && (
-            <Form layout="vertical" component="div" style={{ maxWidth: 560 }}>
+            <Form layout="vertical" component="div" className={styles.formBody}>
               <Form.Item
                 label="新受託人"
                 htmlFor="receiver"
                 extra="生效日與收款帳戶由新受託人在確認接手時指定。"
-                style={{ marginBottom: 0 }}
+                className={styles.flush}
               >
                 <Select
                   id="receiver"
@@ -243,14 +238,14 @@ function DraftForm({ detail, today }: { detail: HandoverDetail; today: string })
           )}
 
           {kind === 'self_managed' && (
-            <Form layout="vertical" component="div" style={{ maxWidth: 560 }}>
+            <Form layout="vertical" component="div" className={styles.formBody}>
               <Form.Item label="生效日" htmlFor="effective-date">
                 <DatePicker
                   id="effective-date"
                   value={effectiveDate}
                   onChange={setEffectiveDate}
                   disabledDate={(d) => d.isBefore(dayjs(today), 'day')}
-                  style={{ width: '100%', maxWidth: 240 }}
+                  className={styles.dateInput}
                 />
               </Form.Item>
               <Form.Item label="押金與預收租金的收款帳戶" htmlFor="payment-account">
@@ -267,7 +262,7 @@ function DraftForm({ detail, today }: { detail: HandoverDetail; today: string })
                   label="收款帳戶變更說明"
                   htmlFor="evidence-note"
                   extra={`收款帳戶持有人會從「${detail.currentAccountHolder}」改為「${account.holderName}」。請說明押金與預收租金如何轉入。`}
-                  style={{ marginBottom: 0 }}
+                  className={styles.flush}
                 >
                   <Input.TextArea
                     id="evidence-note"
@@ -282,102 +277,87 @@ function DraftForm({ detail, today }: { detail: HandoverDetail; today: string })
         </Flex>
       </Card>
 
-      {errors.length > 0 && (
-        <Alert
-          type="error"
-          showIcon
-          title="沒有完成"
-          description={
-            <ul style={{ margin: 0, paddingInlineStart: 24 /* lg */ }}>
-              {errors.map((error) => (
-                <li key={error}>{error}</li>
-              ))}
-            </ul>
-          }
-        />
-      )}
-
-      <Flex vertical gap={8 /* xs */}>
-        <Flex gap={8 /* xs */} wrap>
-          {/* TODO(MIL-108)：依 authorize() 的結果決定是否顯示「確認移交」 */}
+      <Flex vertical gap="small">
+        {/* TODO(MIL-108)：依 authorize() 的結果決定是否顯示「確認移交」 */}
+        <Flex>
           <Button type="primary" disabled={!canConfirm} loading={confirming} onClick={confirm}>
             確認移交
           </Button>
-          <CancelButton id={record.id} onDone={setErrors} />
         </Flex>
         {manualDirty && <Typography.Text type="secondary">手填欄位有變更，先儲存再確認。</Typography.Text>}
       </Flex>
-    </Flex>
+    </>
   );
 }
 
 function HandoverDetailInner({ detail, today }: { detail: HandoverDetail; today: string }) {
   const { record, sides, cancellable, snapshot } = detail;
   const [errors, setErrors] = useState<string[]>([]);
-  const nextStep = NEXT_STEP[record.state];
+  const [reasons, setReasons] = useState<string[]>([]);
+  const step = handoverNextStep(record.state, 'owner', record.effectiveDate);
   const target = record.target;
   const selfManagedAccount =
     target?.kind === 'self_managed' ? detail.paymentAccounts.find((a) => a.id === target.paymentAccountId) : undefined;
+  const isDraft = record.state === 'draft';
 
   return (
-    <Flex vertical gap={24 /* lg */}>
-      <Flex vertical gap={8 /* xs */} className={styles.wrap}>
-        <Link href="/owner/handovers">
-          <ArrowLeftOutlined aria-hidden /> 移交
-        </Link>
-        <Flex gap={8 /* xs */} wrap align="center">
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            {record.address}
-          </Typography.Title>
-          <HandoverStateTag state={record.state} />
-        </Flex>
-        <Typography.Text type="secondary">租賃單位 ID {record.rentalUnitId}</Typography.Text>
-      </Flex>
-
-      <Card>
-        <Descriptions column={{ xs: 1, md: 2 }} size="small">
-          <Descriptions.Item label="交出方">{record.from.name}</Descriptions.Item>
-          <Descriptions.Item label="接收方">{targetLabel(record.target)}</Descriptions.Item>
-          <Descriptions.Item label="生效日">{record.effectiveDate ?? '未指定'}</Descriptions.Item>
-          {selfManagedAccount && (
-            <Descriptions.Item label="收款帳戶">
-              {selfManagedAccount.label}（{selfManagedAccount.holderName}）
-            </Descriptions.Item>
-          )}
-          <Descriptions.Item label="進度">
-            <SidesStatus sides={sides} />
-          </Descriptions.Item>
-          {record.snapshotHash && (
-            <Descriptions.Item label="快照雜湊" span="filled">
-              <Typography.Text code className={styles.wrap}>{record.snapshotHash}</Typography.Text>
-            </Descriptions.Item>
-          )}
-        </Descriptions>
-      </Card>
-
-      {record.state === 'draft' ? (
-        <DraftForm detail={detail} today={today} />
-      ) : (
+    <DetailPage
+      header={{
+        title: record.address,
+        tag: <StatusTag kind="handover" value={record.state} />,
+        back: { href: '/owner/handovers', label: '返回移交列表' },
+        // TODO(MIL-108)：依 authorize() 的結果決定是否顯示「匯出移交包」
+        extra: record.state === 'completed' && <ExportPackageButton href={`/owner/handovers/${record.id}/package`} />,
+      }}
+      notices={
         <>
-          {nextStep && <Alert type="info" showIcon title={nextStep} />}
-          {errors.length > 0 && <Alert type="error" showIcon title={errors.join(' ')} />}
-          <Card title="移交包內容">
-            <SnapshotContent snapshot={snapshot} acknowledged={record.acknowledgedMissing} />
-          </Card>
-          {cancellable && (
-            <Flex>
-              <CancelButton id={record.id} onDone={setErrors} />
-            </Flex>
-          )}
-          {record.state === 'completed' && (
-            <Flex>
-              {/* TODO(MIL-108)：依 authorize() 的結果決定是否顯示「匯出移交包」 */}
-              <ExportPackageButton href={`/owner/handovers/${record.id}/package`} />
-            </Flex>
-          )}
+          {isDraft && <ErrorList title={`這個案件目前不能移交，原因有 ${reasons.length} 項`} errors={reasons} />}
+          <ErrorList title="沒有完成" errors={errors} />
         </>
+      }
+      nextStep={
+        <NextStep
+          headline={step.headline}
+          owner={step.owner}
+          detail={step.detail}
+          tone={step.tone}
+          actions={cancellable && <CancelButton id={record.id} onDone={setErrors} />}
+        />
+      }
+      aside={
+        <Card size="small" title="移交屬性">
+          <Descriptions column={1} size="small">
+            <Descriptions.Item label="交出方">{record.from.name}</Descriptions.Item>
+            <Descriptions.Item label="接收方">{targetLabel(record.target)}</Descriptions.Item>
+            <Descriptions.Item label="生效日">{record.effectiveDate ?? '未指定'}</Descriptions.Item>
+            {selfManagedAccount && (
+              <Descriptions.Item label="收款帳戶">
+                {selfManagedAccount.label}（{selfManagedAccount.holderName}）
+              </Descriptions.Item>
+            )}
+            <Descriptions.Item label="進度">
+              <SidesStatus sides={sides} />
+            </Descriptions.Item>
+            <Descriptions.Item label="租賃單位 ID">{record.rentalUnitId}</Descriptions.Item>
+            {record.snapshotHash && (
+              <Descriptions.Item label="快照雜湊">
+                <Typography.Text code className={styles.wrap}>
+                  {record.snapshotHash}
+                </Typography.Text>
+              </Descriptions.Item>
+            )}
+          </Descriptions>
+        </Card>
+      }
+    >
+      {isDraft ? (
+        <DraftForm detail={detail} today={today} setErrors={setErrors} onReasons={setReasons} />
+      ) : (
+        <Card size="small" title="移交包內容">
+          <SnapshotContent snapshot={snapshot} acknowledged={record.acknowledgedMissing} />
+        </Card>
       )}
-    </Flex>
+    </DetailPage>
   );
 }
 

@@ -1,4 +1,4 @@
-/* 移交畫面的版面。只放結構與間距（DESIGN.md spacing），顏色由 antd token 在元件內帶入。 */
+/* 移交畫面的版面。只放結構與間距，數值引用 DESIGN.md 的 CSS 變數，顏色由 antd token 帶入。 */
 
 /* 清單第一欄在 md 以下才顯示的摘要：交出與接收方、狀態、兩側 */
 .compactMeta {
@@ -9,8 +9,8 @@
   .compactMeta {
     display: flex;
     flex-direction: column;
-    gap: 8px; /* xs */
-    margin-top: 8px; /* xs */
+    gap: var(--space-xs);
+    margin-top: var(--space-xs);
   }
 }
 
@@ -19,11 +19,16 @@
   overflow-wrap: anywhere;
 }
 
+/* 兩側狀態與操作連結不拆行 */
+.nowrap {
+  white-space: nowrap;
+}
+
 /* 六類內容：每類一個區塊，寬螢幕兩欄 */
 .categories {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px; /* lg */
+  gap: var(--space-lg);
 }
 
 @media (max-width: 767.98px) {
@@ -32,13 +37,36 @@
   }
 }
 
+.categoryTitle {
+  margin-top: 0;
+}
+
 .itemRow {
   display: grid;
   grid-template-columns: minmax(7em, 34%) minmax(0, 1fr);
-  gap: 12px; /* sm */
-  padding-block: 8px; /* xs */
+  gap: var(--space-sm);
+  padding-block: var(--space-xs);
 }
 
 .itemRow + .itemRow {
-  border-top: 1px solid var(--handover-hairline);
+  border-top: 1px solid var(--color-hairline);
+}
+
+/* 表單欄位的最大寬度 */
+.formBody {
+  max-width: 35rem;
+}
+
+.dateInput {
+  width: 100%;
+  max-width: 15rem;
+}
+
+.flush {
+  margin-bottom: 0;
+}
+
+.errorList {
+  margin: 0;
+  padding-inline-start: var(--space-lg);
 }
