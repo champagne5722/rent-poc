@@ -5,12 +5,12 @@ import { newUlid } from '@/lib/pg/ulid';
 import { createWithTx, type WithTx } from '@/lib/pg/with-tx';
 import { EQUIPMENT_OPTIONS } from '@/lib/types';
 import {
-  AnchorKeyCollisionError,
   createProperty,
   getProperty,
   listProperties,
   listVocabulary,
   parsePropertyInput,
+  registerProperty,
   removeProperty,
   setPropertyAnchorKey,
   updateProperty,
@@ -148,23 +148,55 @@ describe.skipIf(!adminUrl)('物件與設備詞彙庫 repository（真實 Postgre
       expect(after).toMatchObject({ status: 'keyed', building_no: '04202' });
     });
 
-    it('撞號丟固定錯誤，交易回滾不留半成品', async () => {
-      await withTx({ kind: 'org', orgId: orgA }, (tx) => createProperty(tx, keyedInput('4243')));
+    it('撞到別的組織：物件照樣建立，產權維持待驗證，回審核單號；既有登錄方不受影響（MIL-144）', async () => {
+      const first = await withTx({ kind: 'org', orgId: orgA }, (tx) => registerProperty(tx, keyedInput('4243')));
+      expect(first.kind).toBe('created');
+      const second = await withTx({ kind: 'org', orgId: orgB }, (tx) => registerProperty(tx, keyedInput('4243')));
+      expect(second).toEqual({ kind: 'review_queued', id: expect.any(String), reviewTicket: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/) });
+      if (second.kind !== 'review_queued' || first.kind !== 'created') return;
+      const pending = await withTx({ kind: 'org', orgId: orgB }, (tx) => getProperty(tx, second.id));
+      expect(pending!.anchor).toMatchObject({ status: 'pending_verification', building_no: null, collision_review: { ticket: second.reviewTicket } });
+      const holder = await withTx({ kind: 'org', orgId: orgA }, (tx) => getProperty(tx, first.id));
+      expect(holder!.anchor).toMatchObject({ status: 'keyed', building_no: '04243', collision_review: null });
+    });
+
+    it('撞到自己組織：回自己的物件，交易退回這次建立的列，不留半成品', async () => {
+      const first = await withTx({ kind: 'org', orgId: orgA }, (tx) => registerProperty(tx, keyedInput('4245')));
       const before = (await dbh.owner.query('SELECT count(*)::int AS n FROM registry.anchors')).rows;
-      await expect(withTx({ kind: 'org', orgId: orgB }, (tx) => createProperty(tx, keyedInput('4243')))).rejects.toThrow(
-        AnchorKeyCollisionError,
-      );
+      const again = await withTx({ kind: 'org', orgId: orgA }, (tx) => registerProperty(tx, keyedInput('4245')));
+      expect(again).toEqual({ kind: 'existing', id: (first as { id: string }).id });
       expect((await dbh.owner.query('SELECT count(*)::int AS n FROM registry.anchors')).rows).toEqual(before);
     });
 
-    it('兩個交易同時搶同一個鍵：一個成功，另一個也得到固定的撞號錯誤，不是唯一索引的錯誤', async () => {
+    it('兩個交易同時搶同一個鍵：一個取得鍵，另一個走撞號流程，不得回傳唯一索引的錯誤', async () => {
       const results = await Promise.allSettled([
-        withTx({ kind: 'org', orgId: orgA }, (tx) => createProperty(tx, keyedInput('4244'))),
-        withTx({ kind: 'org', orgId: orgB }, (tx) => createProperty(tx, keyedInput('4244'))),
+        withTx({ kind: 'org', orgId: orgA }, (tx) => registerProperty(tx, keyedInput('4244'))),
+        withTx({ kind: 'org', orgId: orgB }, (tx) => registerProperty(tx, keyedInput('4244'))),
       ]);
-      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
-      const failed = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
-      expect(failed.reason).toBeInstanceOf(AnchorKeyCollisionError);
+      expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
+      const kinds = results.map((r) => (r as PromiseFulfilledResult<{ kind: string }>).value.kind).sort();
+      expect(kinds).toEqual(['created', 'review_queued']);
+    });
+
+    it('同一個組織並行撞號：額度在函式內檢查，並行請求不能同時通過（上限 2，4 個並行請求）', async () => {
+      const racer = newUlid();
+      await dbh.owner.query(`SET ROLE app_owner; INSERT INTO control.orgs (id, name, kind) VALUES ('${racer}', 'C', 'owner'); RESET ROLE`);
+      await withTx({ kind: 'org', orgId: orgA }, (tx) => registerProperty(tx, keyedInput('4250')));
+      await dbh.owner.query(`UPDATE registry.platform_settings SET int_value = 2 WHERE key = 'anchor_collision_daily_limit'`);
+      try {
+        const results = await Promise.all(
+          [1, 2, 3, 4].map(() => withTx({ kind: 'org', orgId: racer }, (tx) => registerProperty(tx, keyedInput('4250')))),
+        );
+        const kinds = results.map((r) => r.kind).sort();
+        expect(kinds).toEqual(['rate_limited', 'rate_limited', 'review_queued', 'review_queued']);
+        const { rows } = await dbh.owner.query(
+          `SELECT count(*)::int AS n FROM registry.review_items WHERE type = 'anchor_collision' AND payload ->> 'claimant_org_id' = $1`,
+          [racer],
+        );
+        expect(rows).toEqual([{ n: 2 }]);
+      } finally {
+        await dbh.owner.query(`UPDATE registry.platform_settings SET int_value = 50 WHERE key = 'anchor_collision_daily_limit'`);
+      }
     });
   });
 });

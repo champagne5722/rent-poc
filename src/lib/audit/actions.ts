@@ -51,6 +51,8 @@ export const AUDIT_ACTIONS = [
   'property.update',
   'property.delete',
   'property.anchor_key', // MIL-143：補建號，payload 只放租賃單位 ID，不放鍵與地址
+  'property.anchor_collision', // MIL-144：鍵撞到別的組織，已送審核台。寫在宣稱方組織的鏈，payload 只放租賃單位 ID 與審核單號，不放鍵與對方的任何資料
+  'property.anchor_collision_limited', // MIL-144：24 小時內的撞號回應超過上限，建立失敗。寫在宣稱方組織的鏈，payload 只放時間窗長度
   'property.sublet_create', // MIL-145：新增分租單位，payload 只放租賃單位 ID 與單位後綴，不放房號與地址
   'property.archive', // MIL-145：有合約的物件刪除時改為封存，payload 只放租賃單位 ID
   'contract.create', // MIL-83：合約的建立、複製、刪除。payload 只放 ID 與類型，不放姓名、地址、租金

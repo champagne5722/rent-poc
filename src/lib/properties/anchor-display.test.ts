@@ -14,6 +14,7 @@ const pending: PropertyAnchor = {
   section_name: null,
   latitude: null,
   longitude: null,
+  collision_review: null,
 };
 const keyed: PropertyAnchor = {
   ...pending,
