@@ -15,6 +15,7 @@ import { inboxTimersRls } from './rls-cases/inbox-timers';
 import { ledgerRls } from './rls-cases/ledger';
 import { notificationsRls } from './rls-cases/notifications';
 import { outboxRls } from './rls-cases/outbox';
+import { ownershipRls } from './rls-cases/ownership';
 import { paymentAccountsRls } from './rls-cases/payment-accounts';
 import { practiceEntitiesRls } from './rls-cases/practice-entities';
 import { practitionersRls } from './rls-cases/practitioners';
@@ -71,6 +72,7 @@ const RLS_MODULES: readonly RlsRegistration[] = [
   ledgerRls,
   notificationsRls,
   outboxRls,
+  ownershipRls,
   paymentAccountsRls,
   practiceEntitiesRls,
   practitionersRls,
