@@ -18,7 +18,8 @@
     "verify": "scripts/verify.sh",
     "e2e": "HEAVY_COST=6 scripts/heavy.sh e2e scripts/e2e/run-e2e.sh flows",
     "e2e:visual": "HEAVY_COST=6 scripts/heavy.sh e2e-visual scripts/e2e/run-e2e.sh visual",
-    "db:migrate": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/migrate.mjs"
+    "db:migrate": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/migrate.mjs",
+    "db:seed": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/seed.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
@@ -26,7 +27,6 @@
     "@google-cloud/storage": "8.4.0",
     "@pdf-lib/fontkit": "^1.1.1",
     "antd": "^6.5.1",
-    "better-sqlite3": "^13.0.1",
     "dayjs": "^1.11.21",
     "fflate": "^0.8.3",
     "next": "16.2.11",
@@ -41,7 +41,6 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.15",
     "@playwright/test": "^1.65.0",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
