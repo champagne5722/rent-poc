@@ -8,8 +8,9 @@ import type { PaymentAccount } from '@/lib/payment-accounts/repository';
 
 // 收款帳戶（MIL-118）：登錄、修改、停用，並看到每位持有人的現金收取帳戶。
 // 只存遮罩識別：銀行代碼與帳號末四碼。account_kind 不顯示，現金收取用標籤表示。
-// 持有人是出租人、屋主、代管業者時，持有人的 party 是目前登入者（由伺服器填）。
-// 案件成員併入後（MIL-123），持有人改從組織與案件成員清單選。
+// 持有人是出租人、屋主、代管業者時，從選單挑一位本組織的成員或案件成員（MIL-187），不能自己輸入 ID。
+// 選單來自 GET /api/payment-accounts/holder-options，只有顯示名稱與 party ID。
+// 持有人是「其他」時沒有 party，維持輸入姓名。
 
 type HolderKind = PaymentAccount['holderKind'];
 
@@ -17,6 +18,8 @@ interface FormValues {
   name: string;
   method: 'bank' | 'cash';
   holderKind: HolderKind;
+  /** 持有人的 party，來自選單。持有人是「其他」時沒有。 */
+  holderPartyId?: string;
   holderName: string;
   bankCode?: string;
   accountLast4?: string;
@@ -39,11 +42,19 @@ function initialValues(target: EditorTarget): FormValues {
     name: a.name,
     method: a.isCash ? 'cash' : 'bank',
     holderKind: a.holderKind,
+    holderPartyId: a.holderPartyId ?? undefined,
     holderName: a.holderName,
     bankCode: a.bankCode ?? undefined,
     accountLast4: a.accountLast4 ?? undefined,
   };
 }
+
+interface HolderOption {
+  partyId: string;
+  displayName: string;
+}
+
+type HolderOptionsState = { status: 'loading' } | { status: 'error' } | { status: 'ready'; options: HolderOption[]; selfPartyId: string | null };
 
 interface EditorProps {
   target: EditorTarget | null;
@@ -64,6 +75,58 @@ function AccountEditor({ target, onClose, onSaved, onDeactivateAndAdd }: EditorP
   const isNew = target?.kind === 'new';
   const locked = account?.locked ?? false;
   const isCash = (method ?? (target ? initialValues(target).method : 'bank')) === 'cash';
+  const isOpen = target !== null;
+
+  // 編輯器打開時才載入持有人選單。新增時，沒有預設持有人就帶入目前登入者
+  const [holders, setHolders] = useState<HolderOptionsState>({ status: 'loading' });
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    void fetch('/api/payment-accounts/holder-options')
+      .then(async (res) => {
+        if (cancelled) return;
+        if (!res.ok) {
+          setHolders({ status: 'error' });
+          return;
+        }
+        const body = (await res.json()) as { data: HolderOption[]; selfPartyId: string | null };
+        if (cancelled) return;
+        setHolders({ status: 'ready', options: body.data, selfPartyId: body.selfPartyId });
+        const current = form.getFieldsValue(['holderKind', 'holderPartyId']) as Pick<FormValues, 'holderKind' | 'holderPartyId'>;
+        const self = body.data.find((o) => o.partyId === body.selfPartyId);
+        if (isNew && self && current.holderKind !== 'other' && !current.holderPartyId) {
+          form.setFieldsValue({ holderPartyId: self.partyId, holderName: self.displayName });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setHolders({ status: 'error' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, isNew, form]);
+
+  // 既有帳戶的持有人可能已不在清單內（例如離開組織）。把他補成選項，畫面才顯示名稱而不是 ID
+  const holderOptions = useMemo(() => {
+    const options = (holders.status === 'ready' ? holders.options : []).map((o) => ({ value: o.partyId, label: o.displayName }));
+    if (account?.holderPartyId && !options.some((o) => o.value === account.holderPartyId)) {
+      options.unshift({ value: account.holderPartyId, label: account.holderName });
+    }
+    return options;
+  }, [holders, account]);
+
+  // 種類在「其他」與其他種類之間切換時，持有人欄位換一種填法，舊的值不留下來
+  const onValuesChange = (changed: Partial<FormValues>) => {
+    if (changed.holderKind === undefined) return;
+    if (changed.holderKind === 'other') {
+      form.setFieldsValue({ holderPartyId: undefined, holderName: '' });
+      return;
+    }
+    if (holders.status === 'ready' && !form.getFieldValue('holderPartyId')) {
+      const self = holders.options.find((o) => o.partyId === holders.selfPartyId);
+      form.setFieldsValue({ holderPartyId: self?.partyId, holderName: self?.displayName ?? '' });
+    }
+  };
 
   const save = async () => {
     const values = await form.validateFields();
@@ -94,7 +157,7 @@ function AccountEditor({ target, onClose, onSaved, onDeactivateAndAdd }: EditorP
       destroyOnHidden
     >
       {target && (
-        <Form form={form} layout="vertical" initialValues={initialValues(target)}>
+        <Form form={form} layout="vertical" initialValues={initialValues(target)} onValuesChange={onValuesChange}>
           {locked && account && (
             <Form.Item>
               <Alert
@@ -122,16 +185,48 @@ function AccountEditor({ target, onClose, onSaved, onDeactivateAndAdd }: EditorP
           <Form.Item name="holderKind" label="持有人種類" rules={[{ required: true }]}>
             <Select options={HOLDER_OPTIONS} disabled={locked} />
           </Form.Item>
-          <Form.Item
-            name="holderName"
-            label={holderKind === 'other' ? '持有人姓名' : '持有人名稱'}
-            rules={[
-              { required: true, whitespace: true, message: holderKind === 'other' ? '請輸入持有人姓名' : '請輸入持有人名稱' },
-            ]}
-            extra={holderKind === 'other' ? undefined : '持有人是目前登入者。系統會替每位持有人保留一個現金收取帳戶。'}
-          >
-            <Input maxLength={60} disabled={locked} />
-          </Form.Item>
+          {holderKind === 'other' ? (
+            <Form.Item
+              name="holderName"
+              label="持有人姓名"
+              rules={[{ required: true, whitespace: true, message: '請輸入持有人姓名' }]}
+              extra="這個人不是本組織的成員，只記姓名。系統會替每位持有人保留一個現金收取帳戶。"
+            >
+              <Input maxLength={60} disabled={locked} />
+            </Form.Item>
+          ) : (
+            <>
+              <Form.Item
+                name="holderPartyId"
+                label="持有人"
+                rules={[{ required: true, message: '請選擇持有人' }]}
+                validateStatus={holders.status === 'error' ? 'error' : undefined}
+                help={holders.status === 'error' ? '無法載入成員清單，請關閉後重新開啟' : undefined}
+                extra={
+                  holders.status === 'ready' && holderOptions.length === 0
+                    ? '目前沒有可選的成員。'
+                    : '只能選本組織的成員與案件成員。系統會替每位持有人保留一個現金收取帳戶。'
+                }
+              >
+                <Select
+                  showSearch={{ optionFilterProp: 'label' }}
+                  placeholder="選擇持有人"
+                  loading={holders.status === 'loading'}
+                  disabled={locked}
+                  options={holderOptions}
+                  notFoundContent="沒有符合的成員"
+                  onChange={(_value, option) => {
+                    const picked = Array.isArray(option) ? option[0] : option;
+                    form.setFieldsValue({ holderName: typeof picked?.label === 'string' ? picked.label : '' });
+                  }}
+                />
+              </Form.Item>
+              {/* 持有人名稱跟著選單走，不另外輸入 */}
+              <Form.Item name="holderName" hidden>
+                <Input />
+              </Form.Item>
+            </>
+          )}
           {isCash ? (
             <Typography.Paragraph type="secondary">現金收取沒有銀行紀錄，不參與對帳檔比對。</Typography.Paragraph>
           ) : (
@@ -229,7 +324,15 @@ function PaymentAccountsPage() {
       cancelText: '取消',
       onOk: async () => {
         if (!(await deactivate(account.id))) return;
-        openEditor({ kind: 'new', preset: { holderKind: account.holderKind, holderName: account.holderName, method: 'bank' } });
+        openEditor({
+          kind: 'new',
+          preset: {
+            holderKind: account.holderKind,
+            holderPartyId: account.holderPartyId ?? undefined,
+            holderName: account.holderName,
+            method: 'bank',
+          },
+        });
       },
     });
   };

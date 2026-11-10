@@ -1,7 +1,9 @@
 import type { PGliteInterface } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pgliteDriver } from '../pg/drivers';
+import { seedCases, testCaseId } from '../pg/test-cases';
 import { asRole, createTestDb, type TestDb } from '../pg/test-harness';
+import { seedCaseMember, seedOrgMember, seedParty } from '../pg/test-parties';
 import { newUlid } from '../pg/ulid';
 import { createWithTx, type OrgTx, type WithTx } from '../pg/with-tx';
 import { parsePaymentAccountInput, type PaymentAccountInput } from './input';
@@ -17,7 +19,9 @@ import {
 // MIL-118：收款帳戶 repository 經 withTx 寫進 PGlite。連線身分是 app_rw（fresh() 保證），RLS 生效。
 // 分錄用原始 SQL 寫入：鏡像帳的寫入入口只准 ledger 目錄呼叫（post.guard.test.ts），這裡只需要「有分錄引用這個帳戶」。
 
-const PARTY = newUlid();
+// 持有人必須是真實的 party，並且在本組織的成員或案件成員清單內（MIL-187）。每個測試開始時由 beforeEach 建立
+let PARTY = '';
+let PARTY_B = '';
 
 function input(over: Record<string, unknown> = {}): PaymentAccountInput {
   const parsed = parsePaymentAccountInput({
@@ -50,6 +54,8 @@ describe('收款帳戶 repository', () => {
     await asRole(db, 'app_owner', () =>
       db.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, 'A', 'owner'), ($2, 'B', 'owner')`, [orgA, orgB]),
     );
+    PARTY = await seedOrgMember(withTx, orgA, '王大明');
+    PARTY_B = await seedOrgMember(withTx, orgB, '乙組織成員');
   });
 
   const inOrg = <T>(orgId: string, fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId }, fn);
@@ -201,11 +207,59 @@ describe('收款帳戶 repository', () => {
     });
   });
 
+  describe('登錄的持有人檢查（MIL-187）', () => {
+    const count = () => inA((tx) => listPaymentAccounts(tx)).then((a) => a.length);
+
+    it('持有人指到不存在的 party：回 holder_not_allowed，什麼都不寫', async () => {
+      const result = await inA((tx) => registerPaymentAccount(tx, input({ holderPartyId: newUlid() }), PARTY));
+      expect(result).toEqual({ ok: false, error: 'holder_not_allowed' });
+      expect(await count()).toBe(0);
+    });
+
+    it('持有人指到別的組織的成員：回應與不存在的 party 完全相同', async () => {
+      const theirs = await inA((tx) => registerPaymentAccount(tx, input({ holderPartyId: PARTY_B }), PARTY));
+      const ghost = await inA((tx) => registerPaymentAccount(tx, input({ holderPartyId: newUlid() }), PARTY));
+      expect(theirs).toEqual({ ok: false, error: 'holder_not_allowed' });
+      expect(theirs).toEqual(ghost);
+      expect(await count()).toBe(0);
+    });
+
+    it('持有人格式錯誤的 ID：同樣回 holder_not_allowed', async () => {
+      const result = await inA((tx) => registerPaymentAccount(tx, input({ holderPartyId: 'not-a-ulid' }), PARTY));
+      expect(result).toEqual({ ok: false, error: 'holder_not_allowed' });
+    });
+
+    it('持有人是同組織的其他成員：用請求帶的 party，不用呼叫者', async () => {
+      const colleague = await seedOrgMember(withTx, orgA, '同事');
+      const { id } = await register({ holderPartyId: colleague });
+      expect(await inA((tx) => getPaymentAccount(tx, id))).toMatchObject({ holderPartyId: colleague });
+    });
+
+    it('持有人是本組織案件的成員（不是組織成員）也可以', async () => {
+      const caseId = testCaseId('HCASEC1');
+      await seedCases(withTx, [orgA], [caseId]);
+      const tenant = await seedParty(withTx, orgA, '林承租');
+      await seedCaseMember(withTx, orgA, caseId, tenant);
+      const { id } = await register({ holderPartyId: tenant, holderKind: 'owner' });
+      expect(await inA((tx) => getPaymentAccount(tx, id))).toMatchObject({ holderPartyId: tenant, holderKind: 'owner' });
+    });
+
+    it('呼叫端傳入的 party 只是沒有指定持有人時的預設值，也要在清單內', async () => {
+      const result = await inA((tx) => registerPaymentAccount(tx, input(), newUlid()));
+      expect(result).toEqual({ ok: false, error: 'holder_not_allowed' });
+    });
+
+    it('持有人是其他人：沒有 party，請求帶不存在的 party 也不影響', async () => {
+      const result = await inA((tx) => registerPaymentAccount(tx, input({ holderKind: 'other', holderName: '李小華', holderPartyId: newUlid() }), null));
+      expect(result).toMatchObject({ ok: true });
+    });
+  });
+
   describe('清單與跨組織', () => {
     it('新的在前，含已停用的帳戶；別的組織看不到', async () => {
       const first = await register({ name: '第一個' });
       const second = await register({ name: '第二個', accountLast4: '2222' });
-      await register({ name: 'B 的帳戶' }, PARTY, orgB);
+      await register({ name: 'B 的帳戶' }, PARTY_B, orgB);
       await inA((tx) => deactivatePaymentAccount(tx, first.id));
       const accounts = await inA((tx) => listPaymentAccounts(tx));
       expect(accounts.filter((a) => !a.isCash).map((a) => [a.id, a.active])).toEqual([
@@ -216,7 +270,7 @@ describe('收款帳戶 repository', () => {
     });
 
     it('讀別的組織的帳戶與不存在的帳戶，結果一樣是 null', async () => {
-      const { id } = await register({}, PARTY, orgB);
+      const { id } = await register({}, PARTY_B, orgB);
       expect(await inA((tx) => getPaymentAccount(tx, id))).toBeNull();
       expect(await inA((tx) => getPaymentAccount(tx, newUlid()))).toBeNull();
     });
@@ -298,7 +352,7 @@ describe('收款帳戶 repository', () => {
 
     it('找不到、別的組織、已停用的帳戶', async () => {
       const mine = await register();
-      const theirs = await register({}, PARTY, orgB);
+      const theirs = await register({}, PARTY_B, orgB);
       await inA((tx) => deactivatePaymentAccount(tx, mine.id));
       expect(await inA((tx) => updatePaymentAccount(tx, newUlid(), input()))).toEqual({ ok: false, error: 'not_found' });
       expect(await inA((tx) => updatePaymentAccount(tx, theirs.id, input()))).toEqual({ ok: false, error: 'not_found' });
@@ -335,6 +389,52 @@ describe('收款帳戶 repository', () => {
     });
   });
 
+  describe('修改的持有人檢查（MIL-187）', () => {
+    it('改到不存在的 party 或別的組織的成員：回 holder_not_allowed，帳戶不變', async () => {
+      const { id } = await register();
+      for (const holderPartyId of [newUlid(), PARTY_B, 'not-a-ulid']) {
+        const result = await inA((tx) => updatePaymentAccount(tx, id, input({ holderPartyId }), PARTY));
+        expect(result, holderPartyId).toEqual({ ok: false, error: 'holder_not_allowed' });
+      }
+      expect(await inA((tx) => getPaymentAccount(tx, id))).toMatchObject({ holderPartyId: PARTY });
+    });
+
+    it('改到同組織的另一位成員：沒有分錄引用時成功，新持有人也有現金收取帳戶', async () => {
+      const colleague = await seedOrgMember(withTx, orgA, '同事');
+      const { id } = await register();
+      expect(await inA((tx) => updatePaymentAccount(tx, id, input({ holderPartyId: colleague, holderName: '同事' })))).toEqual({ ok: true });
+      expect(await inA((tx) => getPaymentAccount(tx, id))).toMatchObject({ holderPartyId: colleague });
+      const cash = (await inA((tx) => listPaymentAccounts(tx))).filter((a) => a.isCash && a.active);
+      expect(cash.map((a) => a.holderPartyId).sort()).toEqual([PARTY, colleague].sort());
+    });
+
+    it('有分錄引用後改到另一位成員：回 locked，帳戶不變', async () => {
+      const colleague = await seedOrgMember(withTx, orgA, '同事');
+      const { id } = await register();
+      await referenceInLedger(id);
+      expect(await inA((tx) => updatePaymentAccount(tx, id, input({ holderPartyId: colleague })))).toEqual({ ok: false, error: 'locked' });
+      expect(await inA((tx) => getPaymentAccount(tx, id))).toMatchObject({ holderPartyId: PARTY });
+    });
+
+    it('沿用原持有人時不重新檢查：持有人已不在清單內，仍能改名稱', async () => {
+      const leaver = await seedOrgMember(withTx, orgA, '離職者');
+      const { id } = await register({ holderPartyId: leaver });
+      await referenceInLedger(id);
+      await asRole(db, 'app_owner', () =>
+        db.query(`DELETE FROM control.org_memberships WHERE user_id IN (SELECT id FROM control.users WHERE party_id = $1)`, [leaver]),
+      );
+      expect(await inA((tx) => updatePaymentAccount(tx, id, input({ name: '離職後改名' })))).toEqual({ ok: true });
+      expect(await inA((tx) => getPaymentAccount(tx, id))).toMatchObject({ name: '離職後改名', holderPartyId: leaver });
+    });
+
+    it('改成其他人時 party 清空，不檢查請求帶的 party', async () => {
+      const { id } = await register();
+      const result = await inA((tx) => updatePaymentAccount(tx, id, input({ holderKind: 'other', holderName: '李小華', holderPartyId: newUlid() })));
+      expect(result).toEqual({ ok: true });
+      expect(await inA((tx) => getPaymentAccount(tx, id))).toMatchObject({ holderKind: 'other', holderPartyId: null });
+    });
+  });
+
   describe('停用', () => {
     it('停用後狀態是已停用，有分錄引用的帳戶也能停用', async () => {
       const { id } = await register();
@@ -345,7 +445,7 @@ describe('收款帳戶 repository', () => {
 
     it('已停用再停用回 already_inactive；找不到與別的組織回 not_found', async () => {
       const { id } = await register();
-      const theirs = await register({}, PARTY, orgB);
+      const theirs = await register({}, PARTY_B, orgB);
       await inA((tx) => deactivatePaymentAccount(tx, id));
       expect(await inA((tx) => deactivatePaymentAccount(tx, id))).toEqual({ ok: false, error: 'already_inactive' });
       expect(await inA((tx) => deactivatePaymentAccount(tx, newUlid()))).toEqual({ ok: false, error: 'not_found' });
@@ -407,7 +507,7 @@ describe('收款帳戶 repository', () => {
 
     it('別的組織與不存在的帳戶一律算 notFound，不洩漏它屬於誰', async () => {
       const mine = await register();
-      const theirs = await register({}, PARTY, orgB);
+      const theirs = await register({}, PARTY_B, orgB);
       const ghost = newUlid();
       expect(await inA((tx) => assertPaymentAccountsInOrg(tx, [mine.id, theirs.id, ghost]))).toEqual({
         ok: false,

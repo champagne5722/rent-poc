@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { pgliteDriver } from '../pg/drivers';
 import { seedCases, testCaseId } from '../pg/test-cases';
 import { asRole, createTestDb, type TestDb } from '../pg/test-harness';
+import { seedOrgMember } from '../pg/test-parties';
 import { newUlid } from '../pg/ulid';
 import { createWithTx, type OrgTx, type WithTx } from '../pg/with-tx';
 import { registerPaymentAccount, deactivatePaymentAccount } from '../payment-accounts';
@@ -13,7 +14,8 @@ import { getDefaultAccounts, setDefaultAccounts } from './default-accounts';
 
 const CASE = testCaseId('CASEA1');
 const OTHER_ORG_CASE = testCaseId('CASEB1');
-const PARTY = newUlid();
+// 持有人必須是真實的組織成員（MIL-187），每個測試開始時建立，兩個組織各一位
+const PARTY: Record<'a' | 'b', string> = { a: '', b: '' };
 
 describe('案件的預設收款帳戶', () => {
   let testDb: TestDb;
@@ -33,6 +35,8 @@ describe('案件的預設收款帳戶', () => {
     await asRole(db, 'app_owner', async () => {
       await db.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, 'A', 'owner'), ($2, 'B', 'owner')`, [orgA, orgB]);
     });
+    PARTY.a = await seedOrgMember(withTx, orgA);
+    PARTY.b = await seedOrgMember(withTx, orgB);
     await seedCases(withTx, [orgA], [CASE]);
     await seedCases(withTx, [orgB], [OTHER_ORG_CASE]);
   });
@@ -45,7 +49,7 @@ describe('案件的預設收款帳戶', () => {
       registerPaymentAccount(
         tx,
         { name, holderKind: 'lessor', holderName: '王大明', method: 'bank', bankCode: '812', accountLast4: '0123' },
-        PARTY,
+        orgId === orgB ? PARTY.b : PARTY.a,
       ),
     );
     if (!result.ok) throw new Error(`登錄帳戶失敗：${result.error}`);

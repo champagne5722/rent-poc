@@ -6,6 +6,7 @@ import { asRole, createTestDb, type TestDb } from '../pg/test-harness';
 import { newUlid } from '../pg/ulid';
 import { createWithTx, type OrgTx, type WithTx } from '../pg/with-tx';
 import { testCaseId } from '../pg/test-cases';
+import { seedOrgMember } from '../pg/test-parties';
 import { listHolderConflicts } from './holder-conflicts';
 
 // MIL-123：社宅旗標與押金持有人的衝突提示。seam 是 listHolderConflicts 的回傳值。
@@ -13,7 +14,8 @@ import { listHolderConflicts } from './holder-conflicts';
 // 鏡像帳的寫入入口只准 ledger 目錄呼叫（post.guard.test.ts），這裡只需要「有這樣的分錄」。
 
 const CASE = testCaseId('CASEA1');
-const PARTY = newUlid();
+// 持有人必須是真實的組織成員（MIL-187），每個測試開始時建立
+let PARTY = '';
 
 describe('listHolderConflicts', () => {
   let testDb: TestDb;
@@ -32,6 +34,7 @@ describe('listHolderConflicts', () => {
     await asRole(db, 'app_owner', async () => {
       await db.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, 'A', 'practice')`, [orgA]);
     });
+    PARTY = await seedOrgMember(withTx, orgA);
   });
 
   const inA = <T>(fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId: orgA }, fn);
