@@ -46,11 +46,18 @@ jobs:
       - name: ESLint
         run: npm run lint
       - name: vitest
-        run: npm test
+        # JSON 報告給下一步檢查 pg 測試有沒有真的跑到
+        run: npm test -- --reporter=default --reporter=json --outputFile.json=vitest-report.json
         env:
           TEST_DATABASE_URL: postgres://postgres:ci-password@localhost:5432/postgres
           # 標準 runner 有 4 核心 16 GB。vitest.config.ts 預設 2 個 worker（MIL-163），完整測試跑不完 15 分鐘。
           VITEST_MAX_WORKERS: 4
+      # *.pg.test.ts 在沒有 TEST_DATABASE_URL 時整組靜默跳過，vitest 仍然綠燈（MIL-89）。
+      # 這一步確認：變數有設、每個 pg 測試檔都有執行、沒有任何測試被跳過、通過數量不低於下限。
+      - name: 確認真實 PostgreSQL 的測試有執行
+        run: node scripts/ci/check-pg-tests-ran.mjs vitest-report.json --min 100
+        env:
+          TEST_DATABASE_URL: postgres://postgres:ci-password@localhost:5432/postgres
 
   image:
     runs-on: ubuntu-latest

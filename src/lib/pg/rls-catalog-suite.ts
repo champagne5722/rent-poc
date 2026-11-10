@@ -12,6 +12,7 @@ import {
   viewViolations,
   type CatalogQuery,
 } from './rls-catalog-kit';
+import { CROSS_ORG_UNIQUE_KEY_EXCEPTIONS } from './rls-cases';
 
 // 系統目錄檢查的測試本體（MIL-89）。rls-catalog.test.ts（PGlite）與 rls-catalog.pg.test.ts（真實 PostgreSQL）共用。
 
@@ -224,6 +225,13 @@ export function describeRlsCatalog(label: string, setup: () => Promise<CatalogTa
         await mutated(s, 'ALTER ROLE break_glass LOGIN', async () => {
           expect(await roleViolations(s.q)).toContain('角色 break_glass 可以登入');
         });
+      });
+
+      it('唯一鍵例外清單明列 registry 與主要出租權源，每一項都有理由', () => {
+        expect(Object.keys(CROSS_ORG_UNIQUE_KEY_EXCEPTIONS)).toEqual(expect.arrayContaining(['registry', 'pending:primary-leasing-authority']));
+        for (const [name, exception] of Object.entries(CROSS_ORG_UNIQUE_KEY_EXCEPTIONS)) {
+          expect(exception.reason.length, `${name} 沒有理由`).toBeGreaterThan(10);
+        }
       });
 
       it('檢查涵蓋的角色清單沒有被悄悄縮短', () => {

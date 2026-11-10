@@ -182,11 +182,24 @@ export function definerOnlyTablesWithoutEntry(tables: readonly string[]): string
 export const AUDIT_TABLES: Record<string, AuditTable> = compose('auditTables');
 
 /**
- * 組織表之間唯一鍵的例外（MIL-89，ADR-0012 決議 6 的陷阱 6）。
- * org schema 的業務唯一鍵必須含 org_id，否則唯一鍵撞號會洩漏別的組織有這一列。
- * 跨組織唯一只留給兩種：registry（整個 schema，不在 org）與主要出租權源（ADR-0013 決議 10、ADR-0026 決議 3）。
- * org 表上不含 org_id 的唯一索引，必須用「schema.索引名」登記在這裡，並寫一句理由。不在清單內的讓 CI 失敗。
- * registry 的索引不屬於 org schema，檢查不看它們，所以不必逐一登記。
- * 主要出租權源的部分唯一索引目前還沒有 migration（ADR-0026 決議 3 的表尚未建立）。建立時在這裡加一列。
+ * 唯一鍵穿透的例外（MIL-89，ADR-0012 決議 6 的陷阱 6）。
+ * org schema 的業務唯一鍵必須含 org_id，否則撞號會洩漏別的組織有這一列。跨組織唯一只留給兩種：
+ * 1. registry：整個 schema 不掛組織 RLS，唯一鍵本來就跨組織（建號、證書、任職）。檢查只看 org schema，不看 registry。
+ * 2. 主要出租權源：同一租賃單位同一時間只有一筆有效的主要出租權源，跨組織成立（ADR-0013 決議 10、ADR-0026 決議 3）。
+ *
+ * 清單的鍵有三種，每一項寫一句理由：
+ * - `schema`：整個 schema 的例外，鍵是 schema 名稱。
+ * - `index`：org schema 裡不含 org_id 的唯一索引，鍵是「schema.索引名」。索引不存在時檢查失敗。
+ * - `pending`：已決定要有、但 migration 還沒建的例外。建立索引時，把這一項改成 `index` 並填實際的索引名。
+ * 不在清單內且不含 org_id 的 org 唯一索引，讓 rls-catalog.test.ts 失敗。
  */
-export const CROSS_ORG_UNIQUE_KEY_EXCEPTIONS: Record<string, { reason: string }> = {};
+export const CROSS_ORG_UNIQUE_KEY_EXCEPTIONS: Record<string, { scope: 'schema' | 'index' | 'pending'; reason: string }> = {
+  registry: {
+    scope: 'schema',
+    reason: 'registry 不掛組織 RLS，建號、證書、任職的唯一鍵本來就跨組織，隔離靠定義者函式（ADR-0012 決議 8）',
+  },
+  'pending:primary-leasing-authority': {
+    scope: 'pending',
+    reason: '主要出租權源的部分唯一索引：同一租賃單位同一時間只有一筆有效的，跨組織成立（ADR-0013 決議 10、ADR-0026 決議 3）。migration 還沒建',
+  },
+};

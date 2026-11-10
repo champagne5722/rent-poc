@@ -226,12 +226,13 @@ export async function uniqueKeyViolations(q: CatalogQuery): Promise<string[]> {
     const hasOrgId = r.cols.includes('org_id') || /\(\s*org_id\b|,\s*org_id\b/.test(r.def);
     if (hasOrgId) continue;
     if (r.is_primary && r.cols.length === 1 && r.cols[0] === 'id') continue;
-    if (r.index in CROSS_ORG_UNIQUE_KEY_EXCEPTIONS) continue;
+    if (CROSS_ORG_UNIQUE_KEY_EXCEPTIONS[r.index]?.scope === 'index') continue;
     violations.push(`${r.table} 的${r.is_primary ? '主鍵' : '唯一索引'} ${r.index}（${r.cols.join(', ')}）不含 org_id`);
   }
   const existing = new Set(rows.map((r) => r.index));
-  for (const name of Object.keys(CROSS_ORG_UNIQUE_KEY_EXCEPTIONS)) {
-    if (!existing.has(name)) violations.push(`${name}：例外清單登記了不存在的索引`);
+  for (const [name, exception] of Object.entries(CROSS_ORG_UNIQUE_KEY_EXCEPTIONS)) {
+    if (exception.scope === 'index' && !existing.has(name)) violations.push(`${name}：例外清單登記了不存在的索引`);
+    if (exception.scope === 'schema' && !(name in SCHEMA_REGISTRIES)) violations.push(`${name}：例外清單登記了不存在的 schema`);
   }
   return violations;
 }
