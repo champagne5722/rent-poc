@@ -21,13 +21,15 @@ export interface DetailPageProps {
   children: ReactNode;
   /** 屬性側欄。 */
   aside: ReactNode;
+  /** 兩欄下方、橫跨全寬的區段。放本身很高的內容，例如合約 PDF 預覽，才不會讓主要內容欄比側欄高出一截。 */
+  wide?: ReactNode;
 }
 
 // 主要內容與側欄的欄寬（24 欄制）。窄於 xl 時側欄排到主要內容下方。
 const MAIN_SPAN = 16;
 const ASIDE_SPAN = 8;
 
-export default function DetailPage({ header, nextStep, notices, children, aside }: DetailPageProps) {
+export default function DetailPage({ header, nextStep, notices, children, aside, wide }: DetailPageProps) {
   return (
     <Flex vertical gap="large">
       <PageHeader {...header} />
@@ -45,6 +47,7 @@ export default function DetailPage({ header, nextStep, notices, children, aside 
           </Flex>
         </Col>
       </Row>
+      {wide}
     </Flex>
   );
 }

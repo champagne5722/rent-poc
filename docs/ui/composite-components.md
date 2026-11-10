@@ -205,6 +205,7 @@ export default function Loading() {
 | `notices` | `ReactNode` | 「下一步」上方的提醒，例如失敗說明或警示 |
 | `children` | `ReactNode` | 主要內容，由上而下依重要性排列的區段 |
 | `aside` | `ReactNode` | 屬性側欄，例如屬性與歷程 |
+| `wide` | `ReactNode` | 兩欄下方、橫跨全寬的區段，放本身很高的內容，例如合約 PDF 預覽 |
 
 ```tsx
 <DetailPage
@@ -222,6 +223,7 @@ export default function Loading() {
 - 主要內容放這份資料自己的內容，屬性側欄放識別、對象與歷程。
 - 頁首的動作放進入編輯與下載。處理異常的動作放在「下一步」區塊。每個畫面至多一顆 primary Button。
 - 沒有內容的區段不顯示，不放空狀態。
+- 本身很高的內容放 `wide`。放進主要內容欄會讓它比側欄高出一截，impeccable 會報 `first-viewport-column-overflow`。
 
 何時不用：列表頁、表單頁、建約精靈。
 
