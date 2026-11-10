@@ -1,4 +1,19 @@
-/* 帳號名稱過長時讓 Typography 的 ellipsis 生效：flex 子元素預設不會縮到內容以下，要放開 min-width。 */
-.name {
+/* 帳號列固定在一行內（MIL-182）：名稱吃掉剩餘寬度並截斷，身分切換器、成員與登出不縮也不換行。
+   flex 子元素預設不會縮到內容以下，名稱要放開 min-width，Typography 的 ellipsis 才會生效。 */
+.bar {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.bar > * {
+  flex-shrink: 0;
+}
+
+.bar > .name {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.nameText {
   min-width: 0;
 }

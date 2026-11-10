@@ -35,13 +35,13 @@ export default function AccountBar({ knownName }: { knownName?: string }) {
   const name = knownName ?? fetchedName;
 
   return (
-    <Flex align="center" gap="small" justify="flex-end" wrap="wrap">
+    <Flex align="center" gap="small" justify="flex-end" wrap="nowrap" className={styles.bar}>
       {name && (
         <Flex align="center" gap="small" className={styles.name}>
           <Typography.Text type="secondary">
             <UserOutlined aria-hidden />
           </Typography.Text>
-          <Typography.Text ellipsis={{ tooltip: name }}>{name}</Typography.Text>
+          <Typography.Text ellipsis={{ tooltip: name }} className={styles.nameText}>{name}</Typography.Text>
         </Flex>
       )}
       <IdentitySwitcher />
