@@ -4,7 +4,6 @@
   "src/app/demo/mail/DemoMailList.tsx": 3,
   "src/app/handovers/OrgHandoverList.tsx": 2,
   "src/app/handovers/[id]/OrgHandoverDetailView.tsx": 7,
-  "src/app/notifications/page.tsx": 3,
   "src/app/owner/handovers/HandoverList.tsx": 2,
   "src/app/owner/handovers/HandoverParts.tsx": 7,
   "src/app/owner/handovers/[id]/HandoverDetailView.tsx": 9,

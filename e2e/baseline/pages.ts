@@ -70,7 +70,7 @@ export const PAGES: PageSpec[] = [
   { id: '14-case-detail-overview', title: '案件詳情（概況）', phase: 4, layout: '詳情', role: 'owner', route: '/cases/{case}', sources: ['src/app/cases/[id]/page.tsx', ...CASE] },
   { id: '15-case-detail-ledger', title: '案件詳情（帳務設定）', phase: 4, layout: '詳情', role: 'owner', route: '/cases/{case}#ledger', sources: ['src/app/cases/[id]/page.tsx', ...CASE, 'src/components/CaseLedgerPanel.tsx'] },
   { id: '16-payment-accounts', title: '收款帳戶', phase: 4, layout: '列表', role: 'owner', route: '/payment-accounts', sources: ['src/app/payment-accounts/page.tsx'] },
-  { id: '17-notifications', title: '站內通知', phase: 4, layout: '列表', role: 'owner', route: '/notifications', sources: ['src/app/notifications/page.tsx'] },
+  { id: '17-notifications', title: '站內通知', phase: 4, layout: '列表', role: 'owner', route: '/notifications', sources: ['src/app/notifications/(list)/page.tsx', 'src/components/NotificationList.tsx'] },
   { id: '18-members', title: '成員設定', phase: 4, layout: '面板', role: 'owner', route: '/settings/members', sources: ['src/app/settings/members/page.tsx', 'src/components/MembersPanel.tsx'] },
   { id: '19-owner-overview', title: '屋主資產總覽', phase: 4, layout: '總覽', role: 'owner', route: '/owner', sources: ['src/app/owner/page.tsx', 'src/components/OwnerOverview.tsx', 'src/components/OwnerOverview.module.css'] },
   { id: '20-owner-handovers', title: '屋主端 移交清單', phase: 4, layout: '列表', role: 'owner', route: '/owner/handovers', sources: ['src/app/owner/handovers/page.tsx', 'src/app/owner/handovers/HandoverList.tsx', 'src/app/owner/handovers/HandoverParts.tsx', 'src/app/owner/handovers/handovers.module.css'] },
