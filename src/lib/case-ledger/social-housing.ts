@@ -1,9 +1,9 @@
 import { appendAudit } from '../audit';
-import { getOrgName } from '../case-store/repository';
-import { notify, type NotifyReceipt } from '../notifications';
+import type { NotifyReceipt } from '../notifications';
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
 import { listHolderConflicts, type HolderConflict } from './holder-conflicts';
+import { notifyMandators } from './mandator';
 import type { SocialHousingChange } from './types';
 
 // 社宅代管案件旗標（ADR-0050 決議 10，MIL-123）。
@@ -34,18 +34,6 @@ interface CaseRow {
   social_housing: boolean;
   title: string;
   linked_mandate_case_id: string | null;
-}
-
-/** 委託人：連結的委託管理案件中，目前有效的 mandator 成員。 */
-async function mandatorEmails(tx: OrgTx, mandateCaseId: string): Promise<string[]> {
-  const { rows } = await tx.query<{ email: string }>(
-    `SELECT DISTINCT p.email
-       FROM org.case_members m JOIN control.parties p ON p.id = m.party_id
-      WHERE m.case_id = $1 AND m.relation = 'mandator' AND m.valid_period @> now()
-      ORDER BY p.email`,
-    [mandateCaseId],
-  );
-  return rows.map((r) => r.email);
 }
 
 const yesNo = (value: boolean) => (value ? '是' : '否');
@@ -83,33 +71,22 @@ export async function changeSocialHousing(
     payload: { from: row.social_housing, to: input.value, change_id: changeId },
   });
 
-  const emails = row.linked_mandate_case_id ? await mandatorEmails(tx, row.linked_mandate_case_id) : [];
-  const orgName = emails.length > 0 ? await getOrgName(tx, await currentOrgId(tx)) : null;
   const title = `案件的社宅代管旗標已改為「${yesNo(input.value)}」`;
   const body = [
     `案件：${row.title || input.caseId}`,
     `原因：${reason}`,
     '社宅代管旗標會影響押金持有人的檢查規則。既有的押金分錄不會更動。',
   ].join('\n');
-  const base = { kind: 'case.social_housing_changed', title, body, linkPath: `/cases/${input.caseId}` };
-
   // 第一則帶站內通知（主辦組織的成員看得到），之後每位委託人各一封 email。沒有委託人時只有站內通知
-  const receipts: NotifyReceipt[] = [];
-  if (emails.length === 0) {
-    receipts.push(await notify(tx, base));
-  } else {
-    for (const [i, to] of emails.entries()) {
-      receipts.push(await notify(tx, { ...base, inApp: i === 0, email: { to, from: (orgName ?? '管理公司').slice(0, 100) } }));
-    }
-  }
+  const { receipts, mandatorNotified } = await notifyMandators(tx, row.linked_mandate_case_id, {
+    kind: 'case.social_housing_changed',
+    title,
+    body,
+    linkPath: `/cases/${input.caseId}`,
+  });
 
   const conflicts = input.value ? await listHolderConflicts(tx, input.caseId) : [];
-  return { ok: true, changed: { from: row.social_housing, to: input.value }, receipts, mandatorNotified: emails.length > 0, conflicts };
-}
-
-async function currentOrgId(tx: OrgTx): Promise<string> {
-  const { rows } = await tx.query<{ org_id: string }>(`SELECT current_setting('app.org_id', true) AS org_id`);
-  return rows[0].org_id;
+  return { ok: true, changed: { from: row.social_housing, to: input.value }, receipts, mandatorNotified, conflicts };
 }
 
 interface ChangeRow {
