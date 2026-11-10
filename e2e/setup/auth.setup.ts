@@ -10,6 +10,10 @@ const BEFORE_LOGIN_PATHS = ['/demo/otp', '/login'];
 const AFTER_LOGIN_PATHS = ['/', '/properties', '/contracts', '/contracts/new'];
 const WARMUP_ONLY_PATHS = ['/desk', '/desk/ownership/warmup', '/desk/items/warmup', '/properties/warmup'];
 
+// 流程中第一次打到才編譯的 API 路由。dev server 編譯新路由時，已開著的頁面可能整頁重載，
+// 例如物件頁開「新增物件」時打 /api/registry/areas，會洗掉選到一半的下拉選單。
+const WARMUP_API_PATHS = ['/api/registry/areas', '/api/properties', '/api/desk/queue?status=open'];
+
 setup('登入並預熱頁面', async ({ page }) => {
   setup.setTimeout(300_000);
   for (const path of BEFORE_LOGIN_PATHS) await page.goto(path);
@@ -22,5 +26,6 @@ setup('登入並預熱頁面', async ({ page }) => {
   // 審核台與物件頁的新路由也要先編譯。預熱帳號不是營運者，頁面可能導走或顯示找不到，所以只 goto 等 load，不斷言網址。
   // 不預熱的話，流程測試中途第一次編譯會讓 dev server 整頁重載 /desk，打斷營運者的導覽（MIL-201）。
   for (const path of WARMUP_ONLY_PATHS) await page.goto(path).catch(() => undefined);
+  for (const path of WARMUP_API_PATHS) await page.request.get(path).catch(() => undefined);
   await page.context().storageState({ path: 'e2e-results/.auth/state.json' });
 });
