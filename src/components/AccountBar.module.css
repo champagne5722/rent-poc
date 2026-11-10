@@ -1,0 +1,4 @@
+/* 帳號名稱過長時讓 Typography 的 ellipsis 生效：flex 子元素預設不會縮到內容以下，要放開 min-width。 */
+.name {
+  min-width: 0;
+}

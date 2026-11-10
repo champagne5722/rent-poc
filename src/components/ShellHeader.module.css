@@ -1,0 +1,49 @@
+/* 共用頂部列的版面（MIL-173）。只放結構與間距，數值引用 DESIGN.md 的 CSS 變數，顏色與高度由 antd 的 Layout、Menu token 帶入。
+   選擇器帶 header 是為了壓過 antd 的元件樣式（它的特異性是 0,1,0），不選取 antd 的內部 class。 */
+
+header.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-lg);
+  border-bottom: 1px solid var(--color-hairline);
+}
+
+.start {
+  order: 1;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.nav {
+  order: 2;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.account {
+  order: 3;
+  margin-inline-start: auto;
+  min-width: 0;
+  max-width: 40%;
+}
+
+/* antd md 斷點以下：品牌與帳號一列，選單換到第二列。手機版不在 ADR-0090 的範圍，這裡只保證不水平捲動（MIL-94）。 */
+@media (max-width: 767.98px) {
+  header.bar {
+    height: auto;
+    column-gap: var(--space-sm);
+    padding-inline: var(--space-md);
+  }
+
+  .account {
+    order: 2;
+    max-width: 100%;
+  }
+
+  .nav {
+    order: 3;
+    flex-basis: 100%;
+  }
+}

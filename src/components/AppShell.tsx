@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Badge, Button, Flex, Layout, Menu, Tooltip, Typography, theme } from 'antd';
+import { Badge, Button, Flex, Layout, Menu, Tooltip, Typography } from 'antd';
 import {
   DashboardOutlined,
   HomeOutlined,
@@ -18,7 +18,7 @@ import {
 } from '@ant-design/icons';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import AccountBar from './AccountBar';
+import ShellHeader from './ShellHeader';
 import { isAuthScreen } from '@/lib/auth/auth-screens';
 import {
   NAV_ITEMS,
@@ -35,6 +35,7 @@ import {
   type PersonalNavKey,
 } from '@/lib/nav';
 import { NOTIFICATIONS_CHANGED_EVENT } from '@/lib/notifications/client-events';
+import styles from './AppShell.module.css';
 
 const NAV_ICONS: Record<NavKey, React.ReactNode> = {
   workbench: <DashboardOutlined />,
@@ -90,12 +91,15 @@ function useUnreadCount(pathname: string): number {
   return unread;
 }
 
+// Sider 的寬度是 antd 的屬性，沒有元件層 token，所以留在這裡當具名常數。
+const SIDER_WIDTH = 224;
+
 // 登入由 MIL-103 提供：未登入的請求在 proxy 與根 layout 就被導向 /login，到這裡的都有 session
-// 後台殼層＝深色 collapsible side menu（規格 §4）：antd Layout＋Sider＋Menu mode="inline"，不引入 ProLayout
+// 後台殼層＝亮色 collapsible side menu（規格 §4，MIL-173）：antd Layout＋Sider＋Menu mode="inline"，不引入 ProLayout。
+// 顏色、高度、選中態都來自 DESIGN.md 的 Layout 與 Menu token，這裡沒有色碼、px 與 inline style。
 function AdminShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
-  const { token } = theme.useToken();
 
   const unread = useUnreadCount(pathname);
   const selected = resolveNavKey(pathname) ?? resolveIdentityNavKey(pathname) ?? resolvePersonalNavKey(pathname);
@@ -121,25 +125,14 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
   }, []);
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Layout.Sider collapsible collapsed={collapsed} onCollapse={setCollapsed} width={220}>
-        <div
-          style={{
-            height: 56,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff',
-            fontWeight: 600,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-          }}
-        >
-          {collapsed ? '租' : '租房雲端管理平台'}
+    <Layout className={styles.root}>
+      <Layout.Sider theme="light" className={styles.sider} collapsible collapsed={collapsed} onCollapse={setCollapsed} width={SIDER_WIDTH}>
+        <div className={collapsed ? styles.brandCollapsed : styles.brand}>
+          <Typography.Text strong>{collapsed ? '租' : '租房雲端管理平台'}</Typography.Text>
         </div>
 
         {/* 常駐建約 CTA：任何頁面都看得到；收合時縮成 icon，靠 tooltip 說明 */}
-        <div style={{ padding: collapsed ? '0 8px 12px' : '0 16px 12px' }}>
+        <div className={collapsed ? styles.ctaCollapsed : styles.cta}>
           <Tooltip title={collapsed ? '建立合約' : undefined} placement="right">
             <Button
               type="primary"
@@ -154,7 +147,6 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
         </div>
 
         <Menu
-          theme="dark"
           mode="inline"
           selectedKeys={selected ? [selected] : []}
           items={[
@@ -163,10 +155,10 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
               return {
                 key: item.key,
                 // 收合時只剩 icon，用小圓點提示有未讀
-                icon: badge > 0 && collapsed ? <Badge dot offset={[2, -2]}>{NAV_ICONS[item.key]}</Badge> : NAV_ICONS[item.key],
+                icon: badge > 0 && collapsed ? <Badge dot>{NAV_ICONS[item.key]}</Badge> : NAV_ICONS[item.key],
                 label: (
                   <Link href={item.href}>
-                    <Flex gap={8 /* xs */} align="center" component="span">
+                    <Flex gap="small" align="center" component="span">
                       {item.label}
                       {badge > 0 && !collapsed && <Badge count={badge} overflowCount={99} size="small" aria-label={`${badge} 則未讀`} />}
                     </Flex>
@@ -189,21 +181,8 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
       </Layout.Sider>
 
       <Layout>
-        <Layout.Header
-          style={{
-            background: token.colorBgContainer,
-            borderBottom: `1px solid ${token.colorSplit}`,
-            padding: '0 24px',
-            display: 'flex',
-            alignItems: 'center',
-          }}
-        >
-          <Typography.Title level={5} style={{ margin: 0 }}>
-            {currentLabel}
-          </Typography.Title>
-          <AccountBar />
-        </Layout.Header>
-        <Layout.Content style={{ padding: 24 }}>{children}</Layout.Content>
+        <ShellHeader start={<Typography.Text strong>{currentLabel}</Typography.Text>} />
+        <Layout.Content className={styles.content}>{children}</Layout.Content>
       </Layout>
     </Layout>
   );

@@ -60,7 +60,7 @@ components:
     headerBg: "{colors.surface-1}"
     headerColor: "{colors.ink}"
     headerHeight: 48px
-    headerPadding: 0 24px
+    headerPadding: 0 32px
     lightSiderBg: "{colors.surface-1}"
     lightTriggerBg: "{colors.surface-1}"
     lightTriggerColor: "{colors.ink-muted}"
@@ -79,6 +79,12 @@ components:
     itemSelectedColor: "{colors.ink}"
     itemSelectedBg: "{colors.hairline}"
     activeBarBorderWidth: 0
+    activeBarHeight: 0
+    horizontalItemBorderRadius: "{rounded.md}"
+    horizontalItemHoverColor: "{colors.ink}"
+    horizontalItemHoverBg: "{colors.canvas}"
+    horizontalItemSelectedColor: "{colors.ink}"
+    horizontalItemSelectedBg: "{colors.hairline}"
   Table:
     headerBg: "{colors.canvas}"
     headerColor: "{colors.ink-muted}"
@@ -223,8 +229,8 @@ components:
 | Card | 白底、`hairline` 邊線、無陰影。標題列 48px，內距 16px。`size="small"` 用於側欄屬性與摘要。 |
 | Button | 無陰影，字重 500，左右內距 12px。default 按鈕的邊線是 `hairline-strong`，hover 只換底色。 |
 | Tag | 預設底是畫布色，文字 `ink-muted`。狀態色用 antd 的 `color` 屬性。 |
-| Menu | 亮色側欄。項目高 32px，圓角 6px，左右留 8px。選中態是灰階。 |
-| Layout | 頂部列高 48px，白底。亮色側欄（`Sider theme="light"`）白底，內容區是畫布色。現有的深色殼層側欄不受影響，由殼層票改為亮色。 |
+| Menu | 亮色側欄與屋主端頂部選單。側欄項目高 32px，圓角 6px，左右留 8px。選中態是灰階，頂部選單沒有底線與強調色。 |
+| Layout | 頂部列高 48px，白底，左右內距 32px，與頁面外框 `xl` 對齊。亮色側欄（`Sider theme="light"`）白底，內容區是畫布色。後台與屋主端共用 `ShellHeader`（`src/components/ShellHeader.tsx`）當頂部列。 |
 | Descriptions | 標籤 `ink-muted`、內容 `ink`。項目間距 8px。 |
 | Form | `layout="vertical"`。項目間距 20px，標籤與欄位間距 6px。 |
 | Alert | 緊湊內距。有 description 的 Alert 內距 12px 16px。 |
