@@ -30,7 +30,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 /**
- * 每次執行都不同的內容：合約 ID（末碼、標題裡的 #XXXXXX）與伺服器端的時間戳。
+ * 每次執行都不同的內容：合約 ID（末碼、標題裡的 #XXXXXX）、租賃單位的顯示編碼、物件的建號（seedProperty 隨機產生）與伺服器端的時間戳。
  * 不用遮罩：ID 的字寬不同，標題旁邊的標籤位置會跟著位移，遮住文字擋不住位移。
  * 改成截圖前把這些文字換成固定的樣本，版面就一致。只改畫面上的文字，不動應用程式碼。
  */
@@ -40,6 +40,8 @@ async function normalizeVolatileText(page: Page): Promise<void> {
       [/#[0-9A-Z]{6}/g, '#ABCDEF'],
       [/^[0-9A-Z]{6}$/, 'ABCDEF'],
       [/^\d{2}-\d{2} \d{2}:\d{2}$/, '01-01 00:00'],
+      [/A02-[0-9A-HJKMNP-TV-Z]{6}/g, 'A02-ABCDEF'],
+      [/建號 \d{5}-000/g, '建號 01234-000'],
     ];
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {

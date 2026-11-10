@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { actAs, actAsError, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
+import { actAs, actAsError, nextAnchorKey, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { isUlid } from '@/lib/pg/ulid';
 import { Unauthenticated } from '@/lib/request-context';
 import { EQUIPMENT_OPTIONS } from '@/lib/types';
@@ -100,7 +100,7 @@ describe('POST /api/equipment-vocabulary', () => {
     await createProperty(
       new NextRequest('http://localhost/api/properties', {
         method: 'POST',
-        body: JSON.stringify({ name: 'n', address: 'a', equipment: [{ name: '按摩浴缸', quantity: 1 }, { name: '冷氣', quantity: 1 }] }),
+        body: JSON.stringify({ name: 'n', address: 'a', equipment: [{ name: '按摩浴缸', quantity: 1 }, { name: '冷氣', quantity: 1 }], anchor: { key: nextAnchorKey() } }),
       }),
     );
     const items = await list();

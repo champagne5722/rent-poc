@@ -1,11 +1,11 @@
 'use client';
 
-// 產權欄位（MIL-143）：依序選縣市、鄉鎮市區、段小段，再填建號與分號。
-// 物件建立（列表頁的 Modal）與補建號（物件詳情頁）共用。元件一律用 antd，間距走 Row 的 gutter。
+// 建號欄位（MIL-143）：依序選縣市、鄉鎮市區、段小段，再填建號與分號。
+// 物件建立（列表頁的 Modal）與補建號、修正建號（物件詳情頁）共用。元件一律用 antd，間距走 Row 的 gutter。
 // 選單資料來自 /api/registry/*（伺服器端的 seed 檔），不呼叫外部服務。
 
 import { useEffect, useState } from 'react';
-import { Alert, Checkbox, Col, Form, Input, InputNumber, Row, Select, Typography } from 'antd';
+import { Col, Form, Input, InputNumber, Row, Select, Typography } from 'antd';
 import type { FormInstance } from 'antd';
 
 interface AreaData {
@@ -164,22 +164,12 @@ const pairedWith =
     },
   });
 
-/** 建立物件時的「產權」區塊：鍵（或勾暫無建號）加選填的座標。欄位路徑是 ['anchor', ...]。 */
+/** 建立物件時的「建號」區塊：鍵（必填）加選填的座標。欄位路徑是 ['anchor', ...]。 */
 export function AnchorSection({ form }: { form: FormInstance }) {
-  const noKey: boolean | undefined = Form.useWatch(['anchor', 'noKey'], form);
   return (
     <>
-      <Typography.Title level={5}>產權</Typography.Title>
-      <Form.Item name={['anchor', 'noKey']} valuePropName="checked">
-        <Checkbox>暫無建號，先用上面的門牌登錄</Checkbox>
-      </Form.Item>
-      {noKey ? (
-        <Form.Item>
-          <Alert type="info" showIcon title="之後可以在物件詳情頁補建號。補上之前，這個物件的產權狀態是「待驗證」。" />
-        </Form.Item>
-      ) : (
-        <AnchorKeyFields form={form} prefix={['anchor', 'key']} />
-      )}
+      <Typography.Title level={5}>建號</Typography.Title>
+      <AnchorKeyFields form={form} prefix={['anchor', 'key']} />
       <Row gutter={16}>
         <Col xs={24} sm={8}>
           <Form.Item

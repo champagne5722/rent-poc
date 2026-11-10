@@ -80,7 +80,7 @@ describe('建立草稿', () => {
   it('不預先帶附件內容，沒有填過的包租合約讀入不報錯', () => {
     const fields = initialFieldsFor('lease', {
       property: {
-        id: ulidOf(1), name: 'x', address: 'y', type: '套房', size: null, default_rent: 1000, note: '', equipment: [], rental_unit_id: ulidOf(2), unit: null, archived_at: null, anchor: null, created_at: '', updated_at: null,
+        id: ulidOf(1), name: 'x', address: 'y', type: '套房', size: null, default_rent: 1000, note: '', equipment: [], rental_unit_id: ulidOf(2), unit: null, archived_at: null, anchor: null, verification_status: 'pending_verification', created_at: '', updated_at: null,
       },
       routing: MASTER_LEASE,
     });

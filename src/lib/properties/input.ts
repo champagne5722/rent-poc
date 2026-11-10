@@ -15,8 +15,9 @@ export interface PropertyInput {
   note: string;
   equipment: EquipmentItem[];
   /**
-   * 建立時的產權輸入（MIL-143）：鍵（已正規化）與座標。沒給等於暫無建號、沒有座標。
-   * 只有建立用得到。修改物件不改產權：補建號走自己的 route，已建號的鍵由平台營運者更正。
+   * 建立時的建號輸入（MIL-143）：鍵（已正規化）與座標。
+   * 只有建立用得到。修改物件不改建號：補建號與修正建號走自己的 route。
+   * 使用者登錄物件時建號必填（ADR-0028 決議 9），由 parsePropertyCreateInput 檢查。這個型別仍允許沒有鍵，給既有的沒有建號的資料與內部呼叫端用。
    */
   anchor?: AnchorInput;
 }
@@ -67,4 +68,15 @@ export function parsePropertyInput(body: unknown): PropertyInputResult {
       anchor: parsedAnchor.value,
     },
   };
+}
+
+/**
+ * 登錄新物件的請求本文（ADR-0028 決議 9）：與 parsePropertyInput 相同，另外建號必填。
+ * 第一階段不收沒有建號的物件，因為沒有建號就沒有謄本，平台沒有文件能核對。
+ */
+export function parsePropertyCreateInput(body: unknown): PropertyInputResult {
+  const parsed = parsePropertyInput(body);
+  if (!parsed.ok) return parsed;
+  if (!parsed.value.anchor?.key) return fail('建號必填：請選縣市、鄉鎮市區、段小段，並填建號');
+  return parsed;
 }
