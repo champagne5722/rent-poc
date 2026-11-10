@@ -13,6 +13,8 @@ export interface SeededProperty {
   id: string;
   name: string;
   address: string;
+  /** 登錄時用的建號（不含分號）。審核台的列用「建號 N-000」找這個物件的項目。 */
+  buildingNo: string;
 }
 
 /** 登錄物件時建號必填（ADR-0028 決議 9）。隨機建號，同一個組織重複用同一個鍵會得到既有的那一筆。 */
@@ -21,18 +23,19 @@ export function uniqueBuildingNo(): string {
 }
 
 export async function seedProperty(page: Page, name: string, address = '台北市大安區和平東路二段 100 號 3 樓'): Promise<SeededProperty> {
+  const buildingNo = uniqueBuildingNo();
   const response = await page.request.post('/api/properties', {
     data: {
       name,
       address,
       default_rent: 20000,
       equipment: [],
-      anchor: { key: { city: 'A', town: '02', section: '0021', buildingNo: uniqueBuildingNo(), subNo: '' } },
+      anchor: { key: { city: 'A', town: '02', section: '0021', buildingNo, subNo: '' } },
     },
   });
   if (!response.ok()) throw new Error(`建立物件失敗：${response.status()} ${await response.text()}`);
   const body = (await response.json()) as { data: { id: string } };
-  return { id: body.data.id, name, address };
+  return { id: body.data.id, name, address, buildingNo };
 }
 
 export const READY_FIELDS = {

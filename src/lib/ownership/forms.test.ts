@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { TRUST_FIELDS, parseAcquiredAt, validateCheckForm, validateTranscriptForm } from './forms';
+import { EVIDENCE_MAX_BYTES } from '../practice-entities/rules';
+import {
+  TRANSCRIPT_FILE_RULE_TEXT,
+  TRANSCRIPT_MAX_BYTES,
+  TRANSCRIPT_MAX_MB,
+  TRUST_FIELDS,
+  parseAcquiredAt,
+  validateCheckForm,
+  validateTranscriptForm,
+} from './forms';
 
 const NOW = new Date('2026-11-10T02:00:00Z');
 const base = { claimedOwner: '王大明', acquiredAt: '2026-11-09', hasTrust: false };
@@ -88,5 +97,14 @@ describe('審核台判定表單', () => {
   it('長度上限', () => {
     expect(validateCheckForm({ ...ok, reason: 'a'.repeat(501) })).toMatchObject({ ok: false, field: 'reason' });
     expect(validateCheckForm({ ...ok, holderMasked: '字'.repeat(41) })).toMatchObject({ ok: false, field: 'holderMasked' });
+  });
+});
+
+describe('謄本檔案的限制（畫面顯示用）', () => {
+  it('上限與 route 檢查用的證據檔上限相同，說明文字帶出數字', () => {
+    expect(TRANSCRIPT_MAX_BYTES).toBe(EVIDENCE_MAX_BYTES);
+    expect(TRANSCRIPT_MAX_MB).toBe(10);
+    expect(TRANSCRIPT_FILE_RULE_TEXT).toContain('10 MB');
+    expect(TRANSCRIPT_FILE_RULE_TEXT).toContain('PDF');
   });
 });
