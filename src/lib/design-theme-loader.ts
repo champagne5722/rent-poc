@@ -18,6 +18,7 @@ export function loadDesignTheme(filePath: string = DEFAULT_PATH()): DesignTheme 
       console.error(`DESIGN.md 缺少 front matter，改用 antd 預設 theme：${filePath}`);
       return undefined;
     }
+    for (const warning of design.warnings) console.error(`DESIGN.md：${warning}`);
     return design;
   } catch (error) {
     console.error(`DESIGN.md 解析失敗，改用 antd 預設 theme：${filePath}`, error);

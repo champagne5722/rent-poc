@@ -4,7 +4,8 @@
   margin: 0;
 }
 
+/* 背景色取 DESIGN.md 的畫布色。變數由 layout.tsx 注入，其餘外觀在 design-system.css。 */
 html,
 body {
-  background: #f5f5f5;
+  background: var(--color-canvas);
 }

@@ -1,0 +1,60 @@
+/* 設計展示頁自己的版面尺寸。展示用的固定尺寸，不屬於 DESIGN.md 的設計 token。 */
+.showcase {
+  max-width: 1040px;
+}
+
+.swatchRow {
+  width: 240px;
+}
+
+.swatch {
+  width: 28px;
+  height: 28px;
+  flex: none;
+}
+
+.typeLabel {
+  width: 160px;
+  flex: none;
+}
+
+.scaleName {
+  width: 48px;
+}
+
+.spacingBar {
+  height: 12px;
+}
+
+.radiusRow {
+  margin-top: 16px;
+}
+
+.radiusBox {
+  width: 56px;
+  height: 40px;
+  display: block;
+}
+
+.sampleGap {
+  margin-top: 16px;
+}
+
+.cardFlex {
+  flex: 1;
+}
+
+.layoutSample {
+  height: 220px;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.layoutContent {
+  padding: var(--space-md);
+}
+
+.formField {
+  flex: 1;
+}

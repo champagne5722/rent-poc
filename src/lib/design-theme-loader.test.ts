@@ -46,4 +46,18 @@ describe('loadDesignTheme（讀檔與 fallback）', () => {
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  it('元件層 token 的參照解析失敗時，略過該欄位並記 error，其他設定照常載入', () => {
+    const file = join(dir, 'bad-ref.md');
+    writeFileSync(
+      file,
+      '---\ncolors:\n  primary: "#5e6ad2"\ncomponents:\n  Table:\n    headerBg: "{colors.nope}"\n    cellFontSize: 14\n---\n',
+    );
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const design = loadDesignTheme(file);
+    expect(design?.token.colorPrimary).toBe('#5e6ad2');
+    expect(design?.components).toEqual({ Table: { cellFontSize: 14 } });
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('Table.headerBg'));
+    spy.mockRestore();
+  });
 });
