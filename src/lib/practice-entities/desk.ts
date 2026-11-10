@@ -13,12 +13,13 @@ import {
   type LicenseShortfall,
 } from '../registry-rules';
 import { deleteEvidence, listEvidence, transferClaimEvidence, type DeletedEvidence, type EvidenceMeta } from './evidence';
+import type { QueueStatus } from './queue-status';
 import type { CheckForm } from './rules';
 
 // 審核台（MIL-109）：佇列、項目詳情、業別核對、認領歸屬判定。都在平台營運者脈絡內呼叫（withTx 的 operator 脈絡），
 // 稽核事件因此寫在平台組織的鏈，行為者是營運者。權限由資料庫函式的 assert_operator() 把關。
 
-export type QueueStatus = 'open' | 'resolved';
+export type { QueueStatus } from './queue-status';
 
 export interface QueueItem {
   id: string;

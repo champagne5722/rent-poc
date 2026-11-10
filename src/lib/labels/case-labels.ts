@@ -1,34 +1,16 @@
 import type { CaseEventType, CaseInputType, CaseMemberRelation, CaseState } from '../cases';
+import { statusLabelMap, statusTagColorMap, type TagColor } from '../status-presentation';
 import { TERMS } from './index';
 
 // 案件的畫面標籤（MIL-115）。直接從這個檔案 import，不經 index.ts：index 不 re-export 它，避免循環載入。
 // 用詞來源：GLOSSARY「案件與紀錄」「角色與合約地位」，稱謂取自 TERMS。
 // 案件狀態與事件的識別字是程式內部的名稱，畫面一律從這裡取字，不直接顯示。
 
-export const CASE_STATE_LABELS: Record<CaseState, string> = {
-  draft: '草稿',
-  signing: '簽署中',
-  active: '生效中',
-  move_out: '退租中',
-  settling: '結算中',
-  closed: '已結案',
-  aborted: '已放棄',
-  terminated: '已終止',
-  expired: '已到期',
-};
+// 案件狀態的名稱與色調只有一份定義，在 src/lib/status-presentation.ts（MIL-172）。這裡是舊呼叫端用的衍生對照。
+export const CASE_STATE_LABELS: Record<CaseState, string> = statusLabelMap('case');
 
-/** antd Tag 的顏色。只用語意色：進行中、成功、警告、預設（DESIGN.md「Colors」）。 */
-export const CASE_STATE_COLORS: Record<CaseState, 'default' | 'processing' | 'success' | 'warning' | 'error'> = {
-  draft: 'default',
-  signing: 'processing',
-  active: 'success',
-  move_out: 'warning',
-  settling: 'warning',
-  closed: 'default',
-  aborted: 'default',
-  terminated: 'warning',
-  expired: 'warning',
-};
+/** antd Tag 的顏色，由狀態呈現表的色調衍生。 */
+export const CASE_STATE_COLORS: Record<CaseState, TagColor> = statusTagColorMap('case');
 
 export const CASE_MEMBER_RELATION_LABELS: Record<CaseMemberRelation, string> = {
   lessor: TERMS.lessor,

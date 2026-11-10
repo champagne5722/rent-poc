@@ -43,7 +43,8 @@ import type {
   ContractRelations,
   ContractStatus,
 } from '@/lib/types';
-import { CONTRACT_STATUS_LABELS, isSigningStatus, SIGNER_ROLE_LABELS } from '@/lib/types';
+import StatusTag from '@/components/StatusTag';
+import { isSigningStatus, SIGNER_ROLE_LABELS } from '@/lib/types';
 import type { SigningProgress } from '@/lib/signing-module/sign-task-store';
 import { contractSigningSteps } from '@/lib/contract-list';
 import {
@@ -71,16 +72,6 @@ import type { SignatureRecordDetail } from '@/lib/signature-records/types';
 import { signatureRecordCards } from '@/lib/signature-records/view';
 import type { SigningLapseDetail } from '@/lib/signing-lapse/types';
 import { lapseAlerts } from '@/lib/signing-lapse/view';
-
-const STATUS_COLORS: Record<ContractStatus, string> = {
-  draft: 'default',
-  awaiting_tenant: 'processing',
-  awaiting_landlord: 'processing',
-  awaiting_practitioner: 'processing',
-  completed: 'success',
-  declined: 'error',
-  voided: 'warning',
-};
 
 const FILE_ICONS = {
   signed_pdf: <FileDoneOutlined />,
@@ -448,7 +439,7 @@ function ContractDetail({ id }: { id: string }) {
           <Typography.Title level={4} style={{ margin: 0 }}>
             <span title={contract.id}>合約 #{shortUlid(contract.id)}</span>
           </Typography.Title>
-          <Tag color={STATUS_COLORS[contract.status]}>{CONTRACT_STATUS_LABELS[contract.status]}</Tag>
+          <StatusTag kind="contract" value={contract.status} />
           {mockMode && <Tag color="purple">mock 模式</Tag>}
           <Typography.Text type="secondary">
             {contract.fields.propertyName}・{contract.fields.tenantName}
@@ -710,7 +701,7 @@ function ContractDetail({ id }: { id: string }) {
                             合約 #{shortUlid(node.id)}
                           </Typography.Text>
                         )}{' '}
-                        <Tag color={STATUS_COLORS[node.status]}>{CONTRACT_STATUS_LABELS[node.status]}</Tag>
+                        <StatusTag kind="contract" value={node.status} />
                         <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12 }}>
                           {node.note}
                         </Typography.Text>

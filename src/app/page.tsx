@@ -4,7 +4,7 @@
 // 不加第 4 個模組；挑選、排序與計數的判斷都在 @/lib/workbench，這裡只負責取資料與畫畫面。
 
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Card, Col, Empty, Row, Space, Statistic, Tag, Typography } from 'antd';
+import { Button, Card, Col, Empty, Row, Space, Statistic, Typography } from 'antd';
 import {
   EditOutlined,
   FileTextOutlined,
@@ -14,8 +14,8 @@ import {
 } from '@ant-design/icons';
 import Link from 'next/link';
 import dayjs from 'dayjs';
-import type { Contract, ContractStatus, Property } from '@/lib/types';
-import { CONTRACT_STATUS_LABELS } from '@/lib/types';
+import type { Contract, Property } from '@/lib/types';
+import StatusTag from '@/components/StatusTag';
 import { lastActionAt } from '@/lib/contract-list';
 import { shortUlid } from '@/lib/pg/ulid';
 import { contractTypeDefinition, listSummaryOf } from '@/lib/contract-types';
@@ -27,13 +27,6 @@ import {
   WORKBENCH_QUICK_LINKS,
   type WorkbenchQuickLink,
 } from '@/lib/workbench';
-
-// 待辦只有草稿與輪到甲方簽的合約。輪到甲方簽的合約，狀態可能是待甲方簽，或兼任甲方的簽署人輪到時的待執業人員簽
-const STATUS_COLORS: Partial<Record<ContractStatus, string>> = {
-  draft: 'default',
-  awaiting_landlord: 'processing',
-  awaiting_practitioner: 'processing',
-};
 
 const QUICK_LINK_ICONS: Record<WorkbenchQuickLink['key'], React.ReactNode> = {
   create: <PlusOutlined />,
@@ -56,7 +49,7 @@ function TodoRow({ contract, progress }: { contract: Contract; progress: Signing
           合約 #{shortUlid(contract.id)}・{dayjs(lastActionAt(contract)).format('MM-DD HH:mm')}
         </Typography.Text>
       </div>
-      <Tag color={STATUS_COLORS[contract.status]}>{CONTRACT_STATUS_LABELS[contract.status]}</Tag>
+      <StatusTag kind="contract" value={contract.status} />
       {action && (
         <Link href={action.href}>
           <Button

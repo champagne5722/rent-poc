@@ -1,27 +1,15 @@
 // 移交畫面的屋主用語。只放純資料與格式化，client 與 server 都能用。
 import type { PracticeEntityStatus, ReceiverMandate } from './preconditions';
+import { statusLabelMap, statusTagColorMap, type TagColor } from '../status-presentation';
 import type { SnapshotItem } from './snapshot';
 import type { HandoverTarget } from './store';
 import type { HandoverState } from './transitions';
 
-export const HANDOVER_STATE_LABELS: Record<HandoverState, string> = {
-  draft: '草稿',
-  owner_confirmed: '等待接收方接手',
-  accepted: '等待生效',
-  released: '交出側已生效',
-  completed: '已完成',
-  cancelled: '已取消',
-};
+// 移交狀態的名稱與色調只有一份定義，在 src/lib/status-presentation.ts（MIL-172）。這裡是舊呼叫端用的衍生對照。
+export const HANDOVER_STATE_LABELS: Record<HandoverState, string> = statusLabelMap('handover');
 
-/** antd Tag 的 color。只用 DESIGN.md 的狀態色與 primary 派生的 processing。 */
-export const HANDOVER_STATE_COLORS: Record<HandoverState, string> = {
-  draft: 'default',
-  owner_confirmed: 'processing',
-  accepted: 'processing',
-  released: 'warning',
-  completed: 'success',
-  cancelled: 'default',
-};
+/** antd Tag 的 color，由狀態呈現表的色調衍生。 */
+export const HANDOVER_STATE_COLORS: Record<HandoverState, TagColor> = statusTagColorMap('handover');
 
 export const PRACTICE_ENTITY_STATUS_LABELS: Record<PracticeEntityStatus, string> = {
   pending: '待驗證',
