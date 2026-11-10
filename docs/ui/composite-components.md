@@ -1,6 +1,6 @@
 # 組合元件用法
 
-本文說明後台列表頁的組合元件（MIL-174，ADR-0090）。新的列表頁必須用這些元件，不另寫頁首、篩選列、空狀態與骨架畫面。
+本文說明後台列表頁與詳情頁的組合元件（MIL-174、MIL-175，ADR-0090）。新的列表頁與詳情頁必須用這些元件，不另寫頁首、篩選列、空狀態、骨架畫面與「下一步」區塊。
 
 組合元件只組合 antd 元件，不覆寫外觀。顏色、字級、列高來自 `DESIGN.md`。元件放在 `src/components/page/`。
 
@@ -134,7 +134,7 @@ export default function Loading() {
 - 載入中必須顯示骨架畫面，不整頁轉圈。
 - 骨架的版面與 `ListPage` 對齊：頁首、篩選列、八列表格。
 
-何時不用：詳情頁。詳情頁的版型與骨架在階段 2 另建。
+何時不用：詳情頁。詳情頁用 `DetailPageSkeleton`。
 
 ## ListPage
 
@@ -167,6 +167,101 @@ export default function Loading() {
 
 - 詳情頁或表單頁。
 - 資料不是「一列一筆」的畫面，例如工作台的摘要卡。
+
+## 詳情頁
+
+詳情頁分成四個檔案，結構與列表頁相同。合約詳情是第一個範例。
+
+| 檔案 | 類型 | 負責 |
+|---|---|---|
+| `(detail)/page.tsx` | server component | 載入資料，處理未登入、找不到與沒有權限 |
+| `(detail)/loading.tsx` | server component | 載入中顯示 `DetailPageSkeleton` |
+| `(detail)/not-found.tsx` | server component | 找不到時的畫面，含返回列表的連結 |
+| 詳情元件，例如 `src/components/ContractDetail.tsx` | client component | 版面、操作、optimistic update |
+
+- `src/app/contracts/[id]/(detail)/`
+- 資料載入函式在 `src/lib/contract-detail-load.ts`
+- 「下一步」的文字在 `src/lib/contract-next-step.ts`
+
+路由群組 `(detail)` 的用意與列表相同：骨架只套用在詳情，不套用到 `/contracts/[id]/edit` 的建約精靈。
+
+### 資料載入與操作
+
+- 載入函式回傳 `{ kind: 'not_found' }` 與 `{ kind: 'forbidden' }`。格式錯誤的 ID、別的組織的 ID、不存在的 ID 與沒有查看權限，必須是同一個畫面（P0-02 AC1）。
+- 時間與金額在 server component 先渲染一次，必須與瀏覽器一致。時間固定換成台灣時間，金額固定用 `en-US` 分組。不用本機時區與語系。
+- 狀態變更用 optimistic update：按下就先顯示新狀態，失敗時還原，並顯示原因與下一步。送出期間，會改變狀態的按鈕必須停用。
+- 狀態變更成功後呼叫 `router.refresh()`。資料會變動的頁面，例如簽署中，用計時器定期呼叫 `router.refresh()`，不在 client component 重打 API。
+
+## DetailPage
+
+詳情頁版型。檔案：`src/components/page/DetailPage.tsx`。標記為 client component，server component 仍然能渲染它。
+
+版面由上而下：返回連結與頁首、提醒、「下一步」區塊。其下左側是主要內容，右側是屬性側欄。窄於 xl 時側欄排到主要內容下方。
+
+| prop | 型別 | 說明 |
+|---|---|---|
+| `header` | `PageHeaderProps` | 傳給 `PageHeader`。必須給 `back` |
+| `nextStep` | `ReactNode` | 「下一步」區塊，用 `NextStep` |
+| `notices` | `ReactNode` | 「下一步」上方的提醒，例如失敗說明或警示 |
+| `children` | `ReactNode` | 主要內容，由上而下依重要性排列的區段 |
+| `aside` | `ReactNode` | 屬性側欄，例如屬性與歷程 |
+
+```tsx
+<DetailPage
+  header={{ title: '合約 #A1B2C3', tag: <StatusTag kind="contract" value="draft" />, back: { href: '/contracts', label: '返回合約列表' } }}
+  nextStep={<NextStep headline="等待乙方簽署" owner="乙方 王租客" tone="progress" />}
+  aside={<Card size="small" title="合約屬性">…</Card>}
+>
+  <Card size="small" title="簽署進度">…</Card>
+</DetailPage>
+```
+
+規則：
+
+- 區段用 `Card size="small"` 加標題。卡片裡不再放卡片。
+- 主要內容放這份資料自己的內容，屬性側欄放識別、對象與歷程。
+- 頁首的動作放進入編輯與下載。處理異常的動作放在「下一步」區塊。每個畫面至多一顆 primary Button。
+- 沒有內容的區段不顯示，不放空狀態。
+
+何時不用：列表頁、表單頁、建約精靈。
+
+## NextStep
+
+「下一步」區塊。檔案：`src/components/page/NextStep.tsx`。標記為 client component。
+
+| prop | 型別 | 說明 |
+|---|---|---|
+| `headline` | `string` | 下一步要做的事，一句話 |
+| `owner` | `string` | 負責人。簽署中寫角色加姓名 |
+| `detail` | `string \| null` | 補充說明，例如拒簽原因 |
+| `tone` | `StatusTone` | 狀態呈現表的 5 種色調，顯示成狀態點 |
+| `actions` | `ReactNode` | 處理動作，例如撤回、複製為新草稿 |
+| `children` | `ReactNode` | 動作下方的補充內容，例如簽署連結 |
+
+規則：
+
+- 每個狀態都必須有 `headline` 與 `owner`。合約的對照在 `contractNextStep()`，`contract-next-step.test.ts` 會檢查每個合約狀態。
+- 文案不得暗示平台歷程具法律效力（ADR-0007）。
+- 稱謂來自標籤對照表與 `SIGNER_ROLE_LABELS`，不另寫字串。
+
+## DetailPageSkeleton
+
+詳情頁的骨架畫面。檔案：`src/components/page/DetailPageSkeleton.tsx`。標記為 client component，server component 與 `loading.tsx` 仍然能渲染它。
+
+```tsx
+// src/app/<區域>/[id]/(detail)/loading.tsx
+import DetailPageSkeleton from '@/components/page/DetailPageSkeleton';
+
+export default function Loading() {
+  return <DetailPageSkeleton />;
+}
+```
+
+| prop | 型別 | 說明 |
+|---|---|---|
+| `withAction` | `boolean` | 頁首右側有沒有動作。預設 `true` |
+
+骨架的版面與 `DetailPage` 對齊：返回連結與頁首、「下一步」區塊、主要內容、屬性側欄。
 
 ## 不寫 inline style
 

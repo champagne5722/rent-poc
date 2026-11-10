@@ -91,7 +91,8 @@ function Lines({ lines }: { lines: string[] }) {
 function ContractDetailInner(data: ContractDetailData) {
   const { message } = AntApp.useApp();
   const router = useRouter();
-  const [, startTransition] = useTransition();
+  // 狀態變更送出期間，所有會改變狀態的按鈕停用：畫面已先顯示新狀態，但伺服器還沒確認，這時再操作會對不上
+  const [changing, startTransition] = useTransition();
   const contract = data.contract as LeaseContract;
   const id = contract.id;
   const { relations, signingProgress, events, files, practitioners, signatureRecords, signingLapses, displayCode, mock } = data;
@@ -243,7 +244,7 @@ function ContractDetailInner(data: ContractDetailData) {
 
   const voidButton = (size?: 'small') => (
     <Popconfirm title={voidAction?.confirm} onConfirm={voidContract}>
-      <Button danger size={size} icon={<RollbackOutlined />}>
+      <Button danger size={size} icon={<RollbackOutlined />} disabled={changing}>
         撤回
       </Button>
     </Popconfirm>
@@ -278,7 +279,7 @@ function ContractDetailInner(data: ContractDetailData) {
     key === 'void' ? (
       <span key={key}>{voidButton()}</span>
     ) : (
-      <Button key={key} type="primary" icon={<CopyOutlined />} loading={copying} onClick={() => void copyAsDraft()}>
+      <Button key={key} type="primary" icon={<CopyOutlined />} loading={copying} disabled={changing} onClick={() => void copyAsDraft()}>
         {copyAction?.label ?? '複製為新草稿'}
       </Button>
     )
@@ -380,6 +381,7 @@ function ContractDetailInner(data: ContractDetailData) {
               key={`${action.event}-${action.label}`}
               size="small"
               danger={action.danger}
+              disabled={changing}
               onClick={() => mockAdvance(action.event, action.message)}
             >
               {action.label}
@@ -497,15 +499,6 @@ function ContractDetailInner(data: ContractDetailData) {
           <Steps orientation="vertical" size="small" items={progressItems.map(({ title, content, status: s }) => ({ title, content, status: s }))} />
         </Card>
       )}
-
-      <Card size="small" title={isDraft ? '合約預覽（唯讀）' : '合約內容與簽署區域'}>
-        <SignatureFieldEditor
-          pdfUrl={`/api/contracts/${id}/pdf`}
-          value={contract.signature_fields}
-          readOnly
-          seats={routing.ok ? routing.seats : undefined}
-        />
-      </Card>
 
       <Card size="small" title="租賃條件">
         <Descriptions
@@ -633,6 +626,14 @@ function ContractDetailInner(data: ContractDetailData) {
           </Flex>
         </Card>
       )}
+      <Card size="small" title={isDraft ? '合約預覽（唯讀）' : '合約內容與簽署區域'}>
+        <SignatureFieldEditor
+          pdfUrl={`/api/contracts/${id}/pdf`}
+          value={contract.signature_fields}
+          readOnly
+          seats={routing.ok ? routing.seats : undefined}
+        />
+      </Card>
     </DetailPage>
   );
 }
