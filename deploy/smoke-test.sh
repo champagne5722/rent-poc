@@ -38,6 +38,18 @@ fail() {
   exit 1
 }
 
+# 容器逾時時用：印出容器狀態與 log 最後 30 行，再結束。
+# PostgreSQL 與映像的啟動 log 不印出 POSTGRES_PASSWORD，這裡仍把管理者密碼遮掉
+fail_container() {
+  local container="$1" message="$2"
+  echo "::error::${message}"
+  echo "--- docker ps -a：${container}"
+  docker ps -a --filter "name=^${container}\$" || true
+  echo "--- ${container} 的 log 最後 30 行"
+  docker logs "$container" 2>&1 | tail -30 | sed "s/${ADMIN_PASSWORD}/***/g" || true
+  exit 1
+}
+
 expect_status() {
   local expected="$1" description="$2"
   shift 2
@@ -50,14 +62,23 @@ expect_status() {
 # --- PostgreSQL --------------------------------------------------------------
 
 docker network create "$NETWORK" >/dev/null
+# 先拉映像，下載時間不計入等待時間
+for attempt in 1 2 3; do
+  docker pull postgres:18 >/dev/null && break
+  [ "$attempt" != 3 ] || fail "docker pull postgres:18 連續失敗 3 次"
+  sleep 5
+done
 docker run -d --name "$PG_CONTAINER" --network "$NETWORK" -p 127.0.0.1::5432 \
   -e POSTGRES_PASSWORD="$ADMIN_PASSWORD" postgres:18 >/dev/null
-for _ in $(seq 1 60); do
-  docker exec "$PG_CONTAINER" pg_isready -U postgres >/dev/null 2>&1 && break
+# 官方映像先啟動只聽 unix socket 的暫時伺服器跑初始化，關閉後才啟動正式伺服器。
+# 暫時伺服器也會讓不帶 -h 的 pg_isready 回報就緒，之後的檢查會撞上兩者之間的空檔。
+# 所以這裡用 -h 127.0.0.1 檢查 TCP：只有正式伺服器聽 TCP
+PG_READY=0
+for _ in $(seq 1 120); do
+  if docker exec "$PG_CONTAINER" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then PG_READY=1; break; fi
   sleep 1
 done
-docker exec "$PG_CONTAINER" pg_isready -U postgres >/dev/null 2>&1 || fail "PostgreSQL 在 60 秒內沒有就緒"
-# 第一次就緒訊號之後，官方映像會重啟一次伺服器。再等一次穩定
+[ "$PG_READY" = 1 ] || fail_container "$PG_CONTAINER" "PostgreSQL 在 120 秒內沒有就緒"
 sleep 3
 for _ in $(seq 1 30); do
   docker exec "$PG_CONTAINER" psql -U postgres -c 'SELECT 1' >/dev/null 2>&1 && break
@@ -107,7 +128,7 @@ start_app() {
     if [ "$(curl -s -o /dev/null -w '%{http_code}' "${BASE}/api/health")" = "200" ]; then return 0; fi
     sleep 1
   done
-  fail "/api/health 在 60 秒內沒有回 200"
+  fail_container "$APP_CONTAINER" "/api/health 在 60 秒內沒有回 200"
 }
 
 run_flow() {
