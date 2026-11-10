@@ -38,7 +38,7 @@ async function seedWorld(state: CaseState = 'active'): Promise<World> {
     const make = async (caseId: string) => {
       await insertCase(
         tx,
-        { kind: 'lease', id: caseId, orgId: kit.orgA, state: 'draft', stateVersion: 0, currentContractId: null, businessType: 'self_managed', rentalUnitId: '', linkedMandateCaseId: null, predecessorCaseId: null, handoverId: null },
+        { kind: 'lease', id: caseId, orgId: kit.orgA, state: 'draft', stateVersion: 0, currentContractId: null, caseKind: 'lease', businessType: 'self_managed', rentalUnitId: '', linkedMandateCaseId: null, linkedMasterLeaseCaseId: null, predecessorCaseId: null, handoverId: null },
         { title: '案件', propertyId: null, rentalUnitId: null },
         NOW,
       );

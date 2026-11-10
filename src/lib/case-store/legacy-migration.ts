@@ -42,6 +42,12 @@ const STATE_BY_CONTRACT_STATUS: Record<string, LeaseCaseState> = {
   voided: 'draft',
 };
 
+/** 合約的分流條件是否說承租人是包租業者。沒有分流條件視為否。 */
+function lesseeIsMasterLessor(fields: Record<string, unknown>): boolean {
+  const routing = fields.routing;
+  return typeof routing === 'object' && routing !== null && (routing as { lesseeIsMasterLessor?: unknown }).lesseeIsMasterLessor === true;
+}
+
 /** 遷移前的案件狀態：由合約狀態對應，未知狀態當 draft 並在結果裡計數。 */
 export function caseStateForContract(status: string): LeaseCaseState {
   return STATE_BY_CONTRACT_STATUS[status] ?? 'draft';
@@ -160,9 +166,12 @@ export async function migrateOrgContractsToCases(tx: OrgTx, orgId: string, now: 
         state: 'draft',
         stateVersion: 0,
         currentContractId: null,
+        // 承租人是包租業者的自管案件歸為包租案件，與 migration 0077 的回填規則相同（ADR-0030 決議 2）
+        caseKind: lesseeIsMasterLessor(fields) ? 'master_lease' : 'lease',
         businessType: 'self_managed',
         rentalUnitId: latest.rental_unit_id ?? '',
         linkedMandateCaseId: null,
+        linkedMasterLeaseCaseId: null,
         predecessorCaseId: null,
         handoverId: null,
       },
