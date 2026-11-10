@@ -4,7 +4,7 @@
 /** 留言的識別標記。重跑時用它找到同一則留言並更新。 */
 export const MARKER = '<!-- pr-review-bot:mil-215 -->';
 export const SKIP_LABEL = 'skip-ai-review';
-export const ALLOWED_BASES = ['integration/line-c', 'dev'];
+export const ALLOWED_BASES = ['dev'];
 
 /** 每百萬 token 的美元價格。來源：platform.claude.com/docs/en/about-claude/pricing（2026-11-10）。 */
 export const PRICES = {

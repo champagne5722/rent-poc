@@ -36,7 +36,7 @@ function makePr(overrides = {}) {
     title: 'MIL-1 測試',
     body: '## 驗收條件對照\n\n1. 做到 A\n2. 做到 B\n',
     head: { sha: 'abcdef1234567890', repo: { full_name: REPO } },
-    base: { ref: 'integration/line-c' },
+    base: { ref: 'dev' },
     labels: [],
     ...overrides,
   };
@@ -131,7 +131,7 @@ function setup({ env = {}, github = fakeGithub(), client = fakeClient(), diff = 
 
 test('gate：同 repo、base 在範圍內、沒有標籤時審查', () => {
   assert.deepEqual(gate({ pr: makePr(), repo: REPO }), { run: true });
-  assert.equal(gate({ pr: makePr({ base: { ref: 'dev' } }), repo: REPO }).run, true);
+  assert.equal(gate({ pr: makePr({ base: { ref: 'integration/line-c' } }), repo: REPO }).run, false);
 });
 
 test('gate：fork、其他 base、skip-ai-review 標籤、已關閉都略過', () => {

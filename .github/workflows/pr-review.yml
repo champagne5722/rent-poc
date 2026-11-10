@@ -10,8 +10,8 @@ name: pr-review
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    # 只審 base 是主幹的 PR。含 draft PR。
-    branches: [integration/line-c, dev]
+    # 只審 base 是主幹 dev 的 PR。含 draft PR。
+    branches: [dev]
   # 手動重跑。這個事件只在工作流程檔位於預設分支時才會出現在 Actions 頁面。
   workflow_dispatch:
     inputs:

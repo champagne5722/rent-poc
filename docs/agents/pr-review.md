@@ -18,7 +18,7 @@
 ## 它做什麼
 
 1. PR 開啟、推送、重新開啟或標為 ready for review 時觸發。draft PR 也審查。
-2. 只審 base 是 `integration/line-c` 或 `dev` 的 PR。來自 fork 的 PR 不執行。
+2. 只審 base 是 `dev` 的 PR。來自 fork 的 PR 不執行。
 3. 工作取出兩份程式碼。base 分支放腳本、提示詞與依據文件，PR 的合併 commit 只用來取 diff。
 4. 腳本用 `git diff -U20` 取 PR 的變更，連同標題與本文送給模型。
 5. 腳本先用免費的 `count_tokens` 量輸入。超過上限時縮小 diff，最多量 3 次。
@@ -47,7 +47,7 @@ Max 方案附的 API 額度涵蓋 Claude API、Managed Agents 與 Claude Agent S
 | 沒有 `ANTHROPIC_API_KEY` | 印一行訊息，後面的步驟全部略過，工作是綠的。 |
 | PR 有標籤 `skip-ai-review` | 整個工作略過。 |
 | 來自 fork | 整個工作略過。 |
-| base 不是 `integration/line-c` 或 `dev` | 不觸發。 |
+| base 不是 `dev` | 不觸發。 |
 | base 分支還沒有審查腳本 | 印一行訊息後略過。引入這個工作的那張 PR 就是這種情況。 |
 | PR 沒有 diff | 略過。 |
 
