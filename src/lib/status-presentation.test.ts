@@ -23,6 +23,10 @@ const SOURCES: { [K in StatusKind]: readonly StatusValueOf<K>[] } = {
   reviewItem: QUEUE_STATUSES,
   receivablePeriod: ['unpaid', 'partial', 'paid', 'overdue', 'cancelled'],
   propertyVerification: PROPERTY_VERIFICATION_STATUSES,
+  paymentAccount: ['active', 'inactive'],
+  licensePhase: ['not_submitted', 'awaiting_review', 'needs_resubmission', 'verified', 'lapsed'],
+  practitionerPhase: ['not_submitted', 'awaiting_review', 'needs_resubmission', 'verified', 'lapsed', 'ended'],
+  credentialState: ['pending', 'verified', 'lapsed'],
 };
 
 describe('狀態呈現表：每個狀態值都有名稱與色調', () => {
@@ -73,6 +77,19 @@ describe('狀態呈現表：名稱與色調對照（預期值取自 GLOSSARY 與
     ['propertyVerification', 'pending_verification', '待平台核對文件', 'progress'],
     ['propertyVerification', 'verified', '已核對', 'success'],
     ['propertyVerification', 'failed', '文件不符', 'error'],
+    // 執業主體與執業人員（MIL-181）：「尚未送件」兩端同名，驗證狀態與進度的「已驗證」同色
+    ['paymentAccount', 'active', '使用中', 'success'],
+    ['paymentAccount', 'inactive', '已停用', 'neutral'],
+    ['licensePhase', 'not_submitted', '尚未送件', 'neutral'],
+    ['licensePhase', 'awaiting_review', '待核對', 'progress'],
+    ['licensePhase', 'needs_resubmission', '待補件', 'warning'],
+    ['licensePhase', 'verified', '已驗證', 'success'],
+    ['licensePhase', 'lapsed', '已失效', 'error'],
+    ['practitionerPhase', 'not_submitted', '尚未送件', 'neutral'],
+    ['practitionerPhase', 'ended', '已失效', 'error'],
+    ['credentialState', 'pending', '待驗證', 'neutral'],
+    ['credentialState', 'verified', '已驗證', 'success'],
+    ['credentialState', 'lapsed', '已失效', 'error'],
     ['receivablePeriod', 'unpaid', '未入帳', 'neutral'],
     ['receivablePeriod', 'partial', '部分入帳', 'warning'],
     ['receivablePeriod', 'paid', '已入帳', 'success'],

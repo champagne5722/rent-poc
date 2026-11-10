@@ -1,0 +1,18 @@
+/* 成員管理的欄寬（MIL-181）。antd 沒有欄寬 token，這裡取 DESIGN.md 的 spacing 倍數。 */
+.emailField {
+  flex: 1 1 calc(var(--space-xxl) * 5);
+  margin-bottom: 0;
+}
+
+.roleField {
+  flex: 0 0 calc(var(--space-xxl) * 3);
+  margin-bottom: 0;
+}
+
+.submitField {
+  margin-bottom: 0;
+}
+
+.roleSelect {
+  width: calc(var(--space-xxl) * 3);
+}

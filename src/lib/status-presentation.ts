@@ -7,7 +7,10 @@
 import type { StatutoryCaseKind } from './cases/case-kind';
 import type { CaseState } from './cases/transitions';
 import type { HandoverState } from './handover/transitions';
+import type { LicensePhase } from './practice-entities/applicant';
 import type { QueueStatus } from './practice-entities/queue-status';
+import type { CredentialState } from './registry-rules';
+import type { PractitionerPhase } from './practice-entities/display';
 import type { PeriodStatus } from './receivables';
 import { CONTRACT_STATUS_LABELS, type ContractStatus, type PropertyVerificationStatus } from './types';
 
@@ -34,6 +37,14 @@ export interface StatusValues {
   receivablePeriod: PeriodStatus | 'overdue';
   /** 物件對外的文件核對狀態（MIL-196，ADR-0028 決議 2）。只由文件核對決定，不讀 registry.anchors.status。 */
   propertyVerification: PropertyVerificationStatus;
+  /** 收款帳戶的使用狀態（MIL-181）。 */
+  paymentAccount: 'active' | 'inactive';
+  /** 執業主體各業別的送件進度（MIL-181）。「尚未送件」是這個種類唯一的名稱，證書端的進度共用同一個詞。 */
+  licensePhase: LicensePhase;
+  /** 執業人員證書、任職與同意書的進度（MIL-181）。 */
+  practitionerPhase: PractitionerPhase;
+  /** 業別或證書的驗證狀態（MIL-181）：待驗證、已驗證、已失效。 */
+  credentialState: CredentialState;
 }
 export type StatusKind = keyof StatusValues;
 export type StatusValueOf<K extends StatusKind> = StatusValues[K];
@@ -99,6 +110,30 @@ const PRESENTATION: { [K in StatusKind]: Record<StatusValues[K], StatusView> } =
     pending_verification: { label: '待平台核對文件', tone: 'progress' },
     verified: { label: '已核對', tone: 'success' },
     failed: { label: '文件不符', tone: 'error' },
+  },
+  paymentAccount: {
+    active: { label: '使用中', tone: 'success' },
+    inactive: { label: '已停用', tone: 'neutral' },
+  },
+  licensePhase: {
+    not_submitted: { label: '尚未送件', tone: 'neutral' },
+    awaiting_review: { label: '待核對', tone: 'progress' },
+    needs_resubmission: { label: '待補件', tone: 'warning' },
+    verified: { label: '已驗證', tone: 'success' },
+    lapsed: { label: '已失效', tone: 'error' },
+  },
+  practitionerPhase: {
+    not_submitted: { label: '尚未送件', tone: 'neutral' },
+    awaiting_review: { label: '待核對', tone: 'progress' },
+    needs_resubmission: { label: '待補件', tone: 'warning' },
+    verified: { label: '已驗證', tone: 'success' },
+    lapsed: { label: '已失效', tone: 'error' },
+    ended: { label: '已失效', tone: 'error' },
+  },
+  credentialState: {
+    pending: { label: '待驗證', tone: 'neutral' },
+    verified: { label: '已驗證', tone: 'success' },
+    lapsed: { label: '已失效', tone: 'error' },
   },
 };
 
