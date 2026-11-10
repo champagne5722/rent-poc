@@ -99,6 +99,9 @@ export async function verifyPropertyViaApi(page: Page, browser: Browser, propert
     '營運者判定',
   );
   expect(decision.data.outcome).toBe('verified');
+  // 核對通過會通知物件的使用者。資料準備不該留下未讀通知：側欄的未讀數會進截圖基準
+  const read = await page.request.post('/api/notifications/read-all');
+  if (!read.ok()) throw new Error(`標示通知已讀失敗：${read.status()} ${await read.text()}`);
 }
 
 /** 登錄物件並讓它通過核對。建立合約與送簽的流程用這個。 */

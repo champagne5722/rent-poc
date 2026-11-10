@@ -7,7 +7,6 @@ import { createContract } from '../contracts';
 import {
   addCaseMember,
   attachContract,
-  CaseCreationBlocked,
   CaseNotFound,
   CaseVersionConflict,
   createLeaseCase,

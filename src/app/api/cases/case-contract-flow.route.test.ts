@@ -6,7 +6,6 @@ import { getCase, listCaseEvents, listCaseMembers } from '@/lib/case-store';
 import { DATA_DIR } from '@/lib/db';
 import { withTx } from '@/lib/pg/database';
 import { verifyProperty } from '@/lib/ownership/test-kit';
-import { verifyProperty } from '@/lib/ownership/test-kit';
 import { actAs, actAsContext, nextAnchorKey, setupRouteDb, TEST_PARTY_ID, TEST_USER_ID, type RouteDb } from '@/lib/pg/route-test-kit';
 import { POST as advance } from '../mock/advance/route';
 import { POST as createProperty } from '../properties/route';

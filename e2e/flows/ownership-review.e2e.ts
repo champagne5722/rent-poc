@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { seedProperty, uniqueSuffix, type SeededProperty } from '../helpers/api';
-import { newUserContext, signIn } from '../baseline/session';
+import { createOwnerOrg, newUserContext, signIn } from '../baseline/session';
 import { clickUntil } from '../helpers/ui';
 
 // 流程 4：物件的出租權源文件核對（MIL-201）。
@@ -69,8 +69,22 @@ async function decide(operator: Page, options: { keyMatch: boolean; holderMatch:
 
 test.describe.configure({ mode: 'serial' });
 
-test('物件頁同意個資告知並上傳謄本，營運者判定通過後物件顯示已核對', async ({ page, browser }) => {
-  const property = await seedProperty(page, `E2E 核對物件 ${uniqueSuffix()}`);
+test('物件頁同意個資告知並上傳謄本，營運者判定通過後物件顯示已核對', async ({ browser }) => {
+  // 個資告知的同意記在使用者身上。其他流程的資料準備（seedVerifiedProperty）已替預設的 e2e 屋主同意過，
+  // 所以這個測試要看到「還沒同意」的畫面，必須用一位全新的使用者
+  const owner = await newUserContext(browser);
+  try {
+    await runFirstConsentFlow(await owner.newPage(), browser);
+  } finally {
+    await owner.close();
+  }
+});
+
+async function runFirstConsentFlow(page: Page, browser: Browser): Promise<void> {
+  const suffix = uniqueSuffix();
+  await signIn(page, `e2e-consent-${suffix}@example.com`);
+  await createOwnerOrg(page, `E2E 核對屋主 ${suffix}`);
+  const property = await seedProperty(page, `E2E 核對物件 ${suffix}`);
   await openOwnershipTab(page, property);
 
   // 還沒同意個資告知：顯示告知，上傳表單停用
@@ -141,7 +155,7 @@ test('物件頁同意個資告知並上傳謄本，營運者判定通過後物�
   await expect(page.getByText('平台已比對出租權源文件')).toBeVisible();
   await expect(page.getByRole('button', { name: /送出謄本/ })).toBeHidden();
   await shot(page, '8-物件頁-已核對');
-});
+}
 
 test('營運者判定不符後，物件頁顯示固定訊息，使用者修正並重新送出', async ({ page, browser }) => {
   const property = await seedProperty(page, `E2E 不符物件 ${uniqueSuffix()}`);

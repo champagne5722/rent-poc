@@ -93,6 +93,8 @@ test('合約詳情（簽署中）', async ({ page }) => {
   await expect(page.getByText('待乙方簽').first()).toBeVisible();
   // 等合約預覽載完，避免截到載入中的畫面
   await expect(page.getByText('載入合約 PDF…', { exact: true })).toBeHidden({ timeout: 60_000 });
+  // 載入提示在掛載前還不存在，上面那一行可能立刻通過。第 1 頁的標題出現才代表預覽已經畫好
+  await expect(page.getByText('第 1 頁')).toBeVisible({ timeout: 60_000 });
   await shoot(page, 'contract-detail-signing.png');
 });
 

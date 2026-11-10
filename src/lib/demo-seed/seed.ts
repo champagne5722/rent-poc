@@ -223,7 +223,8 @@ async function ensureOwnershipVerified(
       return { propertyId: rows[0].id, gate: await getOwnershipGate(tx, rows[0].rental_unit_id) };
     });
 
-  let { propertyId, gate } = await lookup();
+  const { propertyId, gate: initialGate } = await lookup();
+  let gate = initialGate;
   if (gate.nodeStatus === 'verified') {
     steps.push({ step: '示範物件通過文件核對', result: 'exists' });
     return;
@@ -238,7 +239,7 @@ async function ensureOwnershipVerified(
       { store: deps.store ?? getFileStore('general'), now: () => deps.now },
     );
     if (submitted.status !== 'submitted') throw new Error(`示範謄本送出失敗：${submitted.status}`);
-    ({ gate } = await lookup());
+    gate = (await lookup()).gate;
   }
 
   const runs = operatorRunsOf(operatorUserId);

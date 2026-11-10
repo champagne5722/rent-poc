@@ -3,7 +3,6 @@ import { bindTemplate } from '../clause-library';
 import { createContract, getContract } from '../contracts';
 import { withTx } from '../pg/database';
 import { createVerifiedProperty } from '../ownership/test-kit';
-import { createVerifiedProperty } from '../ownership/test-kit';
 import { setupRouteDb, type RouteDb } from '../pg/route-test-kit';
 import type { OrgTx } from '../pg/with-tx';
 import { createSeedPracticeRegistry, type PracticeRegistryResolution } from '../practice-registry';
