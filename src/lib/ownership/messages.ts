@@ -49,3 +49,6 @@ export function mismatchMessages(result: OwnershipCheckResult): string[] {
 export function failedNotificationBody(result: OwnershipCheckResult): string {
   return `${mismatchMessages(result).join('\n')}\n請到物件頁修正後重新送出。`;
 }
+
+/** 營運者看到的說明：兩項都相符，但別的組織對同一個鍵已有已驗證的節點。登錄的一方看不到這句。文字待法務確認。 */
+export const HELD_MESSAGE = '兩項都相符，但這個鍵已有其他已核對的登錄。項目停在待處理，請個別聯絡雙方後處理';

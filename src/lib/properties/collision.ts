@@ -13,10 +13,15 @@ export type KeyClaim =
   /** 登錄成立。鍵有沒有撞到別的組織，這裡看不出來。 */
   | { kind: 'accepted' }
   /** 鍵已被自己的組織登錄。propertyId 是自己既有的物件。 */
-  | { kind: 'existing'; propertyId: string };
+  | { kind: 'existing'; propertyId: string }
+  /**
+   * 物件已通過核對，修正建號改送審核台（MIL-201）。物件的鍵維持原樣。
+   * 只取決於呼叫者自己組織的核對結果，與鍵有沒有撞到別的組織無關。
+   */
+  | { kind: 'rekey_requested' };
 
 interface ClaimRow {
-  outcome: 'keyed' | 'collision_queued' | 'own_existing';
+  outcome: 'keyed' | 'collision_queued' | 'own_existing' | 'rekey_queued';
   item_id: string | null;
   property_id: string | null;
 }
@@ -38,5 +43,6 @@ export async function claimAnchorKey(tx: OrgTx, anchorId: string, key: AnchorKey
   ]);
   const row = rows[0];
   if (row.outcome === 'own_existing') return { kind: 'existing', propertyId: row.property_id! };
+  if (row.outcome === 'rekey_queued') return { kind: 'rekey_requested' };
   return { kind: 'accepted' };
 }
