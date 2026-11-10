@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import fs from 'node:fs';
 import { DATA_DIR } from '@/lib/db';
 import { withTx } from '@/lib/pg/database';
-import { actAs, actAsError, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
+import { actAs, actAsError, nextAnchorKey, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { newUlid } from '@/lib/pg/ulid';
 import { Unauthenticated } from '@/lib/request-context';
 import { POST as advance } from '../mock/advance/route';
@@ -79,7 +79,7 @@ async function readyDraft(): Promise<string> {
   const propertyRes = await createProperty(
     new NextRequest('http://localhost/api/properties', {
       method: 'POST',
-      body: JSON.stringify({ name: '大安區溫馨兩房', address: '台北市大安區某路 1 號', default_rent: 20000, equipment: [] }),
+      body: JSON.stringify({ name: '大安區溫馨兩房', address: '台北市大安區某路 1 號', default_rent: 20000, equipment: [], anchor: { key: nextAnchorKey() } }),
     }),
   );
   const propertyId = (await json(propertyRes)).data.id;
@@ -113,7 +113,7 @@ describe('POST /api/contracts/[id]/send', () => {
 
   it('欄位沒填齊回 400 與缺的欄位；非草稿回 409；重送回 409', async () => {
     const propertyRes = await createProperty(
-      new NextRequest('http://localhost/api/properties', { method: 'POST', body: JSON.stringify({ name: 'x', address: 'y', equipment: [] }) }),
+      new NextRequest('http://localhost/api/properties', { method: 'POST', body: JSON.stringify({ name: 'x', address: 'y', equipment: [], anchor: { key: nextAnchorKey() } }) }),
     );
     const created = await create(
       new NextRequest('http://localhost/api/contracts', { method: 'POST', body: JSON.stringify({ property_id: (await json(propertyRes)).data.id }) }),

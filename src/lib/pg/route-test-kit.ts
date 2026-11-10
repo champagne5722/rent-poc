@@ -31,6 +31,18 @@ export async function stubRequestContext(): Promise<RequestContext> {
   return current;
 }
 
+let anchorKeySeq = 0;
+
+/**
+ * 登錄新物件必須填建號（ADR-0028 決議 9）。route 測試用它補上 anchor.key。
+ * 每次回傳不同的建號：同一個組織用同一個鍵登錄第二次，會得到自己既有的那一筆，而不是新物件。
+ * 縣市與段是固定的真實資料（臺北市大安區 龍泉 一）。
+ */
+export function nextAnchorKey(): { city: string; town: string; section: string; buildingNo: string; subNo: string } {
+  anchorKeySeq += 1;
+  return { city: 'A', town: '02', section: '0021', buildingNo: String(10000 + anchorKeySeq), subNo: '' };
+}
+
 export function actAs(orgId: string): void {
   state.current = {
     kind: 'org',

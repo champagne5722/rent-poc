@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST as createContractRoute } from '@/app/api/contracts/route';
 import { POST as createProperty } from '@/app/api/properties/route';
-import { actAs, actAsParty, actAsError, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
+import { actAs, actAsParty, actAsError, nextAnchorKey, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { Unauthenticated } from '@/lib/request-context';
 import { loadContractList } from './contract-list-load';
 
@@ -30,7 +30,7 @@ async function newContractWithProperty(): Promise<{ contractId: string; property
   const property = await createProperty(
     new NextRequest('http://localhost/api/properties', {
       method: 'POST',
-      body: JSON.stringify({ name: '大安區溫馨兩房', address: '台北市大安區某路 1 號', default_rent: 20000, equipment: [] }),
+      body: JSON.stringify({ name: '大安區溫馨兩房', address: '台北市大安區某路 1 號', default_rent: 20000, equipment: [], anchor: { key: nextAnchorKey() } }),
     }),
   );
   const propertyId = ((await property.json()) as { data: { id: string } }).data.id;
@@ -67,8 +67,8 @@ describe('loadContractList', () => {
     const { propertyId } = await newContractWithProperty();
     const result = await loadContractList();
     if (result.kind !== 'ok') throw new Error('應該載入成功');
-    // 新建的物件是待驗證錨點，補建號前沒有顯示編碼（null），但仍在對照表裡
-    expect(result.displayCodes).toEqual({ [propertyId]: null });
+    // 登錄物件時建號必填（MIL-196），所以新建的物件有縣市與鄉鎮市區編碼，顯示編碼有值
+    expect(result.displayCodes).toEqual({ [propertyId]: expect.stringMatching(/^A02-[0-9A-HJKMNP-TV-Z]{6}$/) });
   });
 
   it('不是組織身分時回 forbidden，不丟錯', async () => {

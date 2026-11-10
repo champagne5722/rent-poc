@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withTx } from '@/lib/pg/database';
-import { actAs, actAsError, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
+import { actAs, actAsError, nextAnchorKey, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { isUlid, newUlid } from '@/lib/pg/ulid';
 import { createProperty } from '@/lib/properties';
 import { Unauthenticated } from '@/lib/request-context';
@@ -34,6 +34,7 @@ const body = (overrides: Record<string, unknown> = {}) => ({
   default_rent: 28000,
   note: '近捷運',
   equipment: [{ name: '冷氣', quantity: 2 }],
+  anchor: { key: nextAnchorKey() },
   ...overrides,
 });
 
@@ -66,11 +67,13 @@ describe('GET /api/properties（清單）', () => {
     expect(data[1]).toEqual({
       id: first,
       rental_unit_id: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/),
-      // 待驗證的錨點沒有縣市與鄉鎮編碼，顯示編碼是 null（MIL-145；完整案例見 sublet.route.test.ts）
-      unit: { suffix: '0000', label: null, floor: null, unit_type: 'whole', status: 'active', display_code: null },
+      // 登錄時建號必填，所以有縣市與鄉鎮編碼，顯示編碼有值（MIL-145；完整案例見 sublet.route.test.ts）
+      unit: { suffix: '0000', label: null, floor: null, unit_type: 'whole', status: 'active', display_code: expect.stringMatching(/^A02-/) },
       archived_at: null,
-      // 沒有給產權時是待驗證錨點，鍵與座標都是空值（MIL-143；產權的完整案例見 anchor.route.test.ts）
-      anchor: expect.objectContaining({ status: 'pending_verification', building_no: null }),
+      // 建號是使用者登錄時填的鍵（MIL-143；完整案例見 anchor.route.test.ts）
+      anchor: expect.objectContaining({ city_code: 'A', building_no: expect.stringMatching(/^\d{5}$/) }),
+      // 對外狀態只由文件核對決定（MIL-196）
+      verification_status: 'pending_verification',
       name: '第一間',
       address: '台北市大安區和平東路二段 100 號 3 樓',
       type: '整層住家',
@@ -105,7 +108,7 @@ describe('POST /api/properties（建立）', () => {
     expect(res.status).toBe(201);
     const created = await json(res);
     expect(Object.keys(created)).toEqual(['data']);
-    expect(Object.keys(created.data)).toEqual(['id']);
+    expect(Object.keys(created.data)).toEqual(['id', 'verification_status']);
     expect(isUlid(created.data.id)).toBe(true);
     const one = await json(await getOne(req('GET'), ctx(created.data.id)));
     expect(one.data.name).toBe(NAME);
@@ -122,7 +125,8 @@ describe('POST /api/properties（建立）', () => {
       ),
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ status: 'pending_verification', suffix: '0000', unit_type: 'whole' });
+    // 內部狀態：沒撞號時建號立刻轉 keyed。對外的狀態不讀它（MIL-196）
+    expect(rows[0]).toMatchObject({ status: 'keyed', suffix: '0000', unit_type: 'whole' });
     expect(rows[0].address).toBe('台北市大安區和平東路二段 100 號 3 樓');
     expect(rows[0].normalized).toBeTruthy();
   });
@@ -135,7 +139,7 @@ describe('POST /api/properties（建立）', () => {
   });
 
   it('沒給型態時用整層住家，沒給選填欄位時存空值', async () => {
-    const id = await create({ name: '最小物件', address: '某地址' } as never);
+    const id = await create({ name: '最小物件', address: '某地址', anchor: { key: nextAnchorKey() } } as never);
     const { data } = await json(await getOne(req('GET'), ctx(id)));
     expect(data).toMatchObject({ type: '整層住家', size: null, default_rent: null, note: '', equipment: [] });
   });

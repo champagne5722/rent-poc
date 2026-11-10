@@ -10,7 +10,7 @@ import {
   type StatusKind,
   type StatusValueOf,
 } from './status-presentation';
-import { CONTRACT_STATUSES } from './types';
+import { CONTRACT_STATUSES, PROPERTY_VERIFICATION_STATUSES } from './types';
 
 // 狀態呈現表（MIL-172）。每個狀態種類的值清單來自狀態的來源常數，
 // 新增狀態值而沒有加進表時，下面的「沒有遺漏」測試會失敗（型別檢查也會失敗）。
@@ -22,6 +22,7 @@ const SOURCES: { [K in StatusKind]: readonly StatusValueOf<K>[] } = {
   handover: HANDOVER_STATES,
   reviewItem: QUEUE_STATUSES,
   receivablePeriod: ['unpaid', 'partial', 'paid', 'overdue', 'cancelled'],
+  propertyVerification: PROPERTY_VERIFICATION_STATUSES,
 };
 
 describe('狀態呈現表：每個狀態值都有名稱與色調', () => {
@@ -69,6 +70,7 @@ describe('狀態呈現表：名稱與色調對照（預期值取自 GLOSSARY 與
     ['handover', 'cancelled', '已取消', 'neutral'],
     ['reviewItem', 'open', '待核對', 'progress'],
     ['reviewItem', 'resolved', '已結案', 'neutral'],
+    ['propertyVerification', 'pending_verification', '待平台核對文件', 'progress'],
     ['receivablePeriod', 'unpaid', '未入帳', 'neutral'],
     ['receivablePeriod', 'partial', '部分入帳', 'warning'],
     ['receivablePeriod', 'paid', '已入帳', 'success'],

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DATA_DIR } from '@/lib/db';
-import { actAs, actAsContext, setupRouteDb, TEST_PARTY_ID, TEST_USER_ID, type RouteDb } from '@/lib/pg/route-test-kit';
+import { actAs, actAsContext, nextAnchorKey, setupRouteDb, TEST_PARTY_ID, TEST_USER_ID, type RouteDb } from '@/lib/pg/route-test-kit';
 import { newUlid } from '@/lib/pg/ulid';
 import type { OrgRole } from '@/lib/request-context';
 import { POST as advance } from './mock/advance/route';
@@ -76,7 +76,7 @@ const FORBIDDEN = { status: 403, body: JSON.stringify({ error: '沒有權限執�
 const CONTRACT_NOT_FOUND = { status: 404, body: JSON.stringify({ error: '合約不存在' }) };
 const PROPERTY_NOT_FOUND = { status: 404, body: JSON.stringify({ error: '物件不存在' }) };
 
-const PROPERTY_BODY = { name: '大安區溫馨兩房', address: '台北市大安區某路 1 號', default_rent: 20000, equipment: [] };
+const PROPERTY_BODY = { name: '大安區溫馨兩房', address: '台北市大安區某路 1 號', default_rent: 20000, equipment: [], anchor: { key: nextAnchorKey() } };
 
 /** 以 admin 在 org 建一份物件與合約草稿。 */
 async function seed(orgId: string): Promise<{ propertyId: string; contractId: string }> {

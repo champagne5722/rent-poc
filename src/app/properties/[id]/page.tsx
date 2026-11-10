@@ -1,8 +1,9 @@
 'use client';
 
-// 物件詳情頁（MIL-143、MIL-145）：分頁型版面，三個分頁：基本資料／產權／單位。
-// 產權分頁顯示錨點狀態與鍵；待驗證的錨點有「補建號」。已建號的鍵不在這裡改，要更正由平台營運者處理（ADR-0025 決議 6）。
-// 單位分頁列出同一產權下自己組織的單位，並可新增分租單位（ADR-0025 決議 13）。
+// 物件詳情頁（MIL-143、MIL-145、MIL-196）：分頁型版面，三個分頁：基本資料／建號與核對／單位。
+// 建號與核對分頁顯示核對狀態與使用者填的建號。物件通過文件核對前，使用者能補建號與修正建號（ADR-0028 決議 9）。
+// 核對狀態只來自 verification_status，不讀內部狀態。鍵有沒有與別的組織重複，畫面看不出來（ADR-0028 決議 1）。
+// 單位分頁列出同一個物件下自己組織的租賃單位，並可新增分租單位（ADR-0025 決議 13）。
 // 顯示編碼不含建號，是畫面上識別單位的短編碼（決議 12）。
 
 import { use, useEffect, useState } from 'react';
@@ -12,12 +13,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnchorKeyFields } from '@/components/AnchorFields';
 import { DisplayCode } from '@/components/DisplayCode';
+import StatusTag from '@/components/StatusTag';
 import { shortUlid } from '@/lib/pg/ulid';
 import { unitFullText } from '@/lib/properties/unit-display';
-import { ANCHOR_STATUS_COLORS, ANCHOR_STATUS_LABELS, anchorKeyText, anchorLocationText } from '@/lib/properties/anchor-display';
+import { anchorKeyText, anchorLocationText, registeredMessage } from '@/lib/properties/anchor-display';
 import { buildAnchorPayload } from '@/lib/properties/anchor-form';
 import { formatEquipmentItem } from '@/lib/equipment';
-import type { Property, SiblingUnit } from '@/lib/types';
+import type { Property, PropertyVerificationStatus, SiblingUnit } from '@/lib/types';
 import { PROPERTY_TYPES } from '@/lib/types';
 
 function AnchorPanel({ property, onKeyed }: { property: Property; onKeyed: () => void }) {
@@ -28,7 +30,11 @@ function AnchorPanel({ property, onKeyed }: { property: Property; onKeyed: () =>
   const [saving, setSaving] = useState(false);
   const anchor = property.anchor;
 
-  if (!anchor) return <Empty description="讀不到這個物件的產權資料" />;
+  if (!anchor) return <Empty description="讀不到這個物件的建號資料" />;
+
+  // 沒有填建號的舊資料：補建號。已有建號：修正建號。兩者呼叫同一個 API，回應相同
+  const hasKey = anchor.building_no !== null;
+  const editLabel = hasKey ? '修正建號' : '補建號';
 
   const submit = async () => {
     const values = await form.validateFields();
@@ -42,58 +48,47 @@ function AnchorPanel({ property, onKeyed }: { property: Property; onKeyed: () =>
       });
       const json = await res.json();
       if (!res.ok) {
-        message.error(json.error ?? '補建號失敗');
+        message.error(json.error ?? `${editLabel}失敗`);
         return;
       }
       setOpen(false);
       form.resetFields();
       if (json.data?.existing) {
-        // 這個產權已由自己的組織登錄（MIL-144）：這個物件維持待驗證，帶使用者到既有的物件
-        message.info('這個產權你已經登錄過，已帶你到既有的物件');
+        // 這個鍵已由自己的組織登錄（MIL-144）：這個物件維持原樣，帶使用者到既有的物件
+        message.info('這個物件你已經登錄過，已帶你到既有的物件');
         router.push(`/properties/${json.data.id}`);
         return;
       }
-      if (json.data?.review) {
-        message.info({ content: `${json.data.review.message}。審核單號：${json.data.review.ticket}`, duration: 8 });
-      } else {
-        message.success('已補上建號');
-      }
+      message.success(registeredMessage((json.data?.verification_status ?? 'pending_verification') as PropertyVerificationStatus));
       onKeyed();
     } finally {
       setSaving(false);
     }
   };
 
-  const keyed = anchor.status === 'keyed';
   const coordinates = anchor.latitude != null && anchor.longitude != null ? `${anchor.latitude}, ${anchor.longitude}` : '—';
+  // 修正時帶入目前的建號。建號補零的部分不顯示，分號 000 視為沒有分號
+  const initialKey = hasKey
+    ? {
+        city: anchor.city_code ?? undefined,
+        town: anchor.town_code ?? undefined,
+        section: anchor.section_code ?? undefined,
+        buildingNo: String(Number(anchor.building_no)),
+        subNo: anchor.sub_no && anchor.sub_no !== '000' ? String(Number(anchor.sub_no)) : '',
+      }
+    : undefined;
 
   return (
     <Flex vertical gap="middle">
-      {anchor.collision_review && (
-        // 撞到別的組織已登錄的鍵（MIL-144）。只說已送審核與審核單號，不含對方的任何資料
-        <Alert
-          type="info"
-          showIcon
-          title="已送審核"
-          description={
-            <Flex vertical gap={4}>
-              <Typography.Text>此產權已在平台登錄，已送審核。審核期間，這個物件的產權維持待驗證。</Typography.Text>
-              <Typography.Text>
-                審核單號：<Typography.Text copyable>{anchor.collision_review.ticket}</Typography.Text>
-              </Typography.Text>
-            </Flex>
-          }
-        />
-      )}
-      {anchor.status === 'pending_verification' && (
+      {!hasKey && !property.archived_at && (
         <Alert
           type="warning"
           showIcon
-          title="這個物件還沒有建號"
-          description="目前只靠門牌登錄。補上建號後，產權狀態會變成「已建號」。"
+          title="這個物件還沒有填建號"
+          description="補上建號後，平台才能核對文件。"
           action={
             <Button icon={<EditOutlined />} onClick={() => setOpen(true)}>
-              補建號
+              {editLabel}
             </Button>
           }
         />
@@ -105,10 +100,8 @@ function AnchorPanel({ property, onKeyed }: { property: Property; onKeyed: () =>
         items={[
           {
             key: 'status',
-            label: '產權狀態',
-            children: (
-              <Tag color={ANCHOR_STATUS_COLORS[anchor.status]}>{ANCHOR_STATUS_LABELS[anchor.status]}</Tag>
-            ),
+            label: '核對狀態',
+            children: <StatusTag kind="propertyVerification" value={property.verification_status} />,
           },
           { key: 'address', label: '門牌', children: property.address },
           { key: 'location', label: '段小段', children: anchorLocationText(anchor) ?? '—' },
@@ -116,10 +109,17 @@ function AnchorPanel({ property, onKeyed }: { property: Property; onKeyed: () =>
           { key: 'coordinates', label: '座標', children: coordinates },
         ]}
       />
-      {keyed && <Typography.Text type="secondary">已建號的鍵填錯時，請聯絡平台申請修正。</Typography.Text>}
+      {hasKey && !property.archived_at && (
+        <Flex align="center" gap="small" wrap>
+          <Button icon={<EditOutlined />} onClick={() => setOpen(true)}>
+            {editLabel}
+          </Button>
+          <Typography.Text type="secondary">物件通過平台核對文件前，建號填錯時可以自己修正。</Typography.Text>
+        </Flex>
+      )}
 
       <Modal
-        title="補建號"
+        title={editLabel}
         open={open}
         onOk={() => void submit()}
         confirmLoading={saving}
@@ -129,7 +129,7 @@ function AnchorPanel({ property, onKeyed }: { property: Property; onKeyed: () =>
         width={720}
         destroyOnHidden
       >
-        <Form form={form} layout="vertical">
+        <Form form={form} layout="vertical" initialValues={{ key: initialKey }}>
           <AnchorKeyFields form={form} prefix={['key']} />
         </Form>
       </Modal>
@@ -176,7 +176,7 @@ function BasicPanel({ property }: { property: Property }) {
   );
 }
 
-/** 同一產權下自己組織的單位。目前這個物件的列標示「目前」。 */
+/** 同一個物件下自己組織的租賃單位。目前這個營運資料的列標示「目前」。 */
 function UnitsPanel({ property, reloadToken }: { property: Property; reloadToken: number }) {
   const { token } = theme.useToken();
   const [units, setUnits] = useState<SiblingUnit[] | null>(null);
@@ -201,7 +201,7 @@ function UnitsPanel({ property, reloadToken }: { property: Property; reloadToken
       dataSource={units ?? []}
       pagination={false}
       scroll={{ x: 'max-content' }}
-      locale={{ emptyText: '同一產權下沒有其他單位' }}
+      locale={{ emptyText: '同一個物件下沒有其他租賃單位' }}
       columns={[
         { title: '顯示編碼', width: 130, render: (_, u) => <DisplayCode code={u.display_code} /> },
         { title: '單位', width: 160, render: (_, u) => unitFullText(u) },
@@ -256,7 +256,7 @@ function SubletModal({
       if (res.status === 409 && json.code === 'whole_unit_active_lease') {
         modal.confirm({
           title: '整戶仍在租期內',
-          content: '這個產權的整戶有已完成且租期未屆滿的租賃合約。仍要新增分租單位嗎？',
+          content: '這個物件的整戶有已完成且租期未屆滿的租賃合約。仍要新增分租單位嗎？',
           okText: '仍要新增',
           cancelText: '取消',
           onOk: () => send(true),
@@ -288,7 +288,7 @@ function SubletModal({
     >
       <Form form={form} layout="vertical" initialValues={{ type: '套房' }}>
         <Typography.Paragraph type="secondary">
-          新單位與「{property.name}」在同一個產權下。單位後綴由平台發號，房號只是標籤，之後改房號不會改後綴。
+          新單位與「{property.name}」在同一個物件下。單位後綴由平台發號，房號只是標籤，之後改房號不會改後綴。
         </Typography.Paragraph>
         <Form.Item name="label" label="房號" rules={[{ required: true, whitespace: true, message: '請輸入房號' }, { max: 40, message: '房號不得超過 40 個字' }]}>
           <Input placeholder="例：301" />
@@ -368,7 +368,7 @@ function PropertyDetail({ id }: { id: string }) {
       <Tabs
         items={[
           { key: 'basic', label: '基本資料', children: <BasicPanel property={property} /> },
-          { key: 'anchor', label: '產權', children: <AnchorPanel property={property} onKeyed={reload} /> },
+          { key: 'anchor', label: '建號與核對', children: <AnchorPanel property={property} onKeyed={reload} /> },
           { key: 'units', label: '單位', children: <UnitsPanel property={property} reloadToken={reloadToken} /> },
         ]}
       />

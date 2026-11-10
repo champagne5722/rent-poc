@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withTx } from '@/lib/pg/database';
-import { actAs, actAsError, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
+import { actAs, actAsError, nextAnchorKey, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { newUlid } from '@/lib/pg/ulid';
 import { Unauthenticated } from '@/lib/request-context';
 import { DELETE as deleteProperty } from '../properties/[id]/route';
@@ -48,6 +48,7 @@ async function newProperty(over: Record<string, unknown> = {}): Promise<string> 
         address: '台北市大安區某路 1 號',
         default_rent: 20000,
         equipment: [{ name: '冷氣', quantity: 1 }],
+        anchor: { key: nextAnchorKey() },
         ...over,
       }),
     }),

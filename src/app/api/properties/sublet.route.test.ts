@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createContract } from '@/lib/contracts';
 import { withTx } from '@/lib/pg/database';
-import { actAs, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
+import { actAs, nextAnchorKey, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { newUlid } from '@/lib/pg/ulid';
 import { createProperty, parsePropertyInput, type PropertyInput } from '@/lib/properties';
 import type { ContractFields } from '@/lib/types';
@@ -38,7 +38,7 @@ const req = (method: string, payload?: unknown) =>
   new NextRequest('http://localhost/api/properties/x', { method, body: payload === undefined ? undefined : JSON.stringify(payload) });
 
 async function create(overrides: Record<string, unknown> = {}): Promise<string> {
-  const res = await POST(req('POST', { name: '大安區溫馨兩房', address: '台北市大安區和平東路二段 100 號 3 樓', equipment: [], ...overrides }));
+  const res = await POST(req('POST', { name: '大安區溫馨兩房', address: '台北市大安區和平東路二段 100 號 3 樓', equipment: [], anchor: { key: nextAnchorKey() }, ...overrides }));
   expect(res.status).toBe(201);
   return (await json(res)).data.id;
 }
@@ -104,8 +104,9 @@ describe('POST /api/properties/[id]/sublet-units（新增分租單位）', () =>
     expect(await unitCount()).toBe(3);
   });
 
-  it('待驗證的錨點也能新增，顯示編碼為空，補建號後整戶與分租一起有編碼', async () => {
-    const wholeId = await create();
+  it('沒有建號的舊資料也能新增，顯示編碼為空，補建號後整戶與分租一起有編碼', async () => {
+    const parsed = parsePropertyInput({ name: '舊物件', address: '台北市大安區舊路 1 號', equipment: [] }) as { ok: true; value: PropertyInput };
+    const wholeId = await withTx({ kind: 'org', orgId: kit.orgA }, (tx) => createProperty(tx, parsed.value));
     const created = (await json(await sublet(wholeId, { label: '301' }))).data;
     expect((await get(created.id)).unit.display_code).toBeNull();
 
@@ -351,7 +352,7 @@ describe('DELETE /api/properties/[id]（刪除或封存）', () => {
   });
 });
 
-describe('整戶改分租沿用同一產權錨點', () => {
+describe('整戶改分租沿用同一個物件', () => {
   it('整戶物件刪除後單位 retired，原錨點不變；再從別的來源新增分租，後綴不重用 0000', async () => {
     const wholeId = await createKeyed();
     const first = (await json(await sublet(wholeId, { label: '301' }))).data.id;

@@ -18,15 +18,16 @@ import {
   theme,
   Typography,
 } from 'antd';
-import { PlusOutlined, FileAddOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { EquipmentItem, EquipmentVocabularyItem, Property } from '@/lib/types';
+import type { EquipmentItem, EquipmentVocabularyItem, Property, PropertyVerificationStatus } from '@/lib/types';
 import { PROPERTY_TYPES } from '@/lib/types';
 import { formatEquipmentItem } from '@/lib/equipment';
 import { AnchorSection } from '@/components/AnchorFields';
 import { DisplayCode } from '@/components/DisplayCode';
-import { anchorSummary, ANCHOR_STATUS_COLORS, ANCHOR_STATUS_LABELS } from '@/lib/properties/anchor-display';
+import StatusTag from '@/components/StatusTag';
+import { anchorSummary, registeredMessage } from '@/lib/properties/anchor-display';
 import { buildAnchorPayload } from '@/lib/properties/anchor-form';
 import { unitShortText } from '@/lib/properties/unit-display';
 
@@ -166,7 +167,7 @@ function PropertiesPage() {
     if (target === 'new') {
       form.resetFields();
     } else {
-      // 產權不在這裡改：補建號在詳情頁，已建號的鍵由平台營運者更正
+      // 建號不在這裡改：補建號與修正建號在詳情頁
       const { anchor: _anchor, unit: _unit, archived_at: _archivedAt, ...rest } = target;
       void _anchor;
       void _unit;
@@ -178,7 +179,7 @@ function PropertiesPage() {
   const save = async () => {
     const values = await form.validateFields();
     const isNew = editing === 'new';
-    // 只有建立時送產權；修改物件不動產權錨點
+    // 只有建立時送建號；修改物件不動建號
     const payload = isNew ? { ...values, anchor: buildAnchorPayload(values.anchor) } : { ...values, anchor: undefined };
     const res = await fetch(isNew ? '/api/properties' : `/api/properties/${(editing as Property).id}`, {
       method: isNew ? 'POST' : 'PUT',
@@ -189,20 +190,16 @@ function PropertiesPage() {
       message.error((await res.json()).error ?? '儲存失敗');
       return;
     }
-    const json = (await res.json().catch(() => ({}))) as { data?: { id?: string; existing?: boolean; review?: { ticket: string; message: string } } };
+    const json = (await res.json().catch(() => ({}))) as { data?: { id?: string; existing?: boolean; verification_status?: PropertyVerificationStatus } };
     setEditing(null);
     if (isNew && json.data?.existing && json.data.id) {
-      // 這個產權已由自己的組織登錄（MIL-144）：沒有建新物件，帶使用者到既有的那筆
-      message.info('這個產權你已經登錄過，已帶你到既有的物件');
+      // 這個鍵已由自己的組織登錄（MIL-144）：沒有建新物件，帶使用者到既有的那筆
+      message.info('這個物件你已經登錄過，已帶你到既有的物件');
       router.push(`/properties/${json.data.id}`);
       return;
     }
-    if (isNew && json.data?.review) {
-      // 撞到別的組織：物件已建立，產權維持待驗證。只顯示固定訊息與審核單號
-      message.info({ content: `${json.data.review.message}。審核單號：${json.data.review.ticket}`, duration: 8 });
-    } else {
-      message.success(isNew ? '物件已建立' : '物件已更新');
-    }
+    // 鍵有沒有與別的組織重複，訊息都一樣（ADR-0028 決議 2）
+    message.success(isNew ? registeredMessage(json.data?.verification_status ?? 'pending_verification') : '物件已更新');
     load();
   };
 
@@ -257,17 +254,19 @@ function PropertiesPage() {
         loading={loading}
         dataSource={visibleItems}
         pagination={false}
-        scroll={{ x: 'max-content' }}
+        // 欄寬明確，1440 寬、側欄展開時不必橫向捲動；視窗更窄時才捲動，操作欄固定在右側（比照合約列表）
+        scroll={{ x: 1000 }}
         columns={[
           {
             // 租賃單位的顯示編碼（GLOSSARY「顯示編碼」），不含建號，口頭溝通與客服對照用。不保證唯一
             title: '顯示編碼',
-            width: 130,
+            width: 128,
             render: (_, record) => <DisplayCode code={record.unit?.display_code} />,
           },
           {
             title: '名稱',
             dataIndex: 'name',
+            width: 100,
             render: (name: string, record) => (
               <Space size="small">
                 <Link href={`/properties/${record.id}`} style={{ color: token.colorPrimary }}>
@@ -279,33 +278,28 @@ function PropertiesPage() {
           },
           {
             title: '單位',
-            width: 120,
+            width: 60,
             render: (_, record) => (record.unit ? unitShortText(record.unit) : '—'),
           },
-          { title: '地址', dataIndex: 'address' },
+          { title: '地址', dataIndex: 'address', width: 116 },
+          { title: '建號', dataIndex: 'anchor', width: 126, render: (_: unknown, record) => anchorSummary(record.anchor) },
           {
-            title: '產權',
-            dataIndex: 'anchor',
-            render: (_: unknown, record) =>
-              record.anchor?.status === 'keyed' ? (
-                anchorSummary(record.anchor)
-              ) : (
-                <Tag color={ANCHOR_STATUS_COLORS[record.anchor?.status ?? 'pending_verification']}>
-                  {ANCHOR_STATUS_LABELS[record.anchor?.status ?? 'pending_verification']}
-                </Tag>
-              ),
+            title: '核對狀態',
+            width: 132,
+            render: (_, record) => <StatusTag kind="propertyVerification" value={record.verification_status} />,
           },
-          { title: '型態', dataIndex: 'type', width: 100 },
-          { title: '坪數', dataIndex: 'size', width: 80, render: (v) => v ?? '—' },
+          { title: '型態', dataIndex: 'type', width: 92 },
+          { title: '坪數', dataIndex: 'size', width: 60, render: (v) => v ?? '—' },
           {
             title: '預設租金',
             dataIndex: 'default_rent',
-            width: 110,
+            width: 100,
             render: (v) => (v != null ? `$${v.toLocaleString()}` : '—'),
           },
           {
             title: '設備',
             dataIndex: 'equipment',
+            width: 60,
             render: (eq: EquipmentItem[]) =>
               eq.length ? (
                 <>
@@ -318,21 +312,23 @@ function PropertiesPage() {
               ),
           },
           {
+            // 操作欄放最右並固定，用文字連結，最常用的動作放第一個（docs/ui/composite-components.md）
             title: '操作',
-            width: 240,
+            width: 190,
+            fixed: 'right',
             render: (_, record) =>
               record.archived_at ? (
                 <Typography.Text type="secondary">已封存，唯讀</Typography.Text>
               ) : (
-                <Space>
-                  <Button size="small" icon={<FileAddOutlined />} onClick={() => createContract(record.id)}>
+                <Space size={0}>
+                  <Button type="link" size="small" onClick={() => createContract(record.id)}>
                     建立合約
                   </Button>
-                  <Button size="small" onClick={() => openEditor(record)}>
+                  <Button type="link" size="small" onClick={() => openEditor(record)}>
                     編輯
                   </Button>
                   <Popconfirm title="確定刪除此物件？" description="有案件或合約的物件會改為封存，不會刪除。" onConfirm={() => remove(record.id)}>
-                    <Button size="small" danger>
+                    <Button type="link" size="small" danger>
                       刪除
                     </Button>
                   </Popconfirm>
@@ -380,7 +376,7 @@ function PropertiesPage() {
           {editing === 'new' ? (
             <AnchorSection form={form} />
           ) : (
-            <Typography.Text type="secondary">產權在物件詳情頁查看與補建號。</Typography.Text>
+            <Typography.Text type="secondary">建號在物件詳情頁查看與修正。</Typography.Text>
           )}
         </Form>
       </Modal>
