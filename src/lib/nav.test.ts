@@ -78,12 +78,13 @@ describe('殼層導覽定義', () => {
     }
   });
 
-  it('常駐建約 CTA 指向建約 wizard', () => {
-    expect(CREATE_CONTRACT_HREF).toBe('/contracts/new');
+  it('常駐建約 CTA 指向物件列表，案件從物件往下建立', () => {
+    expect(CREATE_CONTRACT_HREF).toBe('/properties');
+    expect(resolveNavKey(CREATE_CONTRACT_HREF)).toBe('properties');
   });
 
-  it('建約 wizard 屬於合約一級頁面', () => {
-    expect(resolveNavKey(CREATE_CONTRACT_HREF)).toBe('contracts');
+  it('建約 wizard 與草稿續編屬於合約一級頁面', () => {
+    expect(resolveNavKey('/contracts/new')).toBe('contracts');
     expect(resolveNavKey('/contracts/42/edit')).toBe('contracts');
   });
 });

@@ -324,7 +324,7 @@ export default function ContractWizard({ id }: { id: string }) {
       <Alert
         type="error"
         showIcon
-        message="合約不存在"
+        title="合約不存在"
         action={
           <Link href="/contracts">
             <Button size="small">回合約列表</Button>
@@ -340,7 +340,7 @@ export default function ContractWizard({ id }: { id: string }) {
       <Alert
         type="warning"
         showIcon
-        message="這個合約類型尚未支援建約流程"
+        title="這個合約類型尚未支援建約流程"
         action={
           <Link href="/contracts">
             <Button size="small">回合約列表</Button>
@@ -355,7 +355,7 @@ export default function ContractWizard({ id }: { id: string }) {
       <Alert
         type="warning"
         showIcon
-        message="此合約已送簽，不能再用建約流程編輯"
+        title="此合約已送簽，不能再用建約流程編輯"
         description="修約請先撤回，再複製為新草稿重新編輯送簽。"
         action={
           <Link href={`/contracts/${contract.id}`}>
@@ -549,6 +549,7 @@ export default function ContractWizard({ id }: { id: string }) {
                   onChange={changeRouting}
                   disabled={saving}
                   brokerChoice={practitionerData?.brokerChoice}
+                  caseDerived
                 />
               </Flex>
             }
@@ -611,7 +612,7 @@ export default function ContractWizard({ id }: { id: string }) {
             type="info"
             showIcon
             style={{ marginBottom: 12 }}
-            message={signingSequenceTitle(fields, contractType, practitionerData?.evaluation.merges)}
+            title={signingSequenceTitle(fields, contractType, practitionerData?.evaluation.merges)}
             description={signingSequenceNotice(fields, contractType, practitionerData?.evaluation.merges)}
           />
           <ui.ConfirmNotices fields={fields} />

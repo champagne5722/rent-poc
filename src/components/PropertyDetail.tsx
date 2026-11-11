@@ -55,7 +55,7 @@ function BasicPanel({ property }: Pick<PropertyDetailData, 'property'>) {
   );
 }
 
-function PropertyDetailInner({ property, units, ownership, cases }: PropertyDetailData) {
+function PropertyDetailInner({ property, units, ownership, cases, availableCaseKinds }: PropertyDetailData) {
   const router = useRouter();
   const [, startRefresh] = useTransition();
   const [subletOpen, setSubletOpen] = useState(false);
@@ -117,7 +117,7 @@ function PropertyDetailInner({ property, units, ownership, cases }: PropertyDeta
           </Card>
         }
       >
-        <CasesPanel cases={cases} verified={property.verification_status === 'verified'} />
+        <CasesPanel cases={cases} verified={property.verification_status === 'verified'} propertyId={property.id} availableCaseKinds={availableCaseKinds} />
         <Tabs
           items={[
             { key: 'basic', label: '基本資料', children: <BasicPanel property={property} /> },

@@ -7,8 +7,10 @@ import { signUpAsOwner } from '../helpers/login';
 
 // 登入前先編譯登入會用到的頁面。dev server 編譯新路由時，已開著的頁面可能整頁重載，會洗掉輸入到一半的驗證碼。
 const BEFORE_LOGIN_PATHS = ['/demo/otp', '/login'];
-const AFTER_LOGIN_PATHS = ['/', '/properties', '/contracts', '/contracts/new'];
-const WARMUP_ONLY_PATHS = ['/desk', '/desk/ownership/warmup', '/desk/items/warmup', '/properties/warmup', '/notifications'];
+const AFTER_LOGIN_PATHS = ['/', '/properties', '/contracts'];
+// /contracts/new 沒有入口參數時導到物件列表（MIL-209），所以放在這裡不斷言網址。參數格式正確、物件不存在，一樣導走，但頁面已編譯
+const WARMUP_ONLY_PATHS = [
+  '/contracts/new?property=01JD3X7Z5K8M2N4P6Q8R0S2T4V&kind=lease','/desk', '/desk/ownership/warmup', '/desk/items/warmup', '/properties/warmup', '/notifications'];
 
 // 流程中第一次打到才編譯的 API 路由。dev server 編譯新路由時，已開著的頁面可能整頁重載，
 // 例如物件頁開「新增物件」時打 /api/registry/areas，會洗掉選到一半的下拉選單。

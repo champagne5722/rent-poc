@@ -16,6 +16,8 @@ interface Props {
   value: ContractRoutingConditions;
   onChange: (next: ContractRoutingConditions) => void;
   disabled?: boolean;
+  /** 業務類型與「承租人是否為包租業者」由案件種類決定（MIL-209）。為 true 時這兩項只顯示，不給選。 */
+  caseDerived?: boolean;
   /**
    * 居間選項的狀態（MIL-200）。由伺服端依呼叫者自己組織的經紀業別算出：
    * 屋主組織與沒有經紀業別的組織是 hidden，登錄了但還沒驗證是 blocked 並附原因，已驗證是 allowed。
@@ -29,7 +31,13 @@ const YES_NO = [
   { value: false, label: '否' },
 ];
 
-export default function RoutingConditionsPanel({ value, onChange, disabled, brokerChoice = { kind: 'hidden' } }: Props) {
+export default function RoutingConditionsPanel({
+  value,
+  onChange,
+  disabled,
+  caseDerived,
+  brokerChoice = { kind: 'hidden' },
+}: Props) {
   const evaluation = evaluateRouting(value);
   const patch = (next: Partial<ContractRoutingConditions>) => onChange({ ...value, ...next });
   const showBroker = brokerChoice.kind !== 'hidden' || value.brokerMediated;
@@ -44,7 +52,7 @@ export default function RoutingConditionsPanel({ value, onChange, disabled, brok
           <Col span={8}>
             <Form.Item label="業務類型" style={{ marginBottom: 0 }}>
               <Radio.Group
-                disabled={disabled}
+                disabled={disabled || caseDerived}
                 value={value.businessType}
                 onChange={(e) => patch({ businessType: e.target.value })}
                 options={BUSINESS_TYPES.map((type) => ({ value: type, label: BUSINESS_TYPE_LABELS[type] }))}
@@ -54,7 +62,7 @@ export default function RoutingConditionsPanel({ value, onChange, disabled, brok
           <Col span={brokerSpan}>
             <Form.Item label="承租人是否為包租業者" style={{ marginBottom: 0 }}>
               <Radio.Group
-                disabled={disabled}
+                disabled={disabled || caseDerived}
                 value={value.lesseeIsMasterLessor}
                 onChange={(e) => patch({ lesseeIsMasterLessor: e.target.value })}
                 options={YES_NO}

@@ -2,16 +2,19 @@
 
 // 物件詳情的「案件」區（MIL-177、MIL-209，ADR-0030 決議 5）：看得出兩層。
 // 委託管理案件與底下的租賃案件，或包租案件與底下的轉租案件。上層案件不在這個物件的案件裡時，上層列只有種類與連結。
-// 這裡不放建立案件的入口，入口由功能線的畫面段加入。
+// 建立案件的入口在卡片右上角（MIL-209、MIL-205）：只在伺服端算出的 availableCaseKinds 不是空的時候出現。
+// 物件沒通過核對時沒有入口，原因寫在頁面上方「下一步」。
 
 import { Card, Table, Typography } from 'antd';
 import Link from 'next/link';
 import EmptyState from '@/components/page/EmptyState';
+import CreateCaseEntry from '@/components/property/CreateCaseEntry';
 import StatusTag from '@/components/StatusTag';
 import { leasePeriodLabel, monthlyRentLabel } from '@/lib/case-display';
 import type { CaseSummary } from '@/lib/case-store';
 import { buildCaseLayers, casesEmptyText } from '@/lib/property-case-layers';
 import { statusPresentation } from '@/lib/status-presentation';
+import type { PropertyCaseKind } from '@/lib/types';
 
 interface CaseRow {
   key: string;
@@ -37,10 +40,19 @@ function buildRows(cases: CaseSummary[]): CaseRow[] {
   });
 }
 
-export default function CasesPanel({ cases, verified }: { cases: CaseSummary[]; verified: boolean }) {
+interface CasesPanelProps {
+  cases: CaseSummary[];
+  verified: boolean;
+  /** 這個物件（租賃單位）的 ID，建立案件的入口用。 */
+  propertyId: string;
+  /** 目前組織能建立的案件種類。空陣列時不畫入口。 */
+  availableCaseKinds: readonly PropertyCaseKind[];
+}
+
+export default function CasesPanel({ cases, verified, propertyId, availableCaseKinds }: CasesPanelProps) {
   const rows = buildRows(cases);
   return (
-    <Card size="small" title="案件">
+    <Card size="small" title="案件" extra={<CreateCaseEntry propertyId={propertyId} kinds={availableCaseKinds} />}>
       <Table<CaseRow>
         rowKey="key"
         size="middle"

@@ -310,7 +310,7 @@ function TemplateUpgradeNotice({
       type="warning"
       showIcon
       style={{ marginTop: 12 }}
-      message="平台已有新版條文，可升版重建"
+      title="平台已有新版條文，可升版重建"
       description={`${parts.join('、')}。這份草稿目前用的是建立當時的版本，升版會重新快照最新條文；不升版也能照樣送簽。`}
       action={
         <Button size="small" onClick={onUpgrade} disabled={disabled}>
@@ -515,7 +515,7 @@ function LeaseFieldsStep({
             <Alert
               type="info"
               showIcon
-              message="附屬設備列在租賃標的條文，不另產出附件頁"
+              title="附屬設備列在租賃標的條文，不另產出附件頁"
               description={
                 annexSummary.length
                   ? `目前品項：${annexSummary.join('、')}。`
@@ -536,7 +536,7 @@ function LeaseFieldsStep({
               type="info"
               showIcon
               style={{ marginTop: 8 }}
-              message="此草稿綁定範本 v1，附屬設備列在主約本文，不產出附件頁"
+              title="此草稿綁定範本 v1，附屬設備列在主約本文，不產出附件頁"
               description={
                 annexSummary.length
                   ? `目前品項：${annexSummary.join('、')}。升版為 v2 後，才能逐約編輯設備附件。`

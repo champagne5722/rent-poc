@@ -9,6 +9,7 @@ import StatusTag from '@/components/StatusTag';
 import { caseKindLabel, leasePeriodLabel, monthlyRentLabel } from '@/lib/case-display';
 import type { CaseListRow } from '@/lib/case-list-load';
 import type { CaseState } from '@/lib/cases';
+import { CREATE_CONTRACT_HREF } from '@/lib/nav';
 import type { ContractStatus } from '@/lib/types';
 
 // 案件列表（MIL-115、MIL-184）：套用列表頁版型。資料由 server component 載入後傳進來，這裡只管狀態分組與欄位。
@@ -52,9 +53,9 @@ export default function CaseList({ rows }: { rows: CaseListRow[] }) {
         onClear: () => setGroup('all'),
       }}
       empty={{
-        description: '還沒有案件。建立合約時會同時建立租賃案件。',
+        description: '還沒有案件。從物件列表選一個已核對的物件，就能建立案件。',
         action: (
-          <Link href="/contracts/new">
+          <Link href={CREATE_CONTRACT_HREF}>
             <Button type="primary" icon={<PlusOutlined />}>
               建立合約
             </Button>

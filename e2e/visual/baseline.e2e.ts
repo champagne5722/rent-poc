@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { seedDraft, seedSendableDraft, seedVerifiedProperty } from '../helpers/api';
-import { chooseOption } from '../helpers/ui';
 
 // 截圖基準（MIL-168）：合約列表、合約詳情、建約精靈、物件列表。
 // UI 重構改外觀時，這裡的比對失敗是預期的。基準只在階段驗收時由主控更新：npm run e2e:visual -- --update-snapshots
@@ -98,10 +97,10 @@ test('合約詳情（簽署中）', async ({ page }) => {
   await shoot(page, 'contract-detail-signing.png');
 });
 
-test('建約精靈：第一步 選物件與範本', async ({ page }) => {
-  await page.goto('/contracts/new');
-  await chooseOption(page.getByRole('combobox'), /截圖基準物件甲/);
-  await page.getByRole('heading', { name: '建立合約' }).click(); // 收起下拉，移開焦點
+test('建約精靈：第一步 物件摘要與範本', async ({ page }) => {
+  // 物件與案件種類由入口參數帶入，精靈不再選物件（MIL-209）
+  await page.goto(`/contracts/new?property=${seeded.propertyA}&kind=lease`);
+  await expect(page.getByRole('heading', { name: '建立合約' })).toBeVisible();
   await expect(page.getByText('台北市大安區和平東路二段 100 號 3 樓', { exact: true })).toBeVisible();
   await shoot(page, 'wizard-step1-property.png');
 });
