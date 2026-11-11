@@ -7,6 +7,7 @@ import {
   CREATE_CONTRACT_HREF,
   MEMBERS_HREF,
   OWNER_NAV_ITEMS,
+  resolveIdentityNavKey,
   resolveNavKey,
   resolvePageTitle,
   resolveOwnerNavKey,
@@ -146,6 +147,7 @@ describe('resolvePageTitle（後台 header 標題，MIL-106）', () => {
   it('成員管理頁不在選單內，另有標題，且用後台殼層', () => {
     expect(resolvePageTitle(MEMBERS_HREF)).toBe('成員管理');
     expect(resolveNavKey(MEMBERS_HREF)).toBeNull();
+    expect(resolveIdentityNavKey(MEMBERS_HREF)).toBe('members');
     expect(shellFor(MEMBERS_HREF)).toBe('admin');
   });
 
@@ -187,9 +189,13 @@ describe('後台每一頁都有頂部列的區域名稱（MIL-174）', () => {
 describe('依身分出現的入口（MIL-109）', () => {
   it('執業主體組織看到「執業主體」，平台營運者看到「審核台」，其他身分沒有專屬入口', async () => {
     const { identityNavItems } = await import('./nav');
-    expect(identityNavItems('practice').map((i) => [i.label, i.href])).toEqual([['執業主體', '/practice']]);
+    expect(identityNavItems('practice').map((i) => [i.label, i.href])).toEqual([
+      ['執業主體', '/practice'],
+      ['成員管理', '/settings/members'],
+    ]);
     expect(identityNavItems('operator').map((i) => [i.label, i.href])).toEqual([['審核台', '/desk']]);
-    expect(identityNavItems('owner')).toEqual([]);
+    expect(identityNavItems('owner').map((i) => i.label)).toEqual(['成員管理']);
+    expect(identityNavItems('party')).toEqual([]);
     expect(identityNavItems(null)).toEqual([]);
   });
 

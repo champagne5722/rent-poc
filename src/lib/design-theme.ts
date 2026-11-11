@@ -30,6 +30,8 @@ export interface DesignFrontMatter {
   typography?: Record<string, DesignTypographyLevel>;
   rounded?: Record<string, string>;
   spacing?: Record<string, string>;
+  /** 動態曲線，值是 cubic-bezier 字串。ease-out 與 ease-in 取代 antd 帶回彈的預設曲線。 */
+  motion?: Record<string, string>;
   components?: Record<string, Record<string, string | number>>;
 }
 
@@ -49,6 +51,8 @@ const COLOR_SEED_MAP: Record<string, string | string[]> = {
   hairline: ['colorSplit', 'colorBorderSecondary'],
   'hairline-strong': 'colorBorder',
   'semantic-success': 'colorSuccess',
+  'semantic-success-subtle': 'colorSuccessBg',
+  'semantic-success-border': ['colorSuccessBorder', 'colorSuccessBgHover'],
   'semantic-error': 'colorError',
   'semantic-warning': 'colorWarning',
   'semantic-info': 'colorInfo',
@@ -116,6 +120,11 @@ export function parseDesignTheme(content: string): DesignTheme | null {
     token.sizeUnit = Math.round(spacingMd / 4);
     token.sizeStep = 4;
   }
+
+  const easeOut = data.motion?.['ease-out'];
+  if (typeof easeOut === 'string' && !UNSAFE_CSS_VALUE.test(easeOut)) token.motionEaseOutBack = easeOut;
+  const easeIn = data.motion?.['ease-in'];
+  if (typeof easeIn === 'string' && !UNSAFE_CSS_VALUE.test(easeIn)) token.motionEaseInBack = easeIn;
 
   addCssVars(cssVars, '--color-', data.colors);
   addCssVars(cssVars, '--space-', data.spacing);

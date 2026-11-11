@@ -9,8 +9,11 @@ export interface NavEntry {
 
 /** 依目前身分才出現的入口：`identity` 是出現條件。 */
 export interface IdentityNavEntry extends NavEntry {
-  readonly identity: 'practice' | 'operator';
+  /** 一種身分，或多種身分任一種符合就出現。 */
+  readonly identity: IdentityKind | readonly IdentityKind[];
 }
+
+export type IdentityKind = 'owner' | 'practice' | 'operator';
 
 /** 個人入口：跟著身分出現，頁面屬於成員本人。 */
 export interface PersonalNavEntry extends NavEntry {
