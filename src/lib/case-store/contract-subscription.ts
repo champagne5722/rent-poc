@@ -3,7 +3,7 @@ import { getContract, getContractCaseId } from '../contracts';
 import type { CaseInput } from '../cases';
 import type { OrgTx } from '../pg/with-tx';
 import type { ProgressOutcome } from '../signing-module/progress';
-import type { Contract } from '../types';
+import { isLeaseFamilyContract, type Contract } from '../types';
 import { addCaseMember } from './commands';
 import { dispatch } from './dispatch';
 import { findOrCreateParty, normalizePartyEmail, updateLeaseTerms } from './repository';
@@ -23,7 +23,8 @@ export async function onContractSentForCase(tx: OrgTx, contract: Contract, now: 
   if (caseId === null) return;
 
   await dispatch(tx, caseId, { type: 'contract_sent', contractId: contract.id }, { now });
-  if (contract.contract_type !== 'lease') return;
+  // 租賃、包租、轉租合約的兩方、租金與租期欄位相同（MIL-199），案件的處理也相同。委託管理合約沒有這些欄位
+  if (!isLeaseFamilyContract(contract)) return;
 
   const { fields } = contract;
   await updateLeaseTerms(
@@ -80,7 +81,7 @@ export async function onContractOutcomeForCase(
  */
 async function openLedgerForCompletedLease(tx: OrgTx, caseId: string, contractId: string): Promise<void> {
   const contract = await getContract(tx, contractId);
-  if (!contract || contract.contract_type !== 'lease') return;
+  if (!contract || !isLeaseFamilyContract(contract)) return;
   const { fields } = contract;
   const opened = await openCaseLedger(tx, caseId, {
     deposit: fields.deposit,
