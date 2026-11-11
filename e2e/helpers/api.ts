@@ -159,7 +159,17 @@ export async function seedSendableDraft(page: Page, propertyId: string): Promise
   return id;
 }
 
-const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+/**
+ * 替目前登入的屋主建立一筆示範移交，回傳移交 ID（走 /api/demo/handover，只在 Mock 模式存在）。
+ * 移交資料還在記憶體 adapter，真實登入的屋主預設看不到任何移交（MIL-185）。
+ */
+export async function seedOwnerHandover(page: Page, variant: 'draft' | 'owner_confirmed' | 'completed'): Promise<string> {
+  const response = await page.request.post('/api/demo/handover', { data: { variant } });
+  if (response.status() !== 201) throw new Error(`建立示範移交失敗：${response.status()} ${await response.text()}`);
+  return ((await response.json()) as { data: { id: string } }).data.id;
+}
+
+const TINY_PNG =Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
 /**
  * 用新的 email 登入，建立執業主體組織，並送出一個業別的登錄（待營運者核對）。
