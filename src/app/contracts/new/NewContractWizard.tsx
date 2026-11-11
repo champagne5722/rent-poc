@@ -3,6 +3,7 @@
 // 建約精靈第一步（MIL-209、MIL-205，ADR-0029 決議 1）：物件與案件種類由入口帶入，精靈不再選物件。
 // 入口參數 `/contracts/new?property=<物件 ID>&kind=<案件種類>` 由 page.tsx 解析，這裡拿到的已是合法的參數與已載入的物件。
 // 合約類型、業務類型與「承租人是否為包租業者」由案件種類決定，使用者不選。只有「是否有經紀業者居間」由使用者填。
+// 居間選項照 MIL-200 的規則顯示：屋主組織與沒有經紀業別的組織不顯示，經紀業別未驗證時顯示成不能選，已驗證才能勾。伺服端另外擋下，不信前端。
 // 按「下一步」建立草稿：POST /api/contracts 帶 case_kind。伺服端回 409 時，顯示伺服端的原因與下一步的連結，不顯示錯誤碼。
 // 範本區單範本時只是說明，不做選擇（ADR-0005）；選用條款在草稿建立後的第①步勾選。
 
@@ -19,6 +20,7 @@ import { businessTypeForNewCase } from '@/lib/cases';
 import { contractTypeDefinition } from '@/lib/contract-types';
 import { contractTypeForCaseKind } from '@/lib/contract-types/case-kind';
 import { STEP_PROPERTY } from '@/lib/contract-wizard';
+import type { BrokerChoice } from '@/lib/practitioner-assignment/broker-choice';
 import { creationBlockedNext, PROPERTY_LIST_HREF, type CreationBlockedNext } from '@/lib/property-case-entry';
 import type { OrgKind } from '@/lib/request-context';
 import { DEFAULT_ROUTING, evaluateRouting } from '@/lib/signature-routing';
@@ -30,6 +32,8 @@ export interface NewContractWizardProps {
   property: Property;
   kind: PropertyCaseKind;
   orgKind: Exclude<OrgKind, 'platform'>;
+  /** 居間選項的狀態，由伺服端依自家組織的經紀業別算出（MIL-200）。屋主組織與沒有經紀業別的組織是 hidden。 */
+  brokerChoice: BrokerChoice;
 }
 
 interface Blocked {
@@ -37,7 +41,7 @@ interface Blocked {
   next: CreationBlockedNext;
 }
 
-function NewContractWizardInner({ property, kind, orgKind }: NewContractWizardProps) {
+function NewContractWizardInner({ property, kind, orgKind, brokerChoice }: NewContractWizardProps) {
   const { message } = AntApp.useApp();
   const router = useRouter();
   const [brokerMediated, setBrokerMediated] = useState(false);
@@ -120,6 +124,7 @@ function NewContractWizardInner({ property, kind, orgKind }: NewContractWizardPr
               value={routing}
               onChange={(next) => setBrokerMediated(next.brokerMediated)}
               disabled={creating}
+              brokerChoice={brokerChoice}
               caseDerived
             />
             <Alert

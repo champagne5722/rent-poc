@@ -13,7 +13,7 @@ export function TemplateNotice({ contractType = DEFAULT_CONTRACT_TYPE }: { contr
     <Alert
       type="info"
       showIcon
-      message={`範本：${template.name} v${template.version}，${template.provider}`}
+      title={`範本：${template.name} v${template.version}，${template.provider}`}
       description={`${template.note}目前平台僅一份範本，系統自動選用。`}
     />
   );

@@ -104,3 +104,19 @@ test('建約精靈：沒帶參數、參數不合法、物件看不到時，導�
     await expect(page.getByRole('heading', { name: '物件列表' })).toBeVisible();
   }
 });
+
+test('建約精靈第一步：載入後沒有 console error，也沒有頁面錯誤（MIL-209）', async ({ page, browser }) => {
+  const property = await seedVerifiedProperty(page, browser, `E2E 精靈主控台物件 ${uniqueSuffix()}`);
+  const problems: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error' || msg.type() === 'warning') problems.push(`console.${msg.type()}: ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`));
+
+  await page.goto(`/contracts/new?property=${property.id}&kind=lease`);
+  await expect(page.getByRole('heading', { name: '建立合約' })).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  // 先印出來，出現新的訊息時看得到原文
+  console.log(`精靈第一步的 console 訊息：${JSON.stringify(problems, null, 2)}`);
+  expect(problems).toEqual([]);
+});

@@ -30,5 +30,5 @@ export default async function NewContractPage({ searchParams }: { searchParams: 
   // 平台營運者的組織沒有物件，也不建案件
   if (result.kind !== 'ok' || result.orgKind === 'platform') redirect(PROPERTY_LIST_HREF);
 
-  return <NewContractWizard property={result.property} kind={params.kind} orgKind={result.orgKind} />;
+  return <NewContractWizard property={result.property} kind={params.kind} orgKind={result.orgKind} brokerChoice={result.brokerChoice} />;
 }

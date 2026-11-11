@@ -2,6 +2,8 @@ import { authorize, bindAccessContext, checkAccess, Forbidden } from './authoriz
 import { listAvailableCaseKinds, listCaseSummaries, type CaseSummary } from './case-store';
 import { requestContext } from './current-request-context';
 import { getPropertyOwnership } from './ownership';
+import type { BrokerChoice } from './practitioner-assignment/broker-choice';
+import { loadBrokerChoice } from './practitioner-assignment/broker-guard';
 import { withTx } from './pg/database';
 import { isUlid } from './pg/ulid';
 import { getProperty, listSiblingUnits } from './properties';
@@ -27,6 +29,8 @@ export interface PropertyDetailData {
   availableCaseKinds: PropertyCaseKind[];
   /** 目前組織的種類。建約精靈用它算分流條件的預覽。 */
   orgKind: OrgKind;
+  /** 居間選項的狀態（MIL-200）。建約精靈第一步用它決定居間選項顯示、不能選或可選，與草稿續編的 brokerChoice 同一個來源。 */
+  brokerChoice: BrokerChoice;
 }
 
 export type PropertyDetailLoad =
@@ -58,7 +62,8 @@ export async function loadPropertyDetail(id: string): Promise<PropertyDetailLoad
       // 平台營運者的組織沒有物件，也不建案件。封存的物件不能建
       const availableCaseKinds =
         rc.orgKind === 'platform' || property.archived_at ? [] : await listAvailableCaseKinds(tx, { orgId: rc.orgId, orgKind: rc.orgKind }, property);
-      return { property, units, ownership, cases, availableCaseKinds, orgKind: rc.orgKind };
+      const brokerChoice = await loadBrokerChoice(tx, rc.orgKind);
+      return { property, units, ownership, cases, availableCaseKinds, orgKind: rc.orgKind, brokerChoice };
     });
     return read ? { kind: 'ok', ...read } : { kind: 'not_found' };
   } catch (error) {
