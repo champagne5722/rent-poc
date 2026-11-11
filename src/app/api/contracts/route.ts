@@ -1,6 +1,14 @@
 import { NextRequest } from 'next/server';
 import { authorize } from '@/lib/authorize';
-import { attachContract, CaseCreationBlocked, createLeaseCase } from '@/lib/case-store';
+import {
+  attachContract,
+  CaseCreationBlocked,
+  contractTypeForNewCase,
+  createCaseFromProperty,
+  createLeaseCase,
+  routingForNewCase,
+} from '@/lib/case-store';
+import { isPropertyCaseKind } from '@/lib/cases';
 import { buildSigningProgress } from '@/lib/contract-list-load';
 import { createContract, listContracts } from '@/lib/contracts';
 import {
@@ -17,6 +25,7 @@ import { canCreateCase, PROPERTY_NOT_VERIFIED_CODE, PROPERTY_NOT_VERIFIED_MESSAG
 import { getOwnershipGate } from '@/lib/ownership/repository';
 import { isUlid } from '@/lib/pg/ulid';
 import { getProperty } from '@/lib/properties';
+import { propertyNotFound } from '@/lib/properties/not-found';
 import { routingInputError } from '@/lib/signature-routing';
 import { jsonOk, jsonError } from '@/lib/http';
 
@@ -51,9 +60,63 @@ function propertyNotVerified(): Response {
   return jsonError(409, PROPERTY_NOT_VERIFIED_MESSAGE, PROPERTY_NOT_VERIFIED_CODE);
 }
 
+// 從物件與案件種類建立（MIL-209，ADR-0030）。body 帶 `case_kind` 時走這條新路徑，沒帶走下面的舊路徑，舊路徑行為不變。
+// 舊路徑與過渡旗標由畫面段切換後移除，MIL-203 清掉。新路徑的規則：
+// - 物件識別：`property_id` 是呼叫者組織自己的物件（一列一個租賃單位）。沒帶、格式錯誤、別的組織的、不存在、沒有權限，
+//   回應與 GET /api/properties/[id] 的「不存在」逐位元相同（`propertyNotFound()`，ADR-0028）。
+// - 案件種類：`lease`、`master_lease`、`sublease`。委託管理案件不綁單一物件，不走這裡（MIL-212）。
+// - 檢查全部在伺服端重做：物件已核對、組織種類與案件種類相符、執業主體的業別與專任管理人員、
+//   轉租案件的包租案件由伺服端用自家案件查，呼叫端不能傳上層案件的 ID，也不能傳 `lesseeIsMasterLessor`。
+// - 合約類型由案件種類決定（`contractTypeForNewCase`）。分流條件由案件種類推出，body 只讀 `routing.brokerMediated`。
+// 被擋下回 409：`property_not_verified`，或 decideCaseCreation 的原因碼（例如 `host_org_not_allowed`、`no_valid_master_lease`）。
+async function createFromCaseKind(input: { contract_type?: unknown; property_id?: unknown; case_kind?: unknown; routing?: unknown }): Promise<Response> {
+  if (!isPropertyCaseKind(input.case_kind)) return jsonError(400, '不認得的案件種類');
+  const caseKind = input.case_kind;
+  const type = contractTypeForNewCase(caseKind);
+  if (input.contract_type !== undefined && input.contract_type !== type) return jsonError(400, '合約類型與案件種類不符');
+  const routingInput = typeof input.routing === 'object' && input.routing !== null ? (input.routing as { brokerMediated?: unknown }) : {};
+  const brokerMediated = routingInput.brokerMediated === true;
+  if (!isUlid(input.property_id)) return propertyNotFound();
+  const propertyId = input.property_id;
+
+  return inOrgTxAs(async (tx, rc) => {
+    // 平台營運者的組織沒有物件，也不建案件。與不存在同一個回應
+    if (rc.orgKind === 'platform') return propertyNotFound();
+    // 以物件為對象授權：看不到的物件、不存在的物件與沒有權限，Forbidden 轉成同一個「不存在」回應
+    await authorize(tx, 'contract.draft_send', { type: 'property', id: propertyId });
+    const property = await getProperty(tx, propertyId);
+    if (!property) return propertyNotFound();
+    if (property.archived_at) return jsonError(409, '物件已封存，不能建立合約');
+    // 未核對優先於案件種類的檢查。createLeaseCase 最前面還會再檢查一次
+    if (!canCreateCase(await getOwnershipGate(tx, property.rental_unit_id))) return propertyNotVerified();
+    let caseId: string;
+    try {
+      caseId = await createCaseFromProperty(tx, { orgId: rc.orgId, orgKind: rc.orgKind, lessorPartyId: rc.partyId, property, caseKind });
+    } catch (error) {
+      // createCaseFromProperty 在寫入任何資料前就丟錯，這裡回應不會留下半套資料
+      if (error instanceof CaseCreationBlocked) {
+        const reason = error.reasons[0];
+        return reason.code === PROPERTY_NOT_VERIFIED_CODE ? propertyNotVerified() : jsonError(409, reason.message, reason.code);
+      }
+      throw error;
+    }
+    // 案件建成就代表組織種類能建這種案件，所以分流條件一定算得出來
+    const routing = routingForNewCase(rc.orgKind, caseKind, brokerMediated);
+    if (!routing) throw new Error('案件已建立，但分流條件算不出來');
+    const fields = initialFieldsFor(type, { property, routing });
+    const id = await createContract(tx, { property_id: property.id, fields, contract_type: type, case_id: caseId });
+    await attachContract(tx, caseId, id, { actor: { partyId: rc.partyId } });
+    return jsonOk({ data: { id, case_id: caseId, case_kind: caseKind } }, { status: 201 });
+  });
+}
+
 export async function POST(request: NextRequest) {
   const body = await readJson(request);
-  const input = typeof body === 'object' && body !== null ? (body as { contract_type?: unknown; property_id?: unknown; routing?: unknown }) : {};
+  const input =
+    typeof body === 'object' && body !== null
+      ? (body as { contract_type?: unknown; property_id?: unknown; case_kind?: unknown; routing?: unknown })
+      : {};
+  if (input.case_kind !== undefined) return createFromCaseKind(input);
   const contractType = input.contract_type ?? DEFAULT_CONTRACT_TYPE;
   if (typeof contractType !== 'string' || !(CONTRACT_TYPES as readonly string[]).includes(contractType)) {
     return jsonError(400, '不認得的合約類型');

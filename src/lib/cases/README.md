@@ -196,6 +196,12 @@ try {
 
 承租人登入、我的案件、已簽 PDF 下載與承租人換 email，見 `src/lib/tenant/README.md`。成員 email 更新新增案件事件 `member_replaced`（0049 改 `case_events` 的 CHECK），由 `replaceTenantMemberEmail` 寫入。
 
+## 從物件建立案件的入口（MIL-209）
+
+- 純函式在 `creation.ts`：`availableCaseKinds`（這個物件能建哪些案件，用 `decideCaseCreation` 逐種試算，規則只有一份）、`businessTypeForNewCase`、`practiceFactsFor`。
+- 帶 I/O 的部分在 `src/lib/case-store/property-entry.ts`：載入事實（只看目前組織自己的節點與案件）、`createCaseFromProperty`、`contractTypeForNewCase`（由案件種類決定合約類型，集中在一處）。
+- 入口：`POST /api/contracts` 帶 `case_kind`、`GET /api/properties/[id]` 的 `available_case_kinds`、`GET /api/cases?property_id=`。委託管理案件不綁單一物件，不在這條路。
+
 ## 這個階段不做
 
 代管與包租案件的建立檢查接線（MIL-116）、委託管理案件的建立、委託連結與 `onBehalf` 事實載入、`close_mandatary_valid_period` 等 outbox 任務的處理（MIL-119）、worker 計時器接線、退租與結案的操作入口（E 線）、站內通知。

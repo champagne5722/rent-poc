@@ -1,0 +1,4 @@
+/* 找不到頁面的空狀態：上下留白引用 DESIGN.md 的間距 token。 */
+.page {
+  padding-block: var(--space-xxl);
+}

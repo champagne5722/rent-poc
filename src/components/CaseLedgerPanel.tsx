@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { App as AntApp, Alert, Button, Col, Descriptions, Flex, Form, Input, Modal, Popconfirm, Row, Select, Spin, Table, Tag, Typography, theme } from 'antd';
+import { App as AntApp, Alert, Button, Descriptions, Flex, Form, Input, Modal, Popconfirm, Select, Spin, Table, Tag, Typography, theme } from 'antd';
 import type { HolderConflict, RemitterId, SocialHousingChange } from '@/lib/case-ledger';
 import { formatTaipei } from '@/lib/case-display';
 import {
@@ -10,6 +10,7 @@ import {
   SOCIAL_HOUSING_LABELS,
 } from '@/lib/labels/case-ledger-labels';
 import { HOLDER_KIND_LABELS } from '@/lib/payment-accounts/input';
+import styles from './CaseLedgerPanel.module.css';
 import { DepositSection, PeriodsSection, ReceiptsSection, RecordReceiptSection, type ReceiptsSetup } from './CaseReceiptsPanel';
 
 // 案件的帳務設定分頁（MIL-123）：社宅代管旗標、押金台帳、應收期別、匯款識別、預設收款帳戶。
@@ -71,7 +72,7 @@ export default function CaseLedgerPanel({ caseId }: { caseId: string }) {
     );
   }
   if (load.status === 'forbidden') {
-    return <Alert type="info" showIcon message="你看不到這個案件的帳務設定" />;
+    return <Alert type="info" showIcon title="你看不到這個案件的帳務設定" />;
   }
 
   const { setup } = load;
@@ -147,7 +148,7 @@ function SocialHousingSection({ caseId, setup, onChanged }: { caseId: string; se
         <Alert
           type="warning"
           showIcon
-          message="押金的持有人與社宅代管案件的規則衝突"
+          title="押金的持有人與社宅代管案件的規則衝突"
           description={
             <Flex vertical gap={token.marginXXS}>
               {setup.holderConflicts.map((c) => (
@@ -205,7 +206,6 @@ function SocialHousingSection({ caseId, setup, onChanged }: { caseId: string; se
 
 function RemitterSection({ caseId, setup, onChanged }: { caseId: string; setup: LedgerSetup; onChanged: (text: string) => Promise<void> }) {
   const { message } = AntApp.useApp();
-  const { token } = theme.useToken();
   const [form] = Form.useForm<{ kind: RemitterId['kind']; value: string }>();
   const [busy, setBusy] = useState(false);
   const kind = Form.useWatch('kind', form) ?? 'payer_name';
@@ -274,29 +274,31 @@ function RemitterSection({ caseId, setup, onChanged }: { caseId: string; setup: 
         ]}
       />
       {setup.canConfigure && (
-        <Form form={form} layout="vertical" initialValues={{ kind: 'payer_name', value: '' }} onFinish={(values) => void add(values)}>
-          <Row gutter={token.margin}>
-            <Col xs={24} md={8}>
-              <Form.Item name="kind" label="種類">
-                <Select
-                  options={Object.entries(REMITTER_KIND_LABELS).map(([value, label]) => ({ value, label }))}
-                  onChange={() => form.setFieldsValue({ value: '' })}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={10}>
-              <Form.Item name="value" label="內容" rules={[{ required: true, whitespace: true, message: '請填寫內容' }]}>
-                <Input
-                  maxLength={kind === 'payer_name' ? 60 : 5}
-                  placeholder={kind === 'payer_name' ? '例如：王大明' : '5 位數字'}
-                  inputMode={kind === 'payer_name' ? 'text' : 'numeric'}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Button type="primary" htmlType="submit" loading={busy}>
-            新增
-          </Button>
+        <Form
+          form={form}
+          layout="vertical"
+          className={styles.formBody}
+          initialValues={{ kind: 'payer_name', value: '' }}
+          onFinish={(values) => void add(values)}
+        >
+          <Form.Item name="kind" label="種類">
+            <Select
+              options={Object.entries(REMITTER_KIND_LABELS).map(([value, label]) => ({ value, label }))}
+              onChange={() => form.setFieldsValue({ value: '' })}
+            />
+          </Form.Item>
+          <Form.Item name="value" label="內容" rules={[{ required: true, whitespace: true, message: '請填寫內容' }]}>
+            <Input
+              maxLength={kind === 'payer_name' ? 60 : 5}
+              placeholder={kind === 'payer_name' ? '例如：王大明' : '5 位數字'}
+              inputMode={kind === 'payer_name' ? 'text' : 'numeric'}
+            />
+          </Form.Item>
+          <Flex gap="small" wrap>
+            <Button htmlType="submit" loading={busy}>
+              新增
+            </Button>
+          </Flex>
         </Form>
       )}
     </Flex>
@@ -317,7 +319,6 @@ function DefaultAccountsSection({
   onChanged: (text: string) => Promise<void>;
 }) {
   const { message } = AntApp.useApp();
-  const { token } = theme.useToken();
   const current = setup.defaultAccounts ?? { rentAccountId: null, depositAccountId: null };
   const [form] = Form.useForm<{ rentAccountId: string | null; depositAccountId: string | null }>();
   const [busy, setBusy] = useState(false);
@@ -360,24 +361,21 @@ function DefaultAccountsSection({
           layout="vertical"
           // key 讓載入完成或儲存後的最新值重新帶入表單
           key={`${current.rentAccountId}:${current.depositAccountId}`}
+          className={styles.formBody}
           initialValues={current}
           onFinish={(values) => void save(values)}
         >
-          <Row gutter={token.margin}>
-            <Col xs={24} md={9}>
-              <Form.Item name="rentAccountId" label="租金">
-                <Select allowClear placeholder="未設定" options={options} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={9}>
-              <Form.Item name="depositAccountId" label="押金">
-                <Select allowClear placeholder="未設定" options={options} />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Button type="primary" htmlType="submit" loading={busy}>
-            儲存
-          </Button>
+          <Form.Item name="rentAccountId" label="租金">
+            <Select allowClear placeholder="未設定" options={options} />
+          </Form.Item>
+          <Form.Item name="depositAccountId" label="押金">
+            <Select allowClear placeholder="未設定" options={options} />
+          </Form.Item>
+          <Flex gap="small" wrap>
+            <Button htmlType="submit" loading={busy}>
+              儲存
+            </Button>
+          </Flex>
         </Form>
       ) : (
         <Descriptions

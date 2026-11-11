@@ -104,6 +104,15 @@ export async function verifyPropertyViaApi(page: Page, browser: Browser, propert
   if (!read.ok()) throw new Error(`標示通知已讀失敗：${read.status()} ${await read.text()}`);
 }
 
+/**
+ * 替目前登入的組織送一則站內通知（走 demo 測試通知 API，e2e 的 Mailer 是 log adapter）。
+ * 通知列是未讀，會改未讀數，所以只給全新帳號的測試用，不要用共用登入狀態的帳號。
+ */
+export async function seedNotification(page: Page, title: string, body = 'E2E 資料準備的測試通知。'): Promise<void> {
+  const response = await page.request.post('/api/demo/notify', { data: { title, body } });
+  if (response.status() !== 201) throw new Error(`建立通知失敗：${response.status()} ${await response.text()}`);
+}
+
 /** 登錄物件並讓它通過核對。建立合約與送簽的流程用這個。 */
 export async function seedVerifiedProperty(
   page: Page,

@@ -14,6 +14,7 @@ import {
   SafetyCertificateOutlined,
   AuditOutlined,
   IdcardOutlined,
+  TeamOutlined,
   BankOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
@@ -55,6 +56,7 @@ const PERSONAL_NAV_ICONS: Record<PersonalNavKey, React.ReactNode> = {
 const IDENTITY_NAV_ICONS: Record<IdentityNavKey, React.ReactNode> = {
   practice: <SafetyCertificateOutlined />,
   desk: <AuditOutlined />,
+  members: <TeamOutlined />,
 };
 
 // 殼層依路徑分派（MIL-94，MIL-121）：/owner 底下交給 src/app/owner/layout.tsx 掛 OwnerShell，
@@ -131,11 +133,11 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
           <Typography.Text strong>{collapsed ? '租' : '租房雲端管理平台'}</Typography.Text>
         </div>
 
-        {/* 常駐建約 CTA：任何頁面都看得到；收合時縮成 icon，靠 tooltip 說明 */}
+        {/* 常駐建約入口：任何頁面都看得到；收合時縮成 icon，靠 tooltip 說明。
+            用 default 按鈕：DESIGN.md 規定每個畫面至多一顆 primary，primary 留給頁面自己的主要動作（MIL-185）。 */}
         <div className={collapsed ? styles.ctaCollapsed : styles.cta}>
           <Tooltip title={collapsed ? '建立合約' : undefined} placement="right">
             <Button
-              type="primary"
               block
               icon={<PlusOutlined />}
               // 用 router.push 而非 Link 包 Button，避免 <a> 內嵌 <button> 的無效巢狀
