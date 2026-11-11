@@ -639,3 +639,105 @@ export interface ContractEvent {
   note: string | null;
   created_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// 申請：委託管理申請與住宅包租申請（MIL-206，spec MIL-193，ADR-0029、ADR-0030）
+// 路徑在 src/app/api/mandate-requests。業者端與屋主端各有一種形狀：業者端沒有屋主的任何資料，
+// 所以「沒人打開」「有人打開」「已綁定但沒送出」三種情況在業者端的回應逐位元相同。
+
+export const MANDATE_REQUEST_KINDS = ['management', 'master_lease'] as const;
+/** management 是委託管理申請，master_lease 是住宅包租申請。 */
+export type MandateRequestKind = (typeof MANDATE_REQUEST_KINDS)[number];
+
+/** 讀取時判定的狀態：待屋主確認、待業者接受、已接受、未接受、已收回、已結束、已完成，加上依期限判定的失效。 */
+export type MandateRequestStatus =
+  | 'pending_owner'
+  | 'pending_practice'
+  | 'accepted'
+  | 'declined'
+  | 'withdrawn'
+  | 'ended'
+  | 'completed'
+  | 'expired';
+
+/** 業者代填的房子資料。欄位集合與登錄物件的請求本文相同，屋主確認時由登錄入口重新驗證。 */
+export interface MandateRequestDraft {
+  name: string;
+  address: string;
+  type?: PropertyType;
+  size?: number | null;
+  default_rent?: number | null;
+  note?: string;
+  equipment?: EquipmentItem[];
+  anchor?: {
+    key?: { city: string; town: string; section: string; buildingNo: string; subNo?: string };
+    latitude?: number | null;
+    longitude?: number | null;
+  };
+}
+
+/** 業者代傳謄本時填的謄本表單欄位（與物件頁上傳謄本相同）。 */
+export interface MandateRequestTranscriptForm {
+  claimed_owner: string;
+  acquired_at: string;
+  has_trust?: boolean;
+  trust_registered_owner?: string;
+  trust_related_parties?: string;
+  trust_registration_status?: string;
+  trust_lease_clause?: string;
+}
+
+/** 業者端讀到的申請（GET /api/mandate-requests、GET /api/mandate-requests/[id]）。不含屋主的任何資料。 */
+export interface PracticeMandateRequest {
+  id: string;
+  kind: MandateRequestKind;
+  /** 法定名稱：委託管理申請、住宅包租申請。 */
+  kind_label: string;
+  status: MandateRequestStatus;
+  created_at: string;
+  /** 目前仍有效的期限。已完成、已收回、未接受、已結束、已失效是 null。 */
+  deadline: string | null;
+  submitted_at: string | null;
+  withdrawn_at: string | null;
+  /** 業者自己代填的資料。連結失效後是 null。 */
+  draft: MandateRequestDraft | null;
+  transcript_file_name: string | null;
+  /** 屋主送出後才有數字。送出前是 null。 */
+  unit_count: number | null;
+}
+
+/** 產生連結的回應（POST /api/mandate-requests，201）。碼與連結只在這一次回應出現，之後沒有地方能取回。 */
+export interface MandateRequestCreated extends PracticeMandateRequest {
+  /** 站內路徑 /request/<碼>。畫面組成完整網址與 QR code。 */
+  link_path: string;
+}
+
+/** 登入前的連結頁（GET /api/mandate-requests/link/[code]）。只有業者的公開資訊。 */
+export interface MandateRequestLinkView {
+  kind: MandateRequestKind;
+  kind_label: string;
+  practice: { name: string; tax_id: string; verified_kinds: string[] };
+  expires_at: string;
+}
+
+/** 屋主端讀到的申請（GET /api/mandate-requests/[id]）。 */
+export interface OwnerMandateRequest {
+  id: string;
+  kind: MandateRequestKind;
+  kind_label: string;
+  status: MandateRequestStatus;
+  created_at: string;
+  deadline: string | null;
+  submitted_at: string | null;
+  withdrawn_at: string | null;
+  practice: { name: string; tax_id: string; verified_kinds: string[] };
+  /** 業者代填的資料。屋主確認前的待確認內容。連結失效或送出後是 null。 */
+  draft: MandateRequestDraft | null;
+  has_transcript: boolean;
+  /** 屋主已確認代填資料。確認後登錄的租賃單位 ID。 */
+  confirmed_unit_id: string | null;
+  /** 已送出的申請含的租賃單位。 */
+  unit_ids: string[];
+  /** 這份申請的個資告知文字，屋主確認代填資料時必須顯示。 */
+  consent_notice: { notice_type: string; version: number; title: string; text: string } | null;
+}

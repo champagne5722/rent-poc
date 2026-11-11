@@ -23,6 +23,7 @@ import { practiceRegistryActions } from './actions/practice-registry';
 import { practitionerActions } from './actions/practitioner';
 import { propertyActions } from './actions/property';
 import { repairActions } from './actions/repair';
+import { requestActions } from './actions/request';
 import type { ActionRule } from './actions/rules';
 
 export { MANDATE_SCOPES, ORG_ROLES, TERMINAL_CASE_STATES } from './actions/rules';
@@ -53,6 +54,7 @@ export const ACTIONS = {
   ...practitionerActions,
   ...propertyActions,
   ...repairActions,
+  ...requestActions,
 } as const satisfies Record<string, ActionRule>;
 
 export type ActionId = keyof typeof ACTIONS;
