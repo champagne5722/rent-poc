@@ -123,7 +123,7 @@ describe('POST /api/mandate-requests：業者產生連結', () => {
   });
 
   it('業別還在待驗證時不能產生連結', async () => {
-    const pending = await pk.practiceAccount('pending@example.com', { name: '新公司', taxId: '99999999', kinds: ['management'] });
+    const pending = await verifiedPractice(pk, 'pending@example.com', { name: '新公司', kinds: ['management'], verified: [] });
     actAsAccount(pending, 'practice');
     expect((await create({ kind: 'management' })).status).toBe(403);
     await verifyLicenses(pk, pending.orgId, ['management']);

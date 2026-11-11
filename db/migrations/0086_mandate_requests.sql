@@ -298,3 +298,364 @@ END
 $$;
 REVOKE ALL ON FUNCTION registry.expire_mandate_requests(timestamptz) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION registry.expire_mandate_requests(timestamptz) TO app_rw;
+
+-- 9. 屋主綁定連結 -------------------------------------------------------------------
+-- 誰能呼叫：app_rw，在屋主組織（control.orgs.kind = 'owner'）的成員脈絡內。業者與平台組織的呼叫者一律回 not_owner，
+-- 不論碼有沒有效，所以拿到碼的業者不能用這個函式探測碼的狀態。營運者脈絡被拒。
+-- 做什麼：碼有效（待屋主確認、沒失效、對應業別仍是 verified）而且還沒被別的組織綁定時，把申請綁定到呼叫者的組織
+-- （owner_org_id、claimed_at）。已被呼叫者自己的組織綁定時回 already_claimed，什麼都不寫。
+-- 回傳一列 (outcome, request_id)：claimed、already_claimed、not_owner、unavailable。
+-- unavailable 涵蓋所有無效的原因：查無此碼、已過期、已送出、已收回、業別失效、已被別的組織綁定。函式不區分，與連結頁一致。
+-- 為什麼：綁定第一位登入的屋主組織，之後同一個連結只有它能用（持有連結的第二個人不能搶先送出）。
+-- 這一步不寫任何業者讀得到的資料。業者讀申請的函式不回傳 owner_org_id 與 claimed_at。
+CREATE FUNCTION registry.claim_mandate_request(p_code_hash text, p_now timestamptz)
+RETURNS TABLE (outcome text, request_id text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = registry, pg_temp
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_org   text := nullif(current_setting('app.org_id', true), '');
+  v_party text := nullif(current_setting('app.party_id', true), '');
+  v_req   registry.mandate_requests;
+BEGIN
+  IF v_org IS NULL OR v_party IS NULL OR nullif(current_setting('app.operator_id', true), '') IS NOT NULL THEN
+    RAISE EXCEPTION 'registry.claim_mandate_request 必須由組織成員呼叫' USING ERRCODE = '42501';
+  END IF;
+  IF p_now IS NULL THEN
+    RAISE EXCEPTION '時間必須由呼叫端提供' USING ERRCODE = '22023';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM control.orgs o WHERE o.id = v_org AND o.kind = 'owner') THEN
+    RETURN QUERY SELECT 'not_owner'::text, NULL::text;
+    RETURN;
+  END IF;
+  IF p_code_hash IS NULL OR p_code_hash !~ '^[0-9a-f]{64}$' THEN
+    RETURN QUERY SELECT 'unavailable'::text, NULL::text;
+    RETURN;
+  END IF;
+
+  SELECT r.* INTO v_req
+    FROM registry.mandate_requests r
+   WHERE r.code_hash = p_code_hash
+     AND r.status = 'pending_owner'
+     AND p_now < r.link_expires_at
+     AND (r.owner_org_id IS NULL OR r.owner_org_id = v_org)
+     AND EXISTS (
+       SELECT 1 FROM registry.practice_licenses l
+        WHERE l.entity_id = r.entity_id AND l.kind = r.kind AND l.state = 'verified')
+     FOR UPDATE OF r;
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT 'unavailable'::text, NULL::text;
+    RETURN;
+  END IF;
+
+  IF v_req.owner_org_id = v_org THEN
+    RETURN QUERY SELECT 'already_claimed'::text, v_req.id;
+    RETURN;
+  END IF;
+  UPDATE registry.mandate_requests r SET owner_org_id = v_org, claimed_at = p_now WHERE r.id = v_req.id;
+  RETURN QUERY SELECT 'claimed'::text, v_req.id;
+END
+$$;
+REVOKE ALL ON FUNCTION registry.claim_mandate_request(text, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION registry.claim_mandate_request(text, timestamptz) TO app_rw;
+
+-- 10. 屋主讀自己的申請 ----------------------------------------------------------------
+-- 誰能呼叫：app_rw，在屋主組織的成員脈絡內，營運者脈絡被拒。p_id 為 NULL 時列出呼叫者組織綁定的申請（最新的 200 筆）。
+-- 只回 owner_org_id 等於呼叫者組織的申請：沒綁定的連結、別的屋主組織的申請、不存在的申請都回零列，逐位元相同。
+-- 回什麼：申請本身、業者的名稱與統編與已驗證的業別（申請種類的對方）、業者代填的資料（待屋主確認而且沒失效時才有）、
+-- 是否有業者代傳的謄本與檔名、已確認的租賃單位、已送出的租賃單位。不含業者代傳謄本的檔案 key 與表單欄位，
+-- 不含業者端的任何其他資料（別的申請、建立者）。
+-- 為什麼：屋主在確認畫面要看到業者是誰、申請種類與代填的內容，才能決定送不送出。
+CREATE FUNCTION registry.mandate_requests_for_owner(p_id text, p_now timestamptz)
+RETURNS TABLE (
+  request_id text, kind text, status text, created_at timestamptz, link_expires_at timestamptz, claimed_at timestamptz,
+  submitted_at timestamptz, withdrawn_at timestamptz, accepted_at timestamptz, contract_sent_at timestamptz,
+  practice_name text, tax_id text, verified_kinds text[],
+  draft jsonb, has_transcript boolean, transcript_file_name text,
+  draft_confirmed_at timestamptz, confirmed_unit_id text, unit_ids text[]
+)
+LANGUAGE plpgsql STABLE
+SECURITY DEFINER
+SET search_path = registry, pg_temp
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_org text := nullif(current_setting('app.org_id', true), '');
+BEGIN
+  IF v_org IS NULL OR nullif(current_setting('app.operator_id', true), '') IS NOT NULL
+     OR NOT EXISTS (SELECT 1 FROM control.orgs o WHERE o.id = v_org AND o.kind = 'owner') THEN
+    RAISE EXCEPTION 'registry.mandate_requests_for_owner 必須由屋主組織的成員呼叫' USING ERRCODE = '42501';
+  END IF;
+  RETURN QUERY
+  SELECT r.id, r.kind, r.status, r.created_at, r.link_expires_at, r.claimed_at,
+         r.submitted_at, r.withdrawn_at, r.accepted_at, r.contract_sent_at,
+         e.name, e.tax_id,
+         coalesce((SELECT array_agg(l.kind ORDER BY l.kind) FROM registry.practice_licenses l WHERE l.entity_id = e.id AND l.state = 'verified'), ARRAY[]::text[]),
+         CASE WHEN registry.mandate_request_status_at(r.status, r.link_expires_at, r.submitted_at, r.accepted_at, r.contract_sent_at, p_now) = 'pending_owner'
+              THEN r.draft END,
+         (r.draft_transcript IS NOT NULL
+          AND registry.mandate_request_status_at(r.status, r.link_expires_at, r.submitted_at, r.accepted_at, r.contract_sent_at, p_now) = 'pending_owner'),
+         CASE WHEN registry.mandate_request_status_at(r.status, r.link_expires_at, r.submitted_at, r.accepted_at, r.contract_sent_at, p_now) = 'pending_owner'
+              THEN r.draft_transcript ->> 'file_name' END,
+         r.draft_confirmed_at, r.confirmed_unit_id,
+         coalesce((SELECT array_agg(u.rental_unit_id ORDER BY u.rental_unit_id) FROM registry.mandate_request_units u WHERE u.request_id = r.id), ARRAY[]::text[])
+    FROM registry.mandate_requests r
+    JOIN registry.practice_entities e ON e.id = r.entity_id
+   WHERE r.owner_org_id = v_org
+     AND (p_id IS NULL OR r.id = p_id)
+   ORDER BY r.id DESC
+   LIMIT 200;
+END
+$$;
+REVOKE ALL ON FUNCTION registry.mandate_requests_for_owner(text, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION registry.mandate_requests_for_owner(text, timestamptz) TO app_rw;
+
+-- 11. 屋主取業者代傳的謄本 --------------------------------------------------------------
+-- 誰能呼叫：app_rw，在屋主組織的成員脈絡內。只回呼叫者組織綁定、待屋主確認、沒失效，而且有代傳謄本的申請。其餘回零列。
+-- 回什麼：FileStore 的 key、SHA-256、內容類型、檔名與謄本表單欄位。key 只給伺服器端程式，route 不得原樣回給前端。
+-- 為什麼：屋主同意個資告知之後，伺服器把這個檔案轉成屋主組織自己的謄本送核對（呼叫既有的送件路徑）。
+CREATE FUNCTION registry.mandate_request_transcript_for_owner(p_id text, p_now timestamptz)
+RETURNS TABLE (object_key text, sha256 text, content_type text, file_name text, byte_size bigint, form jsonb)
+LANGUAGE plpgsql STABLE
+SECURITY DEFINER
+SET search_path = registry, pg_temp
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_org text := nullif(current_setting('app.org_id', true), '');
+BEGIN
+  IF v_org IS NULL OR nullif(current_setting('app.operator_id', true), '') IS NOT NULL
+     OR NOT EXISTS (SELECT 1 FROM control.orgs o WHERE o.id = v_org AND o.kind = 'owner') THEN
+    RAISE EXCEPTION 'registry.mandate_request_transcript_for_owner 必須由屋主組織的成員呼叫' USING ERRCODE = '42501';
+  END IF;
+  RETURN QUERY
+  SELECT r.draft_transcript ->> 'object_key', r.draft_transcript ->> 'sha256', r.draft_transcript ->> 'content_type',
+         r.draft_transcript ->> 'file_name', (r.draft_transcript ->> 'byte_size')::bigint, r.draft_transcript -> 'form'
+    FROM registry.mandate_requests r
+   WHERE r.id = p_id AND r.owner_org_id = v_org AND r.draft_transcript IS NOT NULL
+     AND registry.mandate_request_status_at(r.status, r.link_expires_at, r.submitted_at, r.accepted_at, r.contract_sent_at, p_now) = 'pending_owner';
+END
+$$;
+REVOKE ALL ON FUNCTION registry.mandate_request_transcript_for_owner(text, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION registry.mandate_request_transcript_for_owner(text, timestamptz) TO app_rw;
+
+-- 12. 屋主確認業者代填的資料 ------------------------------------------------------------
+-- 誰能呼叫：app_rw，在屋主組織的成員脈絡內，營運者脈絡被拒。
+-- 做什麼：記錄「屋主已確認代填的資料，登錄成這個租賃單位」（draft_confirmed_at、confirmed_unit_id）。登錄物件本身由呼叫端
+-- 在屋主的組織交易內走既有的 registerProperty，這個函式只記錄結果。p_unit_id 必須是呼叫者組織自己的、沒封存的租賃單位。
+-- 回傳一列 (outcome, unit_id)：confirmed、already_confirmed（unit_id 是第一次確認的那個）、not_found、expired、
+-- not_pending、no_draft、unit_not_found。
+-- 為什麼：重複確認不能重複登錄。這一步不改 draft：業者端看到的申請在屋主送出前不得有任何變化。
+CREATE FUNCTION registry.confirm_mandate_request_draft(p_id text, p_unit_id text, p_now timestamptz)
+RETURNS TABLE (outcome text, unit_id text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = registry, pg_temp
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_org   text := nullif(current_setting('app.org_id', true), '');
+  v_party text := nullif(current_setting('app.party_id', true), '');
+  v_req   registry.mandate_requests;
+  v_state text;
+BEGIN
+  IF v_org IS NULL OR v_party IS NULL OR nullif(current_setting('app.operator_id', true), '') IS NOT NULL
+     OR NOT EXISTS (SELECT 1 FROM control.orgs o WHERE o.id = v_org AND o.kind = 'owner') THEN
+    RAISE EXCEPTION 'registry.confirm_mandate_request_draft 必須由屋主組織的成員呼叫' USING ERRCODE = '42501';
+  END IF;
+  SELECT r.* INTO v_req FROM registry.mandate_requests r WHERE r.id = p_id AND r.owner_org_id = v_org FOR UPDATE OF r;
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT 'not_found'::text, NULL::text;
+    RETURN;
+  END IF;
+  v_state := registry.mandate_request_status_at(v_req.status, v_req.link_expires_at, v_req.submitted_at, v_req.accepted_at, v_req.contract_sent_at, p_now);
+  IF v_state = 'expired' THEN
+    RETURN QUERY SELECT 'expired'::text, NULL::text;
+    RETURN;
+  END IF;
+  IF v_state <> 'pending_owner' THEN
+    RETURN QUERY SELECT 'not_pending'::text, NULL::text;
+    RETURN;
+  END IF;
+  IF v_req.draft IS NULL THEN
+    RETURN QUERY SELECT 'no_draft'::text, NULL::text;
+    RETURN;
+  END IF;
+  IF v_req.draft_confirmed_at IS NOT NULL THEN
+    RETURN QUERY SELECT 'already_confirmed'::text, v_req.confirmed_unit_id;
+    RETURN;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM org.properties p WHERE p.rental_unit_id = p_unit_id AND p.archived_at IS NULL) THEN
+    RETURN QUERY SELECT 'unit_not_found'::text, NULL::text;
+    RETURN;
+  END IF;
+  UPDATE registry.mandate_requests r SET draft_confirmed_at = p_now, confirmed_unit_id = p_unit_id WHERE r.id = p_id;
+  RETURN QUERY SELECT 'confirmed'::text, p_unit_id;
+END
+$$;
+REVOKE ALL ON FUNCTION registry.confirm_mandate_request_draft(text, text, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION registry.confirm_mandate_request_draft(text, text, timestamptz) TO app_rw;
+
+-- 13. 屋主送出 ----------------------------------------------------------------------
+-- 誰能呼叫：app_rw，在屋主組織的成員脈絡內，營運者脈絡被拒。
+-- 檢查（依序，第一個不符就回傳，什麼都不寫）：
+--   not_found       申請不是呼叫者組織綁定的（含不存在）。
+--   expired         連結已失效，或業者的業別已不是 verified。
+--   not_pending     申請不是待屋主確認（已送出、已收回等）。
+--   no_units        沒有選租賃單位，或超過 100 個。
+--   unit_not_found  有租賃單位不是呼叫者組織自己的（含不存在、別的組織的、已封存的）。
+--   units_occupied  有租賃單位已被進行中的申請、有效的委託或有效的包租佔用。只讀呼叫者組織自己的資料，
+--                   結果不透露是哪一家業者，也不透露是哪一種來源（ADR-0029 決議 9，ADR-0028 決議 1）。
+-- 做什麼：寫入租賃單位，狀態改成待業者接受，submitted_at 記送出時間，清掉業者代填的資料與謄本（回傳該刪的檔案 key）。
+-- 同交易對業者組織寫一則站內通知（種類 request.submitted），只寫申請種類與租賃單位數量，不帶屋主的 email 與名稱，
+-- 連結是站內路徑 /requests/<申請 ID>。寫通知時暫時把 app.org_id 切成業者組織，寫完立刻切回（0049 的做法）。
+-- 通知與送出在同一個交易，不會只送出沒通知，也不會只通知沒送出。
+-- 回傳一列 (outcome, unit_count, released_object_key)。
+CREATE FUNCTION registry.submit_mandate_request(p_id text, p_unit_ids text[], p_notification_id text, p_now timestamptz)
+RETURNS TABLE (outcome text, unit_count integer, released_object_key text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = registry, pg_temp
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_org   text := nullif(current_setting('app.org_id', true), '');
+  v_party text := nullif(current_setting('app.party_id', true), '');
+  v_req   registry.mandate_requests;
+  v_units text[];
+  v_found integer;
+  v_unit  text;
+  v_label text;
+  v_key   text;
+BEGIN
+  IF v_org IS NULL OR v_party IS NULL OR nullif(current_setting('app.operator_id', true), '') IS NOT NULL
+     OR NOT EXISTS (SELECT 1 FROM control.orgs o WHERE o.id = v_org AND o.kind = 'owner') THEN
+    RAISE EXCEPTION 'registry.submit_mandate_request 必須由屋主組織的成員呼叫' USING ERRCODE = '42501';
+  END IF;
+  IF p_id IS NULL OR p_now IS NULL OR p_notification_id IS NULL THEN
+    RAISE EXCEPTION '申請 ID、通知 ID 與時間必須由呼叫端提供' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT r.* INTO v_req FROM registry.mandate_requests r WHERE r.id = p_id AND r.owner_org_id = v_org FOR UPDATE OF r;
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT 'not_found'::text, NULL::integer, NULL::text;
+    RETURN;
+  END IF;
+  IF registry.mandate_request_status_at(v_req.status, v_req.link_expires_at, v_req.submitted_at, v_req.accepted_at, v_req.contract_sent_at, p_now) = 'expired'
+     OR NOT EXISTS (
+       SELECT 1 FROM registry.practice_licenses l
+        WHERE l.entity_id = v_req.entity_id AND l.kind = v_req.kind AND l.state = 'verified') THEN
+    RETURN QUERY SELECT 'expired'::text, NULL::integer, NULL::text;
+    RETURN;
+  END IF;
+  IF v_req.status <> 'pending_owner' THEN
+    RETURN QUERY SELECT 'not_pending'::text, NULL::integer, NULL::text;
+    RETURN;
+  END IF;
+
+  SELECT array_agg(DISTINCT u ORDER BY u) INTO v_units FROM unnest(p_unit_ids) AS u WHERE u IS NOT NULL;
+  IF v_units IS NULL OR array_length(v_units, 1) > 100 THEN
+    RETURN QUERY SELECT 'no_units'::text, NULL::integer, NULL::text;
+    RETURN;
+  END IF;
+  -- org.properties 的 RLS 在這裡生效：只看得到呼叫者組織自己的、沒封存的租賃單位
+  SELECT count(DISTINCT p.rental_unit_id) INTO v_found
+    FROM org.properties p WHERE p.rental_unit_id = ANY (v_units) AND p.archived_at IS NULL;
+  IF v_found <> array_length(v_units, 1) THEN
+    RETURN QUERY SELECT 'unit_not_found'::text, NULL::integer, NULL::text;
+    RETURN;
+  END IF;
+
+  -- 同一個租賃單位的送出在這裡排隊：依租賃單位 ID 排序取鎖，避免兩份申請同時搶同一個單位，也避免死結
+  FOREACH v_unit IN ARRAY v_units LOOP
+    PERFORM pg_advisory_xact_lock(hashtextextended('mandate_unit:' || v_unit, 0));
+  END LOOP;
+  IF EXISTS (SELECT 1 FROM registry.occupied_rental_units(v_org, v_units, p_now, p_id)) THEN
+    RETURN QUERY SELECT 'units_occupied'::text, NULL::integer, NULL::text;
+    RETURN;
+  END IF;
+
+  INSERT INTO registry.mandate_request_units (request_id, rental_unit_id) SELECT p_id, u FROM unnest(v_units) AS u;
+  v_key := v_req.draft_transcript ->> 'object_key';
+  UPDATE registry.mandate_requests r
+     SET status = 'pending_practice', submitted_at = p_now, draft = NULL, draft_transcript = NULL
+   WHERE r.id = p_id;
+
+  v_label := CASE v_req.kind WHEN 'management' THEN '委託管理申請' ELSE '住宅包租申請' END;
+  PERFORM set_config('app.org_id', v_req.practice_org_id, true);
+  INSERT INTO org.notifications (id, org_id, kind, title, body, link_path)
+  VALUES (p_notification_id, v_req.practice_org_id, 'request.submitted',
+          '收到一份' || v_label,
+          '屋主送出了一份' || v_label || '，含 ' || array_length(v_units, 1) || ' 個租賃單位。',
+          '/requests/' || p_id);
+  PERFORM set_config('app.org_id', v_org, true);
+
+  RETURN QUERY SELECT 'submitted'::text, array_length(v_units, 1), v_key;
+END
+$$;
+REVOKE ALL ON FUNCTION registry.submit_mandate_request(text, text[], text, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION registry.submit_mandate_request(text, text[], text, timestamptz) TO app_rw;
+
+-- 14. 屋主收回 ----------------------------------------------------------------------
+-- 誰能呼叫：app_rw，在屋主組織的成員脈絡內，營運者脈絡被拒。
+-- 回傳一列 (outcome)：
+--   withdrawn      待業者接受而且沒失效：狀態改成已收回，withdrawn_at 記時間，同交易對業者組織寫一則站內通知
+--                  （種類 request.withdrawn，標題「申請已收回」，不寫原因），寫法同送出。
+--   not_found      申請不是呼叫者組織綁定的（含不存在）。
+--   not_submitted  申請還在待屋主確認：屋主沒送出就離開，不需要收回，也不得通知業者
+--                  （收回會讓業者看到狀態改變，推出屋主打開過連結，違反 MIL-206 驗收 13）。
+--   expired        送出後 7 天已失效。
+--   not_pending    已接受、未接受、已收回等，不能收回。已接受之後的動作叫「結束」，屬 MIL-210。
+CREATE FUNCTION registry.withdraw_mandate_request(p_id text, p_notification_id text, p_now timestamptz)
+RETURNS TABLE (outcome text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = registry, pg_temp
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_org   text := nullif(current_setting('app.org_id', true), '');
+  v_party text := nullif(current_setting('app.party_id', true), '');
+  v_req   registry.mandate_requests;
+  v_label text;
+BEGIN
+  IF v_org IS NULL OR v_party IS NULL OR nullif(current_setting('app.operator_id', true), '') IS NOT NULL
+     OR NOT EXISTS (SELECT 1 FROM control.orgs o WHERE o.id = v_org AND o.kind = 'owner') THEN
+    RAISE EXCEPTION 'registry.withdraw_mandate_request 必須由屋主組織的成員呼叫' USING ERRCODE = '42501';
+  END IF;
+  IF p_id IS NULL OR p_now IS NULL OR p_notification_id IS NULL THEN
+    RAISE EXCEPTION '申請 ID、通知 ID 與時間必須由呼叫端提供' USING ERRCODE = '22023';
+  END IF;
+  SELECT r.* INTO v_req FROM registry.mandate_requests r WHERE r.id = p_id AND r.owner_org_id = v_org FOR UPDATE OF r;
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT 'not_found'::text;
+    RETURN;
+  END IF;
+  IF v_req.status = 'pending_owner' THEN
+    RETURN QUERY SELECT 'not_submitted'::text;
+    RETURN;
+  END IF;
+  IF registry.mandate_request_status_at(v_req.status, v_req.link_expires_at, v_req.submitted_at, v_req.accepted_at, v_req.contract_sent_at, p_now) = 'expired' THEN
+    RETURN QUERY SELECT 'expired'::text;
+    RETURN;
+  END IF;
+  IF v_req.status <> 'pending_practice' THEN
+    RETURN QUERY SELECT 'not_pending'::text;
+    RETURN;
+  END IF;
+
+  UPDATE registry.mandate_requests r SET status = 'withdrawn', withdrawn_at = p_now WHERE r.id = p_id;
+
+  v_label := CASE v_req.kind WHEN 'management' THEN '委託管理申請' ELSE '住宅包租申請' END;
+  PERFORM set_config('app.org_id', v_req.practice_org_id, true);
+  INSERT INTO org.notifications (id, org_id, kind, title, body, link_path)
+  VALUES (p_notification_id, v_req.practice_org_id, 'request.withdrawn', '申請已收回', '屋主收回了一份' || v_label || '。', '/requests/' || p_id);
+  PERFORM set_config('app.org_id', v_org, true);
+
+  RETURN QUERY SELECT 'withdrawn'::text;
+END
+$$;
+REVOKE ALL ON FUNCTION registry.withdraw_mandate_request(text, text, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION registry.withdraw_mandate_request(text, text, timestamptz) TO app_rw;

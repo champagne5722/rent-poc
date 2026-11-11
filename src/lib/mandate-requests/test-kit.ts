@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
 import { expect } from 'vitest';
 import { SESSION_COOKIE } from '../auth/config';
-import { resolveRequestContext } from '../auth/login-flow';
-import { createOwnerOrg } from '../orgs/onboarding';
+import { completeLogin, requestLoginCode, resolveRequestContext } from '../auth/login-flow';
+import { createOwnerOrg, createPracticeOrg } from '../orgs/onboarding';
 import { actAsContext, nextAnchorKey } from '../pg/route-test-kit';
 import { setupPracticeKit, type Account, type PracticeKit } from '../practice-entities/test-kit';
 
@@ -26,6 +26,20 @@ export async function verifyLicenses(pk: PracticeKit, orgId: string, kinds: read
 
 let taxSeq = 0;
 
+/**
+ * 用真的 email 驗證碼流程登入，時間用現在。route 用 new Date() 判斷 session 有沒有到期，
+ * 所以 claim 這類讀 session cookie 的 route，測試的 session 必須是現在建的（PracticeKit.login 用固定的過去時間）。
+ */
+export async function loginNow(pk: PracticeKit, email: string): Promise<{ token: string }> {
+  const deps = { now: new Date(), secret: 'test-secret', mailer: pk.mailer, env: { PLATFORM_OPERATOR_EMAILS: 'ops@example.com' } };
+  const sent = await requestLoginCode(email, deps);
+  if (sent.status !== 'sent') throw new Error(`寄驗證碼失敗：${sent.status}`);
+  const code = pk.mailer.sent.at(-1)!.text.match(/\d{6}/)![0];
+  const result = await completeLogin(email, code, deps);
+  if (result.status !== 'ok') throw new Error('登入失敗');
+  return { token: result.token };
+}
+
 /** 業者帳號：一個執業主體組織，指定的業別已驗證。taxId 每次不同，同一個測試可建多家業者。 */
 export async function verifiedPractice(
   pk: PracticeKit,
@@ -34,13 +48,17 @@ export async function verifiedPractice(
 ): Promise<Account> {
   const kinds = options.kinds ?? ['management', 'master_lease'];
   taxSeq += 1;
-  const account = await pk.practiceAccount(email, {
-    name: options.name ?? `安心代管有限公司${taxSeq}`,
-    taxId: String(10000000 + taxSeq),
-    kinds,
-  });
-  await verifyLicenses(pk, account.orgId, options.verified ?? kinds);
-  return account;
+  const { token } = await loginNow(pk, email);
+  const created = await createPracticeOrg(
+    token,
+    { name: options.name ?? `安心代管有限公司${taxSeq}`, taxId: String(10000000 + taxSeq), entityType: 'company', kinds },
+    { now: new Date() },
+  );
+  if (created.status !== 'ok') throw new Error(`建執業主體組織失敗：${JSON.stringify(created)}`);
+  const rc = await resolveRequestContext(token, new Date(), 'test');
+  if (rc.kind !== 'org') throw new Error('建完組織後應該是組織身分');
+  await verifyLicenses(pk, rc.orgId, options.verified ?? kinds);
+  return { token, orgId: rc.orgId, orgKind: rc.orgKind, role: rc.role, userId: rc.userId, partyId: rc.partyId };
 }
 
 export interface OwnerAccount {
@@ -53,14 +71,10 @@ export interface OwnerAccount {
 
 /** 屋主帳號：登入後建屋主的組織。 */
 export async function ownerAccount(pk: PracticeKit, email: string, name = '王先生'): Promise<OwnerAccount> {
-  const { token } = await pk.login(email);
-  const result = await createOwnerOrg(token, { name }, { now: pk.deps.now() });
+  const { token } = await loginNow(pk, email);
+  const result = await createOwnerOrg(token, { name }, { now: new Date() });
   if (result.status !== 'ok') throw new Error(`建屋主組織失敗：${JSON.stringify(result)}`);
-  return resolveOwner(pk, token, email);
-}
-
-export async function resolveOwner(pk: PracticeKit, token: string, email: string): Promise<OwnerAccount> {
-  const rc = await resolveRequestContext(token, pk.deps.now(), 'test');
+  const rc = await resolveRequestContext(token, new Date(), 'test');
   if (rc.kind !== 'org') throw new Error('建完組織後應該是組織身分');
   return { token, orgId: rc.orgId, partyId: rc.partyId, userId: rc.userId, email };
 }
