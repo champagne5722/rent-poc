@@ -238,7 +238,8 @@ docker stop rentpoc-pg-verify
 - 新的 `control` 表：在自己模組檔的 `controlTables` 登記，寫明理由與 `app_rw` 的直接 DML 權限。新的 `audit` 表用 `auditTables`，新的 `registry` 或 `vault` 表用 `definerOnlyTables`。
 - 新的 schema：先在 `src/lib/pg/rls-catalog-kit.ts` 的 `SCHEMA_REGISTRIES` 加一列。沒有加時，有表就失敗。
 - 新的 view：必須用 `WITH (security_invoker = true)`，並只 `GRANT SELECT` 給 `app_rw`。`org` schema 有預設權限會自動給 `app_rw` 四種 DML，所以建 view 後要 `REVOKE INSERT, UPDATE, DELETE`。
-- 新的定義者函式（`SECURITY DEFINER`）：必須 `SET search_path = pg_catalog, <自己的 schema>, pg_temp`（`pg_temp` 排最後），並 `REVOKE EXECUTE ... FROM PUBLIC`。只授予需要的角色。
+- 新的定義者函式（`SECURITY DEFINER`）：必須固定 `search_path`，`pg_temp` 必須明寫在最後，並 `REVOKE EXECUTE ... FROM PUBLIC`。只授予需要的角色。不寫 `pg_catalog` 時，PostgreSQL 隱含把它排在最前面，所以 `SET search_path = registry, pg_temp` 是安全的。不得把 `pg_temp` 寫在其他 schema 之後。
+- 測試要建 Pool、關 Pool 或刪除暫時的資料庫時，必須用 `src/lib/pg/pg-database-kit.ts` 的 `createTestPool`、`closeTestPool`、`dropTestDatabase`。自己寫 `pool.end()` 後立刻 `DROP DATABASE ... WITH (FORCE)`，CI 的 `check` 會偶發 57P01（MIL-218）。`pg-test-teardown.guard.test.ts` 會擋下 `pg-database-kit.ts` 以外的 `DROP DATABASE` 與測試檔的 `new Pool(`。
 - 新的外鍵參照 `org` 表：用 `(org_id, x_id)` 複合外鍵。
 - 新的 `org` 表唯一鍵：必須含 `org_id`。需要跨組織唯一時（只有 registry 與主要出租權源），把索引登記在 `rls-cases.ts` 的 `CROSS_ORG_UNIQUE_KEY_EXCEPTIONS`，並寫一句理由。
 - 新的動作：新增 `src/lib/access/actions/<模組>.ts`，在彙總檔 `src/lib/access/actions.ts` 登記，再在 `decide-access.test.ts` 加預期列。細節見 `src/lib/access/README.md`。

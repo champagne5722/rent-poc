@@ -6,6 +6,7 @@ import { Client } from 'pg';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fromPgClient } from './executor';
 import { migrate, type SqlExecutor } from './migrate';
+import { dropTestDatabase } from './pg-database-kit';
 
 // migration runner 的契約測試：PGlite 與 pg 驅動共用同一組案例（MIL-79）。
 // pg 那組需要真實 PostgreSQL，由 TEST_DATABASE_URL 開啟（CI 的 check job 有容器）。
@@ -184,7 +185,7 @@ describe.skipIf(!databaseUrl)('migration runner 的 pg 驅動環境', () => {
 
   // 外層 beforeEach 先建庫，內層 runnerContract 的 beforeEach 再連線
   beforeEach(() => withAdmin(`CREATE DATABASE ${dbName}`));
-  afterEach(() => withAdmin(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`));
+  afterEach(() => dropTestDatabase(adminUrl, dbName));
 
   runnerContract(
     'pg',

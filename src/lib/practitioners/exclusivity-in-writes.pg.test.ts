@@ -2,6 +2,7 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fromPgClient } from '../pg/executor';
 import { migrate } from '../pg/migrate';
+import { dropTestDatabase } from '../pg/pg-database-kit';
 import { withClusterLock } from '../pg/pg-test-support';
 import { MIGRATIONS_DIR } from '../pg/test-harness';
 import { newUlid } from '../pg/ulid';
@@ -73,10 +74,7 @@ describe.skipIf(!adminUrl)('專任判定在寫入函式內：真實 PostgreSQL',
   });
   afterAll(async () => {
     await admin.end();
-    const root = new Client({ connectionString: adminUrl });
-    await root.connect();
-    await root.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
-    await root.end();
+    await dropTestDatabase(adminUrl!, dbName);
   });
 
   /** 以 app_rw 身分在交易內執行，結束後一律回滾。before 在換回管理者身分之後執行，用來檢查有沒有寫列。 */

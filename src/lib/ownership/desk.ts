@@ -6,6 +6,7 @@ import type { OrgTx } from '../pg/with-tx';
 import { deskTicket } from '../practice-entities/ticket';
 import type { OwnershipSubmissionView } from '../types';
 import { businessMsBetween, isReviewOverdue } from './business-days';
+import { precheckConflict } from './conflict-repository';
 import { readTranscriptBytes, type OpenFileResult } from './flows';
 import { validateCheckForm, type CheckFormField } from './forms';
 import { FAILED_NOTIFICATION_KIND, FAILED_NOTIFICATION_TITLE, VERIFIED_NOTIFICATION, failedNotificationBody } from './messages';
@@ -41,6 +42,9 @@ interface RawHeader {
   section_name: string | null;
   section_sub_name: string | null;
   held: boolean;
+  /** MIL-208：項目的衝突個案。沒有個案是 null。 */
+  conflict_id: string | null;
+  conflict_status: 'open' | 'decided' | null;
 }
 
 export interface OwnershipReviewHeader {
@@ -55,6 +59,9 @@ export interface OwnershipReviewHeader {
   claimantOrgName: string | null;
   submissionId: string | null;
   held: boolean;
+  /** 衝突個案編號與狀態（MIL-208）。項目沒有個案時是 null。 */
+  conflictId: string | null;
+  conflictStatus: 'open' | 'decided' | null;
   claimedKey: { cityCode: string; townCode: string; sectionCode: string; buildingNo: string; subNo: string };
   claimedKeyNames: { cityName: string | null; townName: string | null; sectionName: string | null; sectionSubName: string | null };
 }
@@ -76,6 +83,8 @@ export async function getReviewHeader(tx: OrgTx, itemId: string): Promise<Owners
     claimantOrgName: h.claimant_org_name,
     submissionId: h.submission_id,
     held: h.held,
+    conflictId: h.conflict_id ?? null,
+    conflictStatus: h.conflict_status ?? null,
     claimedKey: {
       cityCode: h.claimed_key.city_code,
       townCode: h.claimed_key.town_code,
@@ -101,6 +110,9 @@ export interface OwnershipReviewDetail {
     overdue: boolean;
     /** 兩項都相符，但別的組織對同一個鍵已有已驗證的節點，項目停在待處理。只有營運者看得到。 */
     held: boolean;
+    /** 衝突個案編號與狀態（MIL-208）。有值時用 GET /api/desk/ownership/[id]/conflict 讀雙方並列的內容。 */
+    conflictId: string | null;
+    conflictStatus: 'open' | 'decided' | null;
   };
   claimantOrgName: string | null;
   /** 送件當下使用者看到的鍵，與謄本比對用。 */
@@ -140,6 +152,8 @@ export async function getOwnershipReviewDetail(runs: OperatorRuns, itemId: strin
       waitingBusinessMs: businessMsBetween(created, waitingEnd),
       overdue: isReviewOverdue(created, waitingEnd),
       held: header.held,
+      conflictId: header.conflictId,
+      conflictStatus: header.conflictStatus,
     },
     claimantOrgName: header.claimantOrgName,
     claimedKey: header.claimedKey,
@@ -171,15 +185,27 @@ export type DecideFlowResult =
 /**
  * 判定出租權源。兩項比對各自記錄，判定人、時間與理由由資料庫記在判定紀錄。
  * 通過或不通過時，同交易寫稽核事件（rental_right.judge）並通知登錄的一方（站內）。held 不寫事件也不通知。
+ * 兩項都相符但別的組織對同一個鍵已有已驗證的節點時，建立衝突個案（MIL-208），回 held。
  */
 export async function decideOwnershipFlow(runs: OperatorRuns, itemId: string, raw: Record<string, unknown>): Promise<DecideFlowResult> {
   const form = validateCheckForm(raw);
   if (!form.ok) return { status: 'invalid', field: form.field, message: form.message };
-  const header = await runs.platform(deskTicket('ownership', itemId), (tx) => getReviewHeader(tx, itemId));
-  if (!header || header.type !== 'leasing_authority') return { status: 'not_found' };
-  if (header.status !== 'open') return { status: 'already_resolved' };
-
   const { keyMatch, holderMatch, holderMasked, reason } = form.value;
+
+  // 衝突偵測在平台脈絡完成，和讀標頭同一個交易（MIL-208）。有衝突時整個判定到此為止，不進登錄方的組織：
+  // 進去會在登錄方的鏈多一筆營運者存取事件，登錄方就能分辨「營運者還沒判定」與「判定被停住」。
+  const first = await runs.platform(deskTicket('ownership', itemId), async (tx) => {
+    const header = await getReviewHeader(tx, itemId);
+    if (!header || header.type !== 'leasing_authority') return { header: null, held: false };
+    if (header.status !== 'open') return { header, held: false };
+    const held = (await precheckConflict(tx, itemId, { keyMatch, holderMatch, holderMasked, reason }, newUlid())) === 'held';
+    return { header, held };
+  });
+  const header = first.header;
+  if (!header) return { status: 'not_found' };
+  if (header.status !== 'open') return { status: 'already_resolved' };
+  if (first.held) return { status: 'held' };
+
   return runs.inOrg(header.claimantOrgId, deskTicket('decide', itemId), async (tx): Promise<DecideFlowResult> => {
     const { rows } = await tx.query<{ outcome: string; node_id: string | null; property_id: string | null }>(
       'SELECT outcome, node_id, property_id FROM registry.decide_ownership_check($1, $2, $3, $4, $5, $6)',
