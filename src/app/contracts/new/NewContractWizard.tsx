@@ -66,7 +66,11 @@ function NewContractWizardInner({ property, kind, orgKind }: NewContractWizardPr
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       // 只送「是否有經紀業者居間」。業務類型與包租業者旗標由案件種類決定，送了伺服端也忽略
-      body: JSON.stringify({ property_id: property.id, case_kind: kind, routing: { brokerMediated } }),
+      body: JSON.stringify({
+        property_id: property.id,
+        case_kind: kind,
+        routing: { brokerMediated },
+      }),
     });
     const json = await res.json().catch(() => ({}));
     if (res.ok) {
@@ -76,9 +80,15 @@ function NewContractWizardInner({ property, kind, orgKind }: NewContractWizardPr
     }
     setCreating(false);
     if (res.status === 409) {
-      setBlocked({ message: json.error ?? '目前不能建立這個案件', next: creationBlockedNext(json.code, property.id) });
+      setBlocked({
+        message: json.error ?? '目前不能建立這個案件',
+        next: creationBlockedNext(json.code, property.id),
+      });
     } else if (res.status === 404) {
-      setBlocked({ message: json.error ?? '物件不存在', next: { href: PROPERTY_LIST_HREF, label: '返回物件列表' } });
+      setBlocked({
+        message: json.error ?? '物件不存在',
+        next: { href: PROPERTY_LIST_HREF, label: '返回物件列表' },
+      });
     } else {
       message.error(json.error ?? '建立草稿失敗');
     }
@@ -91,57 +101,58 @@ function NewContractWizardInner({ property, kind, orgKind }: NewContractWizardPr
       </Typography.Title>
       <WizardStepsBar current={STEP_PROPERTY} />
 
-      <Card size="small" className={styles.card}>
-        <Flex vertical gap={12}>
-          <Flex align="center" gap="small" wrap>
-            <Typography.Text strong>案件種類</Typography.Text>
-            <StatusTag kind="caseKind" value={kind} />
-            <Typography.Text type="secondary">合約：{contractTypeDefinition(contractType).documentName}</Typography.Text>
+      <Flex vertical gap="small" className={styles.stack}>
+        <Card size="small">
+          <Flex vertical gap={12}>
+            <Flex align="center" gap="small" wrap>
+              <Typography.Text strong>案件種類</Typography.Text>
+              <StatusTag kind="caseKind" value={kind} />
+              <Typography.Text type="secondary">合約：{contractTypeDefinition(contractType).documentName}</Typography.Text>
+            </Flex>
+            <Typography.Text strong>出租物件</Typography.Text>
+            <PropertySummary property={property} />
           </Flex>
-          <Typography.Text strong>出租物件</Typography.Text>
-          <PropertySummary property={property} />
-        </Flex>
-      </Card>
+        </Card>
 
-      <Card size="small" className={styles.card}>
-        <Flex vertical gap={12}>
-          <RoutingConditionsPanel
-            value={routing}
-            onChange={(next) => setBrokerMediated(next.brokerMediated)}
-            disabled={creating}
-            caseDerived
-          />
+        <Card size="small">
+          <Flex vertical gap={12}>
+            <RoutingConditionsPanel
+              value={routing}
+              onChange={(next) => setBrokerMediated(next.brokerMediated)}
+              disabled={creating}
+              caseDerived
+            />
+            <Alert
+              type="info"
+              showIcon
+              title={`建立合約後，案件列表會多一個${caseKindLabel}。撤回或拒簽後複製的新草稿，會留在同一個案件。`}
+            />
+            <TemplateNotice contractType={contractType} />
+          </Flex>
+        </Card>
+
+        {blocked && (
           <Alert
-            type="info"
+            type="error"
             showIcon
-            title={`建立合約後，案件列表會多一個${caseKindLabel}。撤回或拒簽後複製的新草稿，會留在同一個案件。`}
+            title={blocked.message}
+            action={
+              <Link href={blocked.next.href}>
+                <Button size="small">{blocked.next.label}</Button>
+              </Link>
+            }
           />
-          <TemplateNotice contractType={contractType} />
-        </Flex>
-      </Card>
+        )}
 
-      {blocked && (
-        <Alert
-          className={styles.blocked}
-          type="error"
-          showIcon
-          title={blocked.message}
-          action={
-            <Link href={blocked.next.href}>
-              <Button size="small">{blocked.next.label}</Button>
-            </Link>
-          }
-        />
-      )}
-
-      <Space className={styles.actions}>
-        <Button type="primary" loading={creating} onClick={() => void createDraft()}>
-          下一步 <RightOutlined />
-        </Button>
-        <Link href={`${PROPERTY_LIST_HREF}/${property.id}`}>
-          <Button disabled={creating}>返回物件</Button>
-        </Link>
-      </Space>
+        <Space className={styles.actions}>
+          <Button type="primary" loading={creating} onClick={() => void createDraft()}>
+            下一步 <RightOutlined />
+          </Button>
+          <Link href={`${PROPERTY_LIST_HREF}/${property.id}`}>
+            <Button disabled={creating}>返回物件</Button>
+          </Link>
+        </Space>
+      </Flex>
     </>
   );
 }

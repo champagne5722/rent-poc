@@ -4,17 +4,11 @@
   margin: 0 0 var(--space-sm);
 }
 
-/* 卡片與步驟條同寬，與草稿續編的步驟版面一致 */
-.card {
+/* 卡片、提示與按鈕排成一欄，寬度與草稿續編的步驟版面一致 */
+.stack {
   max-width: calc(var(--space-xxl) * 16);
-  margin-bottom: var(--space-sm);
 }
 
 .actions {
-  margin-top: var(--space-md);
-}
-
-.blocked {
-  max-width: calc(var(--space-xxl) * 16);
-  margin-bottom: var(--space-sm);
+  margin-top: var(--space-xs);
 }

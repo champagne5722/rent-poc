@@ -62,6 +62,7 @@ test('未通過核對的物件：列表與詳情都沒有建立案件的入口�
   const groupRow = page.getByRole('row').filter({ hasText: name }).filter({ hasText: '待平台核對文件' });
   await expect(groupRow).toBeVisible();
   await expect(page.getByRole('row').filter({ hasText: name }).getByRole('button', { name: /建立/ })).toHaveCount(0);
+  await expect(groupRow.getByText('尚未核對，不能建立案件')).toBeVisible();
 
   await page.goto(`/properties/${property.id}`);
   await expect(page.getByLabel('下一步').getByText('物件尚未通過平台的文件核對，通過後才能建立案件。')).toBeVisible();

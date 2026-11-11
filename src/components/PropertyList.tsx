@@ -11,6 +11,7 @@ import PropertyEditorModal from '@/components/PropertyEditorModal';
 import CreateCaseEntry from '@/components/property/CreateCaseEntry';
 import StatusTag from '@/components/StatusTag';
 import { formatEquipmentItem } from '@/lib/equipment';
+import { PROPERTY_NOT_VERIFIED_MESSAGE } from '@/lib/ownership/gate';
 import { anchorSummary } from '@/lib/properties/anchor-display';
 import {
   archivedUnitCount,
@@ -202,7 +203,7 @@ function PropertyListInner({ groups, vocabulary }: PropertyListProps) {
           rowKey: 'id',
           dataSource: rows,
           // 欄寬明確，1440 寬、側欄展開時不必橫向捲動；視窗更窄時才捲動，操作欄固定在右側（比照合約列表）
-          scroll: { x: 960 },
+          scroll: { x: 1116 },
           expandable: {
             expandedRowRender: unitTable,
             expandedRowKeys: rows.map((g) => g.id).filter((id) => !collapsed.includes(id)),
@@ -214,20 +215,25 @@ function PropertyListInner({ groups, vocabulary }: PropertyListProps) {
               width: 200,
               render: (_, group) => <Link href={`/properties/${group.id}`}>{representativeUnit(group).name}</Link>,
             },
-            { title: '地址', dataIndex: 'address', width: 240 },
-            { title: '建號', width: 240, render: (_, group) => anchorSummary(group.anchor) },
+            { title: '地址', dataIndex: 'address', width: 220 },
+            { title: '建號', width: 220, render: (_, group) => anchorSummary(group.anchor) },
             { title: '核對狀態', width: 150, render: (_, group) => <StatusTag kind="propertyVerification" value={group.verification_status} /> },
             { title: '租賃單位', width: 96, render: (_, group) => `${group.units.length} 個` },
             {
               title: '操作',
-              width: 170,
+              width: 230,
               fixed: 'right',
               render: (_, group) => {
                 const unit = representativeUnit(group);
                 return (
                   <Flex align="center">
-                    {/* 物件列不預先查能建的種類，打開選單時才查代表單位（整戶）。物件沒通過核對或已封存時不出現 */}
+                    {/* 物件列不預先查能建的種類，打開選單時才查代表單位（整戶）。物件沒通過核對時不出現入口，並寫出原因（MIL-205） */}
                     {group.verification_status === 'verified' && !unit.archived_at && <CreateCaseEntry propertyId={unit.id} type="link" size="small" />}
+                    {group.verification_status !== 'verified' && !unit.archived_at && (
+                      <Typography.Text type="secondary" title={PROPERTY_NOT_VERIFIED_MESSAGE}>
+                        尚未核對，不能建立案件
+                      </Typography.Text>
+                    )}
                     <Link href={`/properties/${group.id}`}>
                       <Button type="link" size="small">
                         查看
