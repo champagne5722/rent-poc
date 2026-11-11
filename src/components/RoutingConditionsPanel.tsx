@@ -5,6 +5,7 @@
 // 排序與擋下的判斷都在 src/lib/signature-routing/，這裡只畫畫面。
 
 import { Alert, Col, Flex, Form, Radio, Row, Tag, Typography } from 'antd';
+import styles from '@/components/contract-wizard/steps.module.css';
 import { RightOutlined } from '@ant-design/icons';
 import { BUSINESS_TYPES } from '@/lib/cases';
 import { BUSINESS_TYPE_LABELS } from '@/lib/labels';
@@ -50,7 +51,7 @@ export default function RoutingConditionsPanel({
       <Form layout="vertical" size="small">
         <Row gutter={12}>
           <Col span={8}>
-            <Form.Item label="業務類型" style={{ marginBottom: 0 }}>
+            <Form.Item label="業務類型" className={styles.flush}>
               <Radio.Group
                 disabled={disabled || caseDerived}
                 value={value.businessType}
@@ -60,7 +61,7 @@ export default function RoutingConditionsPanel({
             </Form.Item>
           </Col>
           <Col span={brokerSpan}>
-            <Form.Item label="承租人是否為包租業者" style={{ marginBottom: 0 }}>
+            <Form.Item label="承租人是否為包租業者" className={styles.flush}>
               <Radio.Group
                 disabled={disabled || caseDerived}
                 value={value.lesseeIsMasterLessor}
@@ -73,7 +74,7 @@ export default function RoutingConditionsPanel({
             <Col span={8}>
               <Form.Item
                 label="是否有經紀業者居間"
-                style={{ marginBottom: 0 }}
+                className={styles.flush}
                 extra={brokerChoice.kind === 'blocked' ? brokerChoice.reason : undefined}
               >
                 <Radio.Group
@@ -100,7 +101,7 @@ export default function RoutingConditionsPanel({
                       <RightOutlined />
                     </Typography.Text>
                   )}
-                  <Tag style={{ margin: 0 }}>
+                  <Tag className={styles.tag}>
                     {index + 1}　{seat.fullLabel}
                   </Tag>
                 </Flex>

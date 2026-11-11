@@ -1,0 +1,26 @@
+/* 建約精靈各步驟畫面共用的小樣式（MIL-176）。尺寸引用 DESIGN.md 的 CSS 變數。
+   選擇器帶元素名稱，是為了壓過 antd 元件樣式的特異性（0,1,0），不選取 antd 的內部 class。 */
+
+div.full {
+  width: 100%;
+}
+
+/* 設備詞彙庫的選單與加列按鈕 */
+div.vocabPick {
+  width: calc(var(--space-xl) * 10);
+}
+
+/* 說明文字：字級由 type-caption 提供，這裡只去掉段落的預設下邊距 */
+.note {
+  margin: 0;
+}
+
+/* 表單項目之間靠 gap，Form.Item 不再帶下邊距 */
+div.flush {
+  margin-bottom: 0;
+}
+
+/* 簽署序列的標籤，間距由外層 Flex 的 gap 控制 */
+span.tag {
+  margin: 0;
+}

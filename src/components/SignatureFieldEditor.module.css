@@ -1,0 +1,90 @@
+/* 簽署區域編輯器的版面（MIL-176）。尺寸與顏色引用 DESIGN.md 的 CSS 變數，不寫色碼。
+   頁面尺寸與對齊線的位置由 PDF 決定，元件用 ref 設定這三個 CSS 變數，不寫 inline style：
+   --page-width、--page-height、--guide-position。 */
+
+.loading {
+  display: block;
+  margin: var(--space-xxl) auto;
+}
+
+.page {
+  margin-bottom: var(--space-lg);
+}
+
+.pageBar {
+  margin-bottom: var(--space-xs);
+}
+
+.sheet {
+  position: relative;
+  width: var(--page-width);
+  height: var(--page-height);
+  border: 1px solid var(--color-hairline-strong);
+  background: var(--color-surface-1);
+}
+
+.sheetImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+}
+
+/* 拖曳時的對齊線，用主要強調色 */
+.guide {
+  position: absolute;
+  background: var(--color-primary);
+  pointer-events: none;
+}
+
+.guideVertical {
+  top: 0;
+  left: var(--guide-position);
+  width: 1px;
+  height: 100%;
+}
+
+.guideHorizontal {
+  top: var(--guide-position);
+  left: 0;
+  width: 100%;
+  height: 1px;
+}
+
+/* 簽名框：甲方用主要強調色，乙方用警告色，執業人員用次要文字色，重疊時用錯誤色。底色是同一個顏色的淡色 */
+.box {
+  --box-color: var(--color-ink-muted);
+  border: 2px dashed var(--box-color);
+  background: color-mix(in srgb, var(--box-color) 12%, transparent);
+}
+
+.boxPartyA {
+  --box-color: var(--color-primary);
+}
+
+.boxPartyB {
+  --box-color: var(--color-semantic-warning);
+}
+
+.boxOverlap {
+  --box-color: var(--color-semantic-error);
+}
+
+.boxLabel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xxs);
+  width: 100%;
+  height: 100%;
+  color: var(--box-color);
+  font-size: var(--type-caption-size);
+}
+
+.boxLabelReadOnly {
+  pointer-events: none;
+}
+
+.remove {
+  cursor: pointer;
+}

@@ -5,7 +5,7 @@
 // 受託人是執業主體：乙方的姓名與 Email 由共用流程的指派區帶入，這裡鎖住不開放手填（ADR-0018 決議 2）。
 // 送簽屬 MIL-77，確認頁說明目前只到草稿與 PDF 預覽。
 
-import { Alert, Col, DatePicker, Descriptions, Flex, Form, Input, InputNumber, Row, Select, Space, Typography } from 'antd';
+import { Alert, Card, Col, DatePicker, Descriptions, Flex, Form, Input, InputNumber, Row, Select, Typography } from 'antd';
 import dayjs from 'dayjs';
 import { contractTypeDefinition, mergeManagementFields } from '@/lib/contract-types';
 import { TERMS } from '@/lib/labels';
@@ -21,19 +21,22 @@ import {
 import type { FieldsStepProps, SummaryContext, WizardTypeUi } from '../types';
 import { TemplateNotice } from '../TemplateNotice';
 import MandateItemsEditor from './MandateItemsEditor';
+import styles from '../steps.module.css';
 
 /** 第①步：委託管理合約沒有物件與分流條件要填，只說明範本與租賃單位的加入方式。 */
 function ManagementPropertyStep() {
   return (
-    <Flex vertical gap={12}>
-      <Alert
-        type="info"
-        showIcon
-        title={contractTypeDefinition('management').draftNotice?.title}
-        description={contractTypeDefinition('management').draftNotice?.description}
-      />
-      <TemplateNotice contractType="management" />
-    </Flex>
+    <Card size="small" title={contractTypeDefinition('management').documentName}>
+      <Flex vertical gap="middle">
+        <Alert
+          type="info"
+          showIcon
+          title={contractTypeDefinition('management').draftNotice?.title}
+          description={contractTypeDefinition('management').draftNotice?.description}
+        />
+        <TemplateNotice contractType="management" />
+      </Flex>
+    </Card>
   );
 }
 
@@ -45,6 +48,7 @@ function ManagementFieldsStep({
   labels,
   lockedPartyRoles,
   practitionerSlot,
+  onDirty,
   mandateItems,
   onMandateItemsChange,
 }: FieldsStepProps<ManagementContractFields>) {
@@ -52,88 +56,92 @@ function ManagementFieldsStep({
   const mandataryLocked = lockedPartyRoles.includes('party_b');
   return (
     <>
-      <Form form={form} layout="vertical" size="small" requiredMark>
-        <Typography.Text strong>雙方資訊</Typography.Text>
-        <Row gutter={12} style={{ marginTop: 8 }}>
-          <Col span={12}>
-            <Form.Item
-              name="mandatorName"
-              label={`${labels.partyAFull}姓名`}
-              rules={[{ required: true, message: `請輸入${TERMS.mandator}姓名` }]}
-            >
-              <Input />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item
-              name="mandatorEmail"
-              label={`${TERMS.mandator} Email`}
-              rules={[{ required: true, type: 'email', message: `請輸入有效的${TERMS.mandator} Email` }]}
-            >
-              <Input />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item
-              name="mandataryName"
-              label={`${labels.partyBFull}姓名`}
-              rules={mandataryLocked ? [] : [{ required: true, message: `請輸入${TERMS.mandatary}姓名` }]}
-            >
-              <Input disabled={mandataryLocked} />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item
-              name="mandataryEmail"
-              label={`${TERMS.mandatary} Email`}
-              rules={
-                mandataryLocked ? [] : [{ required: true, type: 'email', message: `請輸入有效的${TERMS.mandatary} Email` }]
-              }
-            >
-              <Input disabled={mandataryLocked} />
-            </Form.Item>
-          </Col>
-        </Row>
-        {practitionerSlot}
+      <Form form={form} layout="vertical" size="small" requiredMark onValuesChange={onDirty}>
+        <Flex vertical gap="middle">
+          <Card size="small" title="雙方資訊">
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item
+                  name="mandatorName"
+                  label={`${labels.partyAFull}姓名`}
+                  rules={[{ required: true, message: `請輸入${TERMS.mandator}姓名` }]}
+                >
+                  <Input />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  name="mandatorEmail"
+                  label={`${TERMS.mandator} Email`}
+                  rules={[{ required: true, type: 'email', message: `請輸入有效的${TERMS.mandator} Email` }]}
+                >
+                  <Input />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  name="mandataryName"
+                  label={`${labels.partyBFull}姓名`}
+                  rules={mandataryLocked ? [] : [{ required: true, message: `請輸入${TERMS.mandatary}姓名` }]}
+                >
+                  <Input disabled={mandataryLocked} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  name="mandataryEmail"
+                  label={`${TERMS.mandatary} Email`}
+                  rules={
+                    mandataryLocked ? [] : [{ required: true, type: 'email', message: `請輸入有效的${TERMS.mandatary} Email` }]
+                  }
+                >
+                  <Input disabled={mandataryLocked} />
+                </Form.Item>
+              </Col>
+            </Row>
+            {practitionerSlot}
+          </Card>
 
-        <Typography.Text strong>委託期間與報酬約定</Typography.Text>
-        <Row gutter={12} style={{ marginTop: 8 }}>
-          <Col span={12}>
-            <Form.Item name="termStart" label="委託期間起日" rules={[{ required: true, message: '請選擇委託期間起日' }]}>
-              <DatePicker style={{ width: '100%' }} />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item name="termEnd" label="委託期間迄日" rules={[{ required: true, message: '請選擇委託期間迄日' }]}>
-              <DatePicker style={{ width: '100%' }} />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item name="feeMode" label="報酬約定" rules={[{ required: true, message: '請選擇報酬約定的形式' }]}>
-              <Select
-                placeholder="選擇報酬約定的形式"
-                options={MANAGEMENT_FEE_MODES.map((mode) => ({ value: mode, label: MANAGEMENT_FEE_MODE_LABELS[mode] }))}
-              />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item name="feeValue" label="報酬金額" rules={[{ required: true, message: '請輸入報酬金額' }]}>
-              <InputNumber
-                min={0}
-                max={feeMode === 'rent_percentage' ? 100 : undefined}
-                step={feeMode === 'rent_percentage' ? 1 : 500}
-                style={{ width: '100%' }}
-                suffix={feeMode ? FEE_UNIT[feeMode] : undefined}
-                disabled={!feeMode}
-              />
-            </Form.Item>
-          </Col>
-        </Row>
+          <Card size="small" title="委託期間與報酬約定">
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item name="termStart" label="委託期間起日" rules={[{ required: true, message: '請選擇委託期間起日' }]}>
+                  <DatePicker className={styles.full} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="termEnd" label="委託期間迄日" rules={[{ required: true, message: '請選擇委託期間迄日' }]}>
+                  <DatePicker className={styles.full} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="feeMode" label="報酬約定" rules={[{ required: true, message: '請選擇報酬約定的形式' }]}>
+                  <Select
+                    placeholder="選擇報酬約定的形式"
+                    options={MANAGEMENT_FEE_MODES.map((mode) => ({ value: mode, label: MANAGEMENT_FEE_MODE_LABELS[mode] }))}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="feeValue" label="報酬金額" rules={[{ required: true, message: '請輸入報酬金額' }]}>
+                  <InputNumber
+                    min={0}
+                    max={feeMode === 'rent_percentage' ? 100 : undefined}
+                    step={feeMode === 'rent_percentage' ? 1 : 500}
+                    className={styles.full}
+                    suffix={feeMode ? FEE_UNIT[feeMode] : undefined}
+                    disabled={!feeMode}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
+        </Flex>
       </Form>
 
-      <div style={{ marginTop: 16 }}>
+      <Card size="small">
         <MandateItemsEditor items={mandateItems} onChange={onMandateItemsChange} />
-      </div>
+      </Card>
     </>
   );
 }
@@ -144,7 +152,6 @@ function ManagementConfirmNotices() {
     <Alert
       type="warning"
       showIcon
-      style={{ marginBottom: 12 }}
       title="委託管理合約尚未開放送簽"
       description="目前可以確認內容並預覽 PDF，草稿會保留。送簽功能開放後，再回到這份草稿送簽。"
     />
@@ -163,13 +170,13 @@ function managementSummaryItems(fields: ManagementContractFields, { labels, cont
       label: '委託標的',
       span: 2,
       children: mandateItems.length ? (
-        <Space orientation="vertical" size={2}>
+        <Flex vertical gap={2}>
           {mandateItems.map((item) => (
             <Typography.Text key={item.propertyId}>
               {item.propertyName}：{mandateScopeText(item.scopes)}
             </Typography.Text>
           ))}
-        </Space>
+        </Flex>
       ) : (
         '（尚未加入租賃單位）'
       ),

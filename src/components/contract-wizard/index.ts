@@ -8,6 +8,8 @@ import type { WizardTypeUi } from './types';
 
 export type { FieldsStepProps, PropertyStepProps, SummaryContext, WizardTypeUi } from './types';
 export { TemplateNotice } from './TemplateNotice';
+export { default as WizardFrame, WizardStepsBar, type DraftState } from './WizardFrame';
+export { default as WizardSkeleton } from './WizardSkeleton';
 
 const WIZARD_UI: Readonly<Record<ContractType, WizardTypeUi | null>> = {
   lease: leaseWizardUi,

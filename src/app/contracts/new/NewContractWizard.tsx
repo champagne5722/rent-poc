@@ -5,14 +5,15 @@
 // 合約類型、業務類型與「承租人是否為包租業者」由案件種類決定，使用者不選。只有「是否有經紀業者居間」由使用者填。
 // 居間選項照 MIL-200 的規則顯示：屋主組織與沒有經紀業別的組織不顯示，經紀業別未驗證時顯示成不能選，已驗證才能勾。伺服端另外擋下，不信前端。
 // 按「下一步」建立草稿：POST /api/contracts 帶 case_kind。伺服端回 409 時，顯示伺服端的原因與下一步的連結，不顯示錯誤碼。
+// 版型用 WizardFrame（MIL-176）：步驟條與按鈕列固定，整體錯誤用頁內 Alert。
 // 範本區單範本時只是說明，不做選擇（ADR-0005）；選用條款在草稿建立後的第①步勾選。
 
 import { useState } from 'react';
-import { App as AntApp, Alert, Button, Card, Flex, Space, Typography } from 'antd';
-import { RightOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Flex, Typography } from 'antd';
+import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { TemplateNotice, WizardStepsBar } from '@/components/ContractWizard';
+import { TemplateNotice, WizardFrame } from '@/components/contract-wizard';
 import PropertySummary from '@/components/contract-wizard/PropertySummary';
 import RoutingConditionsPanel from '@/components/RoutingConditionsPanel';
 import StatusTag from '@/components/StatusTag';
@@ -26,7 +27,6 @@ import type { OrgKind } from '@/lib/request-context';
 import { DEFAULT_ROUTING, evaluateRouting } from '@/lib/signature-routing';
 import { statusPresentation } from '@/lib/status-presentation';
 import type { ContractRoutingConditions, Property, PropertyCaseKind } from '@/lib/types';
-import styles from './NewContractWizard.module.css';
 
 export interface NewContractWizardProps {
   property: Property;
@@ -38,11 +38,11 @@ export interface NewContractWizardProps {
 
 interface Blocked {
   message: string;
-  next: CreationBlockedNext;
+  /** 下一步的連結。沒有時只顯示原因。 */
+  next?: CreationBlockedNext;
 }
 
-function NewContractWizardInner({ property, kind, orgKind, brokerChoice }: NewContractWizardProps) {
-  const { message } = AntApp.useApp();
+export default function NewContractWizard({ property, kind, orgKind, brokerChoice }: NewContractWizardProps) {
   const router = useRouter();
   const [brokerMediated, setBrokerMediated] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -58,10 +58,10 @@ function NewContractWizardInner({ property, kind, orgKind, brokerChoice }: NewCo
   };
 
   const createDraft = async () => {
-    // 規則未定義的分流條件擋下一步，原因已顯示在分流條件區
+    // 規則未定義的分流條件擋下一步，原因也顯示在分流條件區
     const evaluation = evaluateRouting(routing, contractType);
     if (!evaluation.ok) {
-      message.error(evaluation.reason);
+      setBlocked({ message: evaluation.reason });
       return;
     }
     setCreating(true);
@@ -94,78 +94,65 @@ function NewContractWizardInner({ property, kind, orgKind, brokerChoice }: NewCo
         next: { href: PROPERTY_LIST_HREF, label: '返回物件列表' },
       });
     } else {
-      message.error(json.error ?? '建立草稿失敗');
+      setBlocked({ message: json.error ?? '建立草稿失敗' });
     }
   };
 
   return (
-    <>
-      <Typography.Title level={4} className={styles.title}>
-        建立合約
-      </Typography.Title>
-      <WizardStepsBar current={STEP_PROPERTY} />
-
-      <Flex vertical gap="small" className={styles.stack}>
-        <Card size="small">
-          <Flex vertical gap={12}>
-            <Flex align="center" gap="small" wrap>
-              <Typography.Text strong>案件種類</Typography.Text>
-              <StatusTag kind="caseKind" value={kind} />
-              <Typography.Text type="secondary">合約：{contractTypeDefinition(contractType).documentName}</Typography.Text>
-            </Flex>
-            <Typography.Text strong>出租物件</Typography.Text>
-            <PropertySummary property={property} />
-          </Flex>
-        </Card>
-
-        <Card size="small">
-          <Flex vertical gap={12}>
-            <RoutingConditionsPanel
-              value={routing}
-              onChange={(next) => setBrokerMediated(next.brokerMediated)}
-              disabled={creating}
-              brokerChoice={brokerChoice}
-              caseDerived
-            />
-            <Alert
-              type="info"
-              showIcon
-              title={`建立合約後，案件列表會多一個${caseKindLabel}。撤回或拒簽後複製的新草稿，會留在同一個案件。`}
-            />
-            <TemplateNotice contractType={contractType} />
-          </Flex>
-        </Card>
-
-        {blocked && (
-          <Alert
-            type="error"
-            showIcon
-            title={blocked.message}
-            action={
-              <Link href={blocked.next.href}>
-                <Button size="small">{blocked.next.label}</Button>
-              </Link>
-            }
-          />
-        )}
-
-        <Space className={styles.actions}>
-          <Button type="primary" loading={creating} onClick={() => void createDraft()}>
-            下一步 <RightOutlined />
-          </Button>
-          <Link href={`${PROPERTY_LIST_HREF}/${property.id}`}>
-            <Button disabled={creating}>返回物件</Button>
+    <WizardFrame
+      title="建立合約"
+      current={STEP_PROPERTY}
+      draft={creating ? 'saving' : 'none'}
+      error={blocked?.message}
+      errorAction={
+        blocked?.next && (
+          <Link href={blocked.next.href}>
+            <Button size="small">{blocked.next.label}</Button>
           </Link>
-        </Space>
-      </Flex>
-    </>
-  );
-}
+        )
+      }
+      prev={
+        <Link href={`${PROPERTY_LIST_HREF}/${property.id}`}>
+          <Button icon={<LeftOutlined />} disabled={creating}>
+            返回物件
+          </Button>
+        </Link>
+      }
+      next={
+        <Button type="primary" loading={creating} onClick={() => void createDraft()}>
+          下一步 <RightOutlined />
+        </Button>
+      }
+    >
+      <Card size="small" title="案件與物件">
+        <Flex vertical gap="small">
+          <Flex align="center" gap="small" wrap>
+            <Typography.Text strong>案件種類</Typography.Text>
+            <StatusTag kind="caseKind" value={kind} />
+            <Typography.Text type="secondary">合約：{contractTypeDefinition(contractType).documentName}</Typography.Text>
+          </Flex>
+          <Typography.Text strong>出租物件</Typography.Text>
+          <PropertySummary property={property} />
+        </Flex>
+      </Card>
 
-export default function NewContractWizard(props: NewContractWizardProps) {
-  return (
-    <AntApp>
-      <NewContractWizardInner {...props} />
-    </AntApp>
+      <Card size="small">
+        <Flex vertical gap="middle">
+          <RoutingConditionsPanel
+            value={routing}
+            onChange={(next) => setBrokerMediated(next.brokerMediated)}
+            disabled={creating}
+            brokerChoice={brokerChoice}
+            caseDerived
+          />
+          <Alert
+            type="info"
+            showIcon
+            title={`建立合約後，案件列表會多一個${caseKindLabel}。撤回或拒簽後複製的新草稿，會留在同一個案件。`}
+          />
+          <TemplateNotice contractType={contractType} />
+        </Flex>
+      </Card>
+    </WizardFrame>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Rnd } from 'react-rnd';
 import { Alert, Button, Flex, Spin, Typography } from 'antd';
+import styles from './SignatureFieldEditor.module.css';
 import { DeleteOutlined } from '@ant-design/icons';
 import {
   CONTRACT_PARTY_ROLES,
@@ -48,16 +49,23 @@ interface RenderedPage {
   cssHeight: number;
 }
 
-const SIGNER_STYLES: Record<SignerRole, { color: string; bg: string }> = {
-  party_a: { color: '#1677ff', bg: 'rgba(22,119,255,0.12)' },
-  party_b: { color: '#fa8c16', bg: 'rgba(250,140,22,0.14)' },
-  // 執業人員的簽名框，顏色取 DESIGN.md 的 ink-muted。
-  practitioner: { color: '#5d606b', bg: 'rgba(93,96,107,0.12)' },
+// 簽名框的顏色來自 DESIGN.md，定義在 SignatureFieldEditor.module.css：甲方是 primary，乙方是 semantic-warning，
+// 執業人員是 ink-muted，重疊時是 semantic-error（MIL-176）。
+const BOX_CLASS: Record<SignerRole, string> = {
+  party_a: styles.boxPartyA,
+  party_b: styles.boxPartyB,
+  practitioner: '',
 };
 
 const RENDER_WIDTH = 680;
-const GUIDE_COLOR = '#eb2f96';
-const OVERLAP_COLOR = '#ff4d4f';
+
+/** 頁面尺寸與對齊線位置由 PDF 與拖曳決定，用 CSS 變數交給樣式檔，不寫 inline style。 */
+function setCssVars(vars: Record<string, string>) {
+  return (element: HTMLElement | null) => {
+    if (!element) return;
+    for (const [name, value] of Object.entries(vars)) element.style.setProperty(name, value);
+  };
+}
 
 /** 拖曳中要畫的對齊線；只畫在當下操作的那一頁。 */
 interface ActiveGuides {
@@ -178,15 +186,15 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
   };
 
   if (error) return <Typography.Text type="danger">{error}</Typography.Text>;
-  if (!pages) return <Spin tip="載入合約 PDF…" style={{ display: 'block', margin: '48px auto' }} />;
+  if (!pages) return <Spin description="載入合約 PDF…" className={styles.loading} />;
 
   const warning = overlapWarning(value);
   const overlappingIds = overlappingFieldIds(value);
 
   return (
-    <div>
+    <Flex vertical gap="small">
       {warning && (
-        <Alert type="warning" showIcon message={warning} style={{ marginBottom: 12 }} />
+        <Alert type="warning" showIcon title={warning} />
       )}
       {!readOnly && annexMissing.length > 0 && (
         <Alert
@@ -194,7 +202,6 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
           showIcon
           title={`現況確認附件頁尚未放置${annexMissing.map((seat) => seat.label).join('、')}簽名框`}
           description="包租租賃合約的現況確認附件必須由執業人員簽章。請在標示「現況確認附件頁」的那一頁新增簽名框。"
-          style={{ marginBottom: 12 }}
         />
       )}
       {pages.map((page) => {
@@ -212,8 +219,8 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
             threshold
           );
         return (
-          <div key={page.index} style={{ marginBottom: 24 }}>
-            <Flex wrap align="center" justify="space-between" gap={8} style={{ marginBottom: 8 }}>
+          <div key={page.index} className={styles.page}>
+            <Flex wrap align="center" justify="space-between" gap={8} className={styles.pageBar}>
               <Typography.Text type="secondary">
                 第 {page.index + 1} 頁{page.index === signaturePage && '（範本簽名頁）'}
                 {page.index === pageMap?.statusAnnexPage && '（現況確認附件頁）'}
@@ -233,50 +240,27 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
               )}
             </Flex>
             <div
-              style={{
-                position: 'relative',
-                width: page.cssWidth,
-                height: page.cssHeight,
-                border: '1px solid #d9d9d9',
-                background: '#fff',
-              }}
+              className={styles.sheet}
+              ref={setCssVars({ '--page-width': `${page.cssWidth}px`, '--page-height': `${page.cssHeight}px` })}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={page.dataUrl}
                 alt={`合約第 ${page.index + 1} 頁`}
-                style={{ width: '100%', height: '100%', display: 'block', userSelect: 'none' }}
+                className={styles.sheetImage}
                 draggable={false}
               />
               {activeGuides?.page === page.index &&
                 activeGuides.guides.map((guide) => (
                   <div
                     key={`${guide.orientation}-${guide.position}`}
-                    style={
-                      guide.orientation === 'vertical'
-                        ? {
-                            position: 'absolute',
-                            left: guide.position * page.cssWidth,
-                            top: 0,
-                            width: 1,
-                            height: '100%',
-                            background: GUIDE_COLOR,
-                            pointerEvents: 'none',
-                          }
-                        : {
-                            position: 'absolute',
-                            top: guide.position * page.cssHeight,
-                            left: 0,
-                            height: 1,
-                            width: '100%',
-                            background: GUIDE_COLOR,
-                            pointerEvents: 'none',
-                          }
-                    }
+                    className={`${styles.guide} ${guide.orientation === 'vertical' ? styles.guideVertical : styles.guideHorizontal}`}
+                    ref={setCssVars({
+                      '--guide-position': `${guide.position * (guide.orientation === 'vertical' ? page.cssWidth : page.cssHeight)}px`,
+                    })}
                   />
                 ))}
               {onPage.map((f) => {
-                const style = SIGNER_STYLES[f.signer];
                 const overlapping = overlappingIds.has(f.id);
                 return (
                   <Rnd
@@ -303,24 +287,9 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
                         })
                       )
                     }
-                    style={{
-                      border: `2px dashed ${overlapping ? OVERLAP_COLOR : style.color}`,
-                      background: overlapping ? 'rgba(255,77,79,0.14)' : style.bg,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
+                    className={`${styles.box} ${overlapping ? styles.boxOverlap : BOX_CLASS[f.signer]}`}
                   >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        color: overlapping ? OVERLAP_COLOR : style.color,
-                        fontSize: 12,
-                        pointerEvents: readOnly ? 'none' : undefined,
-                      }}
-                    >
+                    <div className={readOnly ? `${styles.boxLabel} ${styles.boxLabelReadOnly}` : styles.boxLabel}>
                       {fieldLabel(f)}簽名
                       {!readOnly && (
                         <DeleteOutlined
@@ -329,7 +298,7 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
                             removeField(f.id);
                           }}
                           onMouseDown={(e) => e.stopPropagation()}
-                          style={{ cursor: 'pointer' }}
+                          className={styles.remove}
                         />
                       )}
                     </div>
@@ -340,6 +309,6 @@ export default function SignatureFieldEditor({ pdfUrl, value, onChange, readOnly
           </div>
         );
       })}
-    </div>
+    </Flex>
   );
 }

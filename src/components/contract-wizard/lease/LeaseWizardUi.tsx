@@ -4,14 +4,16 @@
 // 確認頁摘要與押金警告。從原本的 ContractWizard 搬出來，畫面與文字不變。
 // 步驟、儲存、簽署區與送簽的共用流程留在 ContractWizard，不判斷合約類型。
 
-import { useState, useEffect, type CSSProperties } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Alert,
   Button,
   Checkbox,
   Col,
   DatePicker,
+  Card,
   Descriptions,
+  Flex,
   Form,
   Input,
   InputNumber,
@@ -63,6 +65,7 @@ import { LEASE_FAMILY_EXTRA_CLAUSE_LABELS } from '@/lib/lease-family-clauses';
 import { currentTemplate, optionalClausesFor } from '@/lib/template-registry';
 import type { FieldsStepProps, PropertyStepProps, SummaryContext, WizardTypeUi } from '../types';
 import { TemplateNotice } from '../TemplateNotice';
+import styles from '../steps.module.css';
 
 const OPTIONAL_CLAUSES = optionalClausesFor('lease');
 
@@ -92,23 +95,21 @@ function OptionalClauseChecklist({
     onChange(reselectClauses(fields, on ? [...checked, id] : checked.filter((x) => x !== id)));
   };
   return (
-    <div style={{ marginTop: 12 }}>
+    <Flex vertical gap="small">
       <Typography.Text strong>選用條款（逐約勾選，併入合約條款區）</Typography.Text>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-        {OPTIONAL_CLAUSES.map((clause) => (
-          <Checkbox
-            key={clause.id}
-            checked={checked.includes(clause.id)}
-            onChange={(e) => toggle(clause.id, e.target.checked)}
-          >
-            <Typography.Text strong>{clause.title}</Typography.Text>
-            <Typography.Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>
-              {clause.body}
-            </Typography.Paragraph>
-          </Checkbox>
-        ))}
-      </div>
-    </div>
+      {OPTIONAL_CLAUSES.map((clause) => (
+        <Checkbox
+          key={clause.id}
+          checked={checked.includes(clause.id)}
+          onChange={(e) => toggle(clause.id, e.target.checked)}
+        >
+          <Typography.Text strong>{clause.title}</Typography.Text>
+          <Typography.Paragraph type="secondary" className={`type-caption ${styles.note}`}>
+            {clause.body}
+          </Typography.Paragraph>
+        </Checkbox>
+      ))}
+    </Flex>
   );
 }
 
@@ -144,13 +145,12 @@ function EquipmentAnnexEditor({
   };
 
   return (
-    <>
+    <Flex vertical gap="small">
       <Table<EquipmentAnnexRow>
         size="small"
         rowKey={(_, index) => String(index)}
         dataSource={rows}
         pagination={false}
-        style={{ marginTop: 8 }}
         locale={{ emptyText: '沒有設備附件列，合約條文會寫「本房屋無附屬設備」' }}
         columns={[
           {
@@ -167,7 +167,7 @@ function EquipmentAnnexEditor({
                 size="small"
                 min={1}
                 precision={0}
-                style={{ width: '100%' }}
+                className={styles.full}
                 value={row.quantity}
                 onChange={(v) => patch(index, { quantity: v ?? 1 })}
               />
@@ -179,7 +179,7 @@ function EquipmentAnnexEditor({
             render: (_, row, index) => (
               <Select
                 size="small"
-                style={{ width: '100%' }}
+                className={styles.full}
                 value={row.repair}
                 onChange={(v) => patch(index, { repair: v })}
                 options={REPAIR_RESPONSIBILITIES.map((r) => ({
@@ -215,11 +215,11 @@ function EquipmentAnnexEditor({
           },
         ]}
       />
-      <Space.Compact style={{ marginTop: 8, width: 320 }}>
+      <Space.Compact className={styles.vocabPick}>
         <Select
           size="small"
           showSearch
-          style={{ width: '100%' }}
+          className={styles.full}
           placeholder="從設備詞彙庫挑一項加列"
           value={picked}
           onChange={setPicked}
@@ -229,7 +229,7 @@ function EquipmentAnnexEditor({
           加一列
         </Button>
       </Space.Compact>
-    </>
+    </Flex>
   );
 }
 
@@ -247,7 +247,6 @@ function StatusAnnexEditor({ annex, onChange }: { annex: StatusAnnex; onChange: 
       rowKey="id"
       dataSource={annex.rows}
       pagination={false}
-      style={{ marginTop: 8 }}
       columns={[
         { title: '項目', dataIndex: 'label' },
         {
@@ -256,7 +255,7 @@ function StatusAnnexEditor({ annex, onChange }: { annex: StatusAnnex; onChange: 
           render: (_, row, index) => (
             <Select
               size="small"
-              style={{ width: '100%' }}
+              className={styles.full}
               placeholder="請選擇"
               value={row.status}
               onChange={(v) => patch(index, { status: v })}
@@ -309,7 +308,6 @@ function TemplateUpgradeNotice({
     <Alert
       type="warning"
       showIcon
-      style={{ marginTop: 12 }}
       title="平台已有新版條文，可升版重建"
       description={`${parts.join('、')}。這份草稿目前用的是建立當時的版本，升版會重新快照最新條文；不升版也能照樣送簽。`}
       action={
@@ -326,9 +324,9 @@ function money(value: number | null | undefined): string {
 }
 
 /** 押金超過 2 個月租金的警告（P0-10 規則 7）：只提醒，不擋下一步也不擋送簽。 */
-function DepositWarningAlert({ warning, style }: { warning: DepositWarning | null; style?: CSSProperties }) {
+function DepositWarningAlert({ warning }: { warning: DepositWarning | null }) {
   if (!warning) return null;
-  return <Alert type="warning" showIcon style={style} title="押金高於 2 個月租金" description={warning.message} />;
+  return <Alert type="warning" showIcon title="押金高於 2 個月租金" description={warning.message} />;
 }
 
 /** 第①步：物件快照、分流條件（共用的 routingPanel）、範本、選用條款與升版提示。 */
@@ -346,39 +344,44 @@ function LeasePropertyStep({
   const upgradeTemplate = () => {
     void onCommitFields(upgradeDraftFields(fields), '已升版重建，條文換成平台最新版本');
   };
+  const equipmentItems = contractEquipmentAnnex(fields);
   return (
     <>
-          <Descriptions
-            column={1}
-            size="small"
-            style={{ marginBottom: 12 }}
-            items={[
-              { key: 'name', label: '物件', children: fields.propertyName || '—' },
-              { key: 'address', label: '地址', children: fields.propertyAddress || '—' },
-              { key: 'type', label: '型態', children: fields.propertyType || '—' },
-              {
-                key: 'size',
-                label: '坪數',
-                children: fields.propertySize != null ? `${fields.propertySize} 坪` : '—',
-              },
-              {
-                key: 'equipment',
-                label: '附屬設備',
-                children: (() => {
-                  const items = contractEquipmentAnnex(fields);
-                  return items.length ? items.map(formatEquipmentItem).join('、') : '—';
-                })(),
-              },
-            ]}
-          />
-          {routingPanel}
+      <Card size="small" title="出租物件">
+        <Descriptions
+          column={1}
+          size="small"
+          items={[
+            { key: 'name', label: '物件', children: fields.propertyName || '—' },
+            { key: 'address', label: '地址', children: fields.propertyAddress || '—' },
+            { key: 'type', label: '型態', children: fields.propertyType || '—' },
+            {
+              key: 'size',
+              label: '坪數',
+              children: fields.propertySize != null ? `${fields.propertySize} 坪` : '—',
+            },
+            {
+              key: 'equipment',
+              label: '附屬設備',
+              children: equipmentItems.length ? equipmentItems.map(formatEquipmentItem).join('、') : '—',
+            },
+          ]}
+        />
+        <Typography.Paragraph type="secondary" className={`type-caption ${styles.note}`}>
+          物件資料在建立草稿時已帶入成快照，之後修改物件不影響這份合約。要換物件請回合約列表另建一份草稿。
+        </Typography.Paragraph>
+      </Card>
+      <Card size="small">{routingPanel}</Card>
+      <Card size="small" title="範本與選用條款">
+        <Flex vertical gap="middle">
           <TemplateNotice contractType={contractType} />
           {optionalClausesFor(contractType).length > 0 && <OptionalClauseChecklist fields={fields} onChange={changeClauses} />}
           <TemplateUpgradeNotice fields={fields} contractType={contractType} onUpgrade={upgradeTemplate} disabled={saving} />
-          <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0, fontSize: 12 }}>
-            物件資料在建立草稿時已帶入成快照，之後修改物件不影響這份合約。要換物件請回合約列表另建一份草稿。
-            選用條款也在勾選當下快照，平台之後改版不影響這份合約。
+          <Typography.Paragraph type="secondary" className={`type-caption ${styles.note}`}>
+            選用條款在勾選當下快照，平台之後改版不影響這份合約。
           </Typography.Paragraph>
+        </Flex>
+      </Card>
     </>
   );
 }
@@ -391,6 +394,7 @@ function LeaseFieldsStep({
   lockedPartyRoles,
   practitionerSlot,
   onFieldsChange,
+  onDirty,
   contractType,
 }: FieldsStepProps<LeaseUiFields> & { contractType: ContractType }) {
   // 現況確認附件（MIL-71）：只有簽章分流規則表要求的組合（轉租）才顯示，其他組合沒有這個區塊
@@ -414,9 +418,10 @@ function LeaseFieldsStep({
   const annexSummary = equipmentAnnexSummary(fields);
   return (
     <>
-          <Form form={form} layout="vertical" size="small" requiredMark>
-            <Typography.Text strong>雙方資訊</Typography.Text>
-            <Row gutter={12} style={{ marginTop: 8 }}>
+      <Form form={form} layout="vertical" size="small" requiredMark onValuesChange={onDirty}>
+        <Flex vertical gap="middle">
+          <Card size="small" title="雙方資訊">
+            <Row gutter={12}>
               <Col span={12}>
                 <Form.Item
                   name="landlordName"
@@ -430,11 +435,7 @@ function LeaseFieldsStep({
                 <Form.Item
                   name="landlordEmail"
                   label="甲方 Email"
-                  rules={
-                    partyALocked
-                      ? []
-                      : [{ required: true, type: 'email', message: '請輸入有效的甲方 Email' }]
-                  }
+                  rules={partyALocked ? [] : [{ required: true, type: 'email', message: '請輸入有效的甲方 Email' }]}
                 >
                   <Input disabled={partyALocked} />
                 </Form.Item>
@@ -452,28 +453,25 @@ function LeaseFieldsStep({
                 <Form.Item
                   name="tenantEmail"
                   label="乙方 Email"
-                  rules={
-                    partyBLocked
-                      ? []
-                      : [{ required: true, type: 'email', message: '請輸入有效的乙方 Email' }]
-                  }
+                  rules={partyBLocked ? [] : [{ required: true, type: 'email', message: '請輸入有效的乙方 Email' }]}
                 >
                   <Input disabled={partyBLocked} />
                 </Form.Item>
               </Col>
             </Row>
             {practitionerSlot}
+          </Card>
 
-            <Typography.Text strong>租金與租期</Typography.Text>
-            <Row gutter={12} style={{ marginTop: 8 }}>
+          <Card size="small" title="租金與租期">
+            <Row gutter={12}>
               <Col span={12}>
                 <Form.Item name="rent" label="月租金（元）" rules={[{ required: true, message: '請輸入月租金' }]}>
-                  <InputNumber min={0} step={1000} style={{ width: '100%' }} />
+                  <InputNumber min={0} step={1000} className={styles.full} />
                 </Form.Item>
               </Col>
               <Col span={12}>
                 <Form.Item name="deposit" label="押金（元）">
-                  <InputNumber min={0} step={1000} style={{ width: '100%' }} />
+                  <InputNumber min={0} step={1000} className={styles.full} />
                 </Form.Item>
               </Col>
               {fieldsStepDepositWarning && (
@@ -485,85 +483,76 @@ function LeaseFieldsStep({
               )}
               <Col span={8}>
                 <Form.Item name="startDate" label="租期起日" rules={[{ required: true, message: '請選擇租期起日' }]}>
-                  <DatePicker style={{ width: '100%' }} />
+                  <DatePicker className={styles.full} />
                 </Form.Item>
               </Col>
               <Col span={8}>
                 <Form.Item name="endDate" label="租期迄日" rules={[{ required: true, message: '請選擇租期迄日' }]}>
-                  <DatePicker style={{ width: '100%' }} />
+                  <DatePicker className={styles.full} />
                 </Form.Item>
               </Col>
               <Col span={8}>
                 <Form.Item name="payDay" label="每月付款日">
-                  <InputNumber min={1} max={28} style={{ width: '100%' }} />
+                  <InputNumber min={1} max={28} className={styles.full} />
                 </Form.Item>
               </Col>
             </Row>
-            <Form.Item
-              name="extra"
-              label={`其他約定事項（${extraLabel}）`}
-              style={{ marginBottom: 0 }}
-            >
+            <Form.Item name="extra" label={`其他約定事項（${extraLabel}）`} className={styles.flush}>
               <Input.TextArea rows={3} placeholder="無則留空" />
             </Form.Item>
-          </Form>
+          </Card>
+        </Flex>
+      </Form>
 
-          <Typography.Text strong style={{ display: 'block', marginTop: 16 }}>
-            設備附件（附屬設備清單）
-          </Typography.Text>
-          {equipmentInClauses ? (
-            <Alert
-              type="info"
-              showIcon
-              title="附屬設備列在租賃標的條文，不另產出附件頁"
-              description={
-                annexSummary.length
-                  ? `目前品項：${annexSummary.join('、')}。`
-                  : '目前沒有附屬設備。'
-              }
-            />
-          ) : usesEquipmentAnnex(fields) ? (
-            <>
-              <Typography.Paragraph type="secondary" style={{ margin: '4px 0 0', fontSize: 12 }}>
-                由物件的設備清單帶入，可逐約增刪列、調整數量與修繕責任；產出的合約以「詳如附件」引用這張清單，
-                清單本身另成一頁排在簽署欄之後。修繕責任預設{TERMS.lessor}。
-              </Typography.Paragraph>
-              <EquipmentAnnexEditor rows={annexRows} onChange={changeAnnex} />
-            </>
-          ) : (
-            // v1 草稿的附屬設備仍寫在主約本文（ADR-0005 不回溯）：這裡只唸不編，升版後才開放附件編輯
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginTop: 8 }}
-              title="此草稿綁定範本 v1，附屬設備列在主約本文，不產出附件頁"
-              description={
-                annexSummary.length
-                  ? `目前品項：${annexSummary.join('、')}。升版為 v2 後，才能逐約編輯設備附件。`
-                  : '目前沒有附屬設備。升版為 v2 後，才能逐約編輯設備附件。'
-              }
-            />
-          )}
+      <Card size="small" title="設備附件（附屬設備清單）">
+        {equipmentInClauses ? (
+          <Alert
+            type="info"
+            showIcon
+            title="附屬設備列在租賃標的條文，不另產出附件頁"
+            description={annexSummary.length ? `目前品項：${annexSummary.join('、')}。` : '目前沒有附屬設備。'}
+          />
+        ) : usesEquipmentAnnex(fields) ? (
+          <Flex vertical gap="small">
+            <Typography.Paragraph type="secondary" className={`type-caption ${styles.note}`}>
+              由物件的設備清單帶入，可逐約增刪列、調整數量與修繕責任；產出的合約以「詳如附件」引用這張清單，
+              清單本身另成一頁排在簽署欄之後。修繕責任預設{TERMS.lessor}。
+            </Typography.Paragraph>
+            <EquipmentAnnexEditor rows={annexRows} onChange={changeAnnex} />
+          </Flex>
+        ) : (
+          // v1 草稿的附屬設備仍寫在主約本文（ADR-0005 不回溯）：這裡只唸不編，升版後才開放附件編輯
+          <Alert
+            type="info"
+            showIcon
+            title="此草稿綁定範本 v1，附屬設備列在主約本文，不產出附件頁"
+            description={
+              annexSummary.length
+                ? `目前品項：${annexSummary.join('、')}。升版為 v2 後，才能逐約編輯設備附件。`
+                : '目前沒有附屬設備。升版為 v2 後，才能逐約編輯設備附件。'
+            }
+          />
+        )}
+      </Card>
 
-          {statusAnnexShown && (
-            <>
-              <Typography.Text strong style={{ display: 'block', marginTop: 16 }}>
-                {STATUS_ANNEX_TITLE}（{STATUS_ANNEX_LEGAL_NAME}）
-              </Typography.Text>
-              <Typography.Paragraph type="secondary" style={{ margin: '4px 0 0', fontSize: 12 }}>
-                {contractType === LEASE_TYPE ? '包租租賃合約' : '轉租合約'}必附。每一項選擇狀態，有瑕疵的項目要填備註。附件另成一頁排在簽署欄之後，
-                與合約同一份文件送簽，並由執業人員簽章。項目清單為第 {STATUS_ANNEX_VERSION} 版，待法務確認。
-              </Typography.Paragraph>
-              <StatusAnnexEditor annex={statusAnnex} onChange={changeStatusAnnex} />
-            </>
-          )}
+      {statusAnnexShown && (
+        <Card size="small" title={`${STATUS_ANNEX_TITLE}（${STATUS_ANNEX_LEGAL_NAME}）`}>
+          <Flex vertical gap="small">
+            <Typography.Paragraph type="secondary" className={`type-caption ${styles.note}`}>
+              {contractType === LEASE_TYPE ? '包租租賃合約' : '轉租合約'}必附。每一項選擇狀態，有瑕疵的項目要填備註。附件另成一頁排在簽署欄之後，
+              與合約同一份文件送簽，並由執業人員簽章。項目清單為第 {STATUS_ANNEX_VERSION} 版，待法務確認。
+            </Typography.Paragraph>
+            <StatusAnnexEditor annex={statusAnnex} onChange={changeStatusAnnex} />
+          </Flex>
+        </Card>
+      )}
     </>
   );
 }
 
 /** 確認頁：押金超過 2 個月租金的警告，放在簽署順序說明之下。 */
 function LeaseConfirmNotices({ fields }: { fields: LeaseUiFields }) {
-  return <DepositWarningAlert warning={depositWarning(fields.rent, fields.deposit)} style={{ marginBottom: 12 }} />;
+  return <DepositWarningAlert warning={depositWarning(fields.rent, fields.deposit)} />;
 }
 
 /** 確認頁摘要的租賃合約部分，從物件到其他約定事項。執業人員、簽署序列與簽署區由共用流程接在後面。 */
@@ -603,7 +592,7 @@ function leaseSummaryItems(fields: LeaseUiFields, { labels }: SummaryContext, co
       children: selected.length ? (
         <Space size={4} wrap>
           {selected.map((clause) => (
-            <Tag key={clause.id} color="blue">
+            <Tag key={clause.id}>
               {clause.title} v{clause.version}
             </Tag>
           ))}

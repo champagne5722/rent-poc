@@ -8,6 +8,7 @@
 // 資格的判定與送簽前檢查在 src/lib/practitioner-assignment/ 與 src/lib/send-preconditions/，這裡只畫畫面。
 
 import { Alert, Col, Flex, Form, Row, Select, Skeleton, Typography } from 'antd';
+import styles from '@/components/contract-wizard/steps.module.css';
 import type { SeatOption, SeatOptions } from '@/lib/practitioner-assignment/service';
 import type { MergedSeats } from '@/lib/signature-routing';
 import type { PractitionerAssignmentInput } from '@/lib/practitioner-assignment/seats';
@@ -86,7 +87,7 @@ function SeatAssignment({
       <Typography.Text strong>{seat.label}</Typography.Text>
       <Row gutter={[12, 12]}>
         <Col span={12}>
-          <Form.Item label="執業主體" style={{ marginBottom: 0 }}>
+          <Form.Item label="執業主體" className={styles.flush}>
             <Select
               disabled={disabled}
               placeholder="選擇執業主體"
@@ -102,7 +103,7 @@ function SeatAssignment({
         </Col>
         {seat.partyRole && (
           <Col span={12}>
-            <Form.Item label={`${SIGNER_ROLE_LABELS[seat.partyRole]}的當事人簽署人`} style={{ marginBottom: 0 }}>
+            <Form.Item label={`${SIGNER_ROLE_LABELS[seat.partyRole]}的當事人簽署人`} className={styles.flush}>
               <Select
                 disabled={disabled || !entity}
                 placeholder={entity ? '選擇當事人簽署人' : '請先選擇執業主體'}
@@ -114,7 +115,7 @@ function SeatAssignment({
           </Col>
         )}
         <Col span={12}>
-          <Form.Item label="執業人員" style={{ marginBottom: 0 }}>
+          <Form.Item label="執業人員" className={styles.flush}>
             <Select
               disabled={disabled || !entity}
               placeholder={entity ? '選擇執業人員' : '請先選擇執業主體'}

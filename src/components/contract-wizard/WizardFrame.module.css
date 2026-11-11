@@ -1,0 +1,57 @@
+/* 建約精靈的共用版型（MIL-176）。步驟條固定在上方，上一步與下一步固定在下方，兩者都用 sticky。
+   尺寸與顏色引用 DESIGN.md 的 CSS 變數，不寫色碼。 */
+
+/* 最小高度＝視窗高度扣掉頂部列（48px，等於 spacing 的 xxl）與內容區上下 padding，內容少時按鈕列也在視窗底部 */
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  min-height: calc(100vh - var(--space-xxl) - var(--space-xl) * 2);
+  max-width: calc(var(--space-xxl) * 20);
+}
+
+.rootWide {
+  max-width: none;
+}
+
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding-block: var(--space-xs);
+  background: var(--color-canvas);
+}
+
+.title {
+  margin: 0;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  flex: 1;
+}
+
+.footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-lg);
+}
+
+.draftState {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xxs);
+}

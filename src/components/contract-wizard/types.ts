@@ -29,6 +29,8 @@ export interface FieldsStepProps<F extends ContractFields = ContractFields> {
   /** 執業人員指派區（共用，簽署序列有執業人員席位時才有），放在雙方資訊與其他欄位之間。 */
   practitionerSlot: ReactNode;
   onFieldsChange(next: F): void;
+  /** 表單欄位有改動時呼叫，讓精靈顯示「有變更尚未儲存」。 */
+  onDirty(): void;
   /** 委託標的清單（委託管理合約，MIL-74）。其他合約類型不看。清單改動隨草稿一起存。 */
   mandateItems: readonly MandateItem[];
   onMandateItemsChange(next: MandateItem[]): void;
