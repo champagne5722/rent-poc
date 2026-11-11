@@ -15,7 +15,7 @@ import OwnerRequestFlow from './OwnerRequestFlow';
 // 屋主的申請詳情（MIL-206 畫面段）。頁首寫明是哪一家業者的哪一種申請。內容與操作在 OwnerRequestFlow，與登入前連結頁登入後的畫面相同。
 // 資料由 server component 載入。確認、送出、收回之後，這裡更新畫面並請 server component 重新載入。
 
-export default function OwnerRequestDetail({ initial, groups }: { initial: OwnerMandateRequest; groups: PropertyGroup[] }) {
+export default function OwnerRequestDetail({ initial, groups, canEnd = true }: { initial: OwnerMandateRequest; groups: PropertyGroup[]; canEnd?: boolean }) {
   const router = useRouter();
   const [request, setRequest] = useState(initial);
   const [lastInitial, setLastInitial] = useState(initial);
@@ -54,6 +54,7 @@ export default function OwnerRequestDetail({ initial, groups }: { initial: Owner
         request={request}
         groups={groups}
         showPractice={false}
+        canEnd={canEnd}
         onChange={(next) => {
           setRequest(next);
           router.refresh();

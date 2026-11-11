@@ -6,7 +6,18 @@ import { useRouter } from 'next/navigation';
 import EmptyState from '@/components/page/EmptyState';
 import SettingsSection from '@/components/page/SettingsSection';
 import { formatTaipeiDateTime } from '@/lib/ownership/format';
-import { draftBuildingNo, licenseKindTitles, ownerCanWithdraw, unitOptions, type UnitOption } from '@/lib/mandate-requests/view';
+import {
+  canEndRequest,
+  decisionErrorReloads,
+  decisionErrorText,
+  draftBuildingNo,
+  licenseKindTitles,
+  ownerCanWithdraw,
+  ownerClosedByText,
+  OWNER_END_CONFIRM_TEXT,
+  unitOptions,
+  type UnitOption,
+} from '@/lib/mandate-requests/view';
 import type { MandateRequestDraft, OwnerMandateRequest, PropertyGroup } from '@/lib/types';
 import styles from './mandate-requests.module.css';
 
@@ -24,6 +35,8 @@ export interface OwnerRequestFlowProps {
   onChange: (request: OwnerMandateRequest) => void;
   /** 送出後的摘要要不要列出業者的名稱、統編與業別。詳情頁的側欄已經列了，傳 false。 */
   showPractice?: boolean;
+  /** 身分能結束已接受的申請（admin 與 staff）。預設 true，伺服端仍會檢查。 */
+  canEnd?: boolean;
 }
 
 interface ApiError {
@@ -106,7 +119,7 @@ export default function OwnerRequestFlow(props: OwnerRequestFlowProps) {
   );
 }
 
-function OwnerRequestFlowBody({ request, groups, onChange, showPractice = true }: OwnerRequestFlowProps) {
+function OwnerRequestFlowBody({ request, groups, onChange, showPractice = true, canEnd = true }: OwnerRequestFlowProps) {
   const { message, modal } = AntApp.useApp();
   const router = useRouter();
   const [fetchedGroups, setFetchedGroups] = useState<PropertyGroup[] | null>(null);
@@ -117,6 +130,7 @@ function OwnerRequestFlowBody({ request, groups, onChange, showPractice = true }
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [withdrawing, setWithdrawing] = useState(false);
+  const [ending, setEnding] = useState(false);
 
   const loadGroups = useCallback(async () => {
     const next = await fetchGroups();
@@ -230,6 +244,37 @@ function OwnerRequestFlowBody({ request, groups, onChange, showPractice = true }
     });
   };
 
+  const end = async () => {
+    setEnding(true);
+    try {
+      const res = await fetch(`/api/mandate-requests/${encodeURIComponent(request.id)}/end`, { method: 'POST' });
+      const json = (await res.json().catch(() => ({}))) as { data?: OwnerMandateRequest } & ApiError;
+      if (!res.ok || !json.data) {
+        message.error(decisionErrorText(json.code, json.error, '結束失敗'));
+        if (decisionErrorReloads(json.code)) await refreshRequest();
+        return;
+      }
+      message.success('申請已結束');
+      onChange(json.data);
+    } catch (error) {
+      console.error('申請操作失敗', error);
+      message.error('網路發生問題。請檢查連線後再按一次。');
+    } finally {
+      setEnding(false);
+    }
+  };
+
+  const askEnd = () => {
+    modal.confirm({
+      title: '結束這份申請？',
+      content: OWNER_END_CONFIRM_TEXT,
+      okText: '結束申請',
+      okButtonProps: { danger: true },
+      cancelText: '先不要',
+      onOk: () => end(),
+    });
+  };
+
   if (!pending) {
     const submittedUnits = options.filter((o) => request.unit_ids.includes(o.unitId));
     return (
@@ -249,7 +294,12 @@ function OwnerRequestFlowBody({ request, groups, onChange, showPractice = true }
               { key: 'kind', label: '申請的種類', children: request.kind_label },
               { key: 'submitted', label: '送出時間', children: formatTaipeiDateTime(request.submitted_at) },
               ...(request.withdrawn_at ? [{ key: 'withdrawn', label: '收回時間', children: formatTaipeiDateTime(request.withdrawn_at) }] : []),
-              ...(request.deadline ? [{ key: 'deadline', label: '期限', children: formatTaipeiDateTime(request.deadline) }] : []),
+              ...(request.accepted_at ? [{ key: 'accepted', label: '接受時間', children: formatTaipeiDateTime(request.accepted_at) }] : []),
+              ...(request.status === 'declined' && request.closed_at ? [{ key: 'declined', label: '未接受時間', children: formatTaipeiDateTime(request.closed_at) }] : []),
+              ...(request.status === 'ended' && request.closed_at
+                ? [{ key: 'ended', label: '結束時間', children: `${formatTaipeiDateTime(request.closed_at)}，${ownerClosedByText(request) ?? ''}` }]
+                : []),
+              ...(request.status === 'pending_practice' && request.deadline ? [{ key: 'deadline', label: '業者回覆的期限', children: formatTaipeiDateTime(request.deadline) }] : []),
               {
                 key: 'units',
                 label: '租賃單位',
@@ -275,6 +325,16 @@ function OwnerRequestFlowBody({ request, groups, onChange, showPractice = true }
             <Flex>
               <Button danger size="large" loading={withdrawing} onClick={askWithdraw}>
                 收回申請
+              </Button>
+            </Flex>
+          </Flex>
+        )}
+        {canEndRequest(request) && canEnd && (
+          <Flex vertical gap="small">
+            <Typography.Text type="secondary">合約完成前，你能結束申請。</Typography.Text>
+            <Flex>
+              <Button danger size="large" loading={ending} onClick={askEnd}>
+                結束申請
               </Button>
             </Flex>
           </Flex>
