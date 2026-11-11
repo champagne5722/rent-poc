@@ -45,6 +45,16 @@ const registryFunctions: Record<string, RegistryFunctionCase> = {
     reason: '以單位 ID 讀單位資料與顯示編碼要用的編碼',
     disclosure: { kind: 'none', reason: '回傳呼叫者組織自己的租賃單位資料，隔離由上面的 probe 驗證。不含執業人員資料' },
   },
+  // MIL-202
+  'registry.get_unit_groups': {
+    probe: async (tx, { unitId }) => (await tx.query('SELECT * FROM registry.get_unit_groups($1::text[])', [[unitId]])).rows,
+    reason: '以單位 ID 讀單位對存續單位與分組鍵，物件列表依物件分組用。呼叫者組織沒有物件指向的單位得到空結果',
+    disclosure: {
+      kind: 'none',
+      reason:
+        '只回呼叫者組織自己的單位 ID，加上存續單位與存續錨點 ID 的 md5。存續單位可能屬於別的組織，所以不回原始 ID，只能比對相同或不同。隔離由上面的 probe 驗證。不含執業人員資料',
+    },
+  },
   'registry.get_sibling_units': {
     probe: async (tx, { unitId }) => (await tx.query('SELECT * FROM registry.get_sibling_units($1)', [unitId])).rows,
     reason: '以單位 ID 讀同一錨點下呼叫者組織的單位',
