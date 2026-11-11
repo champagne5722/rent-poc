@@ -17,4 +17,11 @@ export const requestActions = {
   'request.confirm_draft': { scope: 'org', effect: 'write', orgRoles: WRITE_ROLES },
   'request.submit': { scope: 'org', effect: 'write', orgRoles: WRITE_ROLES },
   'request.withdraw': { scope: 'org', effect: 'write', orgRoles: WRITE_ROLES },
+  // 業者端（MIL-210）：接受、不接受與列出能指派的管理人員只有組織管理員（admin）。資料庫函式再查一次角色
+  'request.accept': { scope: 'org', effect: 'write', orgRoles: ['admin'] },
+  'request.decline': { scope: 'org', effect: 'write', orgRoles: ['admin'] },
+  'request.manager_candidates': { scope: 'org', effect: 'read', orgRoles: ['admin'] },
+  // 結束已接受的申請：屋主那一方是 admin 與 staff，業者那一方限 admin。route 依組織種類選動作，函式依組織判斷是哪一方
+  'request.end': { scope: 'org', effect: 'write', orgRoles: WRITE_ROLES },
+  'request.end_as_practice': { scope: 'org', effect: 'write', orgRoles: ['admin'] },
 } as const satisfies Record<string, ActionRule>;

@@ -6,8 +6,8 @@
 //   待業者接受  屋主送出。業者接受、業者未接受、屋主收回，或送出後 7 天失效。
 //   已接受      業者接受並指派管理人員。合約完成、任一方結束，或 30 天沒送合約後失效。
 //   已完成      合約全員完成。
-// 本票（MIL-206）只接線「送出」與「收回」。接受、未接受、結束、30 天失效屬 MIL-210，已完成屬 MIL-211 與 MIL-212。
-// 這些轉移在這裡先定義好，下游票呼叫 applyTransition，不再改狀態表。
+// MIL-206 接線「送出」與「收回」。MIL-210 前半接線「接受」「未接受」「結束」，30 天失效在讀取時判定。
+// 已完成屬 MIL-211 與 MIL-212，在這裡先定義好，下游票呼叫 applyTransition，不再改狀態表。
 // 屋主的動作叫「收回」，接受之後的動作叫「結束」，不用「撤回」（GLOSSARY）。
 //
 // 業者看到的狀態就是 effectiveStatus 的結果。屋主還沒送出時，「沒人打開」「有人打開」「已綁定但沒送出」
@@ -98,27 +98,27 @@ export type TransitionEvent = (typeof TRANSITION_EVENTS)[number];
 interface TransitionRule {
   from: StoredStatus;
   to: StoredStatus;
-  /** 誰觸發。 */
-  by: 'owner' | 'practice' | 'system';
+  /** 誰能觸發。結束在接受之後兩方都能做。 */
+  by: readonly ('owner' | 'practice' | 'system')[];
   /** 哪一張票接線。 */
   wiredBy: 'MIL-206' | 'MIL-210' | 'MIL-211' | 'MIL-212';
 }
 
 /** 完整的轉移表。 */
 export const TRANSITIONS: Readonly<Record<TransitionEvent, TransitionRule>> = {
-  submit: { from: 'pending_owner', to: 'pending_practice', by: 'owner', wiredBy: 'MIL-206' },
-  withdraw: { from: 'pending_practice', to: 'withdrawn', by: 'owner', wiredBy: 'MIL-206' },
-  accept: { from: 'pending_practice', to: 'accepted', by: 'practice', wiredBy: 'MIL-210' },
-  decline: { from: 'pending_practice', to: 'declined', by: 'practice', wiredBy: 'MIL-210' },
-  end: { from: 'accepted', to: 'ended', by: 'owner', wiredBy: 'MIL-210' },
-  complete: { from: 'accepted', to: 'completed', by: 'system', wiredBy: 'MIL-211' },
+  submit: { from: 'pending_owner', to: 'pending_practice', by: ['owner'], wiredBy: 'MIL-206' },
+  withdraw: { from: 'pending_practice', to: 'withdrawn', by: ['owner'], wiredBy: 'MIL-206' },
+  accept: { from: 'pending_practice', to: 'accepted', by: ['practice'], wiredBy: 'MIL-210' },
+  decline: { from: 'pending_practice', to: 'declined', by: ['practice'], wiredBy: 'MIL-210' },
+  end: { from: 'accepted', to: 'ended', by: ['owner', 'practice'], wiredBy: 'MIL-210' },
+  complete: { from: 'accepted', to: 'completed', by: ['system'], wiredBy: 'MIL-211' },
 };
 
 export type TransitionResult = { ok: true; next: StoredStatus } | { ok: false; reason: 'expired' | 'wrong_status' };
 
 /**
  * 在 now 這個時間點，事件能不能發生。失效的申請不能再轉移。
- * 「結束」在接受之後兩方都能做，這裡不檢查是誰觸發，由呼叫端的授權決定。
+ * 這裡不檢查是誰觸發，由資料庫函式依呼叫者的組織與角色決定（accept 與 decline 限業者 admin，end 兩方都能做）。
  */
 export function applyTransition(facts: RequestFacts, event: TransitionEvent, now: Date): TransitionResult {
   const rule = TRANSITIONS[event];

@@ -71,6 +71,33 @@ const createRow = (tx: Tx, kind = 'management', code = 'code-1', draft: object |
     [newUlid(), kind, hash(code), draft === null ? null : JSON.stringify(draft), now],
   );
 
+let employmentSeq = 0;
+/** 在指定的執業主體下備一位人員與任職（走 app_owner 直接寫）。預設是已驗證、任職中的租賃住宅管理人員。 */
+async function seedManager(
+  options: { entity?: string; state?: 'pending' | 'verified' | 'lapsed'; practitionerState?: 'pending' | 'verified' | 'lapsed'; kind?: string; validUntil?: string; endedOn?: string | null } = {},
+): Promise<string> {
+  employmentSeq += 1;
+  const party = newUlid();
+  const practitioner = newUlid();
+  const employment = newUlid();
+  const kind = options.kind ?? 'rental_housing_manager';
+  const key = `${kind}:112:內授營:${String(100000 + employmentSeq)}`;
+  await owner(async () => {
+    await db.query(`INSERT INTO control.parties (id, email, display_name) VALUES ($1, $2, $3)`, [party, `manager-${employmentSeq}@example.com`, `管理人員${employmentSeq}`]);
+    await db.query(
+      `INSERT INTO registry.practitioners (id, party_id, certificate_kind, cert_year, cert_word, cert_serial, certificate_key, issued_on, valid_until, state)
+       VALUES ($1, $2, $3, '112', '內授營', $4, $5, '2024-03-01', $6, $7)`,
+      [practitioner, party, kind, String(100000 + employmentSeq), key, options.validUntil ?? '2036-03-01', options.practitionerState ?? 'verified'],
+    );
+    await db.query(
+      `INSERT INTO registry.practitioner_employments (id, practitioner_id, certificate_key, certificate_kind, entity_id, state, started_on, ended_on)
+       VALUES ($1, $2, $3, $4, $5, $6, '2026-01-01', $7)`,
+      [employment, practitioner, key, kind, options.entity ?? entityId, options.state ?? 'verified', options.endedOn ?? null],
+    );
+  });
+  return employment;
+}
+
 describe('表與權限', () => {
   it('app_rw 對申請的兩張表沒有任何直接權限', async () => {
     for (const table of ['registry.mandate_requests', 'registry.mandate_request_units']) {
@@ -280,16 +307,18 @@ describe('registry.occupied_rental_units：被佔用的租賃單位（有效的�
   ): Promise<string> {
     const id = newUlid();
     const created = hours(-24 * 60, NOW);
+    const manager = ['accepted', 'ended', 'completed'].includes(status) ? await seedManager() : null;
     await owner(async () => {
       await db.query(
         `INSERT INTO registry.mandate_requests
            (id, kind, practice_org_id, entity_id, created_by_party_id, code_hash, status, created_at, link_expires_at,
-            owner_org_id, claimed_at, submitted_at, withdrawn_at, accepted_at, contract_sent_at)
-         VALUES ($1, 'management', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            owner_org_id, claimed_at, submitted_at, withdrawn_at, accepted_at, contract_sent_at, manager_employment_id, closed_at, closed_by)
+         VALUES ($1, 'management', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
         [
           id, practiceOrg, entityId, practiceParty, hash(id), status, created, hours(168, created),
           options.ownerOrgId ?? ownerOrg, created, options.submittedAt ?? created, status === 'withdrawn' ? created : null,
-          options.acceptedAt ?? null, options.contractSentAt ?? null,
+          options.acceptedAt ?? null, options.contractSentAt ?? null, manager,
+          status === 'ended' || status === 'declined' ? created : null, status === 'ended' ? 'owner' : status === 'declined' ? 'practice' : null,
         ],
       );
       for (const u of units) await db.query('INSERT INTO registry.mandate_request_units (request_id, rental_unit_id) VALUES ($1, $2)', [id, u]);

@@ -1,7 +1,14 @@
 import { appendAudit } from '../audit';
 import { newUlid } from '../pg/ulid';
 import type { OrgTx, Tx } from '../pg/with-tx';
-import type { MandateRequestCreated, MandateRequestDraft, MandateRequestKind, MandateRequestLinkView, PracticeMandateRequest } from '../types';
+import type {
+  MandateRequestClosedBy,
+  MandateRequestCreated,
+  MandateRequestDraft,
+  MandateRequestKind,
+  MandateRequestLinkView,
+  PracticeMandateRequest,
+} from '../types';
 import { generateRequestCode, hashRequestCode, requestLinkPath } from './code';
 import { KIND_LABEL } from './messages';
 import { deadlineOf, effectiveStatus, type RequestFacts, type StoredStatus } from './status';
@@ -22,6 +29,9 @@ interface PracticeRow {
   draft: MandateRequestDraft | null;
   transcript_file_name: string | null;
   unit_count: number | null;
+  manager_employment_id: string | null;
+  closed_at: Date | null;
+  closed_by: MandateRequestClosedBy | null;
 }
 
 export function factsOf(row: {
@@ -54,6 +64,10 @@ function toPracticeView(row: PracticeRow, now: Date): PracticeMandateRequest {
     deadline: status === 'expired' ? null : iso(deadlineOf(facts)),
     submitted_at: iso(row.submitted_at),
     withdrawn_at: iso(row.withdrawn_at),
+    accepted_at: iso(row.accepted_at),
+    manager_employment_id: row.manager_employment_id,
+    closed_at: iso(row.closed_at),
+    closed_by: row.closed_by,
     // 失效後資料庫函式已回 null，這裡不依賴它
     draft: status === 'expired' ? null : row.draft,
     transcript_file_name: status === 'expired' ? null : row.transcript_file_name,
@@ -62,7 +76,7 @@ function toPracticeView(row: PracticeRow, now: Date): PracticeMandateRequest {
 }
 
 const PRACTICE_COLUMNS = `request_id, kind, status, created_at, link_expires_at, submitted_at, withdrawn_at, accepted_at,
-  contract_sent_at, draft, transcript_file_name, unit_count`;
+  contract_sent_at, draft, transcript_file_name, unit_count, manager_employment_id, closed_at, closed_by`;
 
 /**
  * 業者產生連結。碼在這裡產生，只回傳這一次。資料庫只收到雜湊。

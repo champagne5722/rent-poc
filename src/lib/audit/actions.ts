@@ -66,6 +66,9 @@ export const AUDIT_ACTIONS = [
   'request.withdraw', // MIL-206：屋主收回申請，寫在屋主的鏈。payload 只放申請 ID
   'request.attach_file', // MIL-206：業者代傳謄本，寫在業者的鏈。payload 只放檔案大小，不放檔名與謄本表單欄位
   'request.file_read', // MIL-206：業者讀自己代傳的謄本原檔，寫在業者的鏈。payload 只放申請 ID
+  'request.accept', // MIL-210：業者接受申請，寫在業者的鏈。payload 放指派的管理人員的任職 ID，不放管理人員的名稱
+  'request.decline', // MIL-210：業者不接受申請，寫在業者的鏈。payload 是空的：不收原因，也不存原因
+  'request.end', // MIL-210：業者或屋主結束已接受的申請，寫在呼叫者自己的鏈。payload 是空的：不收原因
   'contract.create', // MIL-83：合約的建立、複製、刪除。payload 只放 ID 與類型，不放姓名、地址、租金
   'contract.copy',
   'contract.delete',
