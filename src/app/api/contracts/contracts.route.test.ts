@@ -102,7 +102,7 @@ describe('POST /api/contracts', () => {
   });
 
   it('分流條件（MIL-67）存進 fields.routing，原樣讀回', async () => {
-    const routing = { businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: true };
+    const routing = { businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: false };
     const { id } = await newContract({ routing });
     const one = await json(await getOne(req('GET'), ctx(id)));
     expect(one.data.fields.routing).toEqual(routing);
@@ -265,6 +265,30 @@ describe('PUT /api/contracts/[id]', () => {
     const res = await PUT(req('PUT', { fields: { routing: { businessType: 'sublease' } } }), ctx(id));
     expect(res.status).toBe(400);
     expect((await json(await getOne(req('GET'), ctx(id)))).data.fields.routing).toBeUndefined();
+  });
+
+  it('居間只限自己兼營經紀業（MIL-200）：沒有經紀業別的組織把條件改成有居間，回 409，內容不變', async () => {
+    const { id } = await newContract();
+    const routing = { businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: true };
+    const res = await PUT(req('PUT', { fields: { routing } }), ctx(id));
+    expect(await snap(res)).toEqual({ status: 409, body: JSON.stringify({ error: '這個組織不能勾選居間', code: 'broker_not_allowed' }) });
+    expect((await json(await getOne(req('GET'), ctx(id)))).data.fields.routing).toBeUndefined();
+  });
+
+  it('居間：既有合約快照已經是有居間時，原樣再存不擋（快照不回寫）', async () => {
+    const { id } = await newContract();
+    const routing = { businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: true };
+    await withTx({ kind: 'org', orgId: kit.orgA }, (tx) =>
+      tx.query(`UPDATE org.contracts SET fields = jsonb_set(fields, '{routing}', $2::jsonb) WHERE id = $1`, [id, JSON.stringify(routing)]),
+    );
+    expect((await PUT(req('PUT', { fields: { routing, rent: 21000 } }), ctx(id))).status).toBe(200);
+  });
+
+  it('居間：舊路徑建立時帶 brokerMediated: true，沒有經紀業別的組織被擋', async () => {
+    const propertyId = await newProperty();
+    const routing = { businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: true };
+    const res = await createContract(propertyId, { routing });
+    expect(await snap(res)).toEqual({ status: 409, body: JSON.stringify({ error: '這個組織不能勾選居間', code: 'broker_not_allowed' }) });
   });
 
   it.each([

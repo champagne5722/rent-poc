@@ -29,8 +29,8 @@ export interface CallerRelationRow {
 }
 
 /**
- * 每種關係一列。MIL-116 把指派搬成案件成員，拿掉選人階段時，刪掉 `selecting` 這一列，
- * 再刪各函式期望值表裡 `by.selecting` 的項目（測試會列出還沒刪的）。
+ * 每種關係一列。MIL-200 拿掉 `selecting`（選人階段）與「合約指派造出 bound」。
+ * `draftAssigned` 留著當對照：草稿合約的指派指向北辰，現在與無關的組織相同，什麼都讀不到。
  */
 export const CALLER_RELATIONS: readonly CallerRelationRow[] = [
   {
@@ -46,22 +46,16 @@ export const CALLER_RELATIONS: readonly CallerRelationRow[] = [
     context: (w) => ({ kind: 'operator', operatorId: w.operatorUserId, orgId: PLATFORM_ORG_ID, ticketId: 'MIL-165' }),
   },
   {
+    name: 'draftAssigned',
+    label: '草稿合約的指派指向北辰（MIL-200 起不再綁定）',
+    creatable: true,
+    context: (w) => ({ kind: 'org', orgId: w.live.world.boundOrgId, partyId: w.members.draftAssigned }),
+  },
+  {
     name: 'bound',
-    label: '已指派（草稿合約的指派指向北辰）',
+    label: '已綁定（案件成員屬於北辰）',
     creatable: true,
-    context: (w) => ({ kind: 'org', orgId: w.live.world.boundOrgId, partyId: w.members.bound }),
-  },
-  {
-    name: 'boundByCase',
-    label: '已指派（案件成員屬於北辰）',
-    creatable: true,
-    context: (w) => ({ kind: 'org', orgId: w.live.world.caseBoundOrgId, partyId: w.members.boundByCase }),
-  },
-  {
-    name: 'selecting',
-    label: '選人階段（有草稿合約，沒有綁定；MIL-116 拿掉）',
-    creatable: true,
-    context: (w) => ({ kind: 'org', orgId: w.live.world.selectingOrgId, partyId: w.members.selecting }),
+    context: (w) => ({ kind: 'org', orgId: w.live.world.caseBoundOrgId, partyId: w.members.bound }),
   },
   {
     name: 'unrelated',
@@ -92,7 +86,7 @@ export interface DisclosureWorld {
   operatorUserId: string;
   unrelatedPracticeOrgId: string;
   /** 各關係的呼叫者 party：該組織的一般成員，不是北辰的人。 */
-  members: Record<'bound' | 'boundByCase' | 'selecting' | 'unrelated' | 'unrelatedOwner', string>;
+  members: Record<'draftAssigned' | 'bound' | 'unrelated' | 'unrelatedOwner', string>;
   /** 偵測個資用的特徵值。 */
   sentinels: Record<PiiField, readonly string[]>;
   close(): Promise<void>;
@@ -124,9 +118,8 @@ export async function setupDisclosureWorld(): Promise<DisclosureWorld> {
   await live.owner(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, '無關的執業主體組織', 'practice')`, [unrelatedPracticeOrgId]);
 
   const members = {
-    bound: await addMember(live, w.boundOrgId, '指派的屋主成員'),
-    boundByCase: await addMember(live, w.caseBoundOrgId, '案件綁定的屋主成員'),
-    selecting: await addMember(live, w.selectingOrgId, '選人中的屋主成員'),
+    draftAssigned: await addMember(live, w.boundOrgId, '指派的屋主成員'),
+    bound: await addMember(live, w.caseBoundOrgId, '案件綁定的屋主成員'),
     unrelated: await addMember(live, unrelatedPracticeOrgId, '無關的執業人員'),
     unrelatedOwner: await addMember(live, w.unrelatedOrgId, '無關的屋主成員'),
   };
@@ -150,6 +143,7 @@ export async function setupDisclosureWorld(): Promise<DisclosureWorld> {
     certificateKeys: { active: key('1234567'), lapsed: key('2000004') },
     reviewItems,
     entityIds: [w.beichen.entityId, w.yunding.entityId, w.xinghe.entityId],
+    membershipId: w.beichen.people.wang.membershipId,
   };
 
   return {
@@ -207,6 +201,8 @@ export function subjectFor(fx: DisclosureFixture, subject: DisclosureSubject | u
       return real ? fx.employmentIds.lapsed : newUlid();
     case 'certificateKey':
       return real ? fx.certificateKeys.lapsed : 'rental_housing_manager:112:內授營:9999999';
+    case 'membership':
+      return real ? fx.membershipId : newUlid();
     default:
       return '';
   }

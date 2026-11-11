@@ -103,17 +103,18 @@ const registryFunctions: Record<string, RegistryFunctionCase> = {
     reason: '營運者專用，先呼叫 assert_operator()（MIL-106、109）',
     disclosure: { kind: 'none', reason: OPERATOR_WRITE },
   },
-  // C 線（MIL-113）：practiceRegistry 真實 adapter。關係（own、bound、selecting、none）由資料庫依交易的組織脈絡算出，
+  // C 線（MIL-113）：practiceRegistry 真實 adapter。關係（own、bound、none）由資料庫依交易的組織脈絡算出，
   // 呼叫者不能指定。沒有關係與執業主體不存在回同一個空結果。案例在 practice-registry/live-adapter.test.ts 與 live-adapter.pg.test.ts。
+  // MIL-200：拿掉 selecting 與合約指派造出的 bound。簽章人員只從自家指派，非自家的執業主體一律 none。
   'registry.list_practice_entities': {
     probe: null,
-    reason: '名單設計上任何屋主或執業主體組織都能查，只列已驗證的執業主體，只回 ID、名稱與業別，不回統編、組織 ID、人員（MIL-113）',
+    reason: '只列呼叫者自己組織的執業主體，只回 ID、名稱與業別，不回統編、組織 ID、人員。營運者列出全平台已驗證的執業主體（MIL-113、MIL-200）',
     disclosure: {
       kind: 'matrix',
-      reason: '任何屋主、執業主體或平台組織都能查，只回已驗證執業主體的 ID、名稱與業別。不回統編、組織 ID、人員',
+      reason: '只回呼叫者自己組織的執業主體 ID、名稱與已登錄業別。別的組織的執業主體不出現。不回統編、組織 ID、人員',
       variants: [
         {
-          label: '列出已驗證的執業主體',
+          label: '列出自己組織的執業主體',
           call: (tx) => tx.query('SELECT * FROM registry.list_practice_entities(NULL)').then((r) => r.rows),
           expected: { default: [], by: { noContext: 'denied' } },
         },
@@ -123,38 +124,37 @@ const registryFunctions: Record<string, RegistryFunctionCase> = {
   'registry.party_signer_candidates': {
     probe: (tx, { anchorId }) =>
       tx.query('SELECT * FROM registry.party_signer_candidates($1, NULL)', [anchorId]).then((r) => r.rows),
-    reason: '以執業主體 ID 列組織成員。呼叫者與該執業主體沒有關係時回空，與執業主體不存在不可區分（MIL-113）',
+    reason: '以執業主體 ID 列組織成員。呼叫者與該執業主體沒有關係時回空，與執業主體不存在不可區分（MIL-113、MIL-200）',
     disclosure: {
       kind: 'matrix',
       reason:
-        '列執業主體組織的成員（姓名、email）。own 與營運者回真實 email。bound 也回真實 email（送簽要寄信），' +
-        'selecting 回遮罩 email，沒有關係回空。不回證號與核對紀錄 ID',
+        '列成員（姓名、遮罩 email）時，任何關係都不回真實 email。用成員 ID 查單筆時，只有 own 與營運者回真實 email，' +
+        'bound 回遮罩 email。沒有關係回空。不回證號與核對紀錄 ID',
       variants: [
         {
           label: '用執業主體 ID 列成員',
           subject: 'entity',
           call: (tx, _fx, entityId) => tx.query('SELECT * FROM registry.party_signer_candidates($1, NULL)', [entityId]).then((r) => r.rows),
-          expected: {
-            default: [],
-            by: { own: ['fullEmail'], operator: ['fullEmail'], bound: ['fullEmail'], boundByCase: ['fullEmail'], noContext: 'denied' },
-          },
+          expected: { default: [], by: { noContext: 'denied' } },
+        },
+        {
+          label: '用成員 ID 查單筆',
+          subject: 'membership',
+          call: (tx, _fx, membershipId) => tx.query('SELECT * FROM registry.party_signer_candidates(NULL, $1)', [membershipId]).then((r) => r.rows),
+          expected: { default: [], by: { own: ['fullEmail'], operator: ['fullEmail'], noContext: 'denied' } },
         },
       ],
-      knownGaps: {
-        bound: 'MIL-116：bound 回該執業主體全部成員的真實 email，不限於被指派的人。MIL-116 改由案件成員決定可見的人',
-        boundByCase: 'MIL-116：同 bound',
-      },
     },
   },
   'registry.signing_view': {
     probe: (tx, { anchorId }) => tx.query('SELECT registry.signing_view($1, NULL) AS view', [anchorId]).then((r) => r.rows),
-    reason: '以執業主體或任職 ID 讀簽章事實。證號原文與核對紀錄 ID 只給 own 與 bound，沒有關係回空（MIL-113）',
+    reason: '以執業主體或任職 ID 讀簽章事實。證號原文只給 own，核對紀錄 ID 給 own 與 bound，沒有關係回空（MIL-113、MIL-200）',
     disclosure: {
       kind: 'matrix',
       reason:
-        '證號原文只給 own 與營運者，其他關係由資料庫遮罩。bound 回真實 email 與核對紀錄 ID。' +
-        '列出任職時，bound 與 selecting 只回證書與任職都已驗證的人。bound 用任職 ID 查單筆時回完整狀態，' +
-        '送簽前檢查才能說明被拒的原因。selecting 沒有 email 原文與核對紀錄 ID。沒有關係回空',
+        '證號原文只給 own 與營運者，其他關係由資料庫遮罩。真實 email 只給 own 與營運者，而且只在用任職 ID 查單筆時回，列出任職一律遮罩。' +
+        'bound 回核對紀錄 ID。列出任職時，bound 只回證書與任職都已驗證的人。bound 用任職 ID 查單筆時回完整狀態，' +
+        '送簽前檢查才能說明被拒的原因。沒有關係回空',
       variants: [
         {
           label: '用執業主體 ID 列出任職',
@@ -163,10 +163,9 @@ const registryFunctions: Record<string, RegistryFunctionCase> = {
           expected: {
             default: [],
             by: {
-              own: ['certificateNo', 'fullEmail', 'checkId', 'inactiveEmployment'],
-              operator: ['certificateNo', 'fullEmail', 'checkId', 'inactiveEmployment'],
-              bound: ['fullEmail', 'checkId'],
-              boundByCase: ['fullEmail', 'checkId'],
+              own: ['certificateNo', 'checkId', 'inactiveEmployment'],
+              operator: ['certificateNo', 'checkId', 'inactiveEmployment'],
+              bound: ['checkId'],
               noContext: 'denied',
             },
           },
@@ -181,17 +180,12 @@ const registryFunctions: Record<string, RegistryFunctionCase> = {
             by: {
               own: ['certificateNo', 'fullEmail', 'checkId', 'inactiveEmployment'],
               operator: ['certificateNo', 'fullEmail', 'checkId', 'inactiveEmployment'],
-              bound: ['fullEmail', 'checkId', 'inactiveEmployment'],
-              boundByCase: ['fullEmail', 'checkId', 'inactiveEmployment'],
+              bound: ['checkId', 'inactiveEmployment'],
               noContext: 'denied',
             },
           },
         },
       ],
-      knownGaps: {
-        bound: 'MIL-116：bound 回該執業主體全部已驗證人員的真實 email，不限於被指派的人',
-        boundByCase: 'MIL-116：同 bound',
-      },
     },
   },
 };

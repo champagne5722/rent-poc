@@ -167,7 +167,8 @@ describe('四種正常路徑', () => {
   });
 
   it('執業主體組織：包租案件，分流條件是承租人為包租業者', async () => {
-    await seedPracticeOrg(kit, { orgId: kit.orgA });
+    // 居間只限自己兼營經紀業（MIL-200）：有已驗證的經紀業別才能勾選居間
+    await seedPracticeOrg(kit, { orgId: kit.orgA, licenses: { brokerage: 'verified' } });
     actAsOrg(kit.orgA, 'practice');
     const propertyId = await createPropertyAt(kit, 'verified');
     const res = await create(propertyId, 'master_lease', { routing: { brokerMediated: true } });
@@ -261,5 +262,45 @@ describe('呼叫端不能偽造上層案件與分流旗標', () => {
     );
     expect(await snap(await create(propertyId, 'sublease'))).toEqual(none);
     expect(await counts()).toEqual({ cases: 0, contracts: 0 });
+  });
+});
+
+describe('居間只限主辦組織自己兼營經紀業（MIL-200，ADR-0029 決議 3）', () => {
+  const BLOCKED = { status: 409, body: JSON.stringify({ error: '這個組織不能勾選居間', code: 'broker_not_allowed' }) };
+
+  it('屋主組織送 brokerMediated: true 被擋，什麼都不寫', async () => {
+    actAsOrg(kit.orgA, 'owner');
+    const propertyId = await createPropertyAt(kit, 'verified');
+    expect(await snap(await create(propertyId, 'lease', { routing: { brokerMediated: true } }))).toEqual(BLOCKED);
+    expect(await counts()).toEqual({ cases: 0, contracts: 0 });
+  });
+
+  it('屋主組織不送 brokerMediated 照常建立', async () => {
+    actAsOrg(kit.orgA, 'owner');
+    const propertyId = await createPropertyAt(kit, 'verified');
+    expect((await create(propertyId, 'lease', { routing: { brokerMediated: false } })).status).toBe(201);
+  });
+
+  it('業者組織沒有登錄經紀業別：被擋，與屋主組織同一個回應', async () => {
+    await seedPracticeOrg(kit, { orgId: kit.orgA });
+    actAsOrg(kit.orgA, 'practice');
+    const propertyId = await createPropertyAt(kit, 'verified');
+    expect(await snap(await create(propertyId, 'master_lease', { routing: { brokerMediated: true } }))).toEqual(BLOCKED);
+  });
+
+  it('業者組織的經紀業別登錄了但還沒驗證：被擋', async () => {
+    await seedPracticeOrg(kit, { orgId: kit.orgA, licenses: { brokerage: 'pending' } });
+    actAsOrg(kit.orgA, 'practice');
+    const propertyId = await createPropertyAt(kit, 'verified');
+    expect(await snap(await create(propertyId, 'master_lease', { routing: { brokerMediated: true } }))).toEqual(BLOCKED);
+    expect(await counts()).toEqual({ cases: 0, contracts: 0 });
+  });
+
+  it('只看自己組織的登錄：別的組織有已驗證的經紀業別，不影響這個組織', async () => {
+    await seedPracticeOrg(kit, { orgId: kit.orgB, licenses: { brokerage: 'verified' }, withManager: false });
+    await seedPracticeOrg(kit, { orgId: kit.orgA });
+    actAsOrg(kit.orgA, 'practice');
+    const propertyId = await createPropertyAt(kit, 'verified');
+    expect(await snap(await create(propertyId, 'master_lease', { routing: { brokerMediated: true } }))).toEqual(BLOCKED);
   });
 });

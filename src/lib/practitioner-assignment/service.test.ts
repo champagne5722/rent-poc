@@ -206,7 +206,9 @@ describe('loadSeatOptions：wizard 的指派選項', () => {
       validUntil: '2027-02-09',
       windowStartsOn: '2026-08-09',
     });
-    expect(beichen.practitioners[0].email).toBe('chen.yijun@beichen.example.com');
+    // MIL-200：選項只有姓名，不含 email
+    expect(JSON.stringify(options)).not.toContain('@');
+    expect(beichen.practitioners[0]).not.toHaveProperty('email');
     expect(beichen.partySigners.map((s) => s.id)).toEqual(['ps-wang', 'ps-li', 'ps-chen']);
     // 只列有包租業別的執業主體
     expect(seat.entities.map((e) => e.id)).toEqual(['org-pe-beichen', 'org-pe-suilin']);

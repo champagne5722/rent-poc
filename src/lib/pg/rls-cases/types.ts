@@ -79,10 +79,12 @@ export interface DisclosureFixture {
   reviewItems: { license: string; certificate: string; employment: string };
   /** 北辰與其他兩個執業主體的 ID */
   entityIds: string[];
+  /** 北辰一般成員的成員關係 ID（用成員 ID 查單筆時的探測對象） */
+  membershipId: string;
 }
 
 /** 被探測對象的種類。設了就做「無關的組織逐值相同」檢查。 */
-export type DisclosureSubject = 'entity' | 'employment' | 'certificateKey';
+export type DisclosureSubject = 'entity' | 'employment' | 'certificateKey' | 'membership';
 
 /** 一種呼叫方式。同一個函式有多種讀法時（列出、用 ID 查單筆）各寫一個。 */
 export interface DisclosureVariant {
