@@ -21,7 +21,6 @@ vi.mock('@/lib/current-request-context', async () => ({
 let live: LiveKit;
 beforeAll(async () => {
   live = await setupLiveKit();
-  registerLivePracticeRegistry(createLivePracticeRegistry({ run: requestOrgRunner() }));
 });
 afterAll(async () => {
   registerLivePracticeRegistry(null);
@@ -45,6 +44,8 @@ const put = (id: string, assignments: unknown) =>
 const snap = async (res: Response) => ({ status: res.status, body: await res.text() });
 
 function actAsOrg(orgId: string, orgKind: 'owner' | 'practice'): void {
+  // 執行器只解析一次請求脈絡，換組織就要換一個新的 adapter
+  registerLivePracticeRegistry(createLivePracticeRegistry({ run: requestOrgRunner() }));
   actAsContext({ kind: 'org', orgId, orgKind, userId: TEST_USER_ID, partyId: TEST_PARTY_ID, role: 'admin', requestId: 'test' });
 }
 
@@ -131,8 +132,7 @@ describe('PUT：別的組織的人與不存在的人，回應逐位元相同', (
   });
 
   it('用北辰的任職 ID 與成員 ID，配自己組織的執業主體：與不存在的任職、成員相同', async () => {
-    // 雲頂有經紀業別。包租席位要的是包租業別，所以用同組織另一個有包租業別的組織不可行；改用星河（待驗證）以外的路徑：
-    // 這裡用北辰自己的組織指派「別的組織的人」，驗證 validateAssignments 不區分不存在與別人的
+    // 北辰自己的組織，執業主體是自家的，人員或簽署人換成雲頂的：與不存在的人員、簽署人相同
     const attackAsBeichen = async (over: Record<string, unknown>) => {
       actAsOrg(beichen().orgId, 'practice');
       const id = await draftIn(beichen().orgId);
