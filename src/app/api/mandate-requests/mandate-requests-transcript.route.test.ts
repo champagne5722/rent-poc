@@ -252,7 +252,7 @@ describe('屋主同意個資告知才轉謄本', () => {
   it('屋主沒確認就直接送出租賃單位：原檔與代填資料同樣刪除，不轉', async () => {
     const data = await claimed();
     asOwner();
-    const unit = (await json(await postConfirmlessUnit())).unit;
+    const unit = await registerOwnUnit();
     expect((await postSubmit(jsonRequest('/x', 'POST', { unit_ids: [unit] }), ctx(data.id))).status).toBe(200);
     expect(requestFiles()).toEqual([]);
     expect(pk.storeFiles().filter((f) => f.includes(`org/${owner.orgId}/transcripts/`))).toEqual([]);
@@ -282,10 +282,10 @@ describe('屋主同意個資告知才轉謄本', () => {
 });
 
 /** 屋主自己登錄一個物件（不經確認），回傳租賃單位 ID。 */
-async function postConfirmlessUnit(): Promise<Response> {
+async function registerOwnUnit(): Promise<string> {
   const { POST } = await import('../properties/route');
   const created = await POST(jsonRequest('/api/properties', 'POST', sampleDraft({ name: '自己登錄的物件' })));
   const id = (await json(created)).data.id as string;
   const list = (await json(await getProperties())).data as Array<{ id: string; rental_unit_id: string }>;
-  return Response.json({ unit: list.find((p) => p.id === id)!.rental_unit_id });
+  return list.find((p) => p.id === id)!.rental_unit_id;
 }
