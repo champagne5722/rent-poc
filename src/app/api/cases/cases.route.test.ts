@@ -63,7 +63,7 @@ describe('GET /api/cases', () => {
     const older = await insertPlainCase(kit.orgA, '舊案件');
     const newer = await insertPlainCase(kit.orgA, '新案件');
     await addMemberRow(kit.orgA, newer, 'lessee', 'tenant@example.com', '王租客');
-    const res = await getList();
+    const res = await getList(new NextRequest('http://localhost/api/cases'));
     expect(res.status).toBe(200);
     const rows = (await json(res)).data;
     expect(rows.map((r: { id: string }) => r.id)).toEqual([newer, older]);
@@ -73,14 +73,14 @@ describe('GET /api/cases', () => {
 
   it('別的組織的案件不在清單裡；沒有案件時是空陣列', async () => {
     await insertPlainCase(kit.orgB, 'B 的案件');
-    expect((await json(await getList())).data).toEqual([]);
+    expect((await json(await getList(new NextRequest('http://localhost/api/cases')))).data).toEqual([]);
   });
 
   it('屋主是別組織案件的 lessor：清單看得到，isHost 是 false', async () => {
     const caseId = await insertPlainCase(kit.orgA, '代管案件');
     const lessor = await addMemberRow(kit.orgA, caseId, 'lessor', 'owner@example.com', '陳屋主');
     asOrg(kit.orgB, lessor);
-    const rows = (await json(await getList())).data;
+    const rows = (await json(await getList(new NextRequest('http://localhost/api/cases')))).data;
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ id: caseId, isHost: false, orgName: 'A 組織' });
   });
@@ -90,7 +90,7 @@ describe('GET /api/cases', () => {
     await addMemberRow(kit.orgA, caseId, 'lessee', 'tenant2@example.com', '承租人二');
     const owner = await addMemberRow(kit.orgA, caseId, 'owner', 'ownerrel@example.com', '所有權人');
     asOrg(kit.orgB, owner);
-    const rows = (await json(await getList())).data;
+    const rows = (await json(await getList(new NextRequest('http://localhost/api/cases')))).data;
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ leaseEnd: '2026-12-31', monthlyRent: 20000, lesseeNames: null });
   });
@@ -98,7 +98,7 @@ describe('GET /api/cases', () => {
   it('viewer 讀得到清單', async () => {
     await insertPlainCase(kit.orgA, '案件');
     asOrg(kit.orgA, TEST_PARTY_ID, 'viewer');
-    expect((await getList()).status).toBe(200);
+    expect((await getList(new NextRequest('http://localhost/api/cases'))).status).toBe(200);
   });
 });
 
@@ -120,7 +120,7 @@ describe('案件種類（MIL-195，ADR-0030）', () => {
     await insertKinded(kit.orgA, '委託管理', 'management', null, 'management');
     await insertKinded(kit.orgA, '包租', 'lease', 'self_managed', 'master_lease');
     await insertKinded(kit.orgA, '轉租', 'lease', 'master_lease', 'sublease');
-    const rows = (await json(await getList())).data as { title: string; caseKind: string }[];
+    const rows = (await json(await getList(new NextRequest('http://localhost/api/cases')))).data as { title: string; caseKind: string }[];
     expect(Object.fromEntries(rows.map((r) => [r.title, r.caseKind]))).toEqual({
       租賃: 'lease',
       委託管理: 'management',
@@ -131,7 +131,7 @@ describe('案件種類（MIL-195，ADR-0030）', () => {
 
   it('不經案件種類欄位寫入的舊資料（業務類型 master_lease）讀成轉租案件', async () => {
     await insertPlainCase(kit.orgA, '舊轉租', 'master_lease');
-    const rows = (await json(await getList())).data as { caseKind: string; businessType: string }[];
+    const rows = (await json(await getList(new NextRequest('http://localhost/api/cases')))).data as { caseKind: string; businessType: string }[];
     expect(rows[0]).toMatchObject({ caseKind: 'sublease', businessType: 'master_lease' });
   });
 
