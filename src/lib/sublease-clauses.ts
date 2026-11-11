@@ -102,7 +102,6 @@ function masterLeaseTermText(f: SubleaseContractFields): string {
 
 function specs(f: SubleaseContractFields): ClauseSpec[] {
   const t: ResolvedLeaseFamilyTerms = resolveLeaseFamilyTerms(f.terms);
-  const payer = (p: 'party_a' | 'party_b') => (p === 'party_a' ? OPERATOR : LESSEE);
   const scopeText = t.scope === 'whole' ? '全部' : `一部：${blank(t.scopeNote)}`;
   const notarized = t.notarization === 'agreed';
 

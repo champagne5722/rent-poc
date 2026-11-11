@@ -515,7 +515,6 @@ function LeaseFieldsStep({
             <Alert
               type="info"
               showIcon
-              style={{ marginTop: 8 }}
               message="附屬設備列在租賃標的條文，不另產出附件頁"
               description={
                 annexSummary.length
