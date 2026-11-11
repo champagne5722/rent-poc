@@ -105,6 +105,22 @@ const registryFunctions: Record<string, RegistryFunctionCase> = {
       reason: '寫入函式。只回結果代碼。對業者組織寫入的站內通知只含「申請已收回」與申請種類，不寫原因，不帶屋主的任何資料',
     },
   },
+  'registry.attach_mandate_request_transcript': {
+    probe: null,
+    reason: `業者專用，只能改呼叫者組織自己的申請。謄本的檔案 key 必須在 org/<業者組織 ID>/registry-requests/<申請 ID>/ 底下，指向別人的檔案會被拒（22023）。${NO_OBJECT_ID}`,
+    disclosure: {
+      kind: 'none',
+      reason: '寫入函式。只回結果代碼與被取代的舊檔 key（業者自己的檔案）。不含屋主或別的組織的任何資料',
+    },
+  },
+  'registry.mandate_request_file_for_practice': {
+    probe: null,
+    reason: `業者專用，只回呼叫者組織自己的、待屋主確認、沒失效而且有代傳謄本的申請，其餘回零列，逐位元相同。${NO_OBJECT_ID}`,
+    disclosure: {
+      kind: 'none',
+      reason: '回業者自己代傳的謄本檔案 key、雜湊、內容類型與檔名。route 在同一個交易寫稽核事件 request.file_read，提交後才讀檔。不含屋主資料',
+    },
+  },
   'registry.expire_mandate_requests': {
     probe: null,
     reason: `清除失效申請的代填資料。只回被清掉的檔案 key，不帶申請 ID。p_now 不得晚於資料庫時間，不能靠傳未來的時間清掉還沒失效的資料。${NO_OBJECT_ID}`,

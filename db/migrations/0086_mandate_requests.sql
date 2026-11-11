@@ -659,3 +659,87 @@ END
 $$;
 REVOKE ALL ON FUNCTION registry.withdraw_mandate_request(text, text, timestamptz) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION registry.withdraw_mandate_request(text, text, timestamptz) TO app_rw;
+
+-- 15. 業者代傳謄本 --------------------------------------------------------------------
+-- 誰能呼叫：app_rw，在業者組織的成員脈絡內，營運者脈絡被拒。
+-- 做什麼：把已經存進 FileStore 的謄本登記在申請上（取代上一份），回傳被取代的檔案 key 讓呼叫端刪檔。
+-- p_transcript 必須含 object_key、sha256（64 位 16 進位）、content_type、file_name、byte_size 與 form（謄本表單欄位）。
+-- object_key 必須在 org/<業者組織 ID>/registry-requests/<申請 ID>/ 底下：業者不能把申請指到別人的檔案，
+-- 否則屋主同意之後，伺服器會把那個檔案當成業者代傳的謄本轉進屋主的組織。
+-- 回傳一列 (outcome, replaced_object_key)：attached、not_found（不是呼叫者組織的申請，含不存在）、
+-- expired（連結已失效）、not_pending（已送出或已結束）。
+-- 為什麼：謄本是個資敏感文件。原檔只放在業者組織名下的路徑，屋主確認前只有產生連結的業者能讀。
+CREATE FUNCTION registry.attach_mandate_request_transcript(p_id text, p_transcript jsonb, p_now timestamptz)
+RETURNS TABLE (outcome text, replaced_object_key text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = registry, pg_temp
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_org   text := nullif(current_setting('app.org_id', true), '');
+  v_party text := nullif(current_setting('app.party_id', true), '');
+  v_req   registry.mandate_requests;
+  v_state text;
+BEGIN
+  IF v_org IS NULL OR v_party IS NULL OR nullif(current_setting('app.operator_id', true), '') IS NOT NULL THEN
+    RAISE EXCEPTION 'registry.attach_mandate_request_transcript 必須由組織成員呼叫' USING ERRCODE = '42501';
+  END IF;
+  IF p_id IS NULL OR p_now IS NULL OR p_transcript IS NULL OR jsonb_typeof(p_transcript) <> 'object'
+     OR coalesce(p_transcript ->> 'sha256', '') !~ '^[0-9a-f]{64}$'
+     OR coalesce(p_transcript ->> 'content_type', '') = '' OR coalesce(p_transcript ->> 'file_name', '') = ''
+     OR coalesce(p_transcript ->> 'byte_size', '') !~ '^[0-9]+$'
+     OR jsonb_typeof(p_transcript -> 'form') IS DISTINCT FROM 'object'
+     OR left(coalesce(p_transcript ->> 'object_key', ''), length('org/' || v_org || '/registry-requests/' || p_id || '/'))
+        IS DISTINCT FROM 'org/' || v_org || '/registry-requests/' || p_id || '/' THEN
+    RAISE EXCEPTION '謄本資料不完整，或檔案路徑不在這份申請的目錄下' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT r.* INTO v_req FROM registry.mandate_requests r WHERE r.id = p_id AND r.practice_org_id = v_org FOR UPDATE OF r;
+  IF NOT FOUND THEN
+    RETURN QUERY SELECT 'not_found'::text, NULL::text;
+    RETURN;
+  END IF;
+  v_state := registry.mandate_request_status_at(v_req.status, v_req.link_expires_at, v_req.submitted_at, v_req.accepted_at, v_req.contract_sent_at, p_now);
+  IF v_state = 'expired' THEN
+    RETURN QUERY SELECT 'expired'::text, NULL::text;
+    RETURN;
+  END IF;
+  IF v_state <> 'pending_owner' THEN
+    RETURN QUERY SELECT 'not_pending'::text, NULL::text;
+    RETURN;
+  END IF;
+  UPDATE registry.mandate_requests r SET draft_transcript = p_transcript WHERE r.id = p_id;
+  RETURN QUERY SELECT 'attached'::text, v_req.draft_transcript ->> 'object_key';
+END
+$$;
+REVOKE ALL ON FUNCTION registry.attach_mandate_request_transcript(text, jsonb, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION registry.attach_mandate_request_transcript(text, jsonb, timestamptz) TO app_rw;
+
+-- 16. 業者讀自己代傳的謄本 -----------------------------------------------------------------
+-- 誰能呼叫：app_rw，在業者組織的成員脈絡內，營運者脈絡被拒。
+-- 只回呼叫者組織自己的、待屋主確認、沒失效，而且有代傳謄本的申請。其餘回零列，逐位元相同。
+-- 回什麼：FileStore 的 key、SHA-256、內容類型與檔名。呼叫端（route）在同一個交易寫稽核事件 request.file_read，
+-- 提交之後才讀檔，所以每次讀取都有紀錄。屋主送出、收回或連結失效後，檔案已刪，這個函式回零列。
+CREATE FUNCTION registry.mandate_request_file_for_practice(p_id text, p_now timestamptz)
+RETURNS TABLE (object_key text, sha256 text, content_type text, file_name text)
+LANGUAGE plpgsql STABLE
+SECURITY DEFINER
+SET search_path = registry, pg_temp
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_org text := nullif(current_setting('app.org_id', true), '');
+BEGIN
+  IF v_org IS NULL OR nullif(current_setting('app.operator_id', true), '') IS NOT NULL THEN
+    RAISE EXCEPTION 'registry.mandate_request_file_for_practice 必須由組織成員呼叫' USING ERRCODE = '42501';
+  END IF;
+  RETURN QUERY
+  SELECT r.draft_transcript ->> 'object_key', r.draft_transcript ->> 'sha256', r.draft_transcript ->> 'content_type', r.draft_transcript ->> 'file_name'
+    FROM registry.mandate_requests r
+   WHERE r.id = p_id AND r.practice_org_id = v_org AND r.draft_transcript IS NOT NULL
+     AND registry.mandate_request_status_at(r.status, r.link_expires_at, r.submitted_at, r.accepted_at, r.contract_sent_at, p_now) = 'pending_owner';
+END
+$$;
+REVOKE ALL ON FUNCTION registry.mandate_request_file_for_practice(text, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION registry.mandate_request_file_for_practice(text, timestamptz) TO app_rw;

@@ -12,7 +12,7 @@ import {
 import { pgliteDriver } from './drivers';
 import { asRole, createTestDb, type TestDb } from './test-harness';
 import { newUlid } from './ulid';
-import { createWithTx, type OrgTx, type WithTx } from './with-tx';
+import { createWithTx, type OrgTx, type Tx, type WithTx } from './with-tx';
 
 // MIL-206：申請的表與函式。一律以 app_rw 從外部觀察；看 registry 的列或改資料時才用 asRole 換成 app_owner。
 // 狀態判定在 SQL（registry.mandate_request_status_at）與 TypeScript（status.ts）各有一份，這裡逐格比對兩邊相同。
@@ -65,7 +65,7 @@ const asPractice = <T>(fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', o
 const NOW = new Date(Date.now() - 60 * 60 * 1000);
 const hash = (n: string) => createHash('sha256').update(n).digest('hex');
 
-const createRow = (tx: OrgTx, kind = 'management', code = 'code-1', draft: object | null = null, now = NOW) =>
+const createRow = (tx: Tx, kind = 'management', code = 'code-1', draft: object | null = null, now = NOW) =>
   tx.query<{ request_id: string; kind: string; status: string; created_at: Date; link_expires_at: Date }>(
     'SELECT * FROM registry.create_mandate_request($1, $2, $3, $4::jsonb, $5)',
     [newUlid(), kind, hash(code), draft === null ? null : JSON.stringify(draft), now],
@@ -254,5 +254,82 @@ describe('registry.expire_mandate_requests', () => {
     // 再呼叫一次，沒有東西可清
     const again = await withTx({ kind: 'control' }, (t) => t.query('SELECT * FROM registry.expire_mandate_requests($1)', [new Date()]));
     expect(again.rows).toEqual([]);
+  });
+});
+
+describe('registry.occupied_rental_units：被佔用的租賃單位（有效的委託、有效的包租的接點）', () => {
+  // 本票的來源只有進行中的申請。有效的委託（MIL-212）與有效的包租（MIL-211）在函式內的 UNION ALL 補上，
+  // 下面的案例就是它們要沿用的行為：只讀呼叫者自己的資料，過期的不算，自己這份不算。
+  const otherOwnerOrg = newUlid();
+  const hours = (n: number, from: Date) => new Date(from.getTime() + n * 3_600_000);
+
+  async function unit(orgId: string, partyId: string): Promise<string> {
+    return withTx({ kind: 'org', orgId, partyId }, async (tx) => {
+      const anchorId = newUlid();
+      const unitId = newUlid();
+      await tx.query('SELECT * FROM registry.create_pending_anchor($1, $2, $3)', [anchorId, unitId, '某地址']);
+      await tx.query('INSERT INTO org.properties (id, org_id, rental_unit_id, name, address) VALUES ($1, $2, $3, $4, $5)', [newUlid(), orgId, unitId, '物件', '某地址']);
+      return unitId;
+    });
+  }
+
+  async function seed(
+    status: string,
+    units: string[],
+    options: { ownerOrgId?: string; submittedAt?: Date; acceptedAt?: Date; contractSentAt?: Date } = {},
+  ): Promise<string> {
+    const id = newUlid();
+    const created = hours(-24 * 60, NOW);
+    await owner(async () => {
+      await db.query(
+        `INSERT INTO registry.mandate_requests
+           (id, kind, practice_org_id, entity_id, created_by_party_id, code_hash, status, created_at, link_expires_at,
+            owner_org_id, claimed_at, submitted_at, withdrawn_at, accepted_at, contract_sent_at)
+         VALUES ($1, 'management', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+        [
+          id, practiceOrg, entityId, practiceParty, hash(id), status, created, hours(168, created),
+          options.ownerOrgId ?? ownerOrg, created, options.submittedAt ?? created, status === 'withdrawn' ? created : null,
+          options.acceptedAt ?? null, options.contractSentAt ?? null,
+        ],
+      );
+      for (const u of units) await db.query('INSERT INTO registry.mandate_request_units (request_id, rental_unit_id) VALUES ($1, $2)', [id, u]);
+    });
+    return id;
+  }
+
+  const occupied = async (units: string[], exclude: string | null = null, orgId = ownerOrg) =>
+    (
+      await owner(() =>
+        db.query<{ occupied_rental_units: string }>('SELECT * FROM registry.occupied_rental_units($1, $2::text[], $3, $4)', [orgId, units, NOW, exclude]),
+      )
+    ).rows
+      .map((r) => r.occupied_rental_units)
+      .sort();
+
+  it('待業者接受（7 天內）與已接受（30 天內）佔用；過期、已收回、別的屋主組織的申請不佔用', async () => {
+    await owner(() => db.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, '李先生', 'owner')`, [otherOwnerOrg]));
+    const [a, b, c, d, e, f, g] = await Promise.all(Array.from({ length: 7 }, () => unit(ownerOrg, ownerParty)));
+    await seed('pending_practice', [a], { submittedAt: hours(-24, NOW) });
+    await seed('accepted', [b], { submittedAt: hours(-24 * 10, NOW), acceptedAt: hours(-24 * 5, NOW) });
+    await seed('pending_practice', [c], { submittedAt: hours(-24 * 8, NOW) });
+    await seed('accepted', [d], { submittedAt: hours(-24 * 40, NOW), acceptedAt: hours(-24 * 31, NOW) });
+    await seed('accepted', [e], { submittedAt: hours(-24 * 40, NOW), acceptedAt: hours(-24 * 31, NOW), contractSentAt: hours(-24 * 30, NOW) });
+    await seed('withdrawn', [f], { submittedAt: hours(-24, NOW) });
+    await seed('pending_practice', [g], { ownerOrgId: otherOwnerOrg, submittedAt: hours(-24, NOW) });
+    const all = [a, b, c, d, e, f, g];
+    expect(await occupied(all)).toEqual([a, b, e].sort());
+    // 別的屋主組織自己看：只有它自己的申請算
+    expect(await occupied(all, null, otherOwnerOrg)).toEqual([g]);
+  });
+
+  it('送出的那份申請不算自己', async () => {
+    const [a] = [await unit(ownerOrg, ownerParty)];
+    const id = await seed('pending_practice', [a], { submittedAt: hours(-1, NOW) });
+    expect(await occupied([a])).toEqual([a]);
+    expect(await occupied([a], id)).toEqual([]);
+  });
+
+  it('沒有任何申請的租賃單位不被佔用', async () => {
+    expect(await occupied([await unit(ownerOrg, ownerParty), newUlid()])).toEqual([]);
   });
 });
