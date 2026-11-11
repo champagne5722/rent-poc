@@ -26,8 +26,8 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
     case 'not_found':
       return <RequestNotFound />;
     case 'owner':
-      return <OwnerRequestDetail initial={result.request} groups={result.groups} />;
+      return <OwnerRequestDetail initial={result.request} groups={result.groups} canEnd={result.canEnd} />;
     case 'practice':
-      return <PracticeRequestDetail request={result.request} />;
+      return <PracticeRequestDetail request={result.request} isAdmin={result.isAdmin} candidates={result.candidates} managerName={result.managerName} />;
   }
 }

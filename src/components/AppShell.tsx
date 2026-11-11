@@ -97,6 +97,9 @@ function useUnreadCount(pathname: string): number {
 
 // Sider 的寬度是 antd 的屬性，沒有元件層 token，所以留在這裡當具名常數。
 const SIDER_WIDTH = 224;
+// 窄螢幕（antd md 斷點以下，768px）側欄自動收合，收合後寬度 0，內容占滿寬度。寬螢幕收合仍是 80px 的 icon 欄。
+const SIDER_COLLAPSED_WIDTH = 80;
+const SIDER_NARROW_COLLAPSED_WIDTH = 0;
 
 // 登入由 MIL-103 提供：未登入的請求在 proxy 與根 layout 就被導向 /login，到這裡的都有 session
 // 後台殼層＝亮色 collapsible side menu（規格 §4，MIL-173）：antd Layout＋Sider＋Menu mode="inline"，不引入 ProLayout。
@@ -104,6 +107,7 @@ const SIDER_WIDTH = 224;
 function AdminShell({ pathname, children }: { pathname: string; children: React.ReactNode }) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [narrow, setNarrow] = useState(false);
 
   const unread = useUnreadCount(pathname);
   const selected = resolveNavKey(pathname) ?? resolveIdentityNavKey(pathname) ?? resolvePersonalNavKey(pathname);
@@ -133,7 +137,17 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
 
   return (
     <Layout className={styles.root}>
-      <Layout.Sider theme="light" className={styles.sider} collapsible collapsed={collapsed} onCollapse={setCollapsed} width={SIDER_WIDTH}>
+      <Layout.Sider
+        theme="light"
+        className={styles.sider}
+        collapsible
+        collapsed={collapsed}
+        onCollapse={setCollapsed}
+        width={SIDER_WIDTH}
+        breakpoint="md"
+        onBreakpoint={setNarrow}
+        collapsedWidth={narrow ? SIDER_NARROW_COLLAPSED_WIDTH : SIDER_COLLAPSED_WIDTH}
+      >
         <div className={collapsed ? styles.brandCollapsed : styles.brand}>
           <Typography.Text strong>{collapsed ? '租' : '租房雲端管理平台'}</Typography.Text>
         </div>

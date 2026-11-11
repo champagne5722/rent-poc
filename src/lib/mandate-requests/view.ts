@@ -68,26 +68,104 @@ export interface NextStepView {
 
 const deadlineText = (deadline: string | null): string | undefined => (deadline ? `連結有效到 ${formatTaipeiDateTime(deadline)}。` : undefined);
 
+const MONTH_DAY = new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric' });
+
+/** 「M月D日」，臺北時間。無法解析回「—」。 */
+export function formatMonthDay(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  const p = Object.fromEntries(MONTH_DAY.formatToParts(date).map((part) => [part.type, part.value]));
+  return `${Number(p.month)}月${Number(p.day)}日`;
+}
+
+/**
+ * 業者的申請列表與詳情的期限文字。期限由資料段的 deadlineOf 算好放在 request.deadline，這裡只換成文字，不自己算日期。
+ * 待業者接受是「M月D日前回覆」，已接受是「M月D日前送出合約」，已失效是「已失效」。
+ * 待屋主確認維持完整的連結失效時間。沒有期限的狀態回 null。
+ */
+export function practiceDeadlineText(request: Pick<PracticeMandateRequest, 'status' | 'deadline'>): string | null {
+  if (request.status === 'expired') return '已失效';
+  if (!request.deadline) return null;
+  switch (request.status) {
+    case 'pending_practice':
+      return `${formatMonthDay(request.deadline)}前回覆`;
+    case 'accepted':
+      return `${formatMonthDay(request.deadline)}前送出合約`;
+    case 'pending_owner':
+      return formatTaipeiDateTime(request.deadline);
+    default:
+      return null;
+  }
+}
+
+/** 接受之後，業者的畫面不得出現任何物件的資料，包含租賃單位的數量。接受之前的數量照舊顯示。 */
+export function practiceMayShowUnits(request: Pick<PracticeMandateRequest, 'accepted_at'>): boolean {
+  return request.accepted_at === null;
+}
+
+/** 詳情與列表上，結束或未接受的是哪一方，業者視角。 */
+export function practiceClosedByText(request: Pick<PracticeMandateRequest, 'status' | 'closed_by'>): string | null {
+  if (request.status !== 'ended') return null;
+  return request.closed_by === 'practice' ? '你的組織已結束申請' : '屋主已結束申請';
+}
+
+/** 屋主視角：已結束的是哪一方。 */
+export function ownerClosedByText(request: Pick<OwnerMandateRequest, 'status' | 'closed_by'>): string | null {
+  if (request.status !== 'ended') return null;
+  return request.closed_by === 'practice' ? '業者已結束申請' : '你已結束申請';
+}
+
+/** 非組織管理員看到的說明。 */
+export const ONLY_ADMIN_RESPOND_TEXT = '只有組織管理員能回覆申請。';
+export const ONLY_ADMIN_END_TEXT = '只有組織管理員能結束申請。';
+/** 沒有合格的管理人員時，接受鍵旁邊的說明。 */
+export const NO_MANAGER_HINT = '貴公司目前沒有通過核對的租賃住宅管理人員，不能接受申請。請先到執業主體頁完成人員的核對。';
+/** 不接受的確認文字：寫明屋主只看到「未接受」，沒有原因。待法務確認。 */
+export const DECLINE_CONFIRM_TEXT = '按下後，屋主只會看到「未接受」。你不需要填原因，屋主也看不到原因。這份申請不能恢復。';
+export const PRACTICE_END_CONFIRM_TEXT = '結束後，屋主會收到通知，申請不能恢復。你不需要填原因。';
+export const OWNER_END_CONFIRM_TEXT = '結束後，業者會收到通知。申請不能恢復，需要時請向業者索取新的連結。你不需要填原因。';
+export const STATE_CHANGED_TEXT = '申請的狀態已改變';
+
+/**
+ * 接受、不接受、結束失敗時要顯示的文字。
+ * not_pending 一律「申請的狀態已改變」，畫面要重新載入。其他錯誤碼顯示伺服端的固定訊息，不自己改字。
+ */
+export function decisionErrorText(code: string | undefined, serverMessage: string | undefined, fallback: string): string {
+  if (code === 'not_pending') return STATE_CHANGED_TEXT;
+  return serverMessage ?? fallback;
+}
+
+/** 這個錯誤之後要重新載入申請：狀態已改變，或資格已改變。 */
+export function decisionErrorReloads(code: string | undefined): boolean {
+  return code === 'not_pending' || code === 'not_found';
+}
+
 /** 業者的申請詳情頂端的「下一步」。待屋主確認時，不論有沒有人打開連結，文字都相同。 */
 export function practiceNextStep(request: PracticeMandateRequest): NextStepView {
   switch (request.status) {
     case 'pending_owner':
       return { headline: '等屋主確認並送出申請', owner: '屋主', detail: deadlineText(request.deadline), tone: 'progress' };
-    case 'pending_practice':
-      return {
-        headline: '屋主已送出申請',
-        owner: '你的組織',
-        detail: request.unit_count === null ? undefined : `申請含 ${request.unit_count} 個租賃單位。`,
-        tone: 'progress',
-      };
+    case 'pending_practice': {
+      const parts = [
+        request.unit_count === null ? null : `申請含 ${request.unit_count} 個租賃單位。`,
+        request.deadline ? `請在 ${formatMonthDay(request.deadline)}前回覆，逾期申請失效。` : null,
+      ].filter((part): part is string => part !== null);
+      return { headline: '屋主已送出申請，等你回覆', owner: '你的組織', detail: parts.length > 0 ? parts.join('') : undefined, tone: 'progress' };
+    }
     case 'accepted':
-      return { headline: '申請已接受', owner: '你的組織', tone: 'success' };
+      return {
+        headline: '申請已接受',
+        owner: '你的組織',
+        detail: request.deadline ? `下一步是擬定契約。請在 ${formatMonthDay(request.deadline)}前送出合約，逾期申請失效。` : '下一步是擬定契約。',
+        tone: 'success',
+      };
     case 'declined':
       return { headline: '申請未接受，不需要處理', owner: '無', tone: 'neutral' };
     case 'withdrawn':
       return { headline: '屋主已收回申請，不需要處理', owner: '無', tone: 'neutral' };
     case 'ended':
-      return { headline: '申請已結束，不需要處理', owner: '無', tone: 'neutral' };
+      return { headline: `${practiceClosedByText(request) ?? '申請已結束'}，不需要處理`, owner: '無', tone: 'neutral' };
     case 'completed':
       return { headline: '申請已完成，不需要處理', owner: '無', tone: 'success' };
     case 'expired':
@@ -95,7 +173,7 @@ export function practiceNextStep(request: PracticeMandateRequest): NextStepView 
   }
 }
 
-/** 屋主的申請詳情頂端的「下一步」。 */
+/** 屋主的申請詳情頂端的「下一步」。未接受只寫「未接受」，不寫任何原因或說明。 */
 export function ownerNextStep(request: OwnerMandateRequest): NextStepView {
   switch (request.status) {
     case 'pending_owner':
@@ -108,18 +186,28 @@ export function ownerNextStep(request: OwnerMandateRequest): NextStepView {
     case 'pending_practice':
       return { headline: '等業者接受', owner: '業者', detail: '業者接受前，你能收回申請。', tone: 'progress' };
     case 'accepted':
-      return { headline: '業者已接受申請', owner: '業者', tone: 'success' };
+      return { headline: '業者已接受申請', owner: '業者', detail: '合約完成前，你能結束申請。', tone: 'success' };
     case 'declined':
-      return { headline: '業者沒有接受申請', owner: '無', tone: 'neutral' };
+      return { headline: '未接受', owner: '無', tone: 'neutral' };
     case 'withdrawn':
       return { headline: '你已收回申請，不需要處理', owner: '無', tone: 'neutral' };
     case 'ended':
-      return { headline: '申請已結束，不需要處理', owner: '無', tone: 'neutral' };
+      return { headline: `${ownerClosedByText(request) ?? '申請已結束'}，不需要處理`, owner: '無', tone: 'neutral' };
     case 'completed':
       return { headline: '申請已完成，不需要處理', owner: '無', tone: 'success' };
     case 'expired':
       return { headline: '申請已失效。請向業者索取新的連結', owner: '你', tone: 'warning' };
   }
+}
+
+/** 業者能回覆（接受、不接受）：待業者接受。 */
+export function practiceCanRespond(request: Pick<PracticeMandateRequest, 'status'>): boolean {
+  return request.status === 'pending_practice';
+}
+
+/** 雙方能結束：已接受，還沒失效。 */
+export function canEndRequest(request: Pick<PracticeMandateRequest | OwnerMandateRequest, 'status'>): boolean {
+  return request.status === 'accepted';
 }
 
 /** 屋主能確認並送出：申請還在待屋主確認。 */
