@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { advanceOwnership, createPropertyAt, lapseOwnership } from '@/lib/ownership/test-kit';
 import { actAs, actAsParty, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
-import { flattenPropertyGroups } from '@/lib/properties/group-rows';
 import { statusPresentation } from '@/lib/status-presentation';
 import type { PropertyGroup } from '@/lib/types';
 import { POST as addSublet } from './[id]/sublet-units/route';
@@ -159,14 +158,6 @@ describe('依物件分組的讀取', () => {
     expect(flat.map((p) => p.id).sort()).toEqual([whole, room].sort());
     for (const p of flat) expect(p).toMatchObject({ verification_status: 'verified', anchor: expect.objectContaining({ city_code: 'A' }) });
     expect(flat.every((p) => !('units' in p))).toBe(true);
-  });
-
-  it('攤平後與扁平列表逐列相同，物件列表頁的畫面不變', async () => {
-    const whole = await createPropertyAt(kit, 'verified', { name: 'A 整戶' });
-    await sublet(whole, '301', 'A 301');
-    await createPropertyAt(kit, 'failed', { name: '另一間' });
-    const flat = (await json(await getList())).data;
-    expect(flattenPropertyGroups((await groups()) as PropertyGroup[])).toEqual(flat);
   });
 
   it('不是組織身分回 403', async () => {

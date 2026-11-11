@@ -1,0 +1,4 @@
+/* 新增分租單位表單（MIL-177）。尺寸引用 DESIGN.md 的 CSS 變數。 */
+.typeSelect {
+  width: calc(var(--space-xxl) * 2 + var(--space-md));
+}

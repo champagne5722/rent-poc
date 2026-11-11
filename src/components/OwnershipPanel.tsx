@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Alert, App as AntApp, Button, Card, Checkbox, DatePicker, Descriptions, Flex, Form, Input, Skeleton, Typography, Upload } from 'antd';
+import { useState } from 'react';
+import { Alert, App as AntApp, Button, Card, Checkbox, DatePicker, Descriptions, Flex, Form, Input, Typography, Upload } from 'antd';
 import type { UploadFile } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import type { Dayjs } from 'dayjs';
@@ -27,7 +27,7 @@ import styles from './OwnershipPanel.module.css';
 import shared from './ownership/shared.module.css';
 
 // 物件頁的出租權源文件區塊（MIL-201，ADR-0026、ADR-0028 決議 3）。放在物件頁的「建號與核對」分頁。
-// 顯示核對狀態、最新一次送件，以及個資告知與謄本上傳。
+// 顯示核對狀態、最新一次送件，以及個資告知與謄本上傳。初始資料由 server component 載入（MIL-177）。
 // 規則：
 // - 個資告知必須先同意，上傳表單才能用。沒有同意時，表單整個停用。
 // - 畫面的文字、狀態與按鈕，不讓登錄的一方分辨別的組織是否登錄過同一個建號。文字全部來自 API 回傳的固定訊息。
@@ -67,8 +67,6 @@ interface ApiError {
   field?: string;
   missing?: TrustField[];
 }
-
-const LOAD_ERROR = '讀不到文件核對狀態。請按「重新載入」，仍然失敗時請稍後再試。';
 
 function fileExtension(name: string): string {
   const dot = name.lastIndexOf('.');
@@ -340,81 +338,28 @@ function TranscriptForm({ ownership, onSubmitted }: { ownership: PropertyOwnersh
 }
 
 export interface OwnershipPanelProps {
-  propertyId: string;
+  /** server component 載入的出租權源文件狀態（MIL-177）。 */
+  ownership: PropertyOwnership;
   /** 物件已封存：不能上傳謄本。 */
   archived: boolean;
-  /** 父頁重新載入物件時加一，這裡跟著重讀。 */
-  reloadToken: number;
-  /** 送件成功或狀態改變後呼叫，父頁重讀物件（核對狀態在別的分頁也會用到）。 */
+  /** 送件成功或狀態改變後呼叫，父頁請 server component 重新載入（核對狀態在別的分頁也會用到）。 */
   onChanged: () => void;
 }
 
-export default function OwnershipPanel({ propertyId, archived, reloadToken, onChanged }: OwnershipPanelProps) {
-  const [ownership, setOwnership] = useState<PropertyOwnership | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-
-  // 分頁被切到時才掛載，所以這不是頁面的首屏資料。已有資料時重讀不清空畫面，避免版面跳動
-  useEffect(() => {
-    let stale = false;
-    void (async () => {
-      try {
-        const res = await fetch(`/api/properties/${encodeURIComponent(propertyId)}/ownership`);
-        const json = res.ok ? ((await res.json()) as { data?: PropertyOwnership }) : null;
-        if (stale) return;
-        if (json?.data) {
-          setOwnership(json.data);
-          setFailed(false);
-        } else {
-          setFailed(true);
-        }
-      } catch {
-        if (!stale) setFailed(true);
-      }
-    })();
-    return () => {
-      stale = true;
-    };
-  }, [propertyId, reloadToken, attempt]);
-
-  if (ownership === null) {
-    if (failed) {
-      return (
-        <Alert
-          type="error"
-          showIcon
-          title={LOAD_ERROR}
-          action={
-            <Button
-              onClick={() => {
-                setFailed(false);
-                setAttempt((n) => n + 1);
-              }}
-            >
-              重新載入
-            </Button>
-          }
-        />
-      );
-    }
-    return (
-      <Card size="small" title="出租權源文件" aria-label="出租權源文件載入中">
-        <Skeleton active paragraph={{ rows: 4 }} />
-      </Card>
-    );
-  }
-
+export default function OwnershipPanel({ ownership: loaded, archived, onChanged }: OwnershipPanelProps) {
+  // 同意告知後，API 回傳新的狀態，先顯示它。父頁重新載入、傳進新的 loaded 後，改用新的 loaded
+  const [override, setOverride] = useState<{ source: PropertyOwnership; value: PropertyOwnership } | null>(null);
+  const ownership = override && override.source === loaded ? override.value : loaded;
   const showForm = ownership.can_submit && !archived;
 
   return (
     <Flex vertical gap="middle">
-      {failed && <Alert type="warning" showIcon title="重新讀取失敗，下方是上一次讀到的狀態。請稍後重新整理頁面。" />}
       <Card size="small" title="出租權源文件" extra={<StatusTag kind="propertyVerification" value={ownership.verification_status} />}>
         <StatusBlock ownership={ownership} archived={archived} />
       </Card>
       {showForm && !ownership.consent.agreed && (
         <Card size="small" title="個資告知">
-          <ConsentBlock ownership={ownership} onChange={setOwnership} />
+          <ConsentBlock ownership={ownership} onChange={(value) => setOverride({ source: loaded, value })} />
         </Card>
       )}
       {showForm && (

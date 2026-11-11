@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react';
 import { Col, Form, Input, InputNumber, Row, Select, Typography } from 'antd';
 import type { FormInstance } from 'antd';
+import styles from './AnchorFields.module.css';
 
 interface AreaData {
   cities: { code: string; name: string }[];
@@ -86,11 +87,10 @@ export function AnchorKeyFields({ form, prefix }: KeyFieldsProps) {
         <Col xs={24} sm={8}>
           <Form.Item name={[...prefix, 'city']} label="縣市" rules={[{ required: true, message: '請選縣市' }]}>
             <Select
-              showSearch
+              showSearch={{ filterOption: matchesLabel }}
               placeholder="選縣市"
               loading={areas === null}
               options={areas?.cities.map((c) => ({ value: c.code, label: c.name }))}
-              filterOption={matchesLabel}
               onChange={() => form.setFieldValue([...prefix, 'town'], undefined)}
             />
           </Form.Item>
@@ -98,11 +98,10 @@ export function AnchorKeyFields({ form, prefix }: KeyFieldsProps) {
         <Col xs={24} sm={8}>
           <Form.Item name={[...prefix, 'town']} label="鄉鎮市區" rules={[{ required: true, message: '請選鄉鎮市區' }]}>
             <Select
-              showSearch
+              showSearch={{ filterOption: matchesLabel }}
               placeholder={city ? '選鄉鎮市區' : '先選縣市'}
               disabled={!city}
               options={towns.map((t) => ({ value: t.code, label: t.name }))}
-              filterOption={matchesLabel}
               onChange={() => form.setFieldValue([...prefix, 'section'], undefined)}
             />
           </Form.Item>
@@ -115,13 +114,12 @@ export function AnchorKeyFields({ form, prefix }: KeyFieldsProps) {
             extra={picked?.via_alias ? '此段跨越多個鄉鎮市區，建號登記在主行政區，系統會自動處理。' : undefined}
           >
             <Select
-              showSearch
+              showSearch={{ filterOption: matchesLabel }}
               placeholder={town ? '輸入段名搜尋' : '先選鄉鎮市區'}
               disabled={!town}
               loading={loadingSections}
               notFoundContent={loadingSections ? '載入中' : '找不到符合的段小段，已註銷的段不會列出'}
               options={sections.map((s) => ({ value: s.code, label: `${s.label}（${s.code}）` }))}
-              filterOption={matchesLabel}
             />
           </Form.Item>
         </Col>
@@ -178,7 +176,7 @@ export function AnchorSection({ form }: { form: FormInstance }) {
             dependencies={[['anchor', 'longitude']]}
             rules={[pairedWith(['anchor', 'longitude'], '座標請同時填緯度與經度')]}
           >
-            <InputNumber min={-90} max={90} step={0.0001} style={{ width: '100%' }} placeholder="例：25.0330" />
+            <InputNumber min={-90} max={90} step={0.0001} className={styles.fullWidth} placeholder="例：25.0330" />
           </Form.Item>
         </Col>
         <Col xs={24} sm={8}>
@@ -188,7 +186,7 @@ export function AnchorSection({ form }: { form: FormInstance }) {
             dependencies={[['anchor', 'latitude']]}
             rules={[pairedWith(['anchor', 'latitude'], '座標請同時填緯度與經度')]}
           >
-            <InputNumber min={-180} max={180} step={0.0001} style={{ width: '100%' }} placeholder="例：121.5654" />
+            <InputNumber min={-180} max={180} step={0.0001} className={styles.fullWidth} placeholder="例：121.5654" />
           </Form.Item>
         </Col>
       </Row>
