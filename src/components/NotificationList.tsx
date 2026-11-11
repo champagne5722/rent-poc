@@ -10,17 +10,12 @@ import { useRouter } from 'next/navigation';
 import ListPage from '@/components/page/ListPage';
 import { NOTIFICATIONS_CHANGED_EVENT } from '@/lib/notifications/client-events';
 import type { NotificationDto } from '@/lib/notifications/member-route';
+import { formatTaipeiDateTime } from '@/lib/ownership/format';
 
 type ReadFilter = 'all' | 'unread';
 
-// 固定用台灣時間，讓 server 與瀏覽器渲染的文字一致
-const timeFormat = new Intl.DateTimeFormat('zh-TW', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-  hour12: false,
-  timeZone: 'Asia/Taipei',
-});
-const formatTime = (iso: string) => timeFormat.format(new Date(iso));
+// 固定用台灣時間。不用 dateStyle：Node 與 Chromium 的 ICU 在日期與時間之間用不同的空白字元，會造成 hydration 錯誤（MIL-185）
+const formatTime = formatTaipeiDateTime;
 
 export interface NotificationListProps {
   items: NotificationDto[];

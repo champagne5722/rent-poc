@@ -10,6 +10,7 @@ import SettingsPage from '@/components/page/SettingsPage';
 import SettingsSection from '@/components/page/SettingsSection';
 import StatusTag from '@/components/StatusTag';
 import { statutoryTitle, type LicenseKind } from '@/lib/labels';
+import { formatTaipeiDateTime } from '@/lib/ownership/format';
 import { EVIDENCE_MAX_BYTES, EVIDENCE_MAX_FILES, PERMIT_NO_MAX } from '@/lib/practice-entities/rules';
 import type { MyLicense, MyRegistration } from '@/lib/practice-entities/applicant';
 import type { OrgEmployment } from '@/lib/practitioners/applicant';
@@ -28,9 +29,8 @@ const KIND_OPTIONS: Array<{ value: LicenseKind; label: string }> = (['management
 const ENTITY_TYPE_LABEL = { company: '公司', firm: '商號' } as const;
 const ACCEPT = 'application/pdf,image/png,image/jpeg';
 
-// 固定用台灣時間，讓 server 與瀏覽器渲染的文字一致
-const dateTimeFormat = new Intl.DateTimeFormat('zh-TW', { dateStyle: 'medium', timeStyle: 'short', hour12: false, timeZone: 'Asia/Taipei' });
-const formatDate = (iso: string | null) => (iso ? dateTimeFormat.format(new Date(iso)) : '—');
+// 送件時間固定用台灣時間。不用 dateStyle：Node 與 Chromium 的 ICU 在日期與時間之間用不同的空白字元，會造成 hydration 錯誤（MIL-185）
+const formatDate = formatTaipeiDateTime;
 
 interface FormValues {
   kind: LicenseKind;

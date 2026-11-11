@@ -14,9 +14,18 @@ test('通知列表：未讀列有「未讀」字樣，點「標為已讀」後�
   const title = `E2E 測試通知 ${suffix}`;
   await seedNotification(page, title);
 
+  // 未讀列有時間文字，server 與瀏覽器各算一次，不一致會造成 hydration 錯誤（MIL-185）
+  const problems: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error' || msg.type() === 'warning') problems.push(`console.${msg.type()}: ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`));
+
   await page.goto('/notifications');
   const row = page.getByRole('row').filter({ hasText: title });
   await expect(row).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  expect(problems).toEqual([]);
   await expect(row.getByText('未讀', { exact: true })).toBeVisible();
   await expect(row.getByRole('button', { name: '標為已讀' })).toBeVisible();
   await expect(page.getByRole('button', { name: '全部標為已讀' })).toBeEnabled();

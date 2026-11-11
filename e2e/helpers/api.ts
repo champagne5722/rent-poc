@@ -1,5 +1,5 @@
 import { expect, type Browser, type Page } from '@playwright/test';
-import { newUserContext, signIn } from '../baseline/session';
+import { createPracticeOrg, newUserContext, signIn } from '../baseline/session';
 
 // 測試資料的準備。這些只是「前置條件」，被測的行為一律走畫面。
 // 資料每次執行都重新建立，名稱帶隨機尾碼，不依賴既有資料，也不依賴測試的執行順序。
@@ -157,4 +157,20 @@ export async function seedSendableDraft(page: Page, propertyId: string): Promise
   });
   if (!response.ok()) throw new Error(`補齊草稿欄位失敗：${response.status()} ${await response.text()}`);
   return id;
+}
+
+const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
+/**
+ * 用新的 email 登入，建立執業主體組織，並送出一個業別的登錄（待營運者核對）。
+ * 執業主體頁的業別表因此有一列帶送件時間。統編隨機 8 碼，同一次執行內不重複。
+ */
+export async function seedPracticeWithLicense(page: Page, options: { email: string; name: string }): Promise<void> {
+  await signIn(page, options.email);
+  const taxId = String(10_000_000 + Math.floor(Math.random() * 89_999_999));
+  await createPracticeOrg(page, { name: options.name, taxId, entityType: 'company', kinds: ['management'] });
+  const response = await page.request.post('/api/practice/licenses', {
+    multipart: { kind: 'management', permitNo: '北市租管字第 9999 號', files: { name: 'permit.png', mimeType: 'image/png', buffer: TINY_PNG } },
+  });
+  if (!response.ok()) throw new Error(`送件失敗：${response.status()} ${await response.text()}`);
 }
