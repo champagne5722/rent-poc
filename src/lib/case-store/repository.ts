@@ -1,4 +1,4 @@
-import type { CaseEvent, CaseMemberRelation, CaseState, MasterLeaseCaseFacts, NewCase, NewCaseMember } from '../cases';
+import type { CaseEvent, CaseMemberRelation, CaseState, MandateCaseFacts, MasterLeaseCaseFacts, NewCase, NewCaseMember } from '../cases';
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
 import type { CaseEventRecord, CaseMemberRecord, CaseRecord } from './types';
@@ -141,6 +141,25 @@ export async function findCoveringMasterLeaseCase(tx: OrgTx, rentalUnitId: strin
   );
   const row = rows[0];
   return row ? { id: row.id, orgId: row.org_id, state: row.state, coversRentalUnit: true } : null;
+}
+
+/**
+ * 找這個物件上、目前組織主辦的有效委託管理案件，給「建立代管的租賃案件」的判定函式當事實（ADR-0023 決議 4）。
+ * 委託管理案件的委託標的在目前合約的委託標的清單（`org.contract_mandate_items`），清單列的 `property_id` 是物件 ID。
+ * 優先回 active 的那一筆；沒有則回 null。查詢明確限定 `org_id` 等於目前組織，與 `findCoveringMasterLeaseCase` 同理。
+ * 委託範圍（收租、押金、修繕、點交）不在這裡判斷：它限制受託人的動作，不決定能不能建案件。
+ */
+export async function findCoveringMandateCase(tx: OrgTx, propertyId: string): Promise<MandateCaseFacts | null> {
+  const { rows } = await tx.query<{ id: string; state: MandateCaseFacts['state'] }>(
+    `SELECT k.id, k.state FROM org.cases k
+       JOIN org.contract_mandate_items i ON i.org_id = k.org_id AND i.contract_id = k.current_contract_id
+      WHERE k.kind = 'management' AND k.org_id = current_setting('app.org_id', true) AND i.property_id = $1
+      ORDER BY (k.state = 'active') DESC, k.id DESC
+      LIMIT 1`,
+    [propertyId],
+  );
+  const row = rows[0];
+  return row ? { id: row.id, state: row.state, coversRentalUnit: true } : null;
 }
 
 /** 案件的目前合約改指向另一份合約。不寫事件，事件由呼叫端的 `attachContract` 寫。 */
@@ -365,6 +384,12 @@ export interface CaseSummary {
   state: CaseState;
   businessType: CaseRecord['businessType'];
   title: string;
+  /** 主辦組織的物件。別的組織主辦、自己是成員的案件，這裡是那個組織的物件 ID，不是自己的。 */
+  propertyId: string | null;
+  /** 代管的租賃案件連到的委託管理案件。 */
+  linkedMandateCaseId: string | null;
+  /** 轉租案件連到的包租案件。舊的轉租案件沒有。 */
+  linkedMasterLeaseCaseId: string | null;
   leaseStart: string | null;
   leaseEnd: string | null;
   monthlyRent: number | null;
@@ -386,9 +411,10 @@ interface SummaryRow extends CaseRow {
  * 目前身分看得到的案件，新的在前（含主辦組織的全部案件與自己是成員的別組織案件）。
  * 承租人名稱靠 RLS 篩選：主辦組織與 lessor、mandator、mandatary 讀得到整個案件的成員，其他關係讀不到，名稱是 null。
  */
-export async function listCaseSummaries(tx: OrgTx): Promise<CaseSummary[]> {
+export async function listCaseSummaries(tx: OrgTx, filter: { propertyId?: string } = {}): Promise<CaseSummary[]> {
   const { rows } = await tx.query<SummaryRow>(
     `SELECT k.id, k.org_id, o.name AS org_name, k.kind, k.case_kind, k.state, k.business_type, k.title,
+            k.property_id, k.linked_mandate_case_id, k.linked_master_lease_case_id,
             to_char(k.lease_start, 'YYYY-MM-DD') AS lease_start, to_char(k.lease_end, 'YYYY-MM-DD') AS lease_end,
             k.monthly_rent, k.created_at, k.updated_at, c.status AS contract_status,
             (SELECT string_agg(p.display_name, '、' ORDER BY m.id)
@@ -397,7 +423,9 @@ export async function listCaseSummaries(tx: OrgTx): Promise<CaseSummary[]> {
        FROM org.cases k
        JOIN control.orgs o ON o.id = k.org_id
        LEFT JOIN org.contracts c ON c.id = k.current_contract_id
+      WHERE ($1::text IS NULL OR k.property_id = $1)
       ORDER BY k.id DESC`,
+    [filter.propertyId ?? null],
   );
   return rows.map((r) => ({
     id: r.id,
@@ -408,6 +436,9 @@ export async function listCaseSummaries(tx: OrgTx): Promise<CaseSummary[]> {
     state: r.state,
     businessType: r.business_type,
     title: r.title,
+    propertyId: r.property_id,
+    linkedMandateCaseId: r.linked_mandate_case_id,
+    linkedMasterLeaseCaseId: r.linked_master_lease_case_id,
     leaseStart: r.lease_start,
     leaseEnd: r.lease_end,
     monthlyRent: r.monthly_rent,

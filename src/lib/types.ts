@@ -189,6 +189,14 @@ export interface Property {
   updated_at: string | null;
 }
 
+/** 從物件建立案件時能選的案件種類（MIL-209，ADR-0030）。委託管理案件不綁單一物件，不在內。 */
+export type PropertyCaseKind = 'lease' | 'master_lease' | 'sublease';
+
+/** `GET /api/properties/[id]` 的 `data`：物件加上目前組織能建立的案件種類。未核對是空陣列。 */
+export interface PropertyDetail extends Property {
+  available_case_kinds: PropertyCaseKind[];
+}
+
 export const CONTRACT_STATUSES = [
   'draft',
   'awaiting_tenant',
