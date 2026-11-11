@@ -53,7 +53,7 @@ export const CALLER_RELATIONS: readonly CallerRelationRow[] = [
   },
   {
     name: 'bound',
-    label: '已綁定（案件成員屬於北辰）',
+    label: '已綁定（案件的受託人屬於北辰）',
     creatable: true,
     context: (w) => ({ kind: 'org', orgId: w.live.world.caseBoundOrgId, partyId: w.members.bound }),
   },
@@ -262,7 +262,26 @@ export async function attackerAssign(world: DisclosureWorld, a: Attacker & { con
   );
 }
 
-/** 新開一個屋主組織，建案件並把北辰成員的 party 加為案件成員：關係是 bound（案件成員）。 */
+/**
+ * 新開一個執業主體組織（有自己的執業主體），建案件並把北辰成員的 party 指派進簽章席位。
+ * 這是乙公司把「同時是甲公司成員的人」指派到自家席位的正常操作（MIL-200），席位關係是 practitioner 或 broker。
+ * 這個關係是呼叫者自己能建立的，不得讓乙公司對北辰變成 bound。
+ */
+export async function attackerSeatOwner(world: DisclosureWorld, relation: 'practitioner' | 'broker' = 'practitioner'): Promise<Attacker> {
+  const a = await attackerPracticeOrgWithEntity(world);
+  const [entity] = await world.live.owner<{ id: string }>('SELECT id FROM registry.practice_entities WHERE org_id = $1', [a.orgId]);
+  const caseId = newUlid();
+  await withTx({ kind: 'org', orgId: a.orgId }, async (tx) => {
+    await tx.query(`INSERT INTO org.cases (id, org_id, kind, state, business_type, title) VALUES ($1, $2, 'lease', 'draft', 'master_lease', '攻擊案件')`, [caseId, a.orgId]);
+    await tx.query(
+      `INSERT INTO org.case_members (id, org_id, case_id, party_id, relation, slot, entity_id, employment_id) VALUES ($1, $2, $3, $4, $5, 'a', $6, $7)`,
+      [newUlid(), a.orgId, caseId, world.live.world.beichen.people.chen.partyId, relation, entity.id, world.live.world.chen.employmentId],
+    );
+  });
+  return a;
+}
+
+/** 新開一個屋主組織，建案件並把北辰成員的 party 加為一般案件成員（relation = practitioner，沒有席位）。 */
 export async function attackerCaseOwner(world: DisclosureWorld): Promise<Attacker> {
   const a = await newAttacker(world, 'owner', '攻擊者的案件屋主');
   const caseId = newUlid();

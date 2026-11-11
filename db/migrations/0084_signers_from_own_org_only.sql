@@ -11,7 +11,8 @@
 --
 -- 呼叫者與執業主體的關係（registry.caller_relation，內部函式，不授權給 app_rw）：
 --   own   呼叫者是該執業主體自己的組織，或是平台營運者。
---   bound 呼叫者的組織有案件成員（mandatary、practitioner、broker）屬於該執業主體的組織。
+--   bound 呼叫者的組織有案件成員，關係是 mandatary（受託人），而且那個人屬於該執業主體的組織。
+--         practitioner 與 broker 不產生 bound：它們是簽章席位，呼叫者能自己指派，不得解鎖別的組織的資料。
 --   none  其他。與「執業主體不存在」不可區分。
 --
 -- 各關係看得到的資料：
@@ -53,12 +54,14 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM control.orgs o WHERE o.id = v_org AND o.kind IN ('owner', 'practice')) THEN
     RETURN 'none';
   END IF;
-  -- org 的表有 FORCE RLS，函式擁有者也只看得到 app.org_id 的列，所以下面只會比對呼叫者自己組織的案件成員
+  -- org 的表有 FORCE RLS，函式擁有者也只看得到 app.org_id 的列，所以下面只會比對呼叫者自己組織的案件成員。
+  -- 只認 mandatary。practitioner 與 broker 是簽章席位（第 6 節），呼叫者能把自己組織的任何成員指派進去，
+  -- 若也算 bound，乙公司指派一位同時是甲公司成員的人，就能讀到甲公司的人員資料。
   IF EXISTS (
     SELECT 1
       FROM org.case_members m
      WHERE m.org_id = v_org
-       AND m.relation IN ('mandatary', 'practitioner', 'broker')
+       AND m.relation = 'mandatary'
        AND m.valid_period @> now()
        AND EXISTS (
          SELECT 1 FROM control.users u
