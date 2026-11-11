@@ -44,10 +44,9 @@ function Swatch({ name, value }: { name: string; value: string }) {
   const { token } = theme.useToken();
   return (
     <Flex align="center" gap={token.marginXS} className={styles.swatchRow}>
-      <span
-        className={styles.swatch}
-        style={{ background: value, border: `1px solid ${token.colorBorder}`, borderRadius: token.borderRadiusSM }}
-      />
+      <svg className={styles.swatch} viewBox="0 0 28 28" aria-hidden>
+        <rect x="0.5" y="0.5" width="27" height="27" rx={token.borderRadiusSM} fill={value} stroke={token.colorBorder} />
+      </svg>
       <Text>{name}</Text>
       <Text type="secondary" className="type-caption">
         {value}
@@ -123,10 +122,9 @@ export default function DesignShowcase({ data }: { data: DesignFrontMatter | nul
           {Object.entries(data.spacing ?? {}).map(([name, value]) => (
             <Flex key={name} align="center" gap={token.marginMD}>
               <Text className={styles.scaleName}>{name}</Text>
-              <span
-                className={styles.spacingBar}
-                style={{ width: parseFloat(value), background: token.colorPrimary, borderRadius: token.borderRadiusXS }}
-              />
+              <svg className={styles.spacingBar} width={parseFloat(value)} height="12" aria-hidden>
+                <rect width={parseFloat(value)} height="12" rx={token.borderRadiusXS} fill={token.colorPrimary} />
+              </svg>
               <Text type="secondary" className="type-caption">
                 {value}
               </Text>
@@ -135,10 +133,17 @@ export default function DesignShowcase({ data }: { data: DesignFrontMatter | nul
           <Flex gap={token.marginMD} className={styles.radiusRow}>
             {Object.entries(data.rounded ?? {}).map(([name, value]) => (
               <Flex key={name} vertical align="center" gap={token.marginXXS}>
-                <span
-                  className={styles.radiusBox}
-                  style={{ borderRadius: parseFloat(value), border: `1px solid ${token.colorBorder}` }}
-                />
+                <svg className={styles.radiusBox} viewBox="0 0 56 40" aria-hidden>
+                  <rect
+                    x="0.5"
+                    y="0.5"
+                    width="55"
+                    height="39"
+                    rx={parseFloat(value)}
+                    fill="none"
+                    stroke={token.colorBorder}
+                  />
+                </svg>
                 <Text type="secondary" className="type-caption">
                   {name} {value}
                 </Text>
