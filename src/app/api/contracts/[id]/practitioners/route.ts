@@ -11,6 +11,7 @@ import { getPracticeRegistry } from '@/lib/practice-registry';
 import { loadBrokerChoice } from '@/lib/practitioner-assignment/broker-guard';
 import { getAssignments, replaceAssignments } from '@/lib/practitioner-assignment/repository';
 import { requestContext } from '@/lib/current-request-context';
+import type { OrgKind } from '@/lib/request-context';
 import type { PractitionerAssignmentInput } from '@/lib/practitioner-assignment/seats';
 import {
   evaluateSend,
@@ -31,11 +32,16 @@ import { statusAnnexSendReasons } from '@/lib/status-annex/server';
 // 回傳的選項只有姓名，不含 email。當事人簽署人的真實 email 由 PUT 在伺服端補進合約欄位，不經過瀏覽器。
 // 合約掛在案件下時，指派存成案件成員（需要 case_member.manage）；沒有案件的舊合約仍存在合約的指派表（MIL-203 移除）。
 
-async function loadForAssignment(tx: OrgTx, id: string, action: 'contract.read' | 'contract.draft_send') {
+/** 呼叫者的組織種類。要在交易外讀：請求脈絡自己會開交易查 session，不能巢狀在 `inOrgTx` 裡（ADR-0012 決議 10）。 */
+async function callerOrgKind(): Promise<OrgKind> {
+  const rc = await requestContext();
+  return rc.kind === 'org' ? rc.orgKind : 'owner';
+}
+
+async function loadForAssignment(tx: OrgTx, id: string, action: 'contract.read' | 'contract.draft_send', orgKind: OrgKind) {
   await authorize(tx, action, { type: 'contract', id });
   // 居間選項的狀態：依呼叫者自己組織的經紀業別算，不看前端傳入的任何旗標
-  const rc = await requestContext();
-  const brokerChoice = await loadBrokerChoice(tx, rc.kind === 'org' ? rc.orgKind : 'owner');
+  const brokerChoice = await loadBrokerChoice(tx, orgKind);
   const contract = await getContract(tx, id);
   if (!contract) return null;
   // 送簽預覽與送簽用同一組權源事實，原因一致（MIL-205）
@@ -52,7 +58,8 @@ async function loadForAssignment(tx: OrgTx, id: string, action: 'contract.read' 
 export async function GET(request: NextRequest, { params }: ContractRouteCtx) {
   const id = await contractIdOf(params);
   if (!id) return contractNotFound();
-  const read = await readInOrgTx((tx) => loadForAssignment(tx, id, 'contract.read'));
+  const orgKind = await callerOrgKind();
+  const read = await readInOrgTx((tx) => loadForAssignment(tx, id, 'contract.read', orgKind));
   if (!read.ok) return read.response;
   if (!read.value) return contractNotFound();
   const { contract, routing, stored, leasingAuthority, brokerChoice } = read.value;
@@ -116,7 +123,8 @@ export async function PUT(request: NextRequest, { params }: ContractRouteCtx) {
   if (!id) return contractNotFound();
   const assignments = parseAssignments(await readJson(request));
 
-  const read = await readInOrgTx((tx) => loadForAssignment(tx, id, 'contract.draft_send'));
+  const orgKind = await callerOrgKind();
+  const read = await readInOrgTx((tx) => loadForAssignment(tx, id, 'contract.draft_send', orgKind));
   if (!read.ok) return read.response;
   if (!read.value) return contractNotFound();
   const { contract, routing, stored } = read.value;
