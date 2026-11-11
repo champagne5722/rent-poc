@@ -102,6 +102,17 @@ describe('轉移表：每個事件 x 每個狀態', () => {
     });
   });
 
+  it('誰能觸發：接受與未接受只有業者，結束兩方都能做，收回只有屋主', () => {
+    expect(Object.fromEntries(TRANSITION_EVENTS.map((e) => [e, TRANSITIONS[e].by]))).toEqual({
+      submit: ['owner'],
+      withdraw: ['owner'],
+      accept: ['practice'],
+      decline: ['practice'],
+      end: ['owner', 'practice'],
+      complete: ['system'],
+    });
+  });
+
   for (const event of TRANSITION_EVENTS) {
     for (const status of STORED_STATUSES) {
       const rule = TRANSITIONS[event];

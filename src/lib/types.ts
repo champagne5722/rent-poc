@@ -711,6 +711,9 @@ export type MandateRequestStatus =
   | 'completed'
   | 'expired';
 
+/** 未接受與已結束的是哪一方。未接受一律是 practice。 */
+export type MandateRequestClosedBy = 'owner' | 'practice';
+
 /** 業者代填的房子資料。欄位集合與登錄物件的請求本文相同，屋主確認時由登錄入口重新驗證。 */
 export interface MandateRequestDraft {
   name: string;
@@ -750,6 +753,14 @@ export interface PracticeMandateRequest {
   deadline: string | null;
   submitted_at: string | null;
   withdrawn_at: string | null;
+  /** 業者接受的時間。MIL-210 起有值。 */
+  accepted_at: string | null;
+  /** 業者接受時指派的管理人員的任職 ID（自己組織的）。接受之前是 null。 */
+  manager_employment_id: string | null;
+  /** 未接受或已結束的時間。 */
+  closed_at: string | null;
+  /** 未接受（一律是 practice）或已結束的是哪一方。 */
+  closed_by: MandateRequestClosedBy | null;
   /** 業者自己代填的資料。連結失效後是 null。 */
   draft: MandateRequestDraft | null;
   transcript_file_name: string | null;
@@ -781,6 +792,12 @@ export interface OwnerMandateRequest {
   deadline: string | null;
   submitted_at: string | null;
   withdrawn_at: string | null;
+  /** 業者接受的時間。屋主看得到已接受，看不到業者指派的管理人員。 */
+  accepted_at: string | null;
+  /** 未接受或已結束的時間。 */
+  closed_at: string | null;
+  /** 已結束的是哪一方。未接受時是 practice，不含任何原因。 */
+  closed_by: MandateRequestClosedBy | null;
   practice: { name: string; tax_id: string; verified_kinds: string[] };
   /** 業者代填的資料。屋主確認前的待確認內容。連結失效或送出後是 null。 */
   draft: MandateRequestDraft | null;
@@ -791,4 +808,12 @@ export interface OwnerMandateRequest {
   unit_ids: string[];
   /** 這份申請的個資告知文字，屋主確認代填資料時必須顯示。 */
   consent_notice: { notice_type: string; version: number; title: string; text: string } | null;
+}
+
+/** 業者接受申請時能指派的管理人員（GET /api/mandate-requests/manager-candidates）。只回自己組織合格的人。 */
+export interface MandateManagerCandidate {
+  /** 任職 ID。接受時帶進 body 的 manager_employment_id。 */
+  employment_id: string;
+  display_name: string;
+  certificate_kind: 'rental_housing_manager';
 }

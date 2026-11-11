@@ -52,7 +52,7 @@ const registryFunctions: Record<string, RegistryFunctionCase> = {
     disclosure: {
       kind: 'none',
       reason:
-        '只回業者自己建立的申請與代填資料。不回屋主組織、綁定與確認的時間，所以屋主打開連結、登入、綁定但沒送出，業者讀到的內容逐位元相同。不含屋主的 email 與名稱、證號、統編以外的個資',
+        '只回業者自己建立的申請與代填資料，加上業者自己指派的管理人員的任職 ID（MIL-210，不含管理人員的名稱與證號）與未接受、已結束的時間與一方。不回屋主組織、綁定與確認的時間，所以屋主打開連結、登入、綁定但沒送出，業者讀到的內容逐位元相同。不含屋主的 email 與名稱、證號、統編以外的個資',
     },
   },
   'registry.claim_mandate_request': {
@@ -69,7 +69,7 @@ const registryFunctions: Record<string, RegistryFunctionCase> = {
     disclosure: {
       kind: 'none',
       reason:
-        '回綁定的屋主組織自己的申請：業者名稱與統編（業者自己的公開資訊，且屋主已用連結看過）、已驗證的業別、業者代填的資料。不回業者端的建立者、別的申請或業者的任何自然人資料，不回謄本的檔案 key',
+        '回綁定的屋主組織自己的申請，含已接受、未接受、已結束的狀態與時間，以及結束的是哪一方（MIL-210）。不回管理人員的任職 ID 與任何個資，管理人員的姓名在合約上才揭露，也沒有任何原因欄位。業者名稱與統編（業者自己的公開資訊，且屋主已用連結看過）、已驗證的業別、業者代填的資料。不回業者端的建立者、別的申請或業者的任何自然人資料，不回謄本的檔案 key',
     },
   },
   'registry.mandate_request_transcript_for_owner': {
@@ -119,6 +119,31 @@ const registryFunctions: Record<string, RegistryFunctionCase> = {
     disclosure: {
       kind: 'none',
       reason: '回業者自己代傳的謄本檔案 key、雜湊、內容類型與檔名。route 在同一個交易寫稽核事件 request.file_read，提交後才讀檔。不含屋主資料',
+    },
+  },
+  'registry.accept_mandate_request': {
+    probe: null,
+    reason: `業者組織專用，呼叫者在這個組織的角色必須是 admin（函式查 control.org_memberships），否則 42501。申請必須是呼叫者組織的，別的組織的申請與不存在的申請都回 not_found。管理人員的任職必須屬於呼叫者自己組織的執業主體，別家的任職 ID 回 manager_not_eligible。${NO_OBJECT_ID}`,
+    disclosure: {
+      kind: 'none',
+      reason:
+        '寫入函式。只回結果代碼，不回任何資料。對屋主組織寫入的站內通知只含申請種類與租賃單位數量，不帶業者與管理人員的名稱。不寫案件成員，不改呼叫者關係，所以接受之後兩個組織之間的關係不因這個函式改變，業者也讀不到屋主的物件（MIL-210 第二塊才開）',
+    },
+  },
+  'registry.decline_mandate_request': {
+    probe: null,
+    reason: `業者組織專用，呼叫者的角色必須是 admin，否則 42501。別的組織的申請與不存在的申請都回 not_found，已失效與狀態不符都回 not_pending。不收原因。${NO_OBJECT_ID}`,
+    disclosure: {
+      kind: 'none',
+      reason: '寫入函式。只回結果代碼。資料庫不存原因。對屋主組織寫入的站內通知文字只寫「未接受」與申請種類，屋主讀申請時沒有任何能推出原因的欄位',
+    },
+  },
+  'registry.end_mandate_request': {
+    probe: null,
+    reason: `申請當事人專用：業者（admin）或申請綁定的屋主（admin、staff）。第三個組織的申請回 not_found，與不存在的申請相同。函式依呼叫者的組織判斷是哪一方，不相信呼叫端傳入的身分。${NO_OBJECT_ID}`,
+    disclosure: {
+      kind: 'none',
+      reason: '寫入函式。只回結果代碼與結束的一方（呼叫者自己）。不收原因。對另一方寫入的站內通知只含「業者已結束申請」或「屋主已結束申請」與申請種類，不帶任何個資',
     },
   },
   'registry.expire_mandate_requests': {

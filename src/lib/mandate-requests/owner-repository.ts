@@ -3,7 +3,7 @@ import { currentNotice, NOTICE_CATALOG } from '../consent';
 import { TRANSCRIPT_NOTICE } from '../ownership/repository';
 import { newUlid } from '../pg/ulid';
 import type { OrgTx } from '../pg/with-tx';
-import type { MandateRequestDraft, MandateRequestKind, OwnerMandateRequest } from '../types';
+import type { MandateRequestClosedBy, MandateRequestDraft, MandateRequestKind, OwnerMandateRequest } from '../types';
 import { hashRequestCode } from './code';
 import { KIND_LABEL } from './messages';
 import { deadlineOf, effectiveStatus, type StoredStatus } from './status';
@@ -33,11 +33,13 @@ interface OwnerRow {
   draft_confirmed_at: Date | null;
   confirmed_unit_id: string | null;
   unit_ids: string[];
+  closed_at: Date | null;
+  closed_by: MandateRequestClosedBy | null;
 }
 
 const OWNER_COLUMNS = `request_id, kind, status, created_at, link_expires_at, claimed_at, submitted_at, withdrawn_at, accepted_at,
   contract_sent_at, practice_name, tax_id, verified_kinds, draft, has_transcript, transcript_file_name, draft_confirmed_at,
-  confirmed_unit_id, unit_ids`;
+  confirmed_unit_id, unit_ids, closed_at, closed_by`;
 
 function consentNotice(): OwnerMandateRequest['consent_notice'] {
   const notice = currentNotice(NOTICE_CATALOG, TRANSCRIPT_NOTICE);
@@ -56,6 +58,9 @@ export function toOwnerView(row: OwnerRow, now: Date): OwnerMandateRequest {
     deadline: status === 'expired' ? null : iso(deadlineOf(facts)),
     submitted_at: iso(row.submitted_at),
     withdrawn_at: iso(row.withdrawn_at),
+    accepted_at: iso(row.accepted_at),
+    closed_at: iso(row.closed_at),
+    closed_by: row.closed_by,
     practice: { name: row.practice_name, tax_id: row.tax_id, verified_kinds: row.verified_kinds },
     draft: status === 'pending_owner' ? row.draft : null,
     has_transcript: status === 'pending_owner' && row.has_transcript,
