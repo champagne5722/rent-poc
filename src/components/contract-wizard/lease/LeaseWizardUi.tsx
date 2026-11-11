@@ -146,10 +146,11 @@ function EquipmentAnnexEditor({
 
   return (
     <Flex vertical gap="small">
-      <Table<EquipmentAnnexRow>
+      <Table<EquipmentAnnexRow & { key: string }>
         size="small"
-        rowKey={(_, index) => String(index)}
-        dataSource={rows}
+        rowKey="key"
+        // 同名允許多列，用列索引當 key（antd 已棄用 rowKey 函式的 index 參數）
+        dataSource={rows.map((row, index) => ({ ...row, key: String(index) }))}
         pagination={false}
         locale={{ emptyText: '沒有設備附件列，合約條文會寫「本房屋無附屬設備」' }}
         columns={[

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { seedProperty, seedVerifiedProperty, uniqueSuffix } from '../helpers/api';
+import { seedDraft, seedProperty, seedVerifiedProperty, uniqueSuffix } from '../helpers/api';
 import { clickUntil } from '../helpers/ui';
 
 // 流程 1：從物件建立案件並進建約精靈建立草稿（MIL-168、MIL-209、MIL-205）。只驗證使用者看得到的行為。
@@ -118,5 +118,22 @@ test('建約精靈第一步：載入後沒有 console error，也沒有頁面錯
   await page.waitForLoadState('networkidle');
   // 先印出來，出現新的訊息時看得到原文
   console.log(`精靈第一步的 console 訊息：${JSON.stringify(problems, null, 2)}`);
+  expect(problems).toEqual([]);
+});
+
+test('建約精靈第二步：填寫欄位載入後沒有 console error，也沒有頁面錯誤（MIL-176）', async ({ page, browser }) => {
+  const property = await seedVerifiedProperty(page, browser, `E2E 精靈第二步主控台物件 ${uniqueSuffix()}`);
+  const draftId = await seedDraft(page, property.id);
+  const problems: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error' || msg.type() === 'warning') problems.push(`console.${msg.type()}: ${msg.text()}`);
+  });
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`));
+
+  await page.goto(`/contracts/${draftId}/edit`);
+  await expect(page.getByLabel('甲方（出租人）姓名')).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  // 先印出來，出現新的訊息時看得到原文
+  console.log(`精靈第二步的 console 訊息：${JSON.stringify(problems, null, 2)}`);
   expect(problems).toEqual([]);
 });
