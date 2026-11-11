@@ -14,7 +14,7 @@ import type { CredentialState } from './registry-rules';
 import type { PractitionerPhase } from './practice-entities/display';
 import type { AuthorityStatus, LeaseState } from './owner-overview';
 import type { PeriodStatus } from './receivables';
-import { CONTRACT_STATUS_LABELS, type ContractStatus, type PropertyVerificationStatus } from './types';
+import { CONTRACT_STATUS_LABELS, type ContractStatus, type MandateRequestStatus, type PropertyVerificationStatus } from './types';
 
 /** 色調只有 5 種，對應 DESIGN.md 的語意色：中性（灰階）、進行中（primary）、成功、警告、錯誤。 */
 export const STATUS_TONES = ['neutral', 'progress', 'success', 'warning', 'error'] as const;
@@ -55,6 +55,8 @@ export interface StatusValues {
   leaseState: LeaseState;
   /** 租賃單位的出租權源驗證狀態（MIL-182）。 */
   leaseAuthority: AuthorityStatus;
+  /** 委託管理申請與住宅包租申請的狀態（MIL-206）。值是讀取時判定的狀態，含依期限判定的已失效。 */
+  mandateRequest: MandateRequestStatus;
 }
 export type StatusKind = keyof StatusValues;
 export type StatusValueOf<K extends StatusKind> = StatusValues[K];
@@ -171,6 +173,16 @@ const PRESENTATION: { [K in StatusKind]: Record<StatusValues[K], StatusView> } =
     pending: { label: '待驗證', tone: 'warning' },
     failed: { label: '驗證失敗', tone: 'error' },
     expired: { label: '已失效', tone: 'error' },
+  },
+  mandateRequest: {
+    pending_owner: { label: '待屋主確認', tone: 'progress' },
+    pending_practice: { label: '待業者接受', tone: 'progress' },
+    accepted: { label: '已接受', tone: 'success' },
+    declined: { label: '未接受', tone: 'neutral' },
+    withdrawn: { label: '已收回', tone: 'neutral' },
+    ended: { label: '已結束', tone: 'neutral' },
+    completed: { label: '已完成', tone: 'success' },
+    expired: { label: '已失效', tone: 'warning' },
   },
 };
 

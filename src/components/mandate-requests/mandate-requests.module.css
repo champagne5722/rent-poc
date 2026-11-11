@@ -1,0 +1,57 @@
+/* 申請畫面（MIL-206 畫面段）共用的版面。尺寸與顏色引用 DESIGN.md 的 CSS 變數，不寫死數值與色碼。 */
+
+/* 代填物件資料的欄位寬度（同物件登錄表單） */
+.typeSelect {
+  width: calc(var(--space-xxl) * 2 + var(--space-md));
+}
+
+.sizeInput {
+  width: calc(var(--space-xxl) * 2);
+}
+
+.rentInput {
+  width: calc(var(--space-xxl) * 3);
+}
+
+/* 產生連結後：QR code 旁邊的連結與說明欄，窄螢幕時換到 QR code 下方 */
+.linkColumn {
+  flex: 1;
+  min-width: calc(var(--space-xxl) * 5);
+}
+
+/* 租賃單位的選項：整列都能按，手機上拇指好按。被選取的列用 primary-subtle（DESIGN.md 的選取底色）。 */
+.unit,
+.unitSelected {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  width: 100%;
+  min-height: calc(var(--space-xxl) + var(--space-sm));
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-1);
+  cursor: pointer;
+}
+
+.unitSelected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-subtle);
+}
+
+/* 個資告知全文：保留換行 */
+.noticeText {
+  margin: 0;
+  white-space: pre-line;
+}
+
+/* 送出申請的按鈕：窄螢幕撐滿寬度 */
+.submitButton {
+  min-width: calc(var(--space-xxl) * 4);
+}
+
+@media (max-width: 767.98px) {
+  .submitButton {
+    width: 100%;
+  }
+}

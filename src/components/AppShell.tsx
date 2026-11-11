@@ -16,6 +16,7 @@ import {
   IdcardOutlined,
   TeamOutlined,
   BankOutlined,
+  InboxOutlined,
 } from '@ant-design/icons';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -43,6 +44,7 @@ const NAV_ICONS: Record<NavKey, React.ReactNode> = {
   properties: <HomeOutlined />,
   cases: <ProfileOutlined />,
   contracts: <FileTextOutlined />,
+  requests: <InboxOutlined />,
   'payment-accounts': <BankOutlined />,
   handovers: <SwapOutlined />,
   notifications: <BellOutlined />,

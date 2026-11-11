@@ -21,6 +21,7 @@ import { paymentAccountsNav } from './nav/payment-accounts';
 import { DESK_HREF, PRACTICE_HREF, practiceNav } from './nav/practice';
 import { PRACTITIONER_HREF, practitionerNav } from './nav/practitioner';
 import { propertiesNav } from './nav/properties';
+import { requestsNav } from './nav/requests';
 import { OWNER_ROOT_HREF, type IdentityKind, type NavRegistration } from './nav/shared';
 import { workbenchNav } from './nav/workbench';
 
@@ -31,6 +32,7 @@ const NAV_MODULES = [
   propertiesNav,
   casesNav,
   contractsNav,
+  requestsNav,
   paymentAccountsNav,
   ownerOverviewNav,
   handoversNav,
