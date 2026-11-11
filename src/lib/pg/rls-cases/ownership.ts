@@ -55,7 +55,14 @@ const registryTables: Record<string, RegistryTableCase> = {
     purpose: '營運者每次核對的判定紀錄：兩項比對、判定人、時間與理由，只增不改。登錄的一方讀不到（MIL-201）',
   },
   'registry.verified_ownership_keys': {
-    purpose: '已驗證的所有權節點的鍵。判定函式用它查「別的組織對同一個鍵是否已有已驗證的節點」，不穿過組織 RLS（MIL-201）',
+    purpose:
+      '已驗證的所有權節點的鍵。判定函式用它查「別的組織對同一個鍵是否已有已驗證的節點」，不穿過組織 RLS（MIL-201）。同一個鍵只能有一列，除非營運者決定並存（coexist_conflict_id，MIL-208）',
+  },
+  'registry.ownership_conflicts': {
+    purpose: '兩方都通過核對時的衝突個案：後來的一方與先前的一方的節點、鍵、營運者的決定。已決定的個案不再改（MIL-208）',
+  },
+  'registry.ownership_contacts': {
+    purpose: '營運者個別聯絡衝突雙方的紀錄：對象、時間、管道、結果。只增不改，結果文字只存在這裡（MIL-208）',
   },
 };
 
@@ -94,13 +101,64 @@ const registryFunctions: Record<string, RegistryFunctionCase> = {
   },
 };
 
+const PLATFORM_ONLY =
+  '營運者專用，先確認 app.operator_id 是平台組織的成員且 app.org_id 是平台組織，組織成員與其他脈絡呼叫會被拒（MIL-208）';
+
+const conflictFunctions: Record<string, RegistryFunctionCase> = {
+  'registry.precheck_ownership_conflict': {
+    probe: null,
+    reason: PLATFORM_ONLY,
+    disclosure: {
+      kind: 'none',
+      reason: '營運者專用。只回 held 或 clear，不含任何組織的資料。偵測在平台脈絡完成，所以後來的一方的組織不會多一筆存取事件',
+    },
+  },
+  'registry.ownership_conflict_detail': {
+    probe: null,
+    reason: PLATFORM_ONLY,
+    disclosure: {
+      kind: 'none',
+      reason:
+        '營運者專用。回雙方的組織名稱與 ID、節點與送件 ID、遮罩的登記名義人、鍵與聯絡紀錄。不含主張的所有權人、信託資料、檔案 key 與 SHA-256，不讀組織表',
+    },
+  },
+  'registry.record_ownership_contact': {
+    probe: null,
+    reason: PLATFORM_ONLY,
+    disclosure: {
+      kind: 'none',
+      reason: '營運者專用的寫入函式。記錄人取自交易脈絡。回結果代碼與聯絡編號。平台鏈的事件不放結果文字',
+    },
+  },
+  'registry.decide_ownership_conflict': {
+    probe: null,
+    reason: OPERATOR_ONLY,
+    disclosure: {
+      kind: 'none',
+      reason:
+        '營運者專用的寫入函式，在後來的一方的 operator 脈絡內執行。回決定與進行中的案件數。寫給雙方的通知與稽核事件不含另一方的任何資料',
+    },
+  },
+};
+
 const definerOnlyTables: Record<string, DefinerOnlyTable> = {
   'registry.ownership_decisions': {
     reason: '判定紀錄（MIL-201）。只經 registry.decide_ownership_check 寫入，觸發器擋 UPDATE、DELETE、TRUNCATE，app_rw 沒有任何權限',
   },
   'registry.verified_ownership_keys': {
-    reason: '已驗證節點的鍵（MIL-201）。只經 registry.decide_ownership_check 寫入與讀取，app_rw 沒有任何權限',
+    reason: '已驗證節點的鍵（MIL-201）。只經 registry.decide_ownership_check 與 decide_ownership_conflict 寫入與讀取，app_rw 沒有任何權限',
+  },
+  'registry.ownership_conflicts': {
+    reason: '衝突個案（MIL-208）。只經 precheck_ownership_conflict、decide_ownership_check、decide_ownership_conflict 寫入，經 ownership_conflict_detail 讀取，app_rw 沒有任何權限',
+  },
+  'registry.ownership_contacts': {
+    reason: '聯絡紀錄（MIL-208）。只經 record_ownership_contact 寫入，經 ownership_conflict_detail 讀取，觸發器擋 UPDATE、DELETE、TRUNCATE，app_rw 沒有任何權限',
   },
 };
 
-export const ownershipRls: RlsRegistration = { orgTables, registryTables, registryFunctions, definerOnlyTables };
+export const ownershipRls: RlsRegistration = {
+  orgTables,
+  registryTables,
+  registryFunctions: { ...registryFunctions, ...conflictFunctions },
+  definerOnlyTables,
+};

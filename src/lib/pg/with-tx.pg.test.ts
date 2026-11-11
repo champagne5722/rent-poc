@@ -1,8 +1,9 @@
-import { Client, Pool } from 'pg';
+import { Client, type Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
 import { pgDriver } from './drivers';
 import { fromPgClient } from './executor';
 import { migrate } from './migrate';
+import { closeTestPool, createTestPool, dropTestDatabase } from './pg-database-kit';
 import { withClusterLock } from './pg-test-support';
 import { MIGRATIONS_DIR } from './test-harness';
 import { createWithTx } from './with-tx';
@@ -36,17 +37,14 @@ async function createDatabase(poolMax: number) {
     await owner.query(`ALTER ROLE app_rw PASSWORD 'rw-test'`);
   });
 
-  const pool = new Pool({ connectionString: urlFor('app_rw', 'rw-test', dbName), max: poolMax });
+  const pool = createTestPool({ connectionString: urlFor('app_rw', 'rw-test', dbName), max: poolMax });
   return {
     pool,
     owner,
     close: async () => {
-      await pool.end();
+      await closeTestPool(pool);
       await owner.end();
-      const cleanup = new Client({ connectionString: adminUrl });
-      await cleanup.connect();
-      await cleanup.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
-      await cleanup.end();
+      await dropTestDatabase(adminUrl!, dbName);
     },
   };
 }
@@ -121,7 +119,7 @@ describe.skipIf(!adminUrl)('pg 專屬行為', () => {
       await withTx({ kind: 'control' }, async () => 1);
       expect(g.__rentPocPgPool).toBe(pool);
     } finally {
-      await g.__rentPocPgPool?.end();
+      if (g.__rentPocPgPool) await closeTestPool(g.__rentPocPgPool);
       delete g.__rentPocPgPool;
       delete g.__rentPocTxDriver;
       delete process.env.PG_POOL_MAX;

@@ -2,6 +2,7 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fromPgClient } from '../pg/executor';
 import { migrate } from '../pg/migrate';
+import { dropTestDatabase } from '../pg/pg-database-kit';
 import { withClusterLock } from '../pg/pg-test-support';
 import { MIGRATIONS_DIR } from '../pg/test-harness';
 import { newUlid } from '../pg/ulid';
@@ -58,10 +59,7 @@ describe.skipIf(!adminUrl)('專任排除約束：真實 PostgreSQL 併發', () =
   afterAll(async () => {
     await second.end();
     await admin.end();
-    const root = new Client({ connectionString: adminUrl });
-    await root.connect();
-    await root.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
-    await root.end();
+    await dropTestDatabase(adminUrl!, dbName);
   });
 
   it('同時核對兩家相符：後提交的拿到 23505，只有一家是已驗證', async () => {
