@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { App as AntApp, Alert, Button, Col, DatePicker, Descriptions, Flex, Form, InputNumber, Modal, Radio, Row, Select, Table, Tag, Typography, Upload, theme } from 'antd';
+import { App as AntApp, Alert, Button, DatePicker, Descriptions, Flex, Form, InputNumber, Modal, Radio, Select, Table, Tag, Typography, Upload, theme } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import type { DepositLedger } from '@/lib/case-ledger';
 import { formatTaipei } from '@/lib/case-display';
@@ -259,42 +259,33 @@ export function RecordReceiptSection({ caseId, setup, onChanged }: { caseId: str
       <Form<FormValues>
         form={form}
         layout="vertical"
+        className={styles.formBody}
         initialValues={{ purpose: 'rent', amount: null, valueDate: dayjs() }}
         onFinish={(values) => void submit(values, false)}
       >
-        <Row gutter={token.margin}>
-          <Col xs={24} md={6}>
-            <Form.Item name="purpose" label="用途">
-              <Radio.Group
-                optionType="button"
-                options={[
-                  { value: 'rent', label: RECEIPT_PURPOSE_LABELS.rent },
-                  { value: 'security_deposit', label: RECEIPT_PURPOSE_LABELS.security_deposit },
-                ]}
-                onChange={() => {
-                  // 租金與押金的預設帳戶可能不同，換用途時重新預填
-                  form.setFieldValue('paymentAccountId', undefined);
-                  setBlocked(null);
-                }}
-              />
-            </Form.Item>
-          </Col>
-          <Col xs={24} md={6}>
-            <Form.Item name="amount" label="金額" extra={amountHint} rules={[{ required: true, message: '請填寫金額' }]}>
-              <InputNumber<number> min={1} precision={0} prefix="$" className={styles.fullWidth} controls={false} inputMode="numeric" />
-            </Form.Item>
-          </Col>
-          <Col xs={24} md={5}>
-            <Form.Item name="valueDate" label="入帳日" rules={[{ required: true, message: '請選擇入帳日' }]}>
-              <DatePicker allowClear={false} className={styles.fullWidth} disabledDate={(current) => current.isAfter(dayjs(), 'day')} />
-            </Form.Item>
-          </Col>
-          <Col xs={24} md={7}>
-            <Form.Item name="paymentAccountId" label="收款帳戶" rules={[{ required: true, message: '請選擇收款帳戶' }]}>
-              <Select options={options} placeholder="請選擇" showSearch={{ optionFilterProp: 'label' }} notFoundContent="還沒有收款帳戶，請先到收款帳戶頁新增" />
-            </Form.Item>
-          </Col>
-        </Row>
+        <Form.Item name="purpose" label="用途">
+          <Radio.Group
+            optionType="button"
+            options={[
+              { value: 'rent', label: RECEIPT_PURPOSE_LABELS.rent },
+              { value: 'security_deposit', label: RECEIPT_PURPOSE_LABELS.security_deposit },
+            ]}
+            onChange={() => {
+              // 租金與押金的預設帳戶可能不同，換用途時重新預填
+              form.setFieldValue('paymentAccountId', undefined);
+              setBlocked(null);
+            }}
+          />
+        </Form.Item>
+        <Form.Item name="amount" label="金額" extra={amountHint} rules={[{ required: true, message: '請填寫金額' }]}>
+          <InputNumber<number> min={1} precision={0} prefix="$" className={styles.fullWidth} controls={false} inputMode="numeric" />
+        </Form.Item>
+        <Form.Item name="valueDate" label="入帳日" rules={[{ required: true, message: '請選擇入帳日' }]}>
+          <DatePicker allowClear={false} className={styles.fullWidth} disabledDate={(current) => current.isAfter(dayjs(), 'day')} />
+        </Form.Item>
+        <Form.Item name="paymentAccountId" label="收款帳戶" rules={[{ required: true, message: '請選擇收款帳戶' }]}>
+          <Select options={options} placeholder="請選擇" showSearch={{ optionFilterProp: 'label' }} notFoundContent="還沒有收款帳戶，請先到收款帳戶頁新增" />
+        </Form.Item>
         <Form.Item
           name="evidence"
           label="證明檔（選填）"
@@ -306,9 +297,11 @@ export function RecordReceiptSection({ caseId, setup, onChanged }: { caseId: str
             <Button>選擇檔案</Button>
           </Upload>
         </Form.Item>
-        <Button type="primary" htmlType="submit" loading={busy} disabled={busy}>
-          登錄入帳
-        </Button>
+        <Flex gap="small" wrap>
+          <Button type="primary" htmlType="submit" loading={busy} disabled={busy}>
+            登錄入帳
+          </Button>
+        </Flex>
       </Form>
     </Flex>
   );

@@ -70,3 +70,25 @@
   margin: 0;
   padding-inline-start: var(--space-lg);
 }
+
+/* 發起移交：委託案件清單。標題與段落不留預設外距，由外層 Flex 的 gap 控制間距。 */
+.noMargin {
+  margin: 0;
+}
+
+.tagFlush {
+  margin-inline-end: 0;
+}
+
+.unitList {
+  margin: 0;
+  padding-inline-start: var(--space-lg);
+}
+
+.fullWidth {
+  width: 100%;
+}
+
+.radioTop {
+  align-items: flex-start;
+}

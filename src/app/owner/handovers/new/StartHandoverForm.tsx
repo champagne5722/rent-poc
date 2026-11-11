@@ -15,14 +15,14 @@ function MandateOption({ item }: { item: InitiatableMandate }) {
     <Flex vertical gap={8 /* xs */} className={styles.wrap}>
       <Flex gap={8 /* xs */} wrap align="center">
         <Typography.Text strong>{mandate.mandatary.name}</Typography.Text>
-        <Tag color={PRACTICE_ENTITY_STATUS_COLORS[mandate.mandatary.status]} style={{ marginInlineEnd: 0 }}>
+        <Tag color={PRACTICE_ENTITY_STATUS_COLORS[mandate.mandatary.status]} className={styles.tagFlush}>
           {PRACTICE_ENTITY_STATUS_LABELS[mandate.mandatary.status]}
         </Tag>
       </Flex>
       <Typography.Text type="secondary">
         {mandate.mandatary.statutoryTitle}，委託標的 {mandate.units.length} 個租賃單位
       </Typography.Text>
-      <Flex vertical gap={4 /* xxs */} component="ul" style={{ margin: 0, paddingInlineStart: 24 /* lg */ }}>
+      <Flex vertical gap={4 /* xxs */} component="ul" className={styles.unitList}>
         {mandate.units.map((unit) => (
           <li key={unit.rentalUnitId}>
             <Typography.Text>{unit.address}</Typography.Text>
@@ -63,10 +63,10 @@ function StartHandoverFormInner({ mandates }: { mandates: InitiatableMandate[] }
         <Link href="/owner/handovers">
           <ArrowLeftOutlined aria-hidden /> 移交
         </Link>
-        <Typography.Title level={4} style={{ margin: 0 }}>
+        <Typography.Title level={4} className={styles.noMargin}>
           發起移交
         </Typography.Title>
-        <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
+        <Typography.Paragraph type="secondary" className={styles.noMargin}>
           選擇要移交的委託管理案件。系統會為委託標的清單上的每個租賃單位各產生一份移交包草稿，你再逐案檢查缺項並確認。
         </Typography.Paragraph>
       </Flex>
@@ -80,11 +80,11 @@ function StartHandoverFormInner({ mandates }: { mandates: InitiatableMandate[] }
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="你目前沒有委託中的委託管理案件，所以沒有可以移交的租賃單位。" />
         </Card>
       ) : (
-        <Radio.Group value={selected} onChange={(e) => setSelected(e.target.value)} style={{ width: '100%' }}>
+        <Radio.Group value={selected} onChange={(e) => setSelected(e.target.value)} className={styles.fullWidth}>
           <Flex vertical gap={12 /* sm */}>
             {mandates.map((item) => (
               <Card key={item.mandate.id} size="small">
-                <Radio value={item.mandate.id} disabled={isDone(item)} style={{ alignItems: 'flex-start' }}>
+                <Radio value={item.mandate.id} disabled={isDone(item)} className={styles.radioTop}>
                   <MandateOption item={item} />
                 </Radio>
               </Card>

@@ -2,3 +2,8 @@
 .fullWidth {
   width: 100%;
 }
+
+/* 登錄入帳表單：與帳務設定的其他表單同版型，欄位限寬。 */
+.formBody {
+  max-width: 35rem;
+}
