@@ -72,16 +72,28 @@ function draftItems(draft: MandateRequestDraft) {
 }
 
 function UnitChoice({ option, checked, disabled, onChange }: { option: UnitOption; checked: boolean; disabled: boolean; onChange: (checked: boolean) => void }) {
+  // 整列都能按。核取方塊本身不帶文字，名稱用 aria-label，避免 antd 的標籤版面截掉多行內容
   return (
-    <Checkbox className={checked ? styles.unitSelected : styles.unit} checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)}>
-      <Flex vertical gap="var(--space-xxs)" className={styles.unitBody}>
+    <div className={checked ? styles.unitSelected : styles.unit} onClick={() => !disabled && onChange(!checked)}>
+      <Checkbox
+        checked={checked}
+        disabled={disabled}
+        aria-label={`${option.name}，${option.kindText}，${option.address}`}
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <Flex vertical gap="var(--space-xxs)">
         <Typography.Text strong>{option.name}</Typography.Text>
         <Typography.Text type="secondary">
           {option.kindText}，{option.address}
         </Typography.Text>
-        {option.displayCode && <Typography.Text type="secondary" className="type-caption">顯示編碼 {option.displayCode}</Typography.Text>}
+        {option.displayCode && (
+          <Typography.Text type="secondary" className="type-caption">
+            顯示編碼 {option.displayCode}
+          </Typography.Text>
+        )}
       </Flex>
-    </Checkbox>
+    </div>
   );
 }
 
