@@ -106,24 +106,12 @@ function SubmissionSummary({ ownership, submission }: { ownership: PropertyOwner
   );
 }
 
-function StatusBlock({ ownership, archived }: { ownership: PropertyOwnership; archived: boolean }) {
-  const { node_status: nodeStatus, messages, submission } = ownership;
-
-  let top;
-  if (nodeStatus === null || nodeStatus === 'lapsed') {
-    top = (
-      <EmptyState
-        description={
-          !ownership.has_key
-            ? '這個物件還沒有建號。請先補建號，再上傳謄本。'
-            : archived
-              ? '物件已封存，不能上傳謄本。'
-              : NOT_SUBMITTED_MESSAGE
-        }
-      />
-    );
-  } else if (nodeStatus === 'failed') {
-    top = (
+// 核對結果的提醒。放在卡片外面：提醒放在卡片裡會被 impeccable 判為卡片套卡片（MIL-177）
+function StatusAlert({ ownership }: { ownership: PropertyOwnership }) {
+  const { node_status: nodeStatus, messages } = ownership;
+  if (nodeStatus === null || nodeStatus === 'lapsed') return null;
+  if (nodeStatus === 'failed') {
+    return (
       <Alert
         type="error"
         showIcon
@@ -140,18 +128,27 @@ function StatusBlock({ ownership, archived }: { ownership: PropertyOwnership; ar
         }
       />
     );
-  } else if (nodeStatus === 'verified') {
-    top = <Alert type="success" showIcon title="已核對" description={ownership.verified_note ?? messages[0]} />;
-  } else {
-    top = <Alert type="info" showIcon title={messages[0] ?? AWAITING_REVIEW_MESSAGE} description="平台核對完成後，會用站內通知告訴你結果。" />;
   }
+  if (nodeStatus === 'verified') return <Alert type="success" showIcon title="已核對" description={ownership.verified_note ?? messages[0]} />;
+  return <Alert type="info" showIcon title={messages[0] ?? AWAITING_REVIEW_MESSAGE} description="平台核對完成後，會用站內通知告訴你結果。" />;
+}
 
-  return (
-    <Flex vertical gap="middle">
-      {top}
-      {submission && nodeStatus !== null && <SubmissionSummary ownership={ownership} submission={submission} />}
-    </Flex>
-  );
+function StatusBlock({ ownership, archived }: { ownership: PropertyOwnership; archived: boolean }) {
+  const { node_status: nodeStatus, submission } = ownership;
+  if (nodeStatus === null || nodeStatus === 'lapsed') {
+    return (
+      <EmptyState
+        description={
+          !ownership.has_key
+            ? '這個物件還沒有建號。請先補建號，再上傳謄本。'
+            : archived
+              ? '物件已封存，不能上傳謄本。'
+              : NOT_SUBMITTED_MESSAGE
+        }
+      />
+    );
+  }
+  return submission ? <SubmissionSummary ownership={ownership} submission={submission} /> : null;
 }
 
 function ConsentBlock({ ownership, onChange }: { ownership: PropertyOwnership; onChange: (next: PropertyOwnership) => void }) {
@@ -354,6 +351,7 @@ export default function OwnershipPanel({ ownership: loaded, archived, onChanged 
 
   return (
     <Flex vertical gap="middle">
+      <StatusAlert ownership={ownership} />
       <Card size="small" title="出租權源文件" extra={<StatusTag kind="propertyVerification" value={ownership.verification_status} />}>
         <StatusBlock ownership={ownership} archived={archived} />
       </Card>
