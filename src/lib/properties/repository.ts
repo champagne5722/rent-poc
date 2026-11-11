@@ -214,8 +214,8 @@ async function fetchUnitGroups(tx: OrgTx, unitIds: string[]): Promise<Map<string
 }
 
 function toGroupUnit(row: Row, unit: PropertyUnit | null): PropertyGroupUnit {
-  const { anchor: _anchor, verification_status: _status, ...rest } = toProperty(row, null, unit, null);
-  return rest;
+  const property = toProperty(row, null, unit, null);
+  return Object.fromEntries(Object.entries(property).filter(([key]) => key !== 'anchor' && key !== 'verification_status')) as PropertyGroupUnit;
 }
 
 /**

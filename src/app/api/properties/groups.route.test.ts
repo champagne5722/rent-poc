@@ -4,6 +4,7 @@ import { advanceOwnership, createPropertyAt, lapseOwnership } from '@/lib/owners
 import { actAs, actAsParty, setupRouteDb, type RouteDb } from '@/lib/pg/route-test-kit';
 import { flattenPropertyGroups } from '@/lib/properties/group-rows';
 import { statusPresentation } from '@/lib/status-presentation';
+import type { PropertyGroup } from '@/lib/types';
 import { POST as addSublet } from './[id]/sublet-units/route';
 import { GET as getList, POST } from './route';
 
@@ -27,13 +28,9 @@ beforeEach(async () => {
 
 const SHARED_KEY = { city: 'A', town: '02', section: '0021', buildingNo: '7777', subNo: '' };
 
-interface Group {
-  id: string;
-  verification_status: string;
-  anchor: Record<string, unknown> | null;
-  address: string;
+type Group = Omit<PropertyGroup, 'units'> & {
   units: Array<Record<string, any>>; // eslint-disable-line @typescript-eslint/no-explicit-any
-}
+};
 
 const json = (res: Response) => res.json() as Promise<Record<string, any>>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
@@ -169,7 +166,7 @@ describe('依物件分組的讀取', () => {
     await sublet(whole, '301', 'A 301');
     await createPropertyAt(kit, 'failed', { name: '另一間' });
     const flat = (await json(await getList())).data;
-    expect(flattenPropertyGroups(await groups())).toEqual(flat);
+    expect(flattenPropertyGroups((await groups()) as PropertyGroup[])).toEqual(flat);
   });
 
   it('不是組織身分回 403', async () => {
