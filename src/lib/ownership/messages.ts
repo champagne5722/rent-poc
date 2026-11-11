@@ -37,6 +37,17 @@ export const VERIFIED_NOTIFICATION = {
 export const FAILED_NOTIFICATION_KIND = 'property.verification_failed';
 export const FAILED_NOTIFICATION_TITLE = '物件的文件核對未通過';
 
+/**
+ * 站內通知：核對已失效。兩方都通過核對、營運者決定後來的一方成立時，寄給先前的一方（MIL-208）。
+ * 文字不得提到另一方，也不得提到「有人取得」或「鍵被占用」。已建立的案件與合約不會自動取消，所以要說明。
+ * 待法務確認（MIL-62）。
+ */
+export const LAPSED_NOTIFICATION = {
+  kind: 'property.verification_lapsed',
+  title: '物件的文件核對已失效',
+  body: '平台已將這個物件的文件核對標為已失效。請到物件頁重新送出謄本。已建立的案件與合約不會自動取消。',
+} as const;
+
 /** 不符項目對應的訊息，依序列出。兩項都相符回空陣列。 */
 export function mismatchMessages(result: OwnershipCheckResult): string[] {
   const messages: string[] = [];
@@ -52,3 +63,10 @@ export function failedNotificationBody(result: OwnershipCheckResult): string {
 
 /** 營運者看到的說明：兩項都相符，但別的組織對同一個鍵已有已驗證的節點。登錄的一方看不到這句。文字待法務確認。 */
 export const HELD_MESSAGE = '兩項都相符，但這個鍵已有其他已核對的登錄。項目停在待處理，請個別聯絡雙方後處理';
+
+/**
+ * 營運者聯絡衝突雙方的文字初稿（MIL-208，ADR-0028 決議 4）。兩方用同一份，不得透露另一方是誰，也不得說明衝突的原因。
+ * 這份文字只給營運者在電話或 email 使用，系統不會自動寄出。每句 40 字以內。待法務確認（MIL-62）。
+ */
+export const CONFLICT_CONTACT_DRAFT =
+  '平台在核對你登錄的物件時，需要再確認你提供的謄本。請問你能否補充說明所有權的取得情形？我們會在確認後通知你結果。';

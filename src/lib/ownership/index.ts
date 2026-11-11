@@ -11,6 +11,15 @@ export {
   type OwnershipReviewHeader,
 } from './desk';
 export {
+  decideConflictFlow,
+  getConflictFlow,
+  openConflictPeerFile,
+  recordContactFlow,
+  type DecideConflictResult,
+  type GetConflictResult,
+  type RecordContactResult,
+} from './conflict';
+export {
   checkTranscriptFile,
   openOwnTranscriptFlow,
   readTranscriptBytes,

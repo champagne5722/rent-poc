@@ -91,6 +91,57 @@ export interface OwnershipSubmissionView {
   byte_size: number;
 }
 
+// ---------------------------------------------------------------------------
+// 兩方都通過核對時的衝突個案（MIL-208）。只給平台營運者的審核台，組織的 API 不回這些型別。
+
+/** 營運者的三種決定。 */
+export type OwnershipConflictDecision = 'later_prevails' | 'later_rejected' | 'coexist';
+/** 後來的不成立時，記成哪一項不符（走既有的驗證失敗訊息）。 */
+export type OwnershipConflictBasis = 'key_mismatch' | 'holder_mismatch' | 'both_mismatch';
+export type OwnershipConflictContactTarget = 'earlier' | 'later';
+export type OwnershipConflictContactChannel = 'phone' | 'email' | 'other';
+
+export interface OwnershipConflictContact {
+  id: string;
+  target: OwnershipConflictContactTarget;
+  channel: OwnershipConflictContactChannel;
+  outcome: string;
+  contactedAt: string;
+  recordedBy: string;
+  recordedAt: string;
+}
+
+/** 衝突的一方。只有判定所需的欄位：遮罩的登記名義人、通過核對或送件的時間、取得時間、檔案的參照。 */
+export interface OwnershipConflictSide {
+  orgId: string;
+  orgName: string | null;
+  nodeId: string;
+  submissionId: string | null;
+  holderMasked: string | null;
+  /** 先前的一方：通過核對的時間。後來的一方沒有。 */
+  verifiedAt: string | null;
+  /** 先前的一方：謄本的取得時間（讀它的組織取得）。後來的一方的取得時間在項目詳情的 submission。 */
+  acquiredAt: string | null;
+}
+
+export interface OwnershipConflictView {
+  id: string;
+  itemId: string;
+  status: 'open' | 'decided';
+  createdAt: string;
+  decision: OwnershipConflictDecision | null;
+  decisionBasis: OwnershipConflictBasis | null;
+  decisionReason: string | null;
+  /** later_prevails 才有值：先前的一方進行中的案件數。其餘是 0。 */
+  affectedCaseCount: number | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  claimedKey: { cityCode: string; townCode: string; sectionCode: string; buildingNo: string; subNo: string };
+  later: OwnershipConflictSide;
+  earlier: OwnershipConflictSide;
+  contacts: OwnershipConflictContact[];
+}
+
 /**
  * 物件頁「所有權文件」的狀態（MIL-201，GET /api/properties/[id]/ownership）。
  * 只含呼叫者自己組織的資料。別的組織是否登錄過同一個鍵、核對是否因此停住，這裡看不出來（ADR-0028 決議 1）。
