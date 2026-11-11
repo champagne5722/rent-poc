@@ -8,7 +8,17 @@ import { normalizeAddress } from '@/lib/registry/address-match';
 import { formatDisplayCode } from '@/lib/registry/display-code';
 import { sectionLabel } from '@/lib/registry/section-code';
 import type { AnchorKey } from '@/lib/registry/section-code';
-import type { Property, PropertyAnchor, PropertyType, PropertyUnit, RentalUnitStatus, RentalUnitType, SiblingUnit } from '@/lib/types';
+import type {
+  Property,
+  PropertyAnchor,
+  PropertyGroup,
+  PropertyGroupUnit,
+  PropertyType,
+  PropertyUnit,
+  RentalUnitStatus,
+  RentalUnitType,
+  SiblingUnit,
+} from '@/lib/types';
 import { claimAnchorKey } from './collision';
 import { hasActiveLeaseForProperty, hasCasesForProperty } from './contract-links';
 import type { PropertyInput } from './input';
@@ -185,6 +195,77 @@ export async function listProperties(tx: OrgTx): Promise<Property[]> {
     const found = anchors.get(r.rental_unit_id);
     return toProperty(r, found?.anchor ?? null, units.get(r.rental_unit_id) ?? null, found ? (ownership.get(found.anchorId) ?? null) : null);
   });
+}
+
+interface UnitGroupRow {
+  unit_id: string;
+  survivor_key: string;
+  group_key: string;
+}
+
+/**
+ * 單位對存續單位與分組鍵。registry 只能經函式讀，函式只回呼叫者組織有物件指向的單位。
+ * survivor_key 與 group_key 是 md5，只能比對相同或不同，拿不到登記庫的 ID，也不得進回應。
+ */
+async function fetchUnitGroups(tx: OrgTx, unitIds: string[]): Promise<Map<string, UnitGroupRow>> {
+  if (unitIds.length === 0) return new Map();
+  const { rows } = await tx.query<UnitGroupRow>('SELECT * FROM registry.get_unit_groups($1::text[])', [unitIds]);
+  return new Map(rows.map((r) => [r.unit_id, r]));
+}
+
+function toGroupUnit(row: Row, unit: PropertyUnit | null): PropertyGroupUnit {
+  const property = toProperty(row, null, unit, null);
+  return Object.fromEntries(Object.entries(property).filter(([key]) => key !== 'anchor' && key !== 'verification_status')) as PropertyGroupUnit;
+}
+
+/**
+ * 物件列表依物件分組（MIL-202）。一個物件一筆，底下是呼叫者組織自己的租賃單位，新的在前。
+ * 規則：
+ * - 只從呼叫者自己的 org.properties 出發。分組鍵由 registry.get_unit_groups 算，它不回別的組織的資料。
+ * - 被合併的單位解析到存續單位。同一個存續單位有多列時只留一筆，名稱取較早建立的那一列。
+ * - 組的 id 是整戶（後綴 0000）單位的營運資料 ID，沒有整戶時是後綴最小的單位。
+ * - 核對狀態只讀呼叫者自己組織的所有權節點（RLS），取代表單位所屬錨點的節點。沒有節點與節點失效都是待平台核對文件。
+ * - 建號取代表單位的建號。撞號時是呼叫者自己填的鍵。
+ * - 封存的單位照樣列出，帶 archived_at。
+ */
+export async function listPropertyGroups(tx: OrgTx): Promise<PropertyGroup[]> {
+  const { rows: all } = await tx.query<Row>(`SELECT ${COLUMNS} FROM org.properties ORDER BY created_at, id`);
+  const groupOf = await fetchUnitGroups(tx, all.map((r) => r.rental_unit_id));
+
+  // 同一個存續單位只留最早建立的那一列
+  const seenSurvivors = new Set<string>();
+  const rows = all.filter((r) => {
+    const survivor = groupOf.get(r.rental_unit_id)?.survivor_key ?? `self:${r.rental_unit_id}`;
+    if (seenSurvivors.has(survivor)) return false;
+    seenSurvivors.add(survivor);
+    return true;
+  });
+
+  const unitIds = rows.map((r) => r.rental_unit_id);
+  const anchors = await fetchAnchors(tx, unitIds);
+  const units = await fetchUnits(tx, unitIds);
+  const ownership = await fetchOwnershipStatuses(tx, [...new Set([...anchors.values()].map((a) => a.anchorId))]);
+
+  const buckets = new Map<string, Row[]>();
+  for (const r of rows) {
+    const key = groupOf.get(r.rental_unit_id)?.group_key ?? `self:${r.rental_unit_id}`;
+    buckets.set(key, [...(buckets.get(key) ?? []), r]);
+  }
+
+  const suffixOf = (r: Row) => units.get(r.rental_unit_id)?.suffix ?? '9999';
+  const groups = [...buckets.values()].map((members): PropertyGroup => {
+    members.sort((a, b) => suffixOf(a).localeCompare(suffixOf(b)) || a.id.localeCompare(b.id));
+    const rep = members[0];
+    const found = anchors.get(rep.rental_unit_id);
+    return {
+      id: rep.id,
+      verification_status: toPropertyVerificationStatus(found ? (ownership.get(found.anchorId) ?? null) : null),
+      anchor: found?.anchor ?? null,
+      address: rep.address,
+      units: members.map((m) => toGroupUnit(m, units.get(m.rental_unit_id) ?? null)),
+    };
+  });
+  return groups.sort((a, b) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
 }
 
 export async function getProperty(tx: OrgTx, id: string): Promise<Property | null> {
