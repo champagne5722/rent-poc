@@ -19,7 +19,7 @@ export interface DetailPageProps {
   notices?: ReactNode;
   /** 主要內容：依重要性由上而下排列的區段。 */
   children: ReactNode;
-  /** 屬性側欄。 */
+  /** 屬性側欄。沒有屬性時傳 null，主要內容占滿全寬。 */
   aside: ReactNode;
   /** 兩欄下方、橫跨全寬的區段。放本身很高的內容，例如合約 PDF 預覽，才不會讓主要內容欄比側欄高出一截。 */
   wide?: ReactNode;
@@ -36,16 +36,18 @@ export default function DetailPage({ header, nextStep, notices, children, aside,
       {notices}
       {nextStep}
       <Row gutter={[24, 24]}>
-        <Col xs={24} xl={MAIN_SPAN}>
+        <Col xs={24} xl={aside === null ? 24 : MAIN_SPAN}>
           <Flex vertical gap="large">
             {children}
           </Flex>
         </Col>
-        <Col xs={24} xl={ASIDE_SPAN}>
-          <Flex vertical gap="large">
-            {aside}
-          </Flex>
-        </Col>
+        {aside !== null && (
+          <Col xs={24} xl={ASIDE_SPAN}>
+            <Flex vertical gap="large">
+              {aside}
+            </Flex>
+          </Col>
+        )}
       </Row>
       {wide}
     </Flex>

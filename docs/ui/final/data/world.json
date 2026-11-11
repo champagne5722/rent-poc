@@ -1,0 +1,194 @@
+{
+  "world": {
+    "propertyIds": [
+      "01M75BVA9B1KQ7VTKNW7TQ0533",
+      "01M75BVKD6PM3BFAKTQ2DK96N9",
+      "01M75BVKHPRGPHVS0FJRZYBCEJ",
+      "01M75BVKQJ1FF7GEEY3K0EV8EN"
+    ],
+    "signingContractId": "01M75BVMXATFXWJXA5H1F43BEY",
+    "completedContractId": "01M75BVS9FE57PPF8GW2D6H2VE",
+    "declinedContractId": "01M75BVYXB2PJ2KF8TYM82C8AE",
+    "readyDraftId": "01M75BVZGXK6X2C041E2RCRPST",
+    "bareDraftId": "01M75BVZHVYTG7A8P9Z108RG35",
+    "completedCaseId": "01M75BVS9BWB0CNEBKQ82CD7QR",
+    "deskLicenseItemId": "01M75BWDDVX3718KJHYM16N0VV",
+    "deskCredentialItemId": "01M75BXP0R1XJ0CAYQ3RB2QBC9",
+    "masterLeaseContractId": "01M75BXQG6XKSHCQN80JZXEX66",
+    "masterLeaseDraftId": "01M75BY3NXRBSX2RZ2VBF2G4V2",
+    "handover": "ho-0006",
+    "mgmtDraftId": "01M75BY8P7TMMYJA0DGCJSW51Q",
+    "orgHandover": "ho-0004"
+  },
+  "steps": [
+    {
+      "step": "物件甲",
+      "ok": true
+    },
+    {
+      "step": "物件乙",
+      "ok": true
+    },
+    {
+      "step": "物件丙",
+      "ok": true
+    },
+    {
+      "step": "物件丁",
+      "ok": true
+    },
+    {
+      "step": "合約：簽署中",
+      "ok": true
+    },
+    {
+      "step": "合約：已完成",
+      "ok": true
+    },
+    {
+      "step": "合約：已拒簽",
+      "ok": true
+    },
+    {
+      "step": "合約：草稿（欄位齊全）",
+      "ok": true
+    },
+    {
+      "step": "合約：草稿（只有物件）",
+      "ok": true
+    },
+    {
+      "step": "案件：已完成合約的案件",
+      "ok": true
+    },
+    {
+      "step": "收款帳戶",
+      "ok": true
+    },
+    {
+      "step": "成員邀請",
+      "ok": true
+    },
+    {
+      "step": "屋主資料",
+      "ok": true
+    },
+    {
+      "step": "執業主體甲：登入與建立",
+      "ok": true
+    },
+    {
+      "step": "執業主體乙：登入與建立",
+      "ok": true
+    },
+    {
+      "step": "執業主體丙：登入與建立",
+      "ok": true
+    },
+    {
+      "step": "營運者：登入",
+      "ok": true
+    },
+    {
+      "step": "執業主體甲：送件",
+      "ok": true
+    },
+    {
+      "step": "執業主體乙：送件",
+      "ok": true
+    },
+    {
+      "step": "執業主體丙：送件",
+      "ok": true
+    },
+    {
+      "step": "營運者：核對執業主體甲、乙的業別",
+      "ok": true
+    },
+    {
+      "step": "執業人員甲：同意個資告知並登錄證書",
+      "ok": true
+    },
+    {
+      "step": "執業人員乙：同意個資告知並登錄證書",
+      "ok": true
+    },
+    {
+      "step": "審核台 certificate 項目（除錯）",
+      "ok": true,
+      "detail": "[{\"state\":\"pending\",\"partyName\":\"e2e-practice\",\"certificateKind\":\"rental_housing_manager\"},{\"state\":\"pending\",\"partyName\":\"e2e-practice2\",\"certificateKind\":\"real_estate_broker\"}]"
+    },
+    {
+      "step": "審核台 employment 項目（除錯）",
+      "ok": true,
+      "detail": "[{\"entityName\":\"北辰示範租賃股份有限公司\",\"state\":\"pending\",\"partyName\":\"e2e-practice\",\"certificateKind\":\"rental_housing_manager\",\"consentRequired\":false},{\"entityName\":\"雲頂示範經紀行\",\"state\":\"pending\",\"partyName\":\"e2e-practice2\",\"certificateKind\":\"real_estate_broker\",\"consentRequired\":false}]"
+    },
+    {
+      "step": "營運者：核對執業人員甲的證書與任職",
+      "ok": true
+    },
+    {
+      "step": "營運者：讀未結佇列",
+      "ok": true
+    },
+    {
+      "step": "審核台未結項目（除錯）",
+      "ok": true,
+      "detail": "license:open, certificate:open, employment:open"
+    },
+    {
+      "step": "包租：物件",
+      "ok": true
+    },
+    {
+      "step": "包租：簽署中建立",
+      "ok": true
+    },
+    {
+      "step": "包租：簽署中 PDF 頁數（除錯）",
+      "ok": true,
+      "detail": "3"
+    },
+    {
+      "step": "包租：簽署中補欄位與簽署區",
+      "ok": true
+    },
+    {
+      "step": "包租：簽署中送簽",
+      "ok": true
+    },
+    {
+      "step": "包租：草稿建立",
+      "ok": true
+    },
+    {
+      "step": "包租：草稿 PDF 頁數（除錯）",
+      "ok": true,
+      "detail": "3"
+    },
+    {
+      "step": "包租：草稿補欄位與簽署區",
+      "ok": true
+    },
+    {
+      "step": "移交 ID（demo API 建立草稿）",
+      "ok": true
+    },
+    {
+      "step": "站內通知（未讀）",
+      "ok": true
+    },
+    {
+      "step": "委託管理草稿（欄位、標的清單、簽署區備齊）",
+      "ok": true
+    },
+    {
+      "step": "後台移交 ID（執業主體甲）",
+      "ok": true
+    },
+    {
+      "step": "屋主二：登入、建立組織、簽署中合約",
+      "ok": true
+    }
+  ]
+}

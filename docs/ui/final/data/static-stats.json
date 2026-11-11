@@ -1,0 +1,664 @@
+{
+  "measuredAt": "2026-11-11T13:16:34.129Z",
+  "pages": {
+    "01-workbench": {
+      "title": "工作台",
+      "sources": [
+        "src/app/(workbench)/page.tsx",
+        "src/components/Workbench.tsx"
+      ],
+      "files": 2,
+      "loc": 180,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 0,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "02-contracts-list": {
+      "title": "合約列表",
+      "sources": [
+        "src/app/contracts/(list)/page.tsx",
+        "src/components/ContractList.tsx"
+      ],
+      "files": 2,
+      "loc": 281,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 3,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "03-contract-detail-signing": {
+      "title": "合約詳情（簽署中）",
+      "sources": [
+        "src/app/contracts/[id]/page.tsx",
+        "src/components/SignatureFieldEditor.tsx"
+      ],
+      "files": 1,
+      "loc": 315,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 2,
+      "lintFailed": 0,
+      "missing": [
+        "src/app/contracts/[id]/page.tsx"
+      ]
+    },
+    "04-contract-detail-completed": {
+      "title": "合約詳情（已完成）",
+      "sources": [
+        "src/app/contracts/[id]/page.tsx"
+      ],
+      "files": 0,
+      "loc": 0,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 0,
+      "lintFailed": 0,
+      "missing": [
+        "src/app/contracts/[id]/page.tsx"
+      ]
+    },
+    "05-contract-detail-draft": {
+      "title": "合約詳情（草稿）",
+      "sources": [
+        "src/app/contracts/[id]/page.tsx"
+      ],
+      "files": 0,
+      "loc": 0,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 0,
+      "lintFailed": 0,
+      "missing": [
+        "src/app/contracts/[id]/page.tsx"
+      ]
+    },
+    "06-contract-detail-declined": {
+      "title": "合約詳情（已拒簽）",
+      "sources": [
+        "src/app/contracts/[id]/page.tsx"
+      ],
+      "files": 0,
+      "loc": 0,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 0,
+      "lintFailed": 0,
+      "missing": [
+        "src/app/contracts/[id]/page.tsx"
+      ]
+    },
+    "07-wizard-1-property": {
+      "title": "建約精靈 步驟一 物件摘要",
+      "sources": [
+        "src/app/contracts/new/page.tsx",
+        "src/app/contracts/new/NewContractWizard.tsx",
+        "src/components/ContractWizard.tsx",
+        "src/components/contract-wizard",
+        "src/components/RoutingConditionsPanel.tsx"
+      ],
+      "files": 15,
+      "loc": 2374,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 1,
+      "antdDeprecated": 0,
+      "feedbackCalls": 20,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "08-wizard-2-fields": {
+      "title": "建約精靈 步驟二 填欄位",
+      "sources": [
+        "src/app/contracts/[id]/edit/page.tsx",
+        "src/components/ContractWizard.tsx",
+        "src/components/contract-wizard",
+        "src/components/RoutingConditionsPanel.tsx"
+      ],
+      "files": 14,
+      "loc": 2209,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 1,
+      "antdDeprecated": 0,
+      "feedbackCalls": 19,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "09-wizard-3-signature": {
+      "title": "建約精靈 步驟三 簽署區",
+      "sources": [
+        "src/app/contracts/[id]/edit/page.tsx",
+        "src/components/SignatureFieldEditor.tsx",
+        "src/components/ContractWizard.tsx",
+        "src/components/contract-wizard",
+        "src/components/RoutingConditionsPanel.tsx"
+      ],
+      "files": 15,
+      "loc": 2524,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 1,
+      "antdDeprecated": 0,
+      "feedbackCalls": 21,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "10-wizard-4-confirm": {
+      "title": "建約精靈 步驟四 確認送簽",
+      "sources": [
+        "src/app/contracts/[id]/edit/page.tsx",
+        "src/components/ContractWizard.tsx",
+        "src/components/contract-wizard",
+        "src/components/RoutingConditionsPanel.tsx"
+      ],
+      "files": 14,
+      "loc": 2209,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 1,
+      "antdDeprecated": 0,
+      "feedbackCalls": 19,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "11-properties-list": {
+      "title": "物件列表",
+      "sources": [
+        "src/app/properties/page.tsx",
+        "src/components/AnchorFields.tsx"
+      ],
+      "files": 1,
+      "loc": 196,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 0,
+      "lintFailed": 0,
+      "missing": [
+        "src/app/properties/page.tsx"
+      ]
+    },
+    "12-property-detail": {
+      "title": "物件詳情",
+      "sources": [
+        "src/app/properties/[id]/page.tsx",
+        "src/components/AnchorFields.tsx"
+      ],
+      "files": 1,
+      "loc": 196,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 0,
+      "lintFailed": 0,
+      "missing": [
+        "src/app/properties/[id]/page.tsx"
+      ]
+    },
+    "13-cases-list": {
+      "title": "案件列表",
+      "sources": [
+        "src/app/cases/(list)/page.tsx",
+        "src/components/CaseList.tsx"
+      ],
+      "files": 2,
+      "loc": 112,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 0,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "14-case-detail-overview": {
+      "title": "案件詳情（概況）",
+      "sources": [
+        "src/app/cases/[id]/(detail)/page.tsx",
+        "src/components/CaseDetail.tsx"
+      ],
+      "files": 2,
+      "loc": 306,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 4,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "15-case-detail-ledger": {
+      "title": "案件詳情（帳務設定）",
+      "sources": [
+        "src/app/cases/[id]/(detail)/page.tsx",
+        "src/components/CaseDetail.tsx",
+        "src/components/CaseLedgerPanel.tsx"
+      ],
+      "files": 3,
+      "loc": 700,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 12,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "16-payment-accounts": {
+      "title": "收款帳戶",
+      "sources": [
+        "src/app/payment-accounts/(list)/page.tsx",
+        "src/components/PaymentAccountList.tsx"
+      ],
+      "files": 2,
+      "loc": 464,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 6,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "17-notifications": {
+      "title": "站內通知",
+      "sources": [
+        "src/app/notifications/(list)/page.tsx",
+        "src/components/NotificationList.tsx"
+      ],
+      "files": 2,
+      "loc": 161,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 1,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "18-members": {
+      "title": "成員設定",
+      "sources": [
+        "src/app/settings/members/(list)/page.tsx",
+        "src/components/MembersPanel.tsx"
+      ],
+      "files": 2,
+      "loc": 263,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 5,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "19-owner-overview": {
+      "title": "屋主資產總覽",
+      "sources": [
+        "src/app/owner/(overview)/page.tsx",
+        "src/components/OwnerOverview.tsx",
+        "src/components/OwnerOverview.module.css"
+      ],
+      "files": 3,
+      "loc": 584,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 3,
+      "antdDeprecated": 0,
+      "feedbackCalls": 1,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "20-owner-handovers": {
+      "title": "屋主端 移交清單",
+      "sources": [
+        "src/app/owner/handovers/(list)",
+        "src/app/owner/handovers/HandoverParts.tsx",
+        "src/app/owner/handovers/handovers.module.css"
+      ],
+      "files": 5,
+      "loc": 398,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 3,
+      "antdDeprecated": 0,
+      "feedbackCalls": 3,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "21-owner-handover-new": {
+      "title": "屋主端 發起移交",
+      "sources": [
+        "src/app/owner/handovers/new"
+      ],
+      "files": 2,
+      "loc": 127,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 2,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "22-owner-handover-detail": {
+      "title": "屋主端 移交詳情",
+      "sources": [
+        "src/app/owner/handovers/[id]/(detail)",
+        "src/app/owner/handovers/HandoverParts.tsx"
+      ],
+      "files": 5,
+      "loc": 509,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 4,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "23-owner-case-detail": {
+      "title": "屋主端 案件詳情",
+      "sources": [
+        "src/app/owner/cases/[id]/page.tsx",
+        "src/components/CaseDetail.tsx"
+      ],
+      "files": 2,
+      "loc": 296,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 4,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "24-org-handovers": {
+      "title": "後台 移交清單",
+      "sources": [
+        "src/app/handovers/(list)",
+        "src/app/handovers/NoOrgSession.tsx"
+      ],
+      "files": 4,
+      "loc": 166,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 0,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "25-org-handover-detail": {
+      "title": "後台 移交詳情",
+      "sources": [
+        "src/app/handovers/[id]/(detail)"
+      ],
+      "files": 4,
+      "loc": 367,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 4,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "26-practice": {
+      "title": "執業主體",
+      "sources": [
+        "src/app/practice/(page)/page.tsx",
+        "src/components/PracticePanel.tsx",
+        "src/components/EmploymentList.tsx"
+      ],
+      "files": 3,
+      "loc": 338,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 9,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "27-practitioner": {
+      "title": "我的證書（執業人員）",
+      "sources": [
+        "src/app/practitioner/(page)/page.tsx",
+        "src/components/PractitionerPanel.tsx"
+      ],
+      "files": 2,
+      "loc": 484,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 19,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "28-desk-queue": {
+      "title": "審核台佇列",
+      "sources": [
+        "src/app/desk/(list)/page.tsx",
+        "src/components/DeskQueue.tsx"
+      ],
+      "files": 2,
+      "loc": 157,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 0,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "29-desk-item-license": {
+      "title": "審核台項目（業別核對）",
+      "sources": [
+        "src/app/desk/items/[id]/page.tsx",
+        "src/components/DeskItemPanel.tsx",
+        "src/components/CredentialReviewPanel.tsx"
+      ],
+      "files": 3,
+      "loc": 740,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 11,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "30-desk-item-credential": {
+      "title": "審核台項目（證書或任職核對）",
+      "sources": [
+        "src/app/desk/items/[id]/page.tsx",
+        "src/components/DeskItemPanel.tsx",
+        "src/components/CredentialReviewPanel.tsx"
+      ],
+      "files": 3,
+      "loc": 740,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 11,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "31-login": {
+      "title": "登入頁",
+      "sources": [
+        "src/app/login/page.tsx",
+        "src/components/LoginForm.tsx"
+      ],
+      "files": 2,
+      "loc": 209,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 2,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "32-onboarding": {
+      "title": "登入後選身分（第一次登入）",
+      "sources": [
+        "src/components/OnboardingForm.tsx"
+      ],
+      "files": 1,
+      "loc": 213,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 2,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "33-master-lease-detail": {
+      "title": "合約詳情（包租，執業人員兼甲方）",
+      "sources": [
+        "src/app/contracts/[id]/page.tsx",
+        "src/components/PractitionerAssignmentPanel.tsx"
+      ],
+      "files": 1,
+      "loc": 213,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 6,
+      "lintFailed": 0,
+      "missing": [
+        "src/app/contracts/[id]/page.tsx"
+      ]
+    },
+    "34-master-lease-wizard-fields": {
+      "title": "建約精靈 包租 步驟四（附件與簽署序列）",
+      "sources": [
+        "src/app/contracts/[id]/edit/page.tsx",
+        "src/components/ContractWizard.tsx",
+        "src/components/contract-wizard",
+        "src/components/RoutingConditionsPanel.tsx",
+        "src/components/PractitionerAssignmentPanel.tsx"
+      ],
+      "files": 15,
+      "loc": 2422,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 1,
+      "antdDeprecated": 0,
+      "feedbackCalls": 25,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "35-design": {
+      "title": "設計樣式頁（內部工具）",
+      "sources": [
+        "src/app/design/page.tsx",
+        "src/components/DesignShowcase.tsx"
+      ],
+      "files": 2,
+      "loc": 321,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 0,
+      "antdDeprecated": 0,
+      "feedbackCalls": 5,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "36-mgmt-wizard-3-signature": {
+      "title": "建約精靈 委託管理 步驟三 簽署區",
+      "sources": [
+        "src/app/contracts/[id]/edit/page.tsx",
+        "src/components/contract-wizard/management",
+        "src/components/ContractWizard.tsx",
+        "src/components/contract-wizard",
+        "src/components/RoutingConditionsPanel.tsx"
+      ],
+      "files": 14,
+      "loc": 2209,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 1,
+      "antdDeprecated": 0,
+      "feedbackCalls": 19,
+      "lintFailed": 0,
+      "missing": []
+    },
+    "37-mgmt-wizard-2-fields": {
+      "title": "建約精靈 委託管理 步驟二 填欄位與委託標的",
+      "sources": [
+        "src/app/contracts/[id]/edit/page.tsx",
+        "src/components/contract-wizard/management",
+        "src/components/ContractWizard.tsx",
+        "src/components/contract-wizard",
+        "src/components/RoutingConditionsPanel.tsx"
+      ],
+      "files": 14,
+      "loc": 2209,
+      "inlineStyle": 0,
+      "colorCodes": 0,
+      "pxLiterals": 1,
+      "antdDeprecated": 0,
+      "feedbackCalls": 19,
+      "lintFailed": 0,
+      "missing": []
+    }
+  },
+  "shared": {
+    "sources": [
+      "src/components/AppShell.tsx",
+      "src/components/OwnerShell.tsx",
+      "src/components/OwnerShell.module.css",
+      "src/components/AccountBar.tsx",
+      "src/components/IdentitySwitcher.tsx",
+      "src/components/DisplayCode.tsx",
+      "src/components/AppConfigProvider.tsx",
+      "src/app/layout.tsx",
+      "src/app/owner/layout.tsx",
+      "src/app/globals.css"
+    ],
+    "files": 10,
+    "loc": 603,
+    "inlineStyle": 0,
+    "colorCodes": 0,
+    "pxLiterals": 1,
+    "antdDeprecated": 0,
+    "feedbackCalls": 0,
+    "lintFailed": 0,
+    "missing": []
+  },
+  "allUiSources": {
+    "files": 286,
+    "loc": 19403,
+    "inlineStyle": 21,
+    "colorCodes": 0,
+    "pxLiterals": 37,
+    "antdDeprecated": 0,
+    "feedbackCalls": 175,
+    "lintFailed": 0,
+    "missing": []
+  }
+}

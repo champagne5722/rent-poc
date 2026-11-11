@@ -225,6 +225,43 @@ function certForm(kind: string, word: string, serial: string) {
   };
 }
 
+/**
+ * 委託管理合約的草稿，欄位、委託標的清單與簽署區都備齊（MIL-185 的最終截圖用）。
+ * 委託管理合約不綁單一物件，標的清單由物件挑。精靈開啟時落在最後一步。
+ */
+export async function seedManagementDraft(page: Page, propertyIds: string[]): Promise<string> {
+  const created = (await ok(await page.request.post('/api/contracts', { data: { contract_type: 'management' } }), '建立委託管理草稿')) as { data: { id: string } };
+  const id = created.data.id;
+  await ok(
+    await page.request.put(`/api/contracts/${id}`, {
+      data: {
+        fields: {
+          mandatorName: READY_FIELDS.landlordName,
+          mandatorEmail: READY_FIELDS.landlordEmail,
+          mandataryName: '北辰示範租賃股份有限公司',
+          mandataryEmail: 'e2e-practice@example.com',
+          termStart: '2026-09-01',
+          termEnd: '2027-08-31',
+          feeMode: 'rent_percentage',
+          feeValue: 5,
+        },
+        signature_fields: [
+          { id: 'm1', signer: 'party_a', page: 0, x: 0.6, y: 0.8, w: 0.2, h: 0.1 },
+          { id: 'm2', signer: 'party_b', page: 0, x: 0.1, y: 0.8, w: 0.2, h: 0.1 },
+        ],
+      },
+    }),
+    '補委託管理欄位',
+  );
+  await ok(
+    await page.request.put(`/api/contracts/${id}/mandate-items`, {
+      data: { items: propertyIds.slice(0, 2).map((propertyId) => ({ propertyId, scopes: ['rent_collection', 'repair'] })) },
+    }),
+    '委託標的清單',
+  );
+  return id;
+}
+
 /** 包租租賃合約：執業主體建立，人選來自 seed 假資料 adapter。 */
 export async function seedMasterLease(practice: Page, browser: Browser): Promise<Pick<PracticeWorld, 'masterLeaseContractId' | 'masterLeaseDraftId'>> {
   const created = await step('包租：物件', () => seedVerifiedProperty(practice, browser, '包租示範物件', '台北市中山區南京東路二段 50 號 6 樓'));

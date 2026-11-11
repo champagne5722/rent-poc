@@ -8,7 +8,7 @@
 // 版型（固定的步驟條與按鈕列、草稿儲存狀態、整體錯誤）在 contract-wizard/WizardFrame。欄位錯誤顯示在欄位旁，整體錯誤用頁內 Alert。
 
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import { Alert, App as AntApp, Button, Card, Descriptions, Flex, Form, Row, Col, Space, Tag, Typography } from 'antd';
+import { Alert, App as AntApp, Button, Card, Descriptions, Flex, Form, Space, Tag, Typography } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined, LeftOutlined, RightOutlined, SendOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -541,37 +541,34 @@ function ContractWizardInner({ initial }: { initial: ContractWizardInitial }) {
       )}
 
       {step === STEP_SIGNATURE && (
-        <Row gutter={[16, 16]}>
-          <Col xs={24} xl={17}>
-            <Card
-              size="small"
-              title={partiesOnly ? '在預覽上為甲乙雙方各拖放至少一個簽名框' : '在預覽上為每個簽署席位各拖放至少一個簽名框'}
-            >
-              <SignatureFieldEditor
-                pdfUrl={`/api/contracts/${contract.id}/pdf?v=${pdfVersion}`}
-                value={sigFields}
-                onChange={(next) => {
-                  setSigFields(next);
-                  markDirty();
-                }}
-                seats={seats}
-                onPageMap={setPageMap}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} xl={7}>
-            <Card size="small" title="簽署區檢核">
-              <SignatureChecklist
-                fields={fields}
-                signatureFields={sigFields}
-                labels={labels}
-                contractType={contractType}
-                withDetail
-                pages={pageMap}
-              />
-            </Card>
-          </Col>
-        </Row>
+        // 檢核卡在上、預覽在下：預覽很高，放在兩欄的一欄會讓另一欄在首屏下方留一大片空白（impeccable：first-viewport-column-overflow）
+        <Flex vertical gap="middle">
+          <Card size="small" title="簽署區檢核">
+            <SignatureChecklist
+              fields={fields}
+              signatureFields={sigFields}
+              labels={labels}
+              contractType={contractType}
+              withDetail
+              pages={pageMap}
+            />
+          </Card>
+          <Card
+            size="small"
+            title={partiesOnly ? '在預覽上為甲乙雙方各拖放至少一個簽名框' : '在預覽上為每個簽署席位各拖放至少一個簽名框'}
+          >
+            <SignatureFieldEditor
+              pdfUrl={`/api/contracts/${contract.id}/pdf?v=${pdfVersion}`}
+              value={sigFields}
+              onChange={(next) => {
+                setSigFields(next);
+                markDirty();
+              }}
+              seats={seats}
+              onPageMap={setPageMap}
+            />
+          </Card>
+        </Flex>
       )}
 
       {step === STEP_CONFIRM && (

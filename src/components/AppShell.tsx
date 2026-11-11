@@ -126,6 +126,9 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
     };
   }, []);
 
+  // 平台營運者只處理審核台，不顯示屋主功能的選單與「建立合約」（MIL-191、MIL-185）
+  const isOperator = identityKind === 'operator';
+
   return (
     <Layout className={styles.root}>
       <Layout.Sider theme="light" className={styles.sider} collapsible collapsed={collapsed} onCollapse={setCollapsed} width={SIDER_WIDTH}>
@@ -135,24 +138,26 @@ function AdminShell({ pathname, children }: { pathname: string; children: React.
 
         {/* 常駐建約入口：任何頁面都看得到；收合時縮成 icon，靠 tooltip 說明。
             用 default 按鈕：DESIGN.md 規定每個畫面至多一顆 primary，primary 留給頁面自己的主要動作（MIL-185）。 */}
-        <div className={collapsed ? styles.ctaCollapsed : styles.cta}>
-          <Tooltip title={collapsed ? '建立合約' : undefined} placement="right">
-            <Button
-              block
-              icon={<PlusOutlined />}
-              // 用 router.push 而非 Link 包 Button，避免 <a> 內嵌 <button> 的無效巢狀
-              onClick={() => router.push(CREATE_CONTRACT_HREF)}
-            >
-              {collapsed ? null : '建立合約'}
-            </Button>
-          </Tooltip>
-        </div>
+        {!isOperator && (
+          <div className={collapsed ? styles.ctaCollapsed : styles.cta}>
+            <Tooltip title={collapsed ? '建立合約' : undefined} placement="right">
+              <Button
+                block
+                icon={<PlusOutlined />}
+                // 用 router.push 而非 Link 包 Button，避免 <a> 內嵌 <button> 的無效巢狀
+                onClick={() => router.push(CREATE_CONTRACT_HREF)}
+              >
+                {collapsed ? null : '建立合約'}
+              </Button>
+            </Tooltip>
+          </div>
+        )}
 
         <Menu
           mode="inline"
           selectedKeys={selected ? [selected] : []}
           items={[
-            ...NAV_ITEMS.map((item) => {
+            ...(isOperator ? [] : NAV_ITEMS).map((item) => {
               const badge = item.key === 'notifications' ? unread : 0;
               return {
                 key: item.key,
