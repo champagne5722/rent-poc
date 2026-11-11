@@ -15,7 +15,8 @@ import { actAs, setupRouteDb, TEST_PARTY_ID, type RouteDb } from '../pg/route-te
 import type { OrgTx } from '../pg/with-tx';
 import { getProperty } from '../properties';
 import { createSeedPracticeRegistry, type PracticeRegistryResolution } from '../practice-registry';
-import { replaceAssignments } from '../practitioner-assignment/repository';
+import { replaceAssignments, type CaseSeatMember } from '../practitioner-assignment/repository';
+import { newUlid } from '../pg/ulid';
 import { loadSendInputs, prepareContractSend } from '../practitioner-assignment/send';
 import { listSignatureRecords } from '../signature-records/repository';
 import type { SigningDb } from '../signing-module/db';
@@ -137,6 +138,10 @@ async function setup(registry: PracticeRegistryResolution = seed, { practitioner
       }),
     );
   }
+  // 分流事實取自案件（MIL-200）：這份合約的快照是包租轉租（master_lease），案件的種類要一致
+  if (caseId) {
+    await inA((tx) => tx.query(`UPDATE org.cases SET business_type = 'master_lease', case_kind = 'sublease' WHERE id = $1`, [caseId]));
+  }
   const id = await inA((tx) =>
     createContract(tx, {
       property_id: propertyId,
@@ -146,8 +151,17 @@ async function setup(registry: PracticeRegistryResolution = seed, { practitioner
     }),
   );
   if (caseId) await inA((tx) => attachContract(tx, caseId!, id));
+  // 合約掛在案件下時，指派存成案件成員（MIL-200），要帶執業人員的 party。seed 的 partyId 不是 ULID，換成真實的
+  const seats: CaseSeatMember[] = [];
+  if (caseId) {
+    const partyId = newUlid();
+    await kit.asOwner((db) =>
+      db.query('INSERT INTO control.parties (id, email, display_name) VALUES ($1, $2, $3)', [partyId, `${partyId.toLowerCase()}@seed.test`, '陳怡君']),
+    );
+    seats.push({ slot: SLOT, partyId, relation: 'practitioner' });
+  }
   await inA((tx) =>
-    replaceAssignments(tx, id, [{ slot: SLOT, entityId: 'org-pe-beichen', practitionerId: 'pr-chen', partySignerId: 'ps-wang' }]),
+    replaceAssignments(tx, id, [{ slot: SLOT, entityId: 'org-pe-beichen', practitionerId: 'pr-chen', partySignerId: 'ps-wang' }], seats),
   );
   const prepared = await inA(async (tx) => ({ contract: (await getContract(tx, id))!, inputs: await loadSendInputs(tx, id) })).then(
     ({ contract, inputs }) => prepareContractSend(contract, inputs, seed, SEND_AT),
