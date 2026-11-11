@@ -44,12 +44,13 @@ describe('resolveNavKey（側邊選單高亮）', () => {
 });
 
 describe('殼層導覽定義', () => {
-  it('選單是工作台、物件、案件、合約、收款帳戶、移交、通知、設計八項', () => {
+  it('選單是工作台、物件、案件、合約、申請、收款帳戶、移交、通知、設計九項', () => {
     expect(NAV_ITEMS.map((i) => i.key)).toEqual([
       'workbench',
       'properties',
       'cases',
       'contracts',
+      'requests',
       'payment-accounts',
       'handovers',
       'notifications',
@@ -60,6 +61,7 @@ describe('殼層導覽定義', () => {
       '/properties',
       '/cases',
       '/contracts',
+      '/requests',
       '/payment-accounts',
       '/handovers',
       '/notifications',
@@ -174,7 +176,8 @@ function adminPagePaths(): string[] {
   };
   if (existsSync(join(root, 'page.tsx'))) paths.push('/');
   walk(root, []);
-  return paths.filter((p) => !p.startsWith('/api') && !p.startsWith('/demo') && !isAuthScreen(p) && shellFor(p) === 'admin');
+  // /request/x 是申請連結頁（MIL-206）：登入前的獨立頁面，不套後台殼層，所以沒有區域名稱
+  return paths.filter((p) => !p.startsWith('/api') && !p.startsWith('/demo') && !p.startsWith('/request/') && !isAuthScreen(p) && shellFor(p) === 'admin');
 }
 
 describe('後台每一頁都有頂部列的區域名稱（MIL-174）', () => {

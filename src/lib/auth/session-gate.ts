@@ -11,11 +11,11 @@ const EXEMPT_API = new Set(['/api/auth/otp', '/api/auth/verify', '/api/auth/logo
 
 // 申請連結（MIL-206）：屋主掃 QR code 或點連結時還沒有登入。連結頁的資料 API 與頁面本身登入前就要能開。
 // 碼固定 43 個字元（base64url）。只放行讀取連結頁的路徑；綁定（.../claim）要 session，仍被擋。
+// 連結頁本身（/request/<碼>）算登入前的畫面，由 isAuthScreen 判斷，殼層與閘門用同一份規則。
 const REQUEST_LINK_API = /^\/api\/mandate-requests\/link\/[A-Za-z0-9_-]{43}$/;
-const REQUEST_LINK_PAGE = /^\/request\/[A-Za-z0-9_-]{43}$/;
 
 export function isSessionExemptPath(pathname: string): boolean {
-  return isAuthScreen(pathname) || EXEMPT_API.has(pathname) || isPublicPath(pathname) || REQUEST_LINK_API.test(pathname) || REQUEST_LINK_PAGE.test(pathname);
+  return isAuthScreen(pathname) || EXEMPT_API.has(pathname) || isPublicPath(pathname) || REQUEST_LINK_API.test(pathname);
 }
 
 export type SessionGate = 'allow' | 'redirect_login' | 'unauthorized';

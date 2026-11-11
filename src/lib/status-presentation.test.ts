@@ -32,6 +32,7 @@ const SOURCES: { [K in StatusKind]: readonly StatusValueOf<K>[] } = {
   credentialState: ['pending', 'verified', 'lapsed'],
   leaseState: ['vacant', 'draft', 'signing', 'active', 'move_out', 'settling'],
   leaseAuthority: ['verified', 'pending', 'failed', 'expired'],
+  mandateRequest: ['pending_owner', 'pending_practice', 'accepted', 'declined', 'withdrawn', 'ended', 'completed', 'expired'],
 };
 
 describe('狀態呈現表：每個狀態值都有名稱與色調', () => {
