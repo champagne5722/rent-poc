@@ -432,3 +432,88 @@ function isValidDate(value: string): boolean {
   const parsed = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
+
+// --- 從物件建立案件的入口（MIL-209，ADR-0030 決議 1、5）---
+
+/**
+ * 從物件建立案件時能選的案件種類。委託管理案件不綁單一物件，不在這裡（見 MIL-212）。
+ * 包租案件指屋主租給包租業者那一份，轉租案件指包租業者租給承租人那一份。
+ */
+export const PROPERTY_CASE_KINDS = ['lease', 'master_lease', 'sublease'] as const satisfies readonly NewLeaseCaseKind[];
+
+export function isPropertyCaseKind(value: unknown): value is NewLeaseCaseKind {
+  return typeof value === 'string' && (PROPERTY_CASE_KINDS as readonly string[]).includes(value);
+}
+
+/**
+ * 執業主體組織的資格事實：各業別的驗證狀態，以及是否至少有一位可簽章的專任管理人員。
+ * 租賃案件（代管）看代管業別，包租案件與轉租案件看包租業別（`PRACTICE_CATEGORY_FOR_CASE_KIND`）。
+ */
+export interface PracticeEligibility {
+  licenses: { management: CredentialStatus | null; master_lease: CredentialStatus | null };
+  hasSignableManager: boolean;
+}
+
+/** 某一種案件適用的 `PracticeFacts`。 */
+export function practiceFactsFor(caseKind: NewLeaseCaseKind, eligibility: PracticeEligibility): PracticeFacts {
+  const category = caseKind === 'lease' ? 'management' : 'master_lease';
+  return { entityStatus: eligibility.licenses[category], hasSignableManager: eligibility.hasSignableManager };
+}
+
+/**
+ * 新建案件的業務類型（舊欄位）。屋主組織的租賃案件是自管，執業主體組織的租賃案件是代管。
+ * 包租案件的業務類型是 `self_managed`，轉租案件是舊值 `master_lease`（見 case-kind.ts）。
+ * 這個組織種類不能建這種案件時回 null。
+ */
+export function businessTypeForNewCase(orgKind: OrgKind, caseKind: NewLeaseCaseKind): BusinessType | null {
+  if (!HOST_ORG_KINDS_FOR_CASE_KIND[caseKind].includes(orgKind)) return null;
+  if (caseKind === 'lease') return orgKind === 'owner' ? 'self_managed' : 'managed';
+  return caseKind === 'master_lease' ? 'self_managed' : 'master_lease';
+}
+
+/** `availableCaseKinds` 的輸入。事實由呼叫端查好，組織範圍的查詢只看呼叫者組織自己的案件。 */
+export interface CaseEntryFacts {
+  orgId: string;
+  orgKind: OrgKind;
+  /** 呼叫者組織自己對這個物件有已驗證的所有權節點（MIL-205）。 */
+  verified: boolean;
+  /** 執業主體組織必須傳。屋主組織傳 null。 */
+  practice: PracticeEligibility | null;
+  /** 自家涵蓋這個物件的包租案件。 */
+  masterLeaseCase: MasterLeaseCaseFacts | null;
+  /** 自家涵蓋這個物件的委託管理案件。 */
+  mandateCase: MandateCaseFacts | null;
+}
+
+/**
+ * 這個物件能建哪些案件，依 `PROPERTY_CASE_KINDS` 的順序。
+ * 用 `decideCaseCreation` 逐種試算，所以規則只有一份：這裡列出的種類，伺服端建立時一定放行。
+ * 物件沒有通過核對時是空陣列。
+ */
+export function availableCaseKinds(facts: CaseEntryFacts): NewLeaseCaseKind[] {
+  if (!facts.verified) return [];
+  const now = new Date(0);
+  return PROPERTY_CASE_KINDS.filter((caseKind) => {
+    const businessType = businessTypeForNewCase(facts.orgKind, caseKind);
+    if (businessType === null) return false;
+    const practice = facts.orgKind === 'practice' && facts.practice ? practiceFactsFor(caseKind, facts.practice) : null;
+    if (facts.orgKind === 'practice' && practice === null) return false;
+    return decideCaseCreation(
+      {
+        type: 'new_lease',
+        caseId: 'probe',
+        rentalUnitId: 'probe',
+        hostOrg: { orgId: facts.orgId, kind: facts.orgKind },
+        caseKind,
+        businessType,
+        lessorPartyId: 'probe',
+        ownerPartyId: null,
+        brokerPartyId: null,
+        practice,
+        mandateCase: facts.mandateCase,
+        masterLeaseCase: facts.masterLeaseCase,
+      },
+      now,
+    ).ok;
+  });
+}

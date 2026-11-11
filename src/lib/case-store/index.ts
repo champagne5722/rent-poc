@@ -12,6 +12,7 @@ export {
 } from './commands';
 export {
   caseHasContracts,
+  findCoveringMandateCase,
   findCoveringMasterLeaseCase,
   findOrCreateParty,
   getCase,
@@ -40,3 +41,13 @@ export {
 } from './types';
 export { withCaseMemberTx, type CaseMemberAccess, type CaseMemberTarget, type CaseMemberTx } from './member-tx';
 export { caseStateForContract, migrateContractsToCases, migrateOrgContractsToCases, type MigrationResult, type OrgMigrationResult } from './legacy-migration';
+export {
+  contractTypeForNewCase,
+  createCaseFromProperty,
+  listAvailableCaseKinds,
+  loadCaseEntryFacts,
+  loadPracticeEligibility,
+  routingForNewCase,
+  type CreateCaseFromPropertyInput,
+  type EntryProperty,
+} from './property-entry';
