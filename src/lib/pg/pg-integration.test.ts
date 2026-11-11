@@ -3,6 +3,7 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fromPgClient } from './executor';
 import { migrate } from './migrate';
+import { dropTestDatabase } from './pg-database-kit';
 import { withClusterLock } from './pg-test-support';
 import { MIGRATIONS_DIR } from './test-harness';
 
@@ -41,10 +42,7 @@ describe.skipIf(!adminUrl)('真實 PostgreSQL', () => {
   });
   afterAll(async () => {
     await owner.end();
-    const admin = new Client({ connectionString: adminUrl });
-    await admin.connect();
-    await admin.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
-    await admin.end();
+    await dropTestDatabase(adminUrl!, dbName);
   });
 
   it('主版本與 PGlite 回報的一致（CI 容器要和測試環境對齊）', async () => {

@@ -1,8 +1,9 @@
-import { Client, Pool } from 'pg';
+import { Client, type Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pgDriver } from '../pg/drivers';
 import { fromPgClient } from '../pg/executor';
 import { migrate } from '../pg/migrate';
+import { closeTestPool, createTestPool, dropTestDatabase } from '../pg/pg-database-kit';
 import { withClusterLock } from '../pg/pg-test-support';
 import { seedCases, testCaseId } from '../pg/test-cases';
 import { MIGRATIONS_DIR } from '../pg/test-harness';
@@ -57,7 +58,7 @@ describe.skipIf(!adminUrl)('接上案件的帳務：真實 PostgreSQL', () => {
       `INSERT INTO control.parties (id, email, display_name) VALUES ($1, 'lessee@example.com', '承租人'), ($2, 'outsider@example.com', '路人')`,
       [lessee, outsider],
     );
-    pool = new Pool({ connectionString: urlFor('app_rw', 'rw-test', dbName), max: 12 });
+    pool = createTestPool({ connectionString: urlFor('app_rw', 'rw-test', dbName), max: 12 });
     withTx = createWithTx(pgDriver(pool));
     await seedCases(withTx, [orgA], [CASE_A, CASE_A2]);
     await seedCases(withTx, [orgB], [CASE_B]);
@@ -71,12 +72,9 @@ describe.skipIf(!adminUrl)('接上案件的帳務：真實 PostgreSQL', () => {
     });
   });
   afterAll(async () => {
-    await pool.end();
+    await closeTestPool(pool);
     await admin.end();
-    const root = new Client({ connectionString: adminUrl });
-    await root.connect();
-    await root.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
-    await root.end();
+    await dropTestDatabase(adminUrl!, dbName);
   });
 
   const inOrg = <T>(orgId: string, fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId }, fn);
