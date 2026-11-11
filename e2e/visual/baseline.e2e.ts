@@ -120,6 +120,7 @@ test('建約精靈：第四步 確認送簽', async ({ page }) => {
 
 test('物件列表', async ({ page }) => {
   await page.goto('/properties');
-  await expect(page.getByRole('row').filter({ hasText: '截圖基準物件乙' })).toBeVisible();
+  // 一列一個物件，底下展開租賃單位（MIL-177）：用物件名稱的連結定位，只對應一個物件
+  await expect(page.getByRole('link', { name: '截圖基準物件乙' }).first()).toBeVisible();
   await shoot(page, 'properties-list.png');
 });
