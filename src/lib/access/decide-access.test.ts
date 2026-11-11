@@ -300,6 +300,15 @@ const ORG_EXPECTATIONS: Record<string, { roles: OrgRole[] }> = {
   'practice_registry.submit': { roles: ['admin', 'staff'] },
   'practice_entity.lookup': { roles: ['admin', 'staff', 'viewer'] },
   'practitioner.read': { roles: ['admin', 'staff', 'viewer'] },
+  // 申請（MIL-206）：雙方讀自己的申請所有角色。產生連結、代傳謄本、讀原檔、綁定、確認代填資料、送出、收回 viewer 被拒
+  'request.read': { roles: ['admin', 'staff', 'viewer'] },
+  'request.create': { roles: ['admin', 'staff'] },
+  'request.attach_file': { roles: ['admin', 'staff'] },
+  'request.read_file': { roles: ['admin', 'staff'] },
+  'request.claim': { roles: ['admin', 'staff'] },
+  'request.confirm_draft': { roles: ['admin', 'staff'] },
+  'request.submit': { roles: ['admin', 'staff'] },
+  'request.withdraw': { roles: ['admin', 'staff'] },
   // 執業人員證書與任職（MIL-111）：看所有角色，登錄與結束任職 viewer 被拒
   'practitioner.register': { roles: ['admin', 'staff'] },
   'employment.end': { roles: ['admin', 'staff'] },

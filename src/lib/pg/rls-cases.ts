@@ -15,6 +15,7 @@ import { contractsRls } from './rls-cases/contracts';
 import { controlCoreRls } from './rls-cases/control-core';
 import { inboxTimersRls } from './rls-cases/inbox-timers';
 import { ledgerRls } from './rls-cases/ledger';
+import { mandateRequestsRls } from './rls-cases/mandate-requests';
 import { notificationsRls } from './rls-cases/notifications';
 import { outboxRls } from './rls-cases/outbox';
 import { ownershipRls } from './rls-cases/ownership';
@@ -74,6 +75,7 @@ const RLS_MODULES: readonly RlsRegistration[] = [
   controlCoreRls,
   inboxTimersRls,
   ledgerRls,
+  mandateRequestsRls,
   notificationsRls,
   outboxRls,
   ownershipRls,

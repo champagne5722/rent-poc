@@ -56,6 +56,13 @@ export const AUDIT_ACTIONS = [
   'property.sublet_create', // MIL-145：新增分租單位，payload 只放租賃單位 ID 與單位後綴，不放房號與地址
   'property.archive', // MIL-145：有合約的物件刪除時改為封存，payload 只放租賃單位 ID
   'ownership.submit', // MIL-201：送出第二類謄本，寫在送件組織自己的鏈。payload 只放送件 ID、是否有信託登記與檔案大小，不放姓名與檔名
+  'request.create', // MIL-206：業者產生申請連結，寫在業者的鏈。payload 只放申請 ID、種類與是否有代填資料，不放碼與代填內容
+  'request.claim', // MIL-206：屋主組織第一次綁定連結，寫在屋主的鏈。業者的鏈沒有這筆事件
+  'request.confirm_draft', // MIL-206：屋主確認業者代填的資料，寫在屋主的鏈。payload 放申請 ID、租賃單位 ID 與是否轉入謄本
+  'request.submit', // MIL-206：屋主送出申請，寫在屋主的鏈。payload 放申請 ID 與租賃單位數量
+  'request.withdraw', // MIL-206：屋主收回申請，寫在屋主的鏈。payload 只放申請 ID
+  'request.attach_file', // MIL-206：業者代傳謄本，寫在業者的鏈。payload 只放檔案大小，不放檔名與謄本表單欄位
+  'request.file_read', // MIL-206：業者讀自己代傳的謄本原檔，寫在業者的鏈。payload 只放申請 ID
   'contract.create', // MIL-83：合約的建立、複製、刪除。payload 只放 ID 與類型，不放姓名、地址、租金
   'contract.copy',
   'contract.delete',

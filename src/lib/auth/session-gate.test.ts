@@ -29,12 +29,14 @@ describe('decideSessionGate（proxy 的樂觀檢查：只看 cookie 在不在）
     '/api/webhooks/dottedsign',
     '/api/internal/jobs/drain-outbox',
     '/api/internal/jobs/scan-timers',
+    `/api/mandate-requests/link/${'A'.repeat(43)}`,
+    `/request/${'a-_Z9'.repeat(8)}abc`,
   ])('%s 不需要 session', (pathname) => {
     expect(isSessionExemptPath(pathname)).toBe(true);
     expect(decideSessionGate({ pathname, hasSessionCookie: false })).toBe('allow');
   });
 
-  it.each(['/login/extra', '/api/auth/me', '/api/auth/otp/x', '/demo', '/demo/other', '/demo/mail', '/api/demo/notify', '/loginx', '/api/webhooks/other', '/api/internal/jobs', '/api/internal/other'])(
+  it.each(['/login/extra', '/api/auth/me', '/api/auth/otp/x', '/demo', '/demo/other', '/demo/mail', '/api/demo/notify', '/loginx', '/api/webhooks/other', '/api/internal/jobs', '/api/internal/other', `/api/mandate-requests/link/${'A'.repeat(43)}/claim`, '/api/mandate-requests/link/short', '/api/mandate-requests', `/request/${'A'.repeat(43)}/x`, '/request/short'])(
     '%s 不在白名單：需要 session',
     (pathname) => {
       expect(isSessionExemptPath(pathname)).toBe(false);
