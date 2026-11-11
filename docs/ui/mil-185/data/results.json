@@ -1,0 +1,1605 @@
+{
+  "capturedAt": "2026-11-11T06:34:36.007Z",
+  "notes": [
+    "略過 owner-handover-detail：沒有對應的資料"
+  ],
+  "pages": [
+    {
+      "id": "workbench",
+      "title": "工作台",
+      "url": "/",
+      "load": {
+        "msToStable": 1679,
+        "spinnerSamples": 0,
+        "samples": 3,
+        "skeletonSeen": false
+      },
+      "facts": {
+        "url": "/",
+        "primaryButtons": [
+          "建立合約"
+        ],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [
+          "工作台",
+          "物件",
+          "案件",
+          "合約",
+          "收款帳戶",
+          "移交",
+          "通知",
+          "設計",
+          "成員管理"
+        ],
+        "selectedMenu": "工作台",
+        "scrollHeight": 900
+      },
+      "screenshot": "after-workbench.png",
+      "findings": []
+    },
+    {
+      "id": "contracts-list",
+      "title": "合約列表",
+      "url": "/contracts",
+      "load": {
+        "msToStable": 1592,
+        "spinnerSamples": 0,
+        "samples": 4,
+        "skeletonSeen": false
+      },
+      "facts": {
+        "url": "/contracts",
+        "primaryButtons": [],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [
+          "工作台",
+          "物件",
+          "案件",
+          "合約",
+          "收款帳戶",
+          "移交",
+          "通知",
+          "設計",
+          "成員管理"
+        ],
+        "selectedMenu": "合約",
+        "scrollHeight": 900
+      },
+      "screenshot": "after-contracts-list.png",
+      "findings": [
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/contracts",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ShellHeader_start__0KRcD > span.ant-typography.ant-typography-secondary"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/contracts",
+          "line": 0,
+          "snippet": "1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-select-placeholder"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/contracts",
+          "line": 0,
+          "snippet": "placeholder \"租期涵蓋起\" 1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-picker-input.ant-picker-input-start > input"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/contracts",
+          "line": 0,
+          "snippet": "placeholder \"租期涵蓋迄\" 1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-picker-input.ant-picker-input-end > input"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/contracts",
+          "line": 0,
+          "snippet": "3.0:1 (need 4.5:1) — text #8a8f98 on #f5f5f5",
+          "selector": "tr.ant-table-row.ant-table-row-level-0:nth-of-type(2) > td.ant-table-cell:nth-of-type(1) > span.ant-typography.ant-typography-secondary > code"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/contracts",
+          "line": 0,
+          "snippet": "4.3:1 (need 4.5:1) — text #5e6ad2 on #f0f4ff",
+          "advisory": true,
+          "selector": "tr.ant-table-row.ant-table-row-level-0:nth-of-type(2) > td.ant-table-cell:nth-of-type(7) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/contracts",
+          "line": 0,
+          "snippet": "4.2:1 (need 4.5:1) — text #d93843 on #fff1f0",
+          "advisory": true,
+          "selector": "tr.ant-table-row.ant-table-row-level-0:nth-of-type(5) > td.ant-table-cell:nth-of-type(7) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/contracts",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #1f9e3e on #eef6f0",
+          "selector": "tr.ant-table-row.ant-table-row-level-0:nth-of-type(6) > td.ant-table-cell:nth-of-type(7) > span.ant-tag.ant-tag-filled"
+        }
+      ]
+    },
+    {
+      "id": "contracts-list-empty",
+      "title": "合約列表（空狀態）",
+      "url": "/contracts",
+      "load": {
+        "msToStable": 1590,
+        "spinnerSamples": 0,
+        "samples": 3,
+        "skeletonSeen": true
+      },
+      "facts": {
+        "url": "/contracts",
+        "primaryButtons": [
+          "建立合約"
+        ],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [
+          "工作台",
+          "物件",
+          "案件",
+          "合約",
+          "收款帳戶",
+          "移交",
+          "通知",
+          "設計",
+          "成員管理"
+        ],
+        "selectedMenu": "合約",
+        "scrollHeight": 900
+      },
+      "screenshot": "after-contracts-list-empty.png",
+      "findings": [
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/contracts",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ShellHeader_start__0KRcD > span.ant-typography.ant-typography-secondary"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/contracts",
+          "line": 0,
+          "snippet": "1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-select-placeholder"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/contracts",
+          "line": 0,
+          "snippet": "placeholder \"租期涵蓋起\" 1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-picker-input.ant-picker-input-start > input"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/contracts",
+          "line": 0,
+          "snippet": "placeholder \"租期涵蓋迄\" 1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-picker-input.ant-picker-input-end > input"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/contracts",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ant-empty-description"
+        }
+      ]
+    },
+    {
+      "id": "cases-list-empty",
+      "title": "案件列表（空狀態）",
+      "url": "/cases",
+      "load": {
+        "msToStable": 3720,
+        "spinnerSamples": 0,
+        "samples": 3,
+        "skeletonSeen": false
+      },
+      "facts": {
+        "url": "/cases",
+        "primaryButtons": [
+          "建立合約"
+        ],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [
+          "工作台",
+          "物件",
+          "案件",
+          "合約",
+          "收款帳戶",
+          "移交",
+          "通知",
+          "設計",
+          "成員管理"
+        ],
+        "selectedMenu": "案件",
+        "scrollHeight": 900
+      },
+      "screenshot": "after-cases-list-empty.png",
+      "findings": [
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/cases",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ShellHeader_start__0KRcD > span.ant-typography.ant-typography-secondary"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/cases",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ant-empty-description"
+        }
+      ]
+    },
+    {
+      "id": "case-detail-ledger",
+      "title": "案件詳情（帳務設定）",
+      "url": "/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+      "load": {
+        "msToStable": 14744,
+        "spinnerSamples": 1,
+        "samples": 6,
+        "skeletonSeen": true
+      },
+      "facts": {
+        "url": "/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+        "primaryButtons": [
+          "加 入",
+          "登錄入帳"
+        ],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [
+          "工作台",
+          "物件",
+          "案件",
+          "合約",
+          "收款帳戶",
+          "移交",
+          "通知",
+          "設計",
+          "成員管理"
+        ],
+        "selectedMenu": "案件",
+        "scrollHeight": 3213
+      },
+      "screenshot": "after-case-detail-ledger.png",
+      "findings": [
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ShellHeader_start__0KRcD > span.ant-typography.ant-typography-secondary"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #1f9e3e on #eef6f0",
+          "selector": "div.PageHeader_title__Eqtvh.ant-flex > div.ant-flex.ant-flex-align-center > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #1f9e3e on #eef6f0",
+          "selector": "td.ant-table-cell:nth-of-type(2) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "4.3:1 (need 4.5:1) — text #5e6ad2 on #f0f4ff",
+          "advisory": true,
+          "selector": "td.ant-table-cell:nth-of-type(3) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "2.7:1 (need 4.5:1) — text #e08a2e on #ffffff",
+          "selector": "span.ant-typography.ant-typography-warning"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "#amount_extra"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-form-item.ant-form-css-var:nth-of-type(4) > div.ant-row.ant-form-item-row > div.ant-col.ant-form-item-control > div.ant-form-item-control-input > div.ant-form-item-control-input-content > div.ant-select.ant-select-outlined > div.ant-select-content > div.ant-select-placeholder"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "#evidence_extra"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-spin > div.ant-spin-container > div.ant-table.ant-table-small > div.ant-table-container > div.ant-table-content > table > tbody.ant-table-tbody > tr.ant-table-placeholder > td.ant-table-cell > div.ant-table-expanded-row-fixed"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-spin > div.ant-spin-container > div.ant-table.ant-table-small > div.ant-table-container > div.ant-table-content > table > tbody.ant-table-tbody > tr.ant-table-placeholder > td.ant-table-cell > div.ant-table-expanded-row-fixed"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "placeholder \"例如：王大明\" 1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "advisory": true,
+          "selector": "#value"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-form-item.ant-form-css-var:nth-of-type(1) > div.ant-row.ant-form-item-row > div.ant-col.ant-form-item-control > div.ant-form-item-control-input > div.ant-form-item-control-input-content > div.ant-select.ant-select-outlined > div.ant-select-content > div.ant-select-placeholder"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-form-item.ant-form-css-var:nth-of-type(2) > div.ant-row.ant-form-item-row > div.ant-col.ant-form-item-control > div.ant-form-item-control-input > div.ant-form-item-control-input-content > div.ant-select.ant-select-outlined > div.ant-select-content > div.ant-select-placeholder"
+        },
+        {
+          "antipattern": "nested-cards",
+          "name": "Nested cards",
+          "description": "Cards inside cards create visual noise and excessive depth. Flatten the hierarchy — use spacing, typography, and dividers instead of nesting containers.",
+          "severity": "warning",
+          "category": "slop",
+          "file": "http://localhost:3410/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "Card inside card",
+          "selector": "div.ant-flex.ant-flex-align-stretch:nth-of-type(2) > div.ant-descriptions.ant-descriptions-small > div.ant-descriptions-view"
+        }
+      ]
+    },
+    {
+      "id": "owner-case-detail",
+      "title": "屋主端 案件詳情",
+      "url": "/owner/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+      "load": {
+        "msToStable": 7595,
+        "spinnerSamples": 9,
+        "samples": 12,
+        "skeletonSeen": false
+      },
+      "facts": {
+        "url": "/owner/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+        "primaryButtons": [
+          "登錄入帳"
+        ],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [],
+        "selectedMenu": null,
+        "scrollHeight": 3060
+      },
+      "screenshot": "after-owner-case-detail.png",
+      "findings": [
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #1f9e3e on #eef6f0",
+          "selector": "div.PageHeader_title__Eqtvh.ant-flex > div.ant-flex.ant-flex-align-center > span.ant-tag.ant-tag-filled:nth-of-type(1)"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ant-flex.ant-flex-align-stretch > span.ant-typography.ant-typography-secondary:nth-of-type(1)"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #1f9e3e on #eef6f0",
+          "selector": "td.ant-table-cell:nth-of-type(2) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "4.3:1 (need 4.5:1) — text #5e6ad2 on #f0f4ff",
+          "advisory": true,
+          "selector": "td.ant-table-cell:nth-of-type(3) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "2.7:1 (need 4.5:1) — text #e08a2e on #ffffff",
+          "selector": "span.ant-typography.ant-typography-warning"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "#amount_extra"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-form-item.ant-form-css-var:nth-of-type(4) > div.ant-row.ant-form-item-row > div.ant-col.ant-form-item-control > div.ant-form-item-control-input > div.ant-form-item-control-input-content > div.ant-select.ant-select-outlined > div.ant-select-content > div.ant-select-placeholder"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "#evidence_extra"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-spin > div.ant-spin-container > div.ant-table.ant-table-small > div.ant-table-container > div.ant-table-content > table > tbody.ant-table-tbody > tr.ant-table-placeholder > td.ant-table-cell > div.ant-table-expanded-row-fixed"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-spin > div.ant-spin-container > div.ant-table.ant-table-small > div.ant-table-container > div.ant-table-content > table > tbody.ant-table-tbody > tr.ant-table-placeholder > td.ant-table-cell > div.ant-table-expanded-row-fixed"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "placeholder \"例如：王大明\" 1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "advisory": true,
+          "selector": "#value"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-form-item.ant-form-css-var:nth-of-type(1) > div.ant-row.ant-form-item-row > div.ant-col.ant-form-item-control > div.ant-form-item-control-input > div.ant-form-item-control-input-content > div.ant-select.ant-select-outlined > div.ant-select-content > div.ant-select-placeholder"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-form-item.ant-form-css-var:nth-of-type(2) > div.ant-row.ant-form-item-row > div.ant-col.ant-form-item-control > div.ant-form-item-control-input > div.ant-form-item-control-input-content > div.ant-select.ant-select-outlined > div.ant-select-content > div.ant-select-placeholder"
+        },
+        {
+          "antipattern": "nested-cards",
+          "name": "Nested cards",
+          "description": "Cards inside cards create visual noise and excessive depth. Flatten the hierarchy — use spacing, typography, and dividers instead of nesting containers.",
+          "severity": "warning",
+          "category": "slop",
+          "file": "http://localhost:3410/owner/cases/01M74MR1J8WX0ZT7MHM6KRAY8Z",
+          "line": 0,
+          "snippet": "Card inside card",
+          "selector": "div.ant-flex.ant-flex-align-stretch:nth-of-type(2) > div.ant-descriptions.ant-descriptions-small > div.ant-descriptions-view"
+        }
+      ]
+    },
+    {
+      "id": "owner-overview",
+      "title": "屋主資產總覽",
+      "url": "/owner",
+      "load": {
+        "msToStable": 1381,
+        "spinnerSamples": 0,
+        "samples": 4,
+        "skeletonSeen": false
+      },
+      "facts": {
+        "url": "/owner",
+        "primaryButtons": [],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [],
+        "selectedMenu": "資產總覽",
+        "scrollHeight": 900
+      },
+      "screenshot": "after-owner-overview.png",
+      "findings": []
+    },
+    {
+      "id": "owner-handovers",
+      "title": "屋主端 移交清單",
+      "url": "/owner/handovers",
+      "load": {
+        "msToStable": 1661,
+        "spinnerSamples": 0,
+        "samples": 4,
+        "skeletonSeen": false
+      },
+      "facts": {
+        "url": "/owner/handovers",
+        "primaryButtons": [],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [],
+        "selectedMenu": "移交",
+        "scrollHeight": 900
+      },
+      "screenshot": "after-owner-handovers.png",
+      "findings": []
+    },
+    {
+      "id": "owner-handover-new",
+      "title": "屋主端 發起移交",
+      "url": "/owner/handovers/new",
+      "load": {
+        "msToStable": 5241,
+        "spinnerSamples": 0,
+        "samples": 3,
+        "skeletonSeen": false
+      },
+      "facts": {
+        "url": "/owner/handovers/new",
+        "primaryButtons": [
+          "產生草稿"
+        ],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [],
+        "selectedMenu": "移交",
+        "scrollHeight": 900
+      },
+      "screenshot": "after-owner-handover-new.png",
+      "findings": [
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/handovers/new",
+          "line": 0,
+          "snippet": "4.4:1 (need 4.5:1) — text #5e6ad2 on #f7f8f8",
+          "advisory": true,
+          "selector": "div.ant-flex.ant-flex-align-stretch > a"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/handovers/new",
+          "line": 0,
+          "snippet": "3.1:1 (need 4.5:1) — text #8a8f98 on #f7f8f8",
+          "selector": "div.ant-typography.ant-typography-secondary"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/handovers/new",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ant-empty-description"
+        }
+      ]
+    },
+    {
+      "id": "owner-handover-detail",
+      "title": "屋主端 移交詳情",
+      "url": null,
+      "error": "沒有對應的資料"
+    },
+    {
+      "id": "owner-not-found",
+      "title": "屋主端 找不到頁面",
+      "url": "/owner/not-a-page",
+      "load": {
+        "msToStable": 4007,
+        "spinnerSamples": 0,
+        "samples": 5,
+        "skeletonSeen": false
+      },
+      "facts": {
+        "url": "/owner/not-a-page",
+        "primaryButtons": [],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [],
+        "selectedMenu": null,
+        "scrollHeight": 900
+      },
+      "screenshot": "after-owner-not-found.png",
+      "findings": [
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/owner/not-a-page",
+          "line": 0,
+          "snippet": "3.1:1 (need 4.5:1) — text #8a8f98 on #f7f8f8",
+          "selector": "div.ant-empty-description"
+        }
+      ]
+    },
+    {
+      "id": "members",
+      "title": "成員管理",
+      "url": "/settings/members",
+      "load": {
+        "msToStable": 4197,
+        "spinnerSamples": 0,
+        "samples": 5,
+        "skeletonSeen": false
+      },
+      "facts": {
+        "url": "/settings/members",
+        "primaryButtons": [
+          "送出邀請"
+        ],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [
+          "工作台",
+          "物件",
+          "案件",
+          "合約",
+          "收款帳戶",
+          "移交",
+          "通知",
+          "設計",
+          "成員管理"
+        ],
+        "selectedMenu": "成員管理",
+        "scrollHeight": 900
+      },
+      "screenshot": "after-members.png",
+      "findings": [
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/settings/members",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ShellHeader_start__0KRcD > span.ant-typography.ant-typography-secondary"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/settings/members",
+          "line": 0,
+          "snippet": "placeholder \"name@example.com\" 1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "advisory": true,
+          "selector": "#email"
+        }
+      ]
+    },
+    {
+      "id": "design",
+      "title": "設計樣式頁",
+      "url": "/design",
+      "load": {
+        "msToStable": 4895,
+        "spinnerSamples": 0,
+        "samples": 3,
+        "skeletonSeen": false
+      },
+      "facts": {
+        "url": "/design",
+        "primaryButtons": [
+          "主要動作",
+          "停 用"
+        ],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [
+          "工作台",
+          "物件",
+          "案件",
+          "合約",
+          "收款帳戶",
+          "移交",
+          "通知",
+          "設計",
+          "成員管理",
+          "工作台",
+          "合約",
+          "物件"
+        ],
+        "selectedMenu": "設計",
+        "scrollHeight": 2832
+      },
+      "screenshot": "after-design.png",
+      "findings": [
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ShellHeader_start__0KRcD > span.ant-typography.ant-typography-secondary"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "4.3:1 (need 4.5:1) — text #5e6ad2 on #f0f4ff",
+          "advisory": true,
+          "selector": "tr.ant-table-row.ant-table-row-level-0:nth-of-type(1) > td.ant-table-cell:nth-of-type(5) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #1f9e3e on #eef6f0",
+          "selector": "tr.ant-table-row.ant-table-row-level-0:nth-of-type(2) > td.ant-table-cell:nth-of-type(5) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "4.1:1 (need 4.5:1) — text #5e6ad2 on #eff0fa",
+          "selector": "tr.ant-table-row.ant-table-row-level-0:nth-of-type(2) > td.ant-table-cell:nth-of-type(6) > a"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "4.2:1 (need 4.5:1) — text #d93843 on #fff1f0",
+          "advisory": true,
+          "selector": "tr.ant-table-row.ant-table-row-level-0:nth-of-type(3) > td.ant-table-cell:nth-of-type(5) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "4.3:1 (need 4.5:1) — text #5e6ad2 on #f0f4ff",
+          "advisory": true,
+          "selector": "div.ant-flex.ant-flex-wrap-wrap > span.ant-tag.ant-tag-filled:nth-of-type(1)"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #1f9e3e on #eef6f0",
+          "selector": "span.ant-tag.ant-tag-filled:nth-of-type(2)"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "4.2:1 (need 4.5:1) — text #d93843 on #fff1f0",
+          "advisory": true,
+          "selector": "span.ant-tag.ant-tag-filled:nth-of-type(3)"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "2.6:1 (need 4.5:1) — text #e08a2e on #fffaf0",
+          "selector": "span.ant-tag.ant-tag-filled:nth-of-type(4)"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "4.3:1 (need 4.5:1) — text #5e6ad2 on #f0f4ff",
+          "advisory": true,
+          "selector": "span > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ant-steps-item.ant-steps-item-wait:nth-of-type(3) > div.ant-steps-item-wrapper > div.ant-steps-item-section > div.ant-steps-item-header > div.ant-steps-item-title"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ant-steps-item.ant-steps-item-wait:nth-of-type(4) > div.ant-steps-item-wrapper > div.ant-steps-item-section > div.ant-steps-item-header > div.ant-steps-item-title"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "div.ant-select-placeholder"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "placeholder \"42000\" 1.8:1 (need 4.5:1) — text #bfbfbf on #ffffff",
+          "selector": "input.ant-input.ant-input-outlined"
+        },
+        {
+          "antipattern": "nested-cards",
+          "name": "Nested cards",
+          "description": "Cards inside cards create visual noise and excessive depth. Flatten the hierarchy — use spacing, typography, and dividers instead of nesting containers.",
+          "severity": "warning",
+          "category": "slop",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "Card inside card",
+          "selector": "div.ant-card.ant-card-bordered:nth-of-type(1)"
+        },
+        {
+          "antipattern": "nested-cards",
+          "name": "Nested cards",
+          "description": "Cards inside cards create visual noise and excessive depth. Flatten the hierarchy — use spacing, typography, and dividers instead of nesting containers.",
+          "severity": "warning",
+          "category": "slop",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "Card inside card",
+          "selector": "div.ant-card-body > div.ant-flex > div.ant-card.ant-card-bordered:nth-of-type(2)"
+        },
+        {
+          "antipattern": "nested-cards",
+          "name": "Nested cards",
+          "description": "Cards inside cards create visual noise and excessive depth. Flatten the hierarchy — use spacing, typography, and dividers instead of nesting containers.",
+          "severity": "warning",
+          "category": "slop",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "Card inside card",
+          "selector": "div.DesignShowcase_sampleGap__9_OJ_ > div.ant-descriptions.ant-descriptions-small > div.ant-descriptions-view"
+        },
+        {
+          "antipattern": "nested-cards",
+          "name": "Nested cards",
+          "description": "Cards inside cards create visual noise and excessive depth. Flatten the hierarchy — use spacing, typography, and dividers instead of nesting containers.",
+          "severity": "warning",
+          "category": "slop",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "Card inside card",
+          "selector": "div.ant-layout.DesignShowcase_layoutSample__5IMFM"
+        },
+        {
+          "antipattern": "nested-cards",
+          "name": "Nested cards",
+          "description": "Cards inside cards create visual noise and excessive depth. Flatten the hierarchy — use spacing, typography, and dividers instead of nesting containers.",
+          "severity": "warning",
+          "category": "slop",
+          "file": "http://localhost:3410/design",
+          "line": 0,
+          "snippet": "Card inside card",
+          "selector": "div.ant-alert.ant-alert-error"
+        }
+      ]
+    },
+    {
+      "id": "practice",
+      "title": "執業主體（長組織名稱的帳號列）",
+      "url": "/practice",
+      "load": {
+        "msToStable": 1582,
+        "spinnerSamples": 0,
+        "samples": 4,
+        "skeletonSeen": true
+      },
+      "facts": {
+        "url": "/practice",
+        "primaryButtons": [
+          "送 出"
+        ],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [
+          "工作台",
+          "物件",
+          "案件",
+          "合約",
+          "收款帳戶",
+          "移交",
+          "通知",
+          "設計",
+          "執業主體",
+          "成員管理",
+          "我的證書"
+        ],
+        "selectedMenu": "執業主體",
+        "scrollHeight": 948
+      },
+      "screenshot": "after-practice.png",
+      "findings": [
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/practice",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ShellHeader_start__0KRcD > span.ant-typography.ant-typography-secondary"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/practice",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #1f9e3e on #eef6f0",
+          "selector": "tr.ant-table-row.ant-table-row-level-0:nth-of-type(2) > td.ant-table-cell:nth-of-type(3) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/practice",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #1f9e3e on #eef6f0",
+          "selector": "div.ant-spin > div.ant-spin-container > div.ant-table.ant-table-medium > div.ant-table-container > div.ant-table-content > table > tbody.ant-table-tbody > tr.ant-table-row.ant-table-row-level-0:nth-of-type(2) > td.ant-table-cell:nth-of-type(4) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/practice",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #1f9e3e on #eef6f0",
+          "selector": "tr.ant-table-row.ant-table-row-level-0:nth-of-type(3) > td.ant-table-cell:nth-of-type(3) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/practice",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #1f9e3e on #eef6f0",
+          "selector": "tr.ant-table-row.ant-table-row-level-0:nth-of-type(3) > td.ant-table-cell:nth-of-type(4) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/practice",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #1f9e3e on #eef6f0",
+          "selector": "div.ant-spin > div.ant-spin-container > div.ant-table.ant-table-medium > div.ant-table-container > div.ant-table-content > table > tbody.ant-table-tbody > tr.ant-table-row.ant-table-row-level-0 > td.ant-table-cell:nth-of-type(4) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/practice",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #1f9e3e on #eef6f0",
+          "selector": "div.ant-flex.ant-flex-align-flex-start > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/practice",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "#files_extra"
+        },
+        {
+          "antipattern": "script-error",
+          "name": "Uncaught script error on load",
+          "description": "A script threw an uncaught exception or failed to parse while the page loaded. Broken JavaScript silently kills reveals, interactions, and dynamic content, and can leave most of a page invisible. Fix the error before judging anything else.",
+          "severity": "error",
+          "category": "quality",
+          "file": "http://localhost:3410/practice",
+          "line": 0,
+          "snippet": "Uncaught Error: Hydration failed because the server rendered text didn't match the client. As a result this tree will be regenerated on the client. This can happen if a SSR-ed  (at throwOnHydrationMismatch, webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:5466:11)"
+        }
+      ]
+    },
+    {
+      "id": "practitioner",
+      "title": "我的證書",
+      "url": "/practitioner",
+      "load": {
+        "msToStable": 4538,
+        "spinnerSamples": 0,
+        "samples": 3,
+        "skeletonSeen": false
+      },
+      "facts": {
+        "url": "/practitioner",
+        "primaryButtons": [],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [
+          "工作台",
+          "物件",
+          "案件",
+          "合約",
+          "收款帳戶",
+          "移交",
+          "通知",
+          "設計",
+          "執業主體",
+          "成員管理",
+          "我的證書"
+        ],
+        "selectedMenu": "我的證書",
+        "scrollHeight": 900
+      },
+      "screenshot": "after-practitioner.png",
+      "findings": [
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/practitioner",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ShellHeader_start__0KRcD > span.ant-typography.ant-typography-secondary"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/practitioner",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #1f9e3e on #eef6f0",
+          "selector": "td.ant-table-cell:nth-of-type(5) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/practitioner",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #1f9e3e on #eef6f0",
+          "selector": "td.ant-table-cell:nth-of-type(6) > div.ant-flex.ant-flex-align-flex-start > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/practitioner",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #1f9e3e on #eef6f0",
+          "selector": "td.ant-table-cell:nth-of-type(4) > div.ant-flex.ant-flex-align-flex-start > span.ant-tag.ant-tag-filled"
+        }
+      ]
+    },
+    {
+      "id": "desk-queue",
+      "title": "審核台佇列",
+      "url": "/desk",
+      "load": {
+        "msToStable": 1501,
+        "spinnerSamples": 0,
+        "samples": 3,
+        "skeletonSeen": true
+      },
+      "facts": {
+        "url": "/desk",
+        "primaryButtons": [],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [
+          "工作台",
+          "物件",
+          "案件",
+          "合約",
+          "收款帳戶",
+          "移交",
+          "通知",
+          "設計",
+          "審核台"
+        ],
+        "selectedMenu": "審核台",
+        "scrollHeight": 900
+      },
+      "screenshot": "after-desk-queue.png",
+      "findings": [
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/desk",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ShellHeader_start__0KRcD > span.ant-typography.ant-typography-secondary"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/desk",
+          "line": 0,
+          "snippet": "4.3:1 (need 4.5:1) — text #5e6ad2 on #f0f4ff",
+          "advisory": true,
+          "selector": "tr.ant-table-row.ant-table-row-level-0:nth-of-type(2) > td.ant-table-cell:nth-of-type(5) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/desk",
+          "line": 0,
+          "snippet": "4.3:1 (need 4.5:1) — text #5e6ad2 on #f0f4ff",
+          "advisory": true,
+          "selector": "tr.ant-table-row.ant-table-row-level-0:nth-of-type(3) > td.ant-table-cell:nth-of-type(5) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/desk",
+          "line": 0,
+          "snippet": "4.3:1 (need 4.5:1) — text #5e6ad2 on #f0f4ff",
+          "advisory": true,
+          "selector": "tr.ant-table-row.ant-table-row-level-0:nth-of-type(4) > td.ant-table-cell:nth-of-type(5) > span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/desk",
+          "line": 0,
+          "snippet": "4.3:1 (need 4.5:1) — text #5e6ad2 on #f0f4ff",
+          "advisory": true,
+          "selector": "tr.ant-table-row.ant-table-row-level-0:nth-of-type(5) > td.ant-table-cell:nth-of-type(5) > span.ant-tag.ant-tag-filled"
+        }
+      ]
+    },
+    {
+      "id": "desk-credential",
+      "title": "審核台項目（證書核對）",
+      "url": "/desk/items/01M74MTEFFCR7BWWVAWZD4QK84",
+      "load": {
+        "msToStable": 2135,
+        "spinnerSamples": 0,
+        "samples": 4,
+        "skeletonSeen": false
+      },
+      "facts": {
+        "url": "/desk/items/01M74MTEFFCR7BWWVAWZD4QK84",
+        "primaryButtons": [
+          "登 錄"
+        ],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [
+          "工作台",
+          "物件",
+          "案件",
+          "合約",
+          "收款帳戶",
+          "移交",
+          "通知",
+          "設計",
+          "審核台"
+        ],
+        "selectedMenu": "審核台",
+        "scrollHeight": 1068
+      },
+      "screenshot": "after-desk-credential.png",
+      "findings": [
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/desk/items/01M74MTEFFCR7BWWVAWZD4QK84",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ShellHeader_start__0KRcD > span.ant-typography.ant-typography-secondary"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/desk/items/01M74MTEFFCR7BWWVAWZD4QK84",
+          "line": 0,
+          "snippet": "4.3:1 (need 4.5:1) — text #5e6ad2 on #f0f4ff",
+          "advisory": true,
+          "selector": "span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/desk/items/01M74MTEFFCR7BWWVAWZD4QK84",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "#validUntil_extra"
+        }
+      ]
+    },
+    {
+      "id": "desk-claim",
+      "title": "審核台項目（統編認領）",
+      "url": "/desk/items/01M74MTRQQQ2GYV3HGSNZKB3PE",
+      "load": {
+        "msToStable": 1214,
+        "spinnerSamples": 0,
+        "samples": 4,
+        "skeletonSeen": true
+      },
+      "facts": {
+        "url": "/desk/items/01M74MTRQQQ2GYV3HGSNZKB3PE",
+        "primaryButtons": [
+          "送出判定"
+        ],
+        "headerHeight": 48,
+        "logoutBottom": 40,
+        "menu": [
+          "工作台",
+          "物件",
+          "案件",
+          "合約",
+          "收款帳戶",
+          "移交",
+          "通知",
+          "設計",
+          "審核台"
+        ],
+        "selectedMenu": "審核台",
+        "scrollHeight": 1492
+      },
+      "screenshot": "after-desk-claim.png",
+      "findings": [
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/desk/items/01M74MTRQQQ2GYV3HGSNZKB3PE",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ShellHeader_start__0KRcD > span.ant-typography.ant-typography-secondary"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "advisory",
+          "category": "quality",
+          "file": "http://localhost:3410/desk/items/01M74MTRQQQ2GYV3HGSNZKB3PE",
+          "line": 0,
+          "snippet": "4.3:1 (need 4.5:1) — text #5e6ad2 on #f0f4ff",
+          "advisory": true,
+          "selector": "span.ant-tag.ant-tag-filled"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/desk/items/01M74MTRQQQ2GYV3HGSNZKB3PE",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "div.ant-empty-description"
+        },
+        {
+          "antipattern": "low-contrast",
+          "name": "Low contrast text",
+          "description": "Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.",
+          "severity": "warning",
+          "category": "quality",
+          "file": "http://localhost:3410/desk/items/01M74MTRQQQ2GYV3HGSNZKB3PE",
+          "line": 0,
+          "snippet": "3.2:1 (need 4.5:1) — text #8a8f98 on #ffffff",
+          "selector": "#note_extra"
+        },
+        {
+          "antipattern": "nested-cards",
+          "name": "Nested cards",
+          "description": "Cards inside cards create visual noise and excessive depth. Flatten the hierarchy — use spacing, typography, and dividers instead of nesting containers.",
+          "severity": "warning",
+          "category": "slop",
+          "file": "http://localhost:3410/desk/items/01M74MTRQQQ2GYV3HGSNZKB3PE",
+          "line": 0,
+          "snippet": "Card inside card",
+          "selector": "div.ant-alert.ant-alert-info"
+        }
+      ]
+    }
+  ]
+}
