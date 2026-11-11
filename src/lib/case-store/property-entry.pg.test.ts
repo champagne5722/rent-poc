@@ -58,6 +58,10 @@ describe.skipIf(!adminUrl)('從物件建立案件的入口查詢（真實 Postgr
     dbh = await createPgTestDatabase(adminUrl!, 1);
     useTxDriver(pgDriver(dbh.pool));
     await dbh.owner.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, 'A', 'practice'), ($2, 'B', 'practice')`, [orgA, orgB]);
+    // 案件的 rental_unit_id 有外鍵指向登記庫的租賃單位
+    const anchorId = newUlid();
+    await dbh.owner.query(`INSERT INTO registry.anchors (id, status) VALUES ($1, 'pending_verification')`, [anchorId]);
+    await dbh.owner.query(`INSERT INTO registry.rental_units (id, anchor_id, suffix, unit_type) VALUES ($1, $2, '0000', 'whole')`, [unitId, anchorId]);
     // 先建 B 的案件：B 的 ID 較小也較大都不得影響 A 的結果
     await seedMandate(orgB, 'active');
     await seedMasterLease(orgB, 'active');
