@@ -1,0 +1,29 @@
+/* 物件新增與編輯表單（MIL-177）。尺寸引用 DESIGN.md 的 CSS 變數，不寫死數值。 */
+
+.equipmentItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xxs);
+  min-width: calc(var(--space-xxl) * 3);
+}
+
+.quantity {
+  width: calc(var(--space-xxl) + var(--space-md));
+}
+
+.customAdd {
+  width: calc(var(--space-xxl) * 6);
+  margin-top: var(--space-xs);
+}
+
+.typeSelect {
+  width: calc(var(--space-xxl) * 2 + var(--space-md));
+}
+
+.sizeInput {
+  width: calc(var(--space-xxl) * 2);
+}
+
+.rentInput {
+  width: calc(var(--space-xxl) * 3);
+}

@@ -6,7 +6,7 @@ import type { SignerVerifyMethod } from '../signing-module/provider';
 import type { SignerRole } from '../types';
 
 /**
- * 文件類型。前兩個是合約，值與 `contracts.contract_type` 相同。
+ * 文件類型。`lease` 涵蓋三種租賃類合約（租賃、包租、轉租，MIL-199），案件種類由 `caseKind` 區分。`management` 與 `contracts.contract_type` 相同。
  * 後三個是 E 線的簽署標的，識別字與簽署標的的種類相同（ADR-0051 決議 1）。
  */
 export const DOCUMENT_TYPES = [

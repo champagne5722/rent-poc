@@ -1,8 +1,12 @@
 // 標籤對照表（MIL-122）：介面與文件上的稱謂一律從這裡取字。
 // 用詞來源：GLOSSARY「角色與合約地位」、PRD 0.2 與 P0-01。只匯出純函式與常數。
 
-/** 合約類型（ADR-0021 決議 2）。 */
-export type ContractType = 'lease' | 'management';
+/**
+ * 合約類型（ADR-0021 決議 2、ADR-0030 決議 6）：租賃、委託管理、包租、轉租四種，各有自己的範本。
+ * `master_lease` 與 `sublease` 與案件種類同名同義：包租是屋主租給包租業者那一份，轉租是包租業者租給承租人那一份。
+ * 注意：業務類型（BusinessType）的舊值 `master_lease` 指轉租，與這裡相反。
+ */
+export type ContractType = 'lease' | 'management' | 'master_lease' | 'sublease';
 
 /** 稱謂的單一來源。其他常數與函式都從這裡組字，不另寫字串。 */
 export const TERMS = {
@@ -12,6 +16,8 @@ export const TERMS = {
   lessee: '承租人',
   mandator: '委託人',
   mandatary: '受託人',
+  /** 包租合約的乙方、轉租合約的甲方。法定稱謂照公告原文寫「包租業」。 */
+  masterLessor: '包租業',
 } as const;
 
 export interface PartyLabels {
@@ -27,6 +33,9 @@ export interface PartyLabels {
 const PARTY_TITLES: Record<ContractType, { partyA: string; partyB: string }> = {
   lease: { partyA: TERMS.lessor, partyB: TERMS.lessee },
   management: { partyA: TERMS.mandator, partyB: TERMS.mandatary },
+  // 包租合約：出租人（屋主）與包租業。轉租合約：包租業與承租人（GLOSSARY「甲方」「乙方」）
+  master_lease: { partyA: TERMS.lessor, partyB: TERMS.masterLessor },
+  sublease: { partyA: TERMS.masterLessor, partyB: TERMS.lessee },
 };
 
 /** 甲方與乙方的稱謂依合約類型決定（GLOSSARY「甲方」「乙方」）。 */

@@ -322,16 +322,16 @@ export interface ContractFieldsBase extends TemplateBinding {
   extra: string; // 其他約定事項
 }
 
-// 租賃合約欄位值：建立時由物件帶入快照，之後與物件脫鉤（見 docs/domain-model.md）
-export interface LeaseContractFields extends ContractFieldsBase, EquipmentAnnexSnapshot {
-  /**
-   * 現況確認附件的內容（MIL-71）。包租租賃合約必附，其他組合不顯示也不印。
-   * 選填：送簽前就存在的舊合約沒有這個鍵，讀入不報錯，送簽後的舊合約 PDF 也不會多出附件頁。
-   */
-  statusAnnex?: StatusAnnex;
-  landlordName: string;
+/**
+ * 租賃類合約（租賃、包租、轉租）共用的欄位（MIL-199）：兩方當事人、物件快照、租金、押金、租期與設備附件。
+ * 三種合約各有自己的欄位型別，共用這一份。甲方是出租的一方，乙方是承租的一方：
+ * 租賃合約是出租人與承租人，包租合約是出租人與包租業，轉租合約是包租業與承租人（GLOSSARY「甲方」「乙方」）。
+ * 欄位名稱沿用 landlord 與 tenant，指的是位置，不是法定稱謂。
+ */
+export interface LeaseTermsFields extends ContractFieldsBase, EquipmentAnnexSnapshot {
+  landlordName: string; // 甲方（出租的一方）
   landlordEmail: string;
-  tenantName: string;
+  tenantName: string; // 乙方（承租的一方）
   tenantEmail: string;
   propertyName: string;
   propertyAddress: string;
@@ -342,6 +342,105 @@ export interface LeaseContractFields extends ContractFieldsBase, EquipmentAnnexS
   startDate: string; // YYYY-MM-DD
   endDate: string;
   payDay: number | null; // 每月付款日
+}
+
+// 租賃合約欄位值：建立時由物件帶入快照，之後與物件脫鉤（見 docs/domain-model.md）
+export interface LeaseContractFields extends LeaseTermsFields {
+  /**
+   * 現況確認附件的內容（MIL-71）。包租租賃合約必附，其他組合不顯示也不印。
+   * 選填：送簽前就存在的舊合約沒有這個鍵，讀入不報錯，送簽後的舊合約 PDF 也不會多出附件頁。
+   */
+  statusAnnex?: StatusAnnex;
+}
+
+/** 費用項目：住宅包租契約與住宅轉租契約的「租賃期間相關費用之支付」逐項約定負擔人。 */
+export const LEASE_FEE_ITEMS = ['management', 'water', 'electricity', 'gas', 'internet'] as const;
+export type LeaseFeeItem = (typeof LEASE_FEE_ITEMS)[number];
+
+/** 一方當事人的聯絡資料。公告要求載明的資料，平台目前沒有蒐集的部分先留空，條文印底線。待法務確認（MIL-62）。 */
+export interface LeasePartyContact {
+  /** 個人：戶籍地址。公司：營業地址。 */
+  registeredAddress?: string;
+  mailingAddress?: string;
+  phone?: string;
+  /** 公司才填：代表人姓名、統一編號、租賃住宅服務業登記證字號。 */
+  representative?: string;
+  taxId?: string;
+  licenseNo?: string;
+}
+
+/** 租賃住宅管理人員的資料。公告要求載明證書字號，ADR-0018 決議 14 決定簽署欄不印證號，這裡只在有填時印。 */
+export interface LeaseManagerContact {
+  name?: string;
+  certificateNo?: string;
+  mailingAddress?: string;
+  phone?: string;
+  email?: string;
+}
+
+/**
+ * 住宅包租契約與住宅轉租契約的選項型約定（MIL-199）。公告的應約定事項與應記載事項有許多「□…□…」的選項，
+ * 這裡存逐約的選擇。全部可選：沒填時用 `lease-family-terms.ts` 的預設值，預設值都待法務確認。
+ * 甲方與乙方是合約位置：包租合約的甲方是出租人、乙方是包租業，轉租合約的甲方是包租業、乙方是承租人。
+ * 建約精靈目前沒有編輯這些欄位的畫面，欄位由後續的票接上。
+ */
+export interface LeaseFamilyTerms {
+  /** 租賃範圍：全部或一部。一部時在 scopeNote 寫房間與位置。 */
+  scope?: 'whole' | 'part';
+  scopeNote?: string;
+  /** 土地與建物登記資料、車位、他項權利與查封登記的說明（公告租賃標的第一款的各目）。 */
+  titleNote?: string;
+  rentPaymentMethod?: 'cash' | 'transfer' | 'other';
+  /** 轉帳時寫金融機構、戶名與帳號。其他方式時寫方式。 */
+  rentPaymentNote?: string;
+  /** 各費用項目由甲方或乙方負擔。 */
+  feePayers?: Partial<Record<LeaseFeeItem, 'party_a' | 'party_b'>>;
+  /** 管理費的月額（元）。 */
+  managementFeeMonthly?: number | null;
+  parkingFeeMonthly?: number | null;
+  /** 其他費用及其支付方式。 */
+  otherFeesNote?: string;
+  /** 轉租合約：電費由承租人負擔時的計費方式。 */
+  electricityBilling?: 'per_kwh' | 'per_period';
+  /** 包租合約：出租人是否同意包租業以出借或轉租以外的方式供他人居住使用。 */
+  otherUse?: 'allowed' | 'not_allowed';
+  /** 包租合約：出租人是否同意包租業室內裝修。 */
+  renovation?: 'allowed' | 'not_allowed';
+  /** 包租合約：室內裝修費用由誰負擔。 */
+  renovationCostPayer?: 'party_a' | 'party_b';
+  /** 返還時回復原狀或現況返還。 */
+  restoreOnReturn?: 'restore' | 'as_is';
+  /** 租期屆滿前雙方得否終止租約。 */
+  earlyTermination?: 'allowed' | 'not_allowed';
+  /** 是否辦理公證，及公證後是否同意逕受強制執行。 */
+  notarization?: 'agreed' | 'not_agreed';
+  /** 修繕責任的項目與範圍（包租合約是出租人負擔修繕費用的項目，轉租合約是包租業負責修繕的項目）。 */
+  repairScopeNote?: string;
+  partyA?: LeasePartyContact;
+  partyB?: LeasePartyContact;
+  manager?: LeaseManagerContact;
+}
+
+/**
+ * 包租合約欄位值（MIL-199）：屋主（出租人，甲方）把租賃單位出租給包租業者（包租業，乙方）並同意它轉租。
+ * 法定文件名是住宅包租契約，條文依內政部公告，見 `master-lease-clauses.ts`。
+ * 不附現況確認附件（ADR-0030 決議 6）。
+ */
+export interface MasterLeaseContractFields extends LeaseTermsFields {
+  terms?: LeaseFamilyTerms;
+}
+
+/**
+ * 轉租合約欄位值（MIL-199）：包租業者（包租業，甲方）把承租的租賃單位轉租給承租人（乙方）。
+ * 法定文件名是住宅轉租契約，條文依內政部公告，見 `sublease-clauses.ts`。
+ * 現況確認附件跟著轉租合約（ADR-0030 決議 6），內容存在 `statusAnnex`。
+ */
+export interface SubleaseContractFields extends LeaseTermsFields {
+  statusAnnex?: StatusAnnex;
+  terms?: LeaseFamilyTerms;
+  /** 包租契約的租賃期間（YYYY-MM-DD）。轉租期間不得逾包租契約的租賃期間，有填時檢核。 */
+  masterLeaseStart?: string;
+  masterLeaseEnd?: string;
 }
 
 // 報酬約定的形式（MIL-74）。保守版本只有兩種：每月固定金額、每月租金百分比。待法務確認（MIL-62）。
@@ -371,7 +470,11 @@ export interface ManagementContractFields extends ContractFieldsBase {
 }
 
 /** 合約欄位：以合約的 `contract_type` 判別（見 `Contract`）。 */
-export type ContractFields = LeaseContractFields | ManagementContractFields;
+export type ContractFields =
+  | LeaseContractFields
+  | ManagementContractFields
+  | MasterLeaseContractFields
+  | SubleaseContractFields;
 
 // 簽署角色（ADR-0010）：簽署人在文件上的地位。畫面文字一律從 SIGNER_ROLE_LABELS 取。
 export const SIGNER_ROLES = ['party_a', 'party_b', 'practitioner'] as const;
@@ -451,8 +554,28 @@ export interface ManagementContract extends ContractBase {
   fields: ManagementContractFields;
 }
 
+export interface MasterLeaseContract extends ContractBase {
+  contract_type: 'master_lease';
+  fields: MasterLeaseContractFields;
+}
+
+export interface SubleaseContract extends ContractBase {
+  contract_type: 'sublease';
+  fields: SubleaseContractFields;
+}
+
 /** 合約：以 `contract_type` 判別的聯集，欄位形狀跟著類型走。 */
-export type Contract = LeaseContract | ManagementContract;
+export type Contract = LeaseContract | ManagementContract | MasterLeaseContract | SubleaseContract;
+
+/** 租賃類合約：租賃、包租、轉租。兩方當事人、租金、押金與租期的欄位相同（`LeaseTermsFields`），案件與帳務的處理也相同。 */
+export type LeaseFamilyContract = LeaseContract | MasterLeaseContract | SubleaseContract;
+
+/** 租賃類合約的類型。 */
+export const LEASE_FAMILY_TYPES = ['lease', 'master_lease', 'sublease'] as const;
+
+export function isLeaseFamilyContract(contract: Contract): contract is LeaseFamilyContract {
+  return (LEASE_FAMILY_TYPES as readonly string[]).includes(contract.contract_type);
+}
 
 // 衍生鏈上的一份合約（詳情頁「關聯合約」分頁只需編號與狀態）
 export interface ContractRelationRef {

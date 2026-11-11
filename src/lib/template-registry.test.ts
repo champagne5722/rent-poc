@@ -67,6 +67,8 @@ describe('審閱過的範本', () => {
   const reviewed = {
     lease: [{ ...DEFAULT_TEMPLATE, legalReviewed: true }],
     management: [],
+    master_lease: [],
+    sublease: [],
   };
 
   it('旗標為 true 的範本，綁定它的合約算已審閱', () => {

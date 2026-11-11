@@ -1,0 +1,15 @@
+/* 物件列表（MIL-177）。尺寸引用 DESIGN.md 的 CSS 變數，不寫死數值。 */
+
+/* 關鍵字搜尋框的寬度。antd Input 沒有寬度 token，這裡取 DESIGN.md 的 spacing 倍數 */
+.search {
+  width: calc(var(--space-xxl) * 6);
+}
+
+/* 展開列：租賃單位的小表格，縮排對齊物件列的第一個欄位 */
+.units {
+  padding: var(--space-xxs) 0 var(--space-xxs) var(--space-lg);
+}
+
+.unitTags {
+  max-width: calc(var(--space-xxl) * 5);
+}

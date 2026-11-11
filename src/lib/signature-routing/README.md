@@ -58,7 +58,7 @@
 
 「承租人是否為包租業者」不再是分流事實，它已併入案件種類 `master_lease`（包租案件）。分流不讀 `lesseeIsMasterLessor`。
 
-`documentType` 的值：`lease`、`management`、`handover_certificate`、`deposit_settlement`、`deposit_refund_certificate`。前兩個與 `contracts.contract_type` 相同。
+`documentType` 的值：`lease`、`management`、`handover_certificate`、`deposit_settlement`、`deposit_refund_certificate`。`management` 與 `contracts.contract_type` 相同。合約類型 `lease`、`master_lease`、`sublease`（MIL-199）的文件類型都是 `lease`，案件種類由 `caseKind` 區分，規則表版本沒有升。
 
 輸出 `SignatureRoute` 有三種：
 
@@ -90,6 +90,7 @@ fields.routing = {
 - 沒有 `fields.routing` 的 `management` 合約，視為委託管理案件。
 - 三個鍵必須都在，且型別正確。形狀不對時 `loadContractRoutingFacts` 回傳 `invalid_routing`，不退回預設值。
 - 文件類型由 `contracts.contract_type` 決定，不存在 `fields.routing`。
+- 包租合約（`master_lease`）與轉租合約（`sublease`）的案件種類由合約類型決定，快照的業務類型與 `lesseeIsMasterLessor` 不看，只讀 `brokerMediated`（MIL-199）。既有的 `lease` 合約仍照快照換算。
 - 快照換成案件種類（`facts.ts`，換法同 `caseKindOf`）：自管且承租人是包租業者是包租案件，業務類型 `master_lease` 是轉租案件，其餘是租賃案件。
 - 欄位互相矛盾的快照換不成案件種類：代管或轉租搭承租人是包租業者，委託管理合約搭代管以外的業務類型。`routingFactsOf` 回 `undefined_combination`，不給預設序列。存草稿時不擋，畫面與送簽時擋下。
 

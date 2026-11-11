@@ -110,6 +110,20 @@ describe('hasActiveLeaseForProperty', () => {
     expect(await check(property)).toBe(true);
   });
 
+  it.each(['master_lease', 'sublease'] as const)('已完成的%s合約也算租賃合約：租期未屆滿為真，已屆滿為假', async (type) => {
+    const property = await newProperty(kit.orgA);
+    await add(kit.orgA, property, 'completed', { endDate: '2026-11-08' }, type);
+    expect(await check(property)).toBe(false);
+    await add(kit.orgA, property, 'completed', { endDate: '2026-11-09' }, type);
+    expect(await check(property)).toBe(true);
+  });
+
+  it.each(['master_lease', 'sublease'] as const)('未完成的%s合約不算', async (type) => {
+    const property = await newProperty(kit.orgA);
+    await add(kit.orgA, property, 'draft', { endDate: '2999-12-31' }, type);
+    expect(await check(property)).toBe(false);
+  });
+
   it('租期止日沒填的已完成合約，保守視為未屆滿', async () => {
     const property = await newProperty(kit.orgA);
     await add(kit.orgA, property, 'completed', {});
