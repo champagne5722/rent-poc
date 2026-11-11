@@ -527,11 +527,16 @@ describe('結束已接受的申請（POST end）', () => {
 });
 
 describe('業者在接受前後都讀不到屋主的物件（第二塊才開）', () => {
-  it.each(['接受之後', '接受再結束之後'] as const)('%s：物件列表、物件詳情、物件的案件列表都讀不到', async (stage) => {
+  it.each(['接受之後', '接受再結束之後', '接受後 31 天失效之後', '送出後 8 天失效之後'] as const)('%s：物件列表、物件詳情、物件的案件列表都讀不到', async (stage) => {
     const { id, propertyId } = await submitted();
-    asPractice();
-    expect((await accept(id)).status).toBe(200);
-    if (stage === '接受再結束之後') expect((await end(id)).status).toBe(200);
+    if (stage === '送出後 8 天失效之後') {
+      await ageSubmitted(id, 8);
+    } else {
+      asPractice();
+      expect((await accept(id)).status).toBe(200);
+      if (stage === '接受再結束之後') expect((await end(id)).status).toBe(200);
+      if (stage === '接受後 31 天失效之後') await ageAccepted(id, 31);
+    }
     for (const who of [practice, rival]) {
       asPractice(who);
       expect(((await json(await getProperties())).data as unknown[]).length).toBe(0);
