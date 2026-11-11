@@ -279,11 +279,11 @@ lint 規則 `rent/no-inline-style` 擋下所有 JSX 的 `style` 屬性（規則�
 | 寬度、尺寸 | CSS Modules，數值引用 `var(--space-*)` |
 | 動態的值 | 用 class 名稱切換狀態，不在 `style` 內計算 |
 
-既有檔案的違規記在 `eslint-rules/inline-style-baseline.json`：
+範圍內的 inline style 已清到 0（MIL-185），規則是錯誤等級：
 
-- 數量只降不升。新增 inline style 會讓 lint 失敗。
-- 重構一個檔案時，必須清掉它的 inline style，並從基準刪除該條目。違規少於基準時，lint 也會失敗，提醒更新基準。
-- 執行 `npm run lint:inline-style`，把基準內的違規逐處列成警告，用來看還剩多少。平常的 `npm run lint` 不列這些警告，因為 `--max-warnings=10` 會被擠爆。
+- 任何 `style` 屬性都讓 `npm run lint` 失敗，沒有基準額度。
+- 承租人端（`src/app/tenant/**`、`src/components/Tenant*.tsx`）與 demo 頁（`src/app/demo/**`、`src/components/DemoOtpList.tsx`）不在重構範圍，例外清單在 `eslint.config.mjs` 的 `inlineStyleExempt`。
+- 新增頁面不得加入例外清單。
 
 ## 設定類頁面（MIL-181）
 

@@ -1,8 +1,0 @@
-{
-  "src/app/demo/mail/DemoMailList.tsx": 3,
-  "src/app/tenant/not-found.tsx": 1,
-  "src/components/DemoOtpList.tsx": 3,
-  "src/components/TenantCaseList.tsx": 4,
-  "src/components/TenantCaseView.tsx": 5,
-  "src/components/TenantShell.tsx": 5
-}

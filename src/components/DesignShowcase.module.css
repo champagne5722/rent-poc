@@ -23,11 +23,11 @@
 }
 
 .spacingBar {
-  height: 12px;
+  height: var(--space-sm);
 }
 
 .radiusRow {
-  margin-top: 16px;
+  margin-top: var(--space-md);
 }
 
 .radiusBox {
@@ -37,7 +37,7 @@
 }
 
 .sampleGap {
-  margin-top: 16px;
+  margin-top: var(--space-md);
 }
 
 .cardFlex {
