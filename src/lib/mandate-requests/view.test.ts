@@ -2,14 +2,23 @@ import { describe, expect, it } from 'vitest';
 import type { MandateRequestStatus, OwnerMandateRequest, PracticeMandateRequest, PropertyGroup } from '../types';
 import { STORED_STATUSES } from './status';
 import {
+  canEndRequest,
+  decisionErrorReloads,
+  decisionErrorText,
   draftBuildingNo,
   draftSummaryText,
+  formatMonthDay,
   kindOptions,
   licenseKindTitles,
   ownerCanSubmit,
   ownerCanWithdraw,
+  ownerClosedByText,
   ownerMustConfirmDraft,
   ownerNextStep,
+  practiceCanRespond,
+  practiceClosedByText,
+  practiceDeadlineText,
+  practiceMayShowUnits,
   practiceNextStep,
   requestKindsFor,
   requestLinkUrl,
@@ -126,8 +135,62 @@ describe('業者的下一步：不暗示連結有沒有被打開', () => {
     expect(step.detail).toBe('連結有效到 2026/11/17 10:00。');
   });
 
-  it('屋主送出後顯示租賃單位的數量', () => {
-    expect(practiceNextStep(practiceRequest('pending_practice', { unit_count: 3 })).detail).toBe('申請含 3 個租賃單位。');
+  it('屋主送出後顯示租賃單位的數量與回覆的期限', () => {
+    const step = practiceNextStep(practiceRequest('pending_practice', { unit_count: 3 }));
+    expect(step.detail).toBe('申請含 3 個租賃單位。請在 11月17日前回覆，逾期申請失效。');
+  });
+
+  it('已接受：寫「下一步是擬定契約」與送出合約的期限，不放任何物件的資料', () => {
+    const step = practiceNextStep(practiceRequest('accepted', { deadline: '2026-12-10T02:00:00.000Z', unit_count: 3, accepted_at: '2026-11-10T02:00:00.000Z' }));
+    expect(step.headline).toBe('申請已接受');
+    expect(step.detail).toBe('下一步是擬定契約。請在 12月10日前送出合約，逾期申請失效。');
+    expect(`${step.headline}${step.detail}`).not.toMatch(/租賃單位|物件|地址/);
+  });
+
+  it('已結束：寫是哪一方結束的', () => {
+    expect(practiceNextStep(practiceRequest('ended', { closed_by: 'owner' })).headline).toBe('屋主已結束申請，不需要處理');
+    expect(practiceNextStep(practiceRequest('ended', { closed_by: 'practice' })).headline).toBe('你的組織已結束申請，不需要處理');
+    expect(practiceClosedByText({ status: 'declined', closed_by: 'practice' })).toBeNull();
+  });
+});
+
+describe('業者的期限與租賃單位的顯示', () => {
+  it('月日用臺北時間，月日不補零', () => {
+    expect(formatMonthDay('2026-11-17T02:00:00.000Z')).toBe('11月17日');
+    expect(formatMonthDay('2026-03-05T20:00:00.000Z')).toBe('3月6日');
+    expect(formatMonthDay(null)).toBe('—');
+    expect(formatMonthDay('不是日期')).toBe('—');
+  });
+
+  it('待業者接受寫幾月幾日前回覆，已接受寫幾月幾日前送出合約', () => {
+    expect(practiceDeadlineText({ status: 'pending_practice', deadline: '2026-11-17T02:00:00.000Z' })).toBe('11月17日前回覆');
+    expect(practiceDeadlineText({ status: 'accepted', deadline: '2026-12-10T02:00:00.000Z' })).toBe('12月10日前送出合約');
+  });
+
+  it('待屋主確認維持完整的連結失效時間，已失效寫已失效，沒有期限的狀態是 null', () => {
+    expect(practiceDeadlineText({ status: 'pending_owner', deadline: '2026-11-17T02:00:00.000Z' })).toBe('2026/11/17 10:00');
+    expect(practiceDeadlineText({ status: 'expired', deadline: null })).toBe('已失效');
+    for (const status of ['declined', 'withdrawn', 'ended', 'completed'] as const) {
+      expect(practiceDeadlineText({ status, deadline: null })).toBeNull();
+    }
+  });
+
+  it('接受之後不顯示租賃單位的數量', () => {
+    expect(practiceMayShowUnits({ accepted_at: null })).toBe(true);
+    expect(practiceMayShowUnits({ accepted_at: '2026-11-10T02:00:00.000Z' })).toBe(false);
+  });
+
+  it('只有待業者接受能回覆，只有已接受能結束', () => {
+    expect(ALL_STATUSES.filter((s) => practiceCanRespond({ status: s }))).toEqual(['pending_practice']);
+    expect(ALL_STATUSES.filter((s) => canEndRequest({ status: s }))).toEqual(['accepted']);
+  });
+
+  it('not_pending 一律寫「申請的狀態已改變」，其他錯誤用伺服端的固定訊息', () => {
+    expect(decisionErrorText('not_pending', '這份申請已經不是待業者接受的狀態，不能再處理', '失敗')).toBe('申請的狀態已改變');
+    expect(decisionErrorText('no_eligible_manager', '貴公司目前沒有通過驗證的租賃住宅管理人員', '失敗')).toBe('貴公司目前沒有通過驗證的租賃住宅管理人員');
+    expect(decisionErrorText(undefined, undefined, '失敗')).toBe('失敗');
+    expect(decisionErrorReloads('not_pending')).toBe(true);
+    expect(decisionErrorReloads('manager_not_eligible')).toBe(false);
   });
 });
 
@@ -137,6 +200,16 @@ describe('屋主的下一步與按鈕', () => {
       const step = ownerNextStep(ownerRequest(status));
       expect(step.headline.length).toBeGreaterThan(0);
     }
+  });
+
+  it('已接受只寫已接受，未接受只寫三個字，已結束寫是哪一方', () => {
+    expect(ownerNextStep(ownerRequest('accepted')).headline).toBe('業者已接受申請');
+    const declined = ownerNextStep(ownerRequest('declined', { closed_by: 'practice' }));
+    expect(declined.headline).toBe('未接受');
+    expect(declined.detail).toBeUndefined();
+    expect(ownerNextStep(ownerRequest('ended', { closed_by: 'practice' })).headline).toBe('業者已結束申請，不需要處理');
+    expect(ownerNextStep(ownerRequest('ended', { closed_by: 'owner' })).headline).toBe('你已結束申請，不需要處理');
+    expect(ownerClosedByText({ status: 'accepted', closed_by: null })).toBeNull();
   });
 
   it('只有待屋主確認能送出', () => {

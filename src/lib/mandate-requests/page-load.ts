@@ -5,10 +5,19 @@ import { withTx } from '../pg/database';
 import { isUlid } from '../pg/ulid';
 import { getMyRegistration } from '../practice-entities/applicant';
 import { listPropertyGroups } from '../properties';
+import { listOrgEmployments } from '../practitioners/applicant';
 import { toDbContext, Unauthenticated } from '../request-context';
-import type { MandateRequestKind, MandateRequestLinkView, OwnerMandateRequest, PracticeMandateRequest, PropertyGroup } from '../types';
+import type {
+  MandateManagerCandidate,
+  MandateRequestKind,
+  MandateRequestLinkView,
+  OwnerMandateRequest,
+  PracticeMandateRequest,
+  PropertyGroup,
+} from '../types';
 import { isWellFormedRequestCode } from './code';
 import { deleteTranscriptFiles } from './files';
+import { listManagerCandidates } from './decision-repository';
 import { getOwnerRequest, listOwnerRequests } from './owner-repository';
 import { expireMandateRequests, getLinkView, getPracticeRequest, listPracticeRequests } from './repository';
 import { requestKindsFor } from './view';
@@ -68,8 +77,23 @@ export async function loadCreatableKinds(): Promise<CreatableKindsLoad> {
 }
 
 export type RequestDetailLoad =
-  | { kind: 'practice'; request: PracticeMandateRequest }
-  | { kind: 'owner'; request: OwnerMandateRequest; groups: PropertyGroup[] }
+  | {
+      kind: 'practice';
+      request: PracticeMandateRequest;
+      /** 目前身分是組織管理員：只有管理員能接受、不接受與結束。其他角色畫面只顯示說明。 */
+      isAdmin: boolean;
+      /** 接受時能指派的管理人員。只有管理員、而且申請待業者接受時才讀，否則是空陣列。 */
+      candidates: MandateManagerCandidate[];
+      /** 已接受的申請指派的管理人員姓名。沒有或任職已不在清單時是 null。 */
+      managerName: string | null;
+    }
+  | {
+      kind: 'owner';
+      request: OwnerMandateRequest;
+      groups: PropertyGroup[];
+      /** 屋主端結束申請限 admin 與 staff（動作 request.end）。 */
+      canEnd: boolean;
+    }
   // 不是自己的申請、不存在、或 ID 格式不合：回應相同，畫面顯示同一個「找不到」
   | { kind: 'not_found' }
   | { kind: 'forbidden' };
@@ -94,10 +118,22 @@ export async function loadRequestDetail(id: string): Promise<RequestDetailLoad> 
         } catch (error) {
           if (!(error instanceof Forbidden)) throw error;
         }
-        return { kind: 'owner', request, groups };
+        return { kind: 'owner', request, groups, canEnd: rc.role !== 'viewer' };
       }
       const request = await getPracticeRequest(tx, id, now);
-      return request ? { kind: 'practice', request } : { kind: 'not_found' };
+      if (!request) return { kind: 'not_found' };
+      const isAdmin = rc.role === 'admin';
+      let candidates: MandateManagerCandidate[] = [];
+      if (isAdmin && request.status === 'pending_practice') {
+        await authorize(tx, 'request.manager_candidates', { type: 'org' });
+        candidates = await listManagerCandidates(tx, now);
+      }
+      let managerName: string | null = null;
+      if (request.manager_employment_id) {
+        const employments = await listOrgEmployments(tx);
+        managerName = employments.find((employment) => employment.id === request.manager_employment_id)?.displayName ?? null;
+      }
+      return { kind: 'practice', request, isAdmin, candidates, managerName };
     });
   } catch (error) {
     if (error instanceof Forbidden) return { kind: 'forbidden' };

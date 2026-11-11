@@ -7,11 +7,11 @@ import { useRouter } from 'next/navigation';
 import ListPage from '@/components/page/ListPage';
 import StatusTag from '@/components/StatusTag';
 import { formatTaipeiDateTime } from '@/lib/ownership/format';
-import { draftSummaryText } from '@/lib/mandate-requests/view';
+import { draftSummaryText, practiceDeadlineText, practiceMayShowUnits } from '@/lib/mandate-requests/view';
 import type { OwnerMandateRequest, PracticeMandateRequest } from '@/lib/types';
 
 // 申請列表（MIL-206 畫面段）。業者與屋主共用 /requests，依組織的種類顯示各自的欄位。
-// 業者端只有種類、狀態、建立與失效的時間、代填的摘要，屋主送出後多一欄租賃單位的數量。不得有任何暗示連結有沒有被打開的欄位。
+// 業者端只有種類、狀態、建立時間、期限（待業者接受是「M月D日前回覆」，已接受是「M月D日前送出合約」）、代填的摘要，屋主送出後多一欄租賃單位的數量。不得有任何暗示連結有沒有被打開的欄位。
 // 屋主端列出已綁定自己組織的申請。屋主沒送出就離開的申請，業者端沒有任何紀錄，屋主端仍看得到自己的。
 
 const COUNT_UNKNOWN = '—';
@@ -35,9 +35,9 @@ export function PracticeRequestList({ requests, canCreate }: { requests: Practic
     { title: '申請的種類', dataIndex: 'kind_label', width: 140 },
     { title: '狀態', width: 130, render: (_, r) => <StatusTag kind="mandateRequest" value={r.status} /> },
     { title: '代填的物件資料', render: (_, r) => draftSummaryText(r.draft, r.status === 'pending_owner' ? '未代填' : COUNT_UNKNOWN) },
-    { title: '租賃單位', width: 100, render: (_, r) => (r.unit_count === null ? COUNT_UNKNOWN : `${r.unit_count} 個`) },
+    { title: '租賃單位', width: 100, render: (_, r) => (r.unit_count === null || !practiceMayShowUnits(r) ? COUNT_UNKNOWN : `${r.unit_count} 個`) },
     { title: '建立時間', width: 160, render: (_, r) => formatTaipeiDateTime(r.created_at) },
-    { title: '期限', width: 160, render: (_, r) => (r.status === 'expired' ? '已失效' : r.deadline ? formatTaipeiDateTime(r.deadline) : COUNT_UNKNOWN) },
+    { title: '期限', width: 160, render: (_, r) => practiceDeadlineText(r) ?? COUNT_UNKNOWN },
     { title: '操作', key: 'action', width: 80, fixed: 'right', render: (_, r) => detailLink(r.id) },
   ];
   return (
