@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { seedOwnerHandover, uniqueSuffix } from '../helpers/api';
 import { signUpAsOwner } from '../helpers/login';
+import { collectConsoleProblems } from '../helpers/console';
 
 // 流程 8：屋主端移交詳情（MIL-185）。
 // 移交資料還在記憶體 adapter，真實登入的屋主預設看不到移交，所以先走 demo API 替這位屋主建立一筆。
@@ -14,13 +15,7 @@ test('屋主端移交：清單列出示範移交，詳情頁載入後沒有 cons
   await signUpAsOwner(page, { email: `e2e-handover-${suffix}@example.com`, orgName: `E2E 移交 ${suffix}` });
   const id = await seedOwnerHandover(page, 'draft');
 
-  const problems: string[] = [];
-  page.on('console', (msg) => {
-    // dev server 的 CSS preload 提示（not-found.css）只在 next dev 出現，與頁面無關，不算
-    if (/was preloaded using link preload but not used/.test(msg.text())) return;
-    if (msg.type() === 'error' || msg.type() === 'warning') problems.push(`console.${msg.type()}: ${msg.text()}`);
-  });
-  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`));
+  const problems = collectConsoleProblems(page);
 
   await page.goto('/owner/handovers');
   await expect(page.getByText('臺北市中山區民生東路三段 51 號 9 樓')).toBeVisible();

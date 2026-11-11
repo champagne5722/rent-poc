@@ -46,7 +46,11 @@ export async function signUpAsOwner(page: Page, options: { email: string; orgNam
     await page.goto('/login');
     // 已經有身分時，登入頁會直接導向落地頁
     if (!new URL(page.url()).pathname.startsWith('/login')) return;
-    await page.getByRole('button', { name: /我是屋主/ }).click({ timeout: 5_000 });
+    // 上一輪已建好組織時，登入頁會在載入後才導走。等「按鈕出現」或「離開登入頁」其中一個，不在導覽途中點擊
+    const button = page.getByRole('button', { name: /我是屋主/ });
+    await Promise.race([button.waitFor({ timeout: 8_000 }), page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 8_000 })]);
+    if (!new URL(page.url()).pathname.startsWith('/login')) return;
+    await button.click({ timeout: 5_000 });
     await page.getByLabel('組織名稱').fill(options.orgName, { timeout: 5_000 });
     await page.getByRole('button', { name: '建立屋主組織' }).click();
     await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 15_000 });

@@ -6,9 +6,11 @@ import { expect, type Locator } from '@playwright/test';
  */
 export async function clickUntil(target: Locator, outcome: Locator): Promise<void> {
   await expect(async () => {
+    // 上一輪的點擊已經生效、只是結果慢出現時，按鈕可能已經消失。結果在了就不再點
+    if (await outcome.isVisible()) return;
     await target.click({ timeout: 5_000 });
-    await expect(outcome).toBeVisible({ timeout: 3_000 });
-  }).toPass({ timeout: 30_000 });
+    await expect(outcome).toBeVisible({ timeout: 8_000 });
+  }).toPass({ timeout: 40_000 });
 }
 
 /**

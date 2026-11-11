@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { seedNotification, uniqueSuffix } from '../helpers/api';
 import { signUpAsOwner } from '../helpers/login';
+import { collectConsoleProblems } from '../helpers/console';
 
 // 流程 6：站內通知的未讀列與標已讀（MIL-179、MIL-185）。
 // 用全新的帳號與組織，通知清單只有這一筆，不改共用登入狀態的未讀數。
@@ -15,11 +16,7 @@ test('通知列表：未讀列有「未讀」字樣，點「標為已讀」後�
   await seedNotification(page, title);
 
   // 未讀列有時間文字，server 與瀏覽器各算一次，不一致會造成 hydration 錯誤（MIL-185）
-  const problems: string[] = [];
-  page.on('console', (msg) => {
-    if (msg.type() === 'error' || msg.type() === 'warning') problems.push(`console.${msg.type()}: ${msg.text()}`);
-  });
-  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`));
+  const problems = collectConsoleProblems(page);
 
   await page.goto('/notifications');
   const row = page.getByRole('row').filter({ hasText: title });
