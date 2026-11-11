@@ -16,6 +16,8 @@ test('屋主端移交：清單列出示範移交，詳情頁載入後沒有 cons
 
   const problems: string[] = [];
   page.on('console', (msg) => {
+    // dev server 的 CSS preload 提示（not-found.css）只在 next dev 出現，與頁面無關，不算
+    if (/was preloaded using link preload but not used/.test(msg.text())) return;
     if (msg.type() === 'error' || msg.type() === 'warning') problems.push(`console.${msg.type()}: ${msg.text()}`);
   });
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`));
