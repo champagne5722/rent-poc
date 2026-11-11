@@ -70,7 +70,7 @@ const MANDATE_ITEMS: MandateItem[] = [
 
 describe('合約類型登錄', () => {
   it('每個合約類型都有定義，沒有漏的', () => {
-    expect([...CONTRACT_TYPES].sort()).toEqual(['lease', 'management']);
+    expect([...CONTRACT_TYPES].sort()).toEqual(['lease', 'management', 'master_lease', 'sublease']);
     for (const type of CONTRACT_TYPES) expect(contractTypeDefinition(type).type).toBe(type);
   });
 

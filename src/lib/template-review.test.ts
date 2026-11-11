@@ -37,7 +37,7 @@ describe('templateReviewBlock', () => {
   });
 
   it('範本已審閱就放行', () => {
-    const reviewed = { lease: [{ ...DEFAULT_TEMPLATE, legalReviewed: true }], management: [] };
+    const reviewed = { lease: [{ ...DEFAULT_TEMPLATE, legalReviewed: true }], management: [], master_lease: [], sublease: [] };
     expect(templateReviewBlock('lease', BOUND, PRODUCTION, reviewed)).toBeNull();
   });
 });

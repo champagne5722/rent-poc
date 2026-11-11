@@ -14,10 +14,12 @@ import { statusAnnexOf, statusAnnexRequired } from './index';
  * 頁數不受執業人員姓名影響，所以用空的指派產出。
  */
 export async function statusAnnexPageMap(contract: Contract): Promise<PdfPageMap | undefined> {
-  if (contract.contract_type !== 'lease' || !statusAnnexRequired(contract.fields.routing, 'lease')) return undefined;
-  const renderer = contractPdfRenderer('lease');
+  // 現況確認附件只有租賃合約（舊資料的轉租案件）與轉租合約有（ADR-0030 決議 6）
+  const type = contract.contract_type;
+  if ((type !== 'lease' && type !== 'sublease') || !statusAnnexRequired(contract.fields.routing, type)) return undefined;
+  const renderer = contractPdfRenderer(type);
   if (!renderer) return undefined;
-  const statusAnnex = statusAnnexOf(contract.status, 'lease', contract.fields);
+  const statusAnnex = statusAnnexOf(contract.status, type, contract.fields);
   return (await renderer.renderWithPages(contract.fields, {}, { statusAnnex })).pages;
 }
 

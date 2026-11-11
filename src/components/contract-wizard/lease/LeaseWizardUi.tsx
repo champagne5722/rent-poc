@@ -28,16 +28,16 @@ import type {
   ContractPartyRole,
   EquipmentAnnexRow,
   EquipmentVocabularyItem,
-  LeaseContractFields,
+  LeaseTermsFields,
 } from '@/lib/types';
 import { REPAIR_RESPONSIBILITIES, REPAIR_RESPONSIBILITY_LABELS } from '@/lib/types';
+import type { ContractType } from '@/lib/labels';
 import { contractEquipmentAnnex, formatEquipmentItem, newAnnexRow } from '@/lib/equipment';
 import { depositWarning, type DepositWarning } from '@/lib/deposit-warning';
 import {
   clauseSnapshots,
   reselectClauses,
   selectedClauseIds,
-  DEFAULT_TEMPLATE,
   templateLabel,
   upgradeNotice,
 } from '@/lib/clause-library';
@@ -59,11 +59,21 @@ import {
   type StatusAnnex,
   type StatusAnnexRow,
 } from '@/lib/status-annex';
-import { optionalClausesFor } from '@/lib/template-registry';
+import { LEASE_FAMILY_EXTRA_CLAUSE_LABELS } from '@/lib/lease-family-clauses';
+import { currentTemplate, optionalClausesFor } from '@/lib/template-registry';
 import type { FieldsStepProps, PropertyStepProps, SummaryContext, WizardTypeUi } from '../types';
 import { TemplateNotice } from '../TemplateNotice';
 
 const OPTIONAL_CLAUSES = optionalClausesFor('lease');
+
+/**
+ * 這個畫面服務的欄位形狀：租賃類合約（租賃、包租、轉租）共用的欄位，加上只有轉租合約與租賃合約才有的現況確認附件。
+ * 包租合約與轉租合約沿用同一個畫面（MIL-199），只有標籤與條件依合約類型取，版面不變。
+ */
+export type LeaseUiFields = LeaseTermsFields & { statusAnnex?: StatusAnnex };
+
+/** 租賃合約的畫面，沒有帶合約類型時的預設。 */
+const LEASE_TYPE: ContractType = 'lease';
 
 
 /**
@@ -74,8 +84,8 @@ function OptionalClauseChecklist({
   fields,
   onChange,
 }: {
-  fields: LeaseContractFields;
-  onChange: (clauses: LeaseContractFields['clauses']) => void;
+  fields: LeaseUiFields;
+  onChange: (clauses: LeaseUiFields['clauses']) => void;
 }) {
   const checked = selectedClauseIds(fields);
   const toggle = (id: string, on: boolean) => {
@@ -278,14 +288,18 @@ function StatusAnnexEditor({ annex, onChange }: { annex: StatusAnnex; onChange: 
 /** 升版提示（規格 §12）：草稿綁的範本或已勾條款有新版時提示可重建，按不按由出租人決定。 */
 function TemplateUpgradeNotice({
   fields,
+  contractType,
   onUpgrade,
   disabled,
 }: {
-  fields: LeaseContractFields;
+  fields: LeaseUiFields;
+  contractType: ContractType;
   onUpgrade: () => void;
   disabled?: boolean;
 }) {
-  const notice = upgradeNotice(fields);
+  // 範本與選用條款庫依合約類型取：包租與轉租合約有自己的範本，沒有選用條款
+  const template = currentTemplate(contractType) ?? undefined;
+  const notice = upgradeNotice(fields, { template, library: optionalClausesFor(contractType) });
   if (!notice.hasUpgrade) return null;
   const parts = [
     ...(notice.template ? [`範本 v${notice.template.from} → v${notice.template.to}`] : []),
@@ -318,8 +332,15 @@ function DepositWarningAlert({ warning, style }: { warning: DepositWarning | nul
 }
 
 /** 第①步：物件快照、分流條件（共用的 routingPanel）、範本、選用條款與升版提示。 */
-function LeasePropertyStep({ fields, routingPanel, saving, onFieldsChange, onCommitFields }: PropertyStepProps<LeaseContractFields>) {
-  const changeClauses = (clauses: LeaseContractFields['clauses']) => onFieldsChange({ ...fields, clauses });
+function LeasePropertyStep({
+  fields,
+  routingPanel,
+  saving,
+  onFieldsChange,
+  onCommitFields,
+  contractType,
+}: PropertyStepProps<LeaseUiFields> & { contractType: ContractType }) {
+  const changeClauses = (clauses: LeaseUiFields['clauses']) => onFieldsChange({ ...fields, clauses });
   // 升版重建＝重新快照最新範本版本與已勾條款條文（v1→v2 一併把舊設備欄位轉成附件列），
   // 並立刻存檔（出租人按了才會動）
   const upgradeTemplate = () => {
@@ -351,9 +372,9 @@ function LeasePropertyStep({ fields, routingPanel, saving, onFieldsChange, onCom
             ]}
           />
           {routingPanel}
-          <TemplateNotice contractType="lease" />
-          <OptionalClauseChecklist fields={fields} onChange={changeClauses} />
-          <TemplateUpgradeNotice fields={fields} onUpgrade={upgradeTemplate} disabled={saving} />
+          <TemplateNotice contractType={contractType} />
+          {optionalClausesFor(contractType).length > 0 && <OptionalClauseChecklist fields={fields} onChange={changeClauses} />}
+          <TemplateUpgradeNotice fields={fields} contractType={contractType} onUpgrade={upgradeTemplate} disabled={saving} />
           <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0, fontSize: 12 }}>
             物件資料在建立草稿時已帶入成快照，之後修改物件不影響這份合約。要換物件請回合約列表另建一份草稿。
             選用條款也在勾選當下快照，平台之後改版不影響這份合約。
@@ -370,9 +391,13 @@ function LeaseFieldsStep({
   lockedPartyRoles,
   practitionerSlot,
   onFieldsChange,
-}: FieldsStepProps<LeaseContractFields>) {
-  // 現況確認附件（MIL-71）：只有簽章分流規則表要求的組合（包租租賃合約）才顯示，其他組合沒有這個區塊
-  const statusAnnexShown = statusAnnexRequired(fields.routing, 'lease');
+  contractType,
+}: FieldsStepProps<LeaseUiFields> & { contractType: ContractType }) {
+  // 現況確認附件（MIL-71）：只有簽章分流規則表要求的組合（轉租）才顯示，其他組合沒有這個區塊
+  const statusAnnexShown = statusAnnexRequired(fields.routing, contractType);
+  // 包租與轉租合約的設備列在租賃標的條文，沒有範本版本之分，也沒有設備附件頁
+  const equipmentInClauses = contractType !== LEASE_TYPE;
+  const extraLabel = LEASE_FAMILY_EXTRA_CLAUSE_LABELS[contractType] ?? extraClauseLabel(fields);
   const statusAnnex = fields.statusAnnex ?? defaultStatusAnnex();
   const changeStatusAnnex = (next: StatusAnnex) => onFieldsChange({ ...fields, statusAnnex: next });
   // 欄位步驟邊填邊判斷：表單的值還沒併回 fields 快照前，警告要跟著輸入即時更新
@@ -476,7 +501,7 @@ function LeaseFieldsStep({
             </Row>
             <Form.Item
               name="extra"
-              label={`其他約定事項（${extraClauseLabel(fields)}）`}
+              label={`其他約定事項（${extraLabel}）`}
               style={{ marginBottom: 0 }}
             >
               <Input.TextArea rows={3} placeholder="無則留空" />
@@ -486,7 +511,18 @@ function LeaseFieldsStep({
           <Typography.Text strong style={{ display: 'block', marginTop: 16 }}>
             設備附件（附屬設備清單）
           </Typography.Text>
-          {usesEquipmentAnnex(fields) ? (
+          {equipmentInClauses ? (
+            <Alert
+              type="info"
+              showIcon
+              message="附屬設備列在租賃標的條文，不另產出附件頁"
+              description={
+                annexSummary.length
+                  ? `目前品項：${annexSummary.join('、')}。`
+                  : '目前沒有附屬設備。'
+              }
+            />
+          ) : usesEquipmentAnnex(fields) ? (
             <>
               <Typography.Paragraph type="secondary" style={{ margin: '4px 0 0', fontSize: 12 }}>
                 由物件的設備清單帶入，可逐約增刪列、調整數量與修繕責任；產出的合約以「詳如附件」引用這張清單，
@@ -515,7 +551,7 @@ function LeaseFieldsStep({
                 {STATUS_ANNEX_TITLE}（{STATUS_ANNEX_LEGAL_NAME}）
               </Typography.Text>
               <Typography.Paragraph type="secondary" style={{ margin: '4px 0 0', fontSize: 12 }}>
-                包租租賃合約必附。每一項選擇狀態，有瑕疵的項目要填備註。附件另成一頁排在簽署欄之後，
+                {contractType === LEASE_TYPE ? '包租租賃合約' : '轉租合約'}必附。每一項選擇狀態，有瑕疵的項目要填備註。附件另成一頁排在簽署欄之後，
                 與合約同一份文件送簽，並由執業人員簽章。項目清單為第 {STATUS_ANNEX_VERSION} 版，待法務確認。
               </Typography.Paragraph>
               <StatusAnnexEditor annex={statusAnnex} onChange={changeStatusAnnex} />
@@ -526,17 +562,17 @@ function LeaseFieldsStep({
 }
 
 /** 確認頁：押金超過 2 個月租金的警告，放在簽署順序說明之下。 */
-function LeaseConfirmNotices({ fields }: { fields: LeaseContractFields }) {
+function LeaseConfirmNotices({ fields }: { fields: LeaseUiFields }) {
   return <DepositWarningAlert warning={depositWarning(fields.rent, fields.deposit)} style={{ marginBottom: 12 }} />;
 }
 
 /** 確認頁摘要的租賃合約部分，從物件到其他約定事項。執業人員、簽署序列與簽署區由共用流程接在後面。 */
-function leaseSummaryItems(fields: LeaseContractFields, { labels }: SummaryContext) {
+function leaseSummaryItems(fields: LeaseUiFields, { labels }: SummaryContext, contractType: ContractType) {
   const selected = clauseSnapshots(fields);
   const annexSummary = equipmentAnnexSummary(fields);
   // 確認頁都是草稿，必附時一定有內容（沒填過就是全部未填）
   const statusAnnexLines = (() => {
-    const annex = statusAnnexOf('draft', 'lease', fields);
+    const annex = statusAnnexOf('draft', contractType, fields);
     return annex ? statusAnnexSummary(annex) : [];
   })();
   return [
@@ -556,7 +592,10 @@ function leaseSummaryItems(fields: LeaseContractFields, { labels }: SummaryConte
     { key: 'deposit', label: '押金', children: money(fields.deposit) },
     { key: 'lease', label: '租期', children: `${fields.startDate} ~ ${fields.endDate}` },
     { key: 'payDay', label: '每月付款日', children: fields.payDay != null ? `${fields.payDay} 日` : '—' },
-    { key: 'template', label: '範本', span: 2, children: `${templateLabel(fields)}（${DEFAULT_TEMPLATE.provider}）` },
+    { key: 'template', label: '範本', span: 2, children: `${templateLabel(fields, currentTemplate(contractType) ?? undefined)}（${currentTemplate(contractType)?.provider ?? '平台提供'}）` },
+    ...(optionalClausesFor(contractType).length === 0
+      ? []
+      : [
     {
       key: 'clauses',
       label: '選用條款',
@@ -573,6 +612,7 @@ function leaseSummaryItems(fields: LeaseContractFields, { labels }: SummaryConte
         '（未勾選）'
       ),
     },
+          ]),
     {
       key: 'equipmentAnnex',
       label: '設備附件',
@@ -621,11 +661,21 @@ interface LeaseFormValues {
   extra?: string;
 }
 
-export const leaseWizardUi: WizardTypeUi<LeaseContractFields> = {
-  PropertyStep: LeasePropertyStep,
-  FieldsStep: LeaseFieldsStep,
-  ConfirmNotices: LeaseConfirmNotices,
-  summaryItems: leaseSummaryItems,
+/**
+ * 租賃類合約的建約畫面：租賃合約、包租合約與轉租合約共用（MIL-199）。
+ * 版面與文字相同，差別只在範本、選用條款、設備附件、現況確認附件與其他約定事項的條號，這些依合約類型取。
+ */
+export function createLeaseWizardUi(contractType: ContractType): WizardTypeUi<LeaseUiFields> {
+  return {
+    PropertyStep: (props) => <LeasePropertyStep {...props} contractType={contractType} />,
+    FieldsStep: (props) => <LeaseFieldsStep {...props} contractType={contractType} />,
+    ConfirmNotices: LeaseConfirmNotices,
+    summaryItems: (fields, context) => leaseSummaryItems(fields, context, contractType),
+    ...leaseFormHandlers,
+  };
+}
+
+const leaseFormHandlers: Pick<WizardTypeUi<LeaseUiFields>, 'formValuesOf' | 'mergeFormValues' | 'partyFormValues'> = {
 
   formValuesOf(fields) {
     return {
@@ -660,3 +710,7 @@ export const leaseWizardUi: WizardTypeUi<LeaseContractFields> = {
     return values;
   },
 };
+
+export const leaseWizardUi = createLeaseWizardUi('lease');
+export const masterLeaseWizardUi = createLeaseWizardUi('master_lease');
+export const subleaseWizardUi = createLeaseWizardUi('sublease');

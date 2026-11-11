@@ -20,11 +20,12 @@ const LEADING_CLAUSE_COUNT = 7;
 
 const CN_DIGITS = ['一', '二', '三', '四', '五', '六', '七', '八', '九'] as const;
 
-/** 條號的中文數字；範本九條＋選用條款最多五條，十九以內夠用。 */
+/** 條號的中文數字。範本九條＋選用條款最多五條，住宅包租與轉租範本依公告到二十四條，九十九以內夠用。 */
 export function clauseNumeral(n: number): string {
   if (n < 10) return CN_DIGITS[n - 1];
-  if (n === 10) return '十';
-  return `十${CN_DIGITS[n - 11]}`;
+  if (n < 20) return n === 10 ? '十' : `十${CN_DIGITS[n - 11]}`;
+  const tens = `${CN_DIGITS[Math.floor(n / 10) - 1]}十`;
+  return n % 10 === 0 ? tens : `${tens}${CN_DIGITS[(n % 10) - 1]}`;
 }
 
 /**

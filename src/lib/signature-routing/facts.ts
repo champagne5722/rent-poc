@@ -49,11 +49,14 @@ export function describeRoutingConditions(c: ContractRoutingConditions): string 
  * 快照換成案件部分。欄位互相矛盾回 null。
  * - 委託管理合約：快照的業務類型只能是代管（ADR-0018 決議 5）。
  * - 租賃合約：承租人是包租業者只能搭自管（包租案件）。轉租與代管不能搭承租人是包租業者。
+ * - 包租合約與轉租合約（MIL-199）：案件種類由合約類型決定，快照的業務類型與「承租人是否為包租業者」不看。
+ *   快照只提供「是否有經紀業者居間」。這兩個舊欄位由 MIL-203 移除。
  */
 function caseBasisOf(contractType: ContractType, routing: ContractRoutingConditions | undefined): CaseRoutingBasis | null {
   if (contractType === 'management') {
     return routing === undefined || routing.businessType === 'managed' ? { caseKind: 'management' } : null;
   }
+  if (contractType === 'master_lease' || contractType === 'sublease') return { caseKind: contractType };
   const { businessType, lesseeIsMasterLessor } = routing ?? DEFAULT_ROUTING;
   if (lesseeIsMasterLessor && businessType !== 'self_managed') return null;
   const caseKind = caseKindOf({ kind: 'lease', businessType, lesseeIsMasterLessor });

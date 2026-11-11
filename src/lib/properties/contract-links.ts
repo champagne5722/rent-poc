@@ -1,5 +1,6 @@
 import { propertyHasContracts } from '@/lib/contracts';
 import type { OrgTx } from '@/lib/pg/with-tx';
+import { LEASE_FAMILY_TYPES } from '@/lib/types';
 
 // 物件與合約的接縫（MIL-145，MIL-83 之後的實作）。物件與合約都在 PostgreSQL，
 // 所以兩個函式用呼叫端的組織交易 `tx` 查 org.contracts，RLS 讓別的組織的合約不算。
@@ -32,15 +33,15 @@ export function taipeiToday(now: Date = new Date()): string {
 }
 
 /**
- * 物件有沒有已完成且租期未屆滿的租賃合約（P0-06 AC4）。租期止日當天仍算未屆滿。
+ * 物件有沒有已完成且租期未屆滿的租賃類合約（租賃、包租、轉租，`LEASE_FAMILY_TYPES`）（P0-06 AC4）。租期止日當天仍算未屆滿。
  * 租期止日沒填的已完成合約，無從判斷屆滿，保守視為未屆滿。
  */
 export async function hasActiveLeaseForProperty(propertyId: string, tx: OrgTx, now: Date = new Date()): Promise<boolean> {
   const today = taipeiToday(now);
   const { rows } = await tx.query<{ end_date: string | null }>(
     `SELECT fields->>'endDate' AS end_date FROM org.contracts
-      WHERE property_id = $1 AND status = 'completed' AND contract_type = 'lease'`,
-    [propertyId],
+      WHERE property_id = $1 AND status = 'completed' AND contract_type = ANY($2::text[])`,
+    [propertyId, [...LEASE_FAMILY_TYPES]],
   );
   return rows.some((row) => !row.end_date || row.end_date >= today);
 }

@@ -8,9 +8,16 @@ import type { ContractType } from './labels';
 import type { ContractAttachments } from './contract-types';
 import { PDF_PAGE_SIZE, generateContractPdfWithPages } from './pdf';
 import type { PdfPageMap } from './pdf-layout';
+import { generateMasterLeasePdfWithPages, generateSubleasePdfWithPages } from './pdf-lease-family';
 import { generateManagementPdfWithPages } from './pdf-management';
 import type { PrintedPractitioner } from './practitioner-assignment/seats';
-import type { ContractFields, LeaseContractFields, ManagementContractFields } from './types';
+import type {
+  ContractFields,
+  LeaseContractFields,
+  ManagementContractFields,
+  MasterLeaseContractFields,
+  SubleaseContractFields,
+} from './types';
 
 export interface ContractPdfRenderer<F extends ContractFields = ContractFields> {
   readonly pageSize: { readonly width: number; readonly height: number };
@@ -50,9 +57,27 @@ const managementRenderer: ContractPdfRenderer<ManagementContractFields> = {
     generateManagementPdfWithPages(fields, practitioners, attachments?.mandateItems ?? []),
 };
 
+// 包租合約不印現況確認附件（ADR-0030 決議 6），所以不看 attachments。
+const masterLeaseRenderer: ContractPdfRenderer<MasterLeaseContractFields> = {
+  pageSize: PDF_PAGE_SIZE,
+  render: async (fields, practitioners) => (await generateMasterLeasePdfWithPages(fields, practitioners)).pdf,
+  renderWithPages: (fields, practitioners) => generateMasterLeasePdfWithPages(fields, practitioners),
+};
+
+// 現況確認附件跟著轉租合約，內容存在欄位，由呼叫端算好傳入（statusAnnexOf）。
+const subleaseRenderer: ContractPdfRenderer<SubleaseContractFields> = {
+  pageSize: PDF_PAGE_SIZE,
+  render: async (fields, practitioners, attachments) =>
+    (await generateSubleasePdfWithPages(fields, practitioners, { statusAnnex: attachments?.statusAnnex })).pdf,
+  renderWithPages: (fields, practitioners, attachments) =>
+    generateSubleasePdfWithPages(fields, practitioners, { statusAnnex: attachments?.statusAnnex }),
+};
+
 const RENDERERS: Readonly<Record<ContractType, ContractPdfRenderer | null>> = {
   lease: leaseRenderer,
   management: managementRenderer,
+  master_lease: masterLeaseRenderer,
+  sublease: subleaseRenderer,
 };
 
 export function contractPdfRenderer(contractType: ContractType): ContractPdfRenderer | null {

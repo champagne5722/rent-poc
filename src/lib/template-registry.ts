@@ -4,7 +4,13 @@
 // 新增合約類型的範本時，只在 TEMPLATES 與 OPTIONAL_CLAUSE_LIBRARIES 加一列。
 // 範本與選用條款的版本、快照與升版機制仍在 clause-library.ts，這裡不重寫。
 
-import { DEFAULT_TEMPLATE, MANAGEMENT_TEMPLATE, OPTIONAL_CLAUSES } from './clause-library';
+import {
+  DEFAULT_TEMPLATE,
+  MANAGEMENT_TEMPLATE,
+  MASTER_LEASE_TEMPLATE,
+  OPTIONAL_CLAUSES,
+  SUBLEASE_TEMPLATE,
+} from './clause-library';
 import type { ContractType } from './labels';
 import type { ContractTemplate, OptionalClause, TemplateBinding } from './types';
 
@@ -15,12 +21,16 @@ export type TemplateRegistry = Readonly<Record<ContractType, readonly ContractTe
 export const TEMPLATES: TemplateRegistry = {
   lease: [DEFAULT_TEMPLATE],
   management: [MANAGEMENT_TEMPLATE],
+  master_lease: [MASTER_LEASE_TEMPLATE],
+  sublease: [SUBLEASE_TEMPLATE],
 };
 
-/** 各合約類型的選用條款庫。委託管理合約沒有選用條款。 */
+/** 各合約類型的選用條款庫。委託管理、包租與轉租合約沒有選用條款。 */
 export const OPTIONAL_CLAUSE_LIBRARIES: Readonly<Record<ContractType, readonly OptionalClause[]>> = {
   lease: OPTIONAL_CLAUSES,
   management: [],
+  master_lease: [],
+  sublease: [],
 };
 
 export function templatesFor(

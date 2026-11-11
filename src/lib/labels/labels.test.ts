@@ -104,6 +104,7 @@ describe('TERMS 與 LEGACY_TERMS', () => {
       lessee: '承租人',
       mandator: '委託人',
       mandatary: '受託人',
+      masterLessor: '包租業',
     });
   });
 
@@ -120,7 +121,7 @@ describe('TERMS 與 LEGACY_TERMS', () => {
     const banned = [...LEGACY_TERMS.everywhere, ...LEGACY_TERMS.contractPdfAndLessee];
     const outputs = [
       ...Object.values(TERMS),
-      ...(['lease', 'management'] as const).flatMap((t) => Object.values(partyLabels(t))),
+      ...(['lease', 'management', 'master_lease', 'sublease'] as const).flatMap((t) => Object.values(partyLabels(t))),
       ...(['management', 'master_lease', 'brokerage'] as const).map((k) => statutoryTitle(k)),
       ...(['rental_housing_manager', 'real_estate_broker', 'real_estate_sales_agent'] as const).map(
         practitionerTitle,
