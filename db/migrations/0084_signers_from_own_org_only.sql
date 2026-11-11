@@ -314,6 +314,8 @@ BEGIN
       JOIN registry.practitioners pr ON pr.id = m.practitioner_id
       JOIN registry.practice_entities e ON e.id = a.entity_id AND e.org_id = a.org_id
      WHERE m.entity_id = a.entity_id
+     -- 同一個案件的同一個席位只有一列。案件下有多份合約指派了同一個席位時，最新的指派優先
+     ORDER BY a.assigned_at DESC, a.id DESC
     ON CONFLICT DO NOTHING;
     GET DIAGNOSTICS moved = ROW_COUNT;
     total_moved := total_moved + moved;

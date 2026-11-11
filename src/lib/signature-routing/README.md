@@ -137,6 +137,10 @@ fieldsOfSeat(plan, ruleId, signatureFields): SignatureField[]
 - 簽署區編輯器依 `SeatView[]` 提供新增按鈕，新增的框寫入 `slot`。按鈕依印列順序排，與簽署順序無關。
 - 送簽前的原因清單是 `contract-wizard.ts` 的 `sendBlockReasons`。沒有指派的執業人員席位列為「尚未指派」。資格由伺服器的 `checkSendPreconditions` 判定，確認頁併入列出。
 
+## 分流事實取自案件（MIL-200）
+
+`loadContractRoutingFacts` 在合約掛在案件下時，案件種類與租賃案件的業務類型讀案件列（`org.cases.case_kind`、`business_type`），不讀合約的欄位快照。快照 `fields.routing` 仍保存建約當時的條件，不回寫；「是否有居間」只存在快照裡，所以仍讀快照。沒有案件的合約仍由快照推導。案件的資料不一致（租賃案件沒有自管或代管的業務類型）時不猜，沿用快照推導的結果。
+
 ## 現況確認附件頁（MIL-71）
 
 - `requiredFieldPages` 含 `status_annex` 的席位必須在附件頁有簽署區域。第一版只有 `lease.master_lease.practitioner`。
