@@ -19,7 +19,15 @@ const AT = '2026-11-09T12:00:00+08:00';
 
 /** 兩個 adapter 各自的測試資料對應。契約只靠這些 ID 與欄位，不碰 adapter 內部。 */
 interface Fixture {
+  /** 北辰的組織看到的 registry。 */
   registry: PracticeRegistry;
+  /**
+   * 依執業主體取得「自家組織」看到的 registry。seed 是示範用假資料，不分組織，每個執業主體回同一個。
+   * 真實 adapter 只回自家組織的資料（MIL-200），所以雲頂的資料要用雲頂的組織查。
+   */
+  registryFor(entityId: string): PracticeRegistry;
+  /** seed 列出全部執業主體；真實 adapter 只列自家的。 */
+  scope: 'global' | 'own';
   /** 兼營代管與包租、有多位專任管理人員的執業主體 */
   beichen: string;
   /** 只有經紀業別的執業主體 */
@@ -52,9 +60,11 @@ function runContract(name: string, setup: () => Promise<Fixture> | Fixture) {
       const masterLease = await fx.registry.listEntities({ licenseKind: 'master_lease' });
       expect(masterLease.map((e) => e.id)).toContain(fx.beichen);
       expect(masterLease.every((e) => e.licenseKinds.includes('master_lease'))).toBe(true);
-      const brokerage = await fx.registry.listEntities({ licenseKind: 'brokerage' });
+      const brokerage = await fx.registryFor(fx.yunding).listEntities({ licenseKind: 'brokerage' });
       expect(brokerage.map((e) => e.id)).toEqual([fx.yunding]);
-      expect((await fx.registry.listEntities()).length).toBeGreaterThan(masterLease.length);
+      if (fx.scope === 'global') expect((await fx.registry.listEntities()).length).toBeGreaterThan(masterLease.length);
+      // 自家的執業主體以外的，真實 adapter 不列（MIL-200）
+      else expect(masterLease.map((e) => e.id)).not.toContain(fx.yunding);
     });
 
     it('查得到的執業主體帶名稱與業別', async () => {
@@ -73,7 +83,8 @@ function runContract(name: string, setup: () => Promise<Fixture> | Fixture) {
       const signers = await fx.registry.listPartySigners(fx.beichen);
       expect(signers.length).toBeGreaterThan(0);
       expect(signers.every((s) => s.entityId === fx.beichen && s.email.includes('@'))).toBe(true);
-      expect(await fx.registry.getPartySigner(signers[0].id)).toEqual(signers[0]);
+      // 列出時 email 可能是遮罩的（真實 adapter），用 ID 查單筆才是真實 email。其他欄位相同
+      expect(await fx.registry.getPartySigner(signers[0].id)).toEqual({ ...signers[0], email: expect.stringContaining('@') });
     });
 
     it('執業人員候選只含符合證書種類與專任要求的人', async () => {
@@ -92,7 +103,7 @@ function runContract(name: string, setup: () => Promise<Fixture> | Fixture) {
     });
 
     it('經紀營業員不在經紀人候選內', async () => {
-      const list = await fx.registry.listPractitioners(fx.yunding, {
+      const list = await fx.registryFor(fx.yunding).listPractitioners(fx.yunding, {
         certificateKinds: ['real_estate_broker'],
         fullTime: false,
         licenseKind: 'brokerage',
@@ -103,9 +114,10 @@ function runContract(name: string, setup: () => Promise<Fixture> | Fixture) {
 
     it('不要求專任時，專任旗標為否的人也會列出', async () => {
       const { entityId, id, certificateKinds, licenseKind } = fx.nonFullTime;
-      const required = await fx.registry.listPractitioners(entityId, { certificateKinds, fullTime: true, licenseKind });
+      const registry = fx.registryFor(entityId);
+      const required = await registry.listPractitioners(entityId, { certificateKinds, fullTime: true, licenseKind });
       expect(required.map((p) => p.id)).not.toContain(id);
-      const relaxed = await fx.registry.listPractitioners(entityId, { certificateKinds, fullTime: false, licenseKind });
+      const relaxed = await registry.listPractitioners(entityId, { certificateKinds, fullTime: false, licenseKind });
       expect(relaxed.map((p) => p.id)).toContain(id);
     });
 
@@ -145,13 +157,13 @@ function runContract(name: string, setup: () => Promise<Fixture> | Fixture) {
     it('候選帶 partyId，同一個自然人在當事人簽署人與執業人員兩種身分的 partyId 相同（合併用，MIL-76）', async () => {
       const chen = await fx.registry.getPractitioner(fx.chen, { licenseKind: 'master_lease' });
       const signers = await fx.registry.listPartySigners(fx.beichen);
-      const chenAsSigner = signers.find((s) => s.email === chen!.accountEmail);
+      const chenAsSigner = signers.find((s) => s.partyId === chen!.partyId);
       expect(chen!.partyId).toEqual(expect.any(String));
       expect(chen!.partyId).not.toBe('');
       expect(chenAsSigner?.partyId).toBe(chen!.partyId);
       expect(chenAsSigner?.entityId).toBe(chen!.entityId);
       // 不同的人 partyId 不同，包含同一執業主體內的其他人
-      const others = signers.filter((s) => s.email !== chen!.accountEmail);
+      const others = signers.filter((s) => s.partyId !== chen!.partyId);
       expect(others.length).toBeGreaterThan(0);
       expect(others.every((s) => s.partyId !== chen!.partyId)).toBe(true);
       const lin = await fx.registry.getPractitioner(fx.lin, { licenseKind: 'master_lease' });
@@ -159,8 +171,8 @@ function runContract(name: string, setup: () => Promise<Fixture> | Fixture) {
     });
 
     it('getPractitioner 不套用資格條件，才能列出被拒的原因', async () => {
-      const { id, licenseKind } = fx.nonFullTime;
-      expect(await fx.registry.getPractitioner(id, { licenseKind })).toMatchObject({ fullTime: false });
+      const { id, licenseKind, entityId } = fx.nonFullTime;
+      expect(await fx.registryFor(entityId).getPractitioner(id, { licenseKind })).toMatchObject({ fullTime: false });
       for (const unsignableId of fx.unsignable) {
         const candidate = await fx.registry.getPractitioner(unsignableId, { licenseKind: 'master_lease' });
         expect(candidate).not.toBeNull();
@@ -173,14 +185,18 @@ function runContract(name: string, setup: () => Promise<Fixture> | Fixture) {
     });
 
     it('getPractitioner 回傳經紀營業員，讓呼叫端說明為什麼不得簽章', async () => {
-      const sales = await fx.registry.getPractitioner(fx.salesAgent, { licenseKind: 'brokerage' });
+      const sales = await fx.registryFor(fx.yunding).getPractitioner(fx.salesAgent, { licenseKind: 'brokerage' });
       expect(sales).toMatchObject({ certificateKind: 'real_estate_sales_agent' });
     });
   });
 }
 
-runContract('seed adapter', () => ({
-  registry: createSeedPracticeRegistry({ today: () => TODAY }),
+runContract('seed adapter', () => {
+  const registry = createSeedPracticeRegistry({ today: () => TODAY });
+  return {
+  registry,
+  registryFor: () => registry,
+  scope: 'global',
   beichen: 'org-pe-beichen',
   yunding: 'org-pe-yunding',
   chen: 'pr-chen',
@@ -191,7 +207,8 @@ runContract('seed adapter', () => ({
   unsignable: ['pr-zhou', 'pr-xu'],
   salesAgent: 'pr-sun',
   broker: 'pr-zhao',
-}));
+  };
+});
 
 let liveKit: LiveKit;
 beforeAll(async () => {
@@ -199,11 +216,18 @@ beforeAll(async () => {
 });
 afterAll(() => liveKit?.close());
 
-runContract('真實 adapter（綁定的屋主組織）', () => {
+runContract('真實 adapter（各執業主體自己的組織）', () => {
   const { world } = liveKit;
+  const orgOf: Record<string, string> = {
+    [world.beichen.entityId]: world.beichen.orgId,
+    [world.yunding.entityId]: world.yunding.orgId,
+    [world.xinghe.entityId]: world.xinghe.orgId,
+  };
   return {
-    // 綁定的組織看得到全部事實，與 seed 一樣完整
-    registry: liveKit.registryAs(world.boundOrgId),
+    // 自己的組織看得到自己的全部事實（MIL-200：不再有跨組織的選人）
+    registry: liveKit.registryAs(world.beichen.orgId),
+    registryFor: (entityId: string) => liveKit.registryAs(orgOf[entityId]),
+    scope: 'own',
     beichen: world.beichen.entityId,
     yunding: world.yunding.entityId,
     chen: world.chen.employmentId,

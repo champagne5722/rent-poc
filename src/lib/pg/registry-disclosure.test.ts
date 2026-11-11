@@ -1,4 +1,5 @@
 import { withTx } from './database';
+import { newUlid } from './ulid';
 import type { DbContext, OrgTx } from './with-tx';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -15,6 +16,7 @@ import {
   attackerDraftOwner,
   attackerPracticeOrg,
   attackerRegisterCertificate,
+  attackerSeatOwner,
   CALLER_RELATIONS,
   observe,
   setupDisclosureWorld,
@@ -141,21 +143,103 @@ describe('關係表與期望值表一致', () => {
   });
 });
 
-describe('已知缺口仍然成立（缺口消失時這裡會失敗，請刪掉 knownGaps 並調整 bound 的期望值）', () => {
-  // MIL-116：bound 回該執業主體全部成員（或全部已驗證人員）的真實 email，不限於被指派的人。
-  // 指派只指向陳怡君，王建國（一般成員）與林志豪（已驗證但沒被指派）的 email 也被讀到。
-  const assignedOnly = (fn: string) => {
-    const variant = (REGISTRY_FUNCTION_CASES[fn].disclosure as { variants: readonly DisclosureVariant[] }).variants[0];
-    return async (relation: string) => {
-      const outcome = await run(relation, variant);
-      return outcome.status === 'ok' ? outcome.text : '';
-    };
-  };
-  it.each(['bound', 'boundByCase'])('party_signer_candidates 對 %s 讀得到沒被指派的成員的 email', async (relation) => {
-    expect(await assignedOnly('registry.party_signer_candidates')(relation)).toContain(world.live.world.beichen.people.wang.email);
+describe('MIL-200：簽章人員只從自家指派，合約指派不再綁定', () => {
+  const beichen = () => world.live.world.beichen;
+
+  it('擁有者組織的草稿合約指派指向北辰，讀不到北辰的任何人員資料', async () => {
+    const view = await run('draftAssigned', (REGISTRY_FUNCTION_CASES['registry.signing_view'].disclosure as { variants: readonly DisclosureVariant[] }).variants[0]);
+    expect(view.status === 'ok' ? JSON.parse(view.text)[0].v : null).toEqual({ licenses: [], practitioners: [] });
   });
-  it.each(['bound', 'boundByCase'])('signing_view 對 %s 讀得到沒被指派的已驗證人員的 email', async (relation) => {
-    expect(await assignedOnly('registry.signing_view')(relation)).toContain(world.live.world.beichen.people.lin.email);
+
+  it('攻擊者建草稿合約、存一筆指向北辰的指派之後，讀北辰與讀不存在的執業主體，回應完全相同（空）', async () => {
+    const attacker = await attackerDraftOwner(world);
+    await attackerAssign(world, attacker);
+    const read = (entityId: string, employmentId: string | null) =>
+      observe(world, attacker.ctx, async (tx) => ({
+        view: (await tx.query('SELECT registry.signing_view($1, $2) AS v', [entityId, employmentId])).rows,
+        signers: (await tx.query('SELECT * FROM registry.party_signer_candidates($1, NULL)', [entityId])).rows,
+        entities: (await tx.query('SELECT * FROM registry.list_practice_entities(NULL)')).rows,
+      }));
+    const real = await read(beichen().entityId, null);
+    expect(real).toEqual(await read(newUlid(), null));
+    expect(real.status === 'ok' ? real.fields : ['denied']).toEqual([]);
+    const byEmployment = await read(beichen().entityId, world.live.world.chen.employmentId);
+    expect(byEmployment).toEqual(await read(beichen().entityId, newUlid()));
+    expect(byEmployment.status === 'ok' ? byEmployment.fields : ['denied']).toEqual([]);
+  });
+
+  it.each(['practitioner', 'broker'] as const)(
+    '簽章席位成員不產生 bound：乙公司把同時是甲公司成員的人指派進 %s 席位，對甲公司的執業主體仍是 none',
+    async (relation) => {
+      const attacker = await attackerSeatOwner(world, relation);
+      const read = (entityId: string, employmentId: string | null) =>
+        observe(world, attacker.ctx, async (tx) => ({
+          view: (await tx.query('SELECT registry.signing_view($1, $2) AS v', [entityId, employmentId])).rows,
+          signers: (await tx.query('SELECT * FROM registry.party_signer_candidates($1, NULL)', [entityId])).rows,
+          signerById: (await tx.query('SELECT * FROM registry.party_signer_candidates(NULL, $1)', [beichen().people.chen.membershipId])).rows,
+        }));
+      const real = await read(beichen().entityId, null);
+      // 與「執業主體不存在」的回應逐值相同，而且沒有任何個資
+      expect(real).toEqual(await read(newUlid(), null));
+      expect(real.status === 'ok' ? real.fields : ['denied']).toEqual([]);
+      expect(real.status === 'ok' ? real.text : '').not.toContain(beichen().people.chen.email);
+      const view = await observe(world, attacker.ctx, (tx) => tx.query('SELECT registry.signing_view($1, NULL) AS v', [beichen().entityId]).then((r) => r.rows));
+      expect(view.status === 'ok' ? JSON.parse(view.text)[0].v : null).toEqual({ licenses: [], practitioners: [] });
+      const signers = await observe(world, attacker.ctx, (tx) => tx.query('SELECT * FROM registry.party_signer_candidates($1, NULL)', [beichen().entityId]).then((r) => r.rows));
+      expect(signers.status === 'ok' ? signers.text : '').toBe('[]');
+      const byEmployment = await read(beichen().entityId, world.live.world.chen.employmentId);
+      expect(byEmployment).toEqual(await read(beichen().entityId, newUlid()));
+      expect(byEmployment.status === 'ok' ? byEmployment.fields : ['denied']).toEqual([]);
+    },
+  );
+
+  it('受託人綁定（bound）列出成員與任職時，email 一律遮罩', async () => {
+    const signers = await observe(world, relationByName('bound').context(world), (tx) =>
+      tx.query('SELECT * FROM registry.party_signer_candidates($1, NULL)', [beichen().entityId]).then((r) => r.rows),
+    );
+    const text = signers.status === 'ok' ? signers.text : '';
+    expect(text).toContain('王');
+    expect(text).not.toContain(beichen().people.wang.email);
+    expect(text).toContain('***@');
+  });
+
+  it('own 列出成員與任職時 email 也遮罩，用 ID 查單筆才有真實 email', async () => {
+    const own = relationByName('own').context(world);
+    const listed = await observe(world, own, (tx) =>
+      tx.query('SELECT * FROM registry.party_signer_candidates($1, NULL)', [beichen().entityId]).then((r) => r.rows),
+    );
+    expect(listed.status === 'ok' ? listed.text : '').not.toContain(beichen().people.wang.email);
+    const single = await observe(world, own, (tx) =>
+      tx.query('SELECT * FROM registry.party_signer_candidates(NULL, $1)', [beichen().people.wang.membershipId]).then((r) => r.rows),
+    );
+    expect(single.status === 'ok' ? single.text : '').toContain(beichen().people.wang.email);
+    const view = await observe(world, own, (tx) =>
+      tx.query('SELECT registry.signing_view($1, NULL) AS v', [beichen().entityId]).then((r) => r.rows),
+    );
+    expect(view.status === 'ok' ? view.text : '').not.toContain(beichen().people.chen.email);
+  });
+
+  it('其他組織用北辰的成員 ID 查單筆，回應與不存在的 ID 相同（空）', async () => {
+    for (const relation of ['draftAssigned', 'unrelated', 'unrelatedOwner']) {
+      const call = (id: string) =>
+        observe(world, relationByName(relation).context(world), (tx) =>
+          tx.query('SELECT * FROM registry.party_signer_candidates(NULL, $1)', [id]).then((r) => r.rows),
+        );
+      const real = await call(beichen().people.chen.membershipId);
+      expect(real, relation).toEqual(await call(newUlid()));
+      expect(real.status === 'ok' ? real.text : '', relation).toBe('[]');
+    }
+  });
+
+  it('list_practice_entities 只列自己組織的執業主體：別家的名稱不出現', async () => {
+    for (const relation of ['own', 'unrelated', 'unrelatedOwner', 'draftAssigned', 'bound']) {
+      const outcome = await observe(world, relationByName(relation).context(world), (tx) =>
+        tx.query('SELECT * FROM registry.list_practice_entities(NULL)').then((r) => r.rows),
+      );
+      const names = outcome.status === 'ok' ? (JSON.parse(outcome.text) as Array<{ entity_id: string }>).map((r) => r.entity_id) : [];
+      if (relation === 'own') expect(names).toEqual([beichen().entityId]);
+      else expect(names, relation).toEqual([]);
+    }
   });
 });
 
@@ -211,8 +295,10 @@ describe('呼叫者自己能建立的關係讀不到證號原文', () => {
     expect(await certificateLeaks(attacker), '存指派之後').toEqual([]);
   });
 
-  it('建案件並加北辰成員為案件成員（已指派）', async () => {
+  it('建案件並加北辰成員為一般案件成員，或指派進簽章席位', async () => {
     expect(await certificateLeaks(await attackerCaseOwner(world))).toEqual([]);
+    expect(await certificateLeaks(await attackerSeatOwner(world, 'practitioner'))).toEqual([]);
+    expect(await certificateLeaks(await attackerSeatOwner(world, 'broker'))).toEqual([]);
   });
 });
 

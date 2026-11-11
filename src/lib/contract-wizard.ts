@@ -160,7 +160,11 @@ function fieldsBlockReason(
   attachments?: ContractAttachments,
 ): string | null {
   const unassigned = assignments ? unassignedPartySigners(fields, assignments, contractType) : [];
-  const skipped = new Set(unassigned.flatMap((role) => partyFieldLabels(contractType, role)));
+  // 執業主體是甲方或乙方時，那一方的姓名與 email 由伺服端依所選的當事人簽署人補進欄位（MIL-200：email 不經過瀏覽器），
+  // 所以這些欄位不在瀏覽器檢查缺漏。缺少簽署人由上面的 unassigned 說明，姓名與 email 是否相符由伺服端的送簽前檢查判定
+  const evaluation = evaluateRouting(fields.routing, contractType);
+  const serverFilled = evaluation.ok ? entityPartyRoles(evaluation.plan) : [];
+  const skipped = new Set([...unassigned, ...serverFilled].flatMap((role) => partyFieldLabels(contractType, role)));
   const missing = missingFieldLabels(fields, contractType, attachments).filter((label) => !skipped.has(label));
   if (missing.length) return `請先完成欄位：${missing.join('、')}`;
   if (unassigned.length) return `請先指派${SIGNER_ROLE_LABELS[unassigned[0]]}的當事人簽署人`;

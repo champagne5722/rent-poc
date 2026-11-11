@@ -29,8 +29,8 @@ export interface CallerRelationRow {
 }
 
 /**
- * 每種關係一列。MIL-116 把指派搬成案件成員，拿掉選人階段時，刪掉 `selecting` 這一列，
- * 再刪各函式期望值表裡 `by.selecting` 的項目（測試會列出還沒刪的）。
+ * 每種關係一列。MIL-200 拿掉 `selecting`（選人階段）與「合約指派造出 bound」。
+ * `draftAssigned` 留著當對照：草稿合約的指派指向北辰，現在與無關的組織相同，什麼都讀不到。
  */
 export const CALLER_RELATIONS: readonly CallerRelationRow[] = [
   {
@@ -46,22 +46,16 @@ export const CALLER_RELATIONS: readonly CallerRelationRow[] = [
     context: (w) => ({ kind: 'operator', operatorId: w.operatorUserId, orgId: PLATFORM_ORG_ID, ticketId: 'MIL-165' }),
   },
   {
+    name: 'draftAssigned',
+    label: '草稿合約的指派指向北辰（MIL-200 起不再綁定）',
+    creatable: true,
+    context: (w) => ({ kind: 'org', orgId: w.live.world.boundOrgId, partyId: w.members.draftAssigned }),
+  },
+  {
     name: 'bound',
-    label: '已指派（草稿合約的指派指向北辰）',
+    label: '已綁定（案件的受託人屬於北辰）',
     creatable: true,
-    context: (w) => ({ kind: 'org', orgId: w.live.world.boundOrgId, partyId: w.members.bound }),
-  },
-  {
-    name: 'boundByCase',
-    label: '已指派（案件成員屬於北辰）',
-    creatable: true,
-    context: (w) => ({ kind: 'org', orgId: w.live.world.caseBoundOrgId, partyId: w.members.boundByCase }),
-  },
-  {
-    name: 'selecting',
-    label: '選人階段（有草稿合約，沒有綁定；MIL-116 拿掉）',
-    creatable: true,
-    context: (w) => ({ kind: 'org', orgId: w.live.world.selectingOrgId, partyId: w.members.selecting }),
+    context: (w) => ({ kind: 'org', orgId: w.live.world.caseBoundOrgId, partyId: w.members.bound }),
   },
   {
     name: 'unrelated',
@@ -92,7 +86,7 @@ export interface DisclosureWorld {
   operatorUserId: string;
   unrelatedPracticeOrgId: string;
   /** 各關係的呼叫者 party：該組織的一般成員，不是北辰的人。 */
-  members: Record<'bound' | 'boundByCase' | 'selecting' | 'unrelated' | 'unrelatedOwner', string>;
+  members: Record<'draftAssigned' | 'bound' | 'unrelated' | 'unrelatedOwner', string>;
   /** 偵測個資用的特徵值。 */
   sentinels: Record<PiiField, readonly string[]>;
   close(): Promise<void>;
@@ -124,9 +118,8 @@ export async function setupDisclosureWorld(): Promise<DisclosureWorld> {
   await live.owner(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, '無關的執業主體組織', 'practice')`, [unrelatedPracticeOrgId]);
 
   const members = {
-    bound: await addMember(live, w.boundOrgId, '指派的屋主成員'),
-    boundByCase: await addMember(live, w.caseBoundOrgId, '案件綁定的屋主成員'),
-    selecting: await addMember(live, w.selectingOrgId, '選人中的屋主成員'),
+    draftAssigned: await addMember(live, w.boundOrgId, '指派的屋主成員'),
+    bound: await addMember(live, w.caseBoundOrgId, '案件綁定的屋主成員'),
     unrelated: await addMember(live, unrelatedPracticeOrgId, '無關的執業人員'),
     unrelatedOwner: await addMember(live, w.unrelatedOrgId, '無關的屋主成員'),
   };
@@ -150,6 +143,7 @@ export async function setupDisclosureWorld(): Promise<DisclosureWorld> {
     certificateKeys: { active: key('1234567'), lapsed: key('2000004') },
     reviewItems,
     entityIds: [w.beichen.entityId, w.yunding.entityId, w.xinghe.entityId],
+    membershipId: w.beichen.people.wang.membershipId,
   };
 
   return {
@@ -207,6 +201,8 @@ export function subjectFor(fx: DisclosureFixture, subject: DisclosureSubject | u
       return real ? fx.employmentIds.lapsed : newUlid();
     case 'certificateKey':
       return real ? fx.certificateKeys.lapsed : 'rental_housing_manager:112:內授營:9999999';
+    case 'membership':
+      return real ? fx.membershipId : newUlid();
     default:
       return '';
   }
@@ -266,7 +262,26 @@ export async function attackerAssign(world: DisclosureWorld, a: Attacker & { con
   );
 }
 
-/** 新開一個屋主組織，建案件並把北辰成員的 party 加為案件成員：關係是 bound（案件成員）。 */
+/**
+ * 新開一個執業主體組織（有自己的執業主體），建案件並把北辰成員的 party 指派進簽章席位。
+ * 這是乙公司把「同時是甲公司成員的人」指派到自家席位的正常操作（MIL-200），席位關係是 practitioner 或 broker。
+ * 這個關係是呼叫者自己能建立的，不得讓乙公司對北辰變成 bound。
+ */
+export async function attackerSeatOwner(world: DisclosureWorld, relation: 'practitioner' | 'broker' = 'practitioner'): Promise<Attacker> {
+  const a = await attackerPracticeOrgWithEntity(world);
+  const [entity] = await world.live.owner<{ id: string }>('SELECT id FROM registry.practice_entities WHERE org_id = $1', [a.orgId]);
+  const caseId = newUlid();
+  await withTx({ kind: 'org', orgId: a.orgId }, async (tx) => {
+    await tx.query(`INSERT INTO org.cases (id, org_id, kind, state, business_type, title) VALUES ($1, $2, 'lease', 'draft', 'master_lease', '攻擊案件')`, [caseId, a.orgId]);
+    await tx.query(
+      `INSERT INTO org.case_members (id, org_id, case_id, party_id, relation, slot, entity_id, employment_id) VALUES ($1, $2, $3, $4, $5, 'a', $6, $7)`,
+      [newUlid(), a.orgId, caseId, world.live.world.beichen.people.chen.partyId, relation, entity.id, world.live.world.chen.employmentId],
+    );
+  });
+  return a;
+}
+
+/** 新開一個屋主組織，建案件並把北辰成員的 party 加為一般案件成員（relation = practitioner，沒有席位）。 */
 export async function attackerCaseOwner(world: DisclosureWorld): Promise<Attacker> {
   const a = await newAttacker(world, 'owner', '攻擊者的案件屋主');
   const caseId = newUlid();

@@ -59,7 +59,7 @@ const caseScopedReads: Record<string, CaseScopedRead> = {
     note: '包租案件的 owner 讀不到合約（P0-09 AC5）',
   },
   'org.contract_events': { readableBy: [], note: '合約歷程。成員讀取未開放，承租人端不需要（MIL-121）' },
-  'org.contract_practitioner_assignments': { readableBy: [], note: '指派改成案件成員前仍只有主辦組織讀取（MIL-116）' },
+  'org.contract_practitioner_assignments': { readableBy: [], note: '舊表只剩沒有案件的合約（MIL-200 起有案件的合約存成案件成員，MIL-203 移除舊表），只有主辦組織讀取' },
   'org.contract_mandate_items': { readableBy: [], note: '委託標的清單（MIL-74）。合約子表，沒有 case_id，只有主辦組織讀取' },
 };
 

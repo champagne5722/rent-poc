@@ -1,8 +1,12 @@
 // 執業人員指派的服務（MIL-69）：把「指派」與「登錄資料」組成 checkSendPreconditions 的輸入，
 // 並為 wizard 提供指派選項。只有這一層同時認得 practiceRegistry 與指派。
 //
-// 過渡條件（ADR-0021 決議 4）：指派存在合約上。C 線完成後，指派改由案件成員提供，
-// 換掉 `assignments` 的來源即可，這裡的組裝邏輯不變。
+// 指派的來源（MIL-200）：合約掛在案件下時，指派存成案件成員（org.case_members 的席位欄）。
+// 沒有案件的舊合約仍用合約上的指派表（ADR-0021 決議 4 的過渡條件，MIL-203 移除）。
+// 兩種來源都由 repository 讀出同一個形狀，這裡的組裝邏輯不變。
+//
+// 簽章人員只從自家組織指派（ADR-0029 決議 3）：登錄查詢只回呼叫者自己組織的執業主體與人員，
+// 別的組織的 ID 與不存在的 ID 回應相同。選項的回傳形狀不含 email，合約欄位要用的 email 由伺服端依所選的人補（見 route）。
 
 import { credentialStatusAt, type RenewalWindow } from '../credential-status';
 import { REQUIRED_BUSINESS_ITEM_CODE } from '../registry-rules';
@@ -40,6 +44,7 @@ import { normalizeEmail } from '../signing-module/progress';
 import { DEFAULT_CONTRACT_TYPE, partyOfFields, type PartyFields } from '../contract-types';
 import type { ContractType } from '../labels';
 import { SIGNER_ROLE_LABELS, type ContractPartyRole } from '../types';
+import type { CaseSeatMember } from './repository';
 import {
   licenseKindForSeat,
   partyRoleOfEntitySource,
@@ -301,7 +306,6 @@ function isMandataryEntity(routing: RoutingFacts, entitySource: PractitionerEnti
 export interface PractitionerOption {
   id: string;
   name: string;
-  email: string;
   title?: string;
   /** 在換證窗口內時帶期限，畫面要顯示（ADR-0017 決議 8）。 */
   renewalWindow: RenewalWindow | null;
@@ -316,7 +320,7 @@ export interface EntityOption {
    */
   blockedReason?: string;
   /** 執業主體不是合約的甲方或乙方時為空。 */
-  partySigners: Array<Pick<PartySignerCandidate, 'id' | 'name' | 'email'>>;
+  partySigners: Array<Pick<PartySignerCandidate, 'id' | 'name'>>;
   practitioners: PractitionerOption[];
 }
 
@@ -364,7 +368,8 @@ export async function loadSeatOptions(
     const licenseKind = licenseKindForSeat(routing, seat);
     if (!requirement || !licenseKind) continue;
     const partyRole = partyRoleOfEntitySource(requirement.entitySource);
-    // 委託管理合約的受託人：列出全部執業主體，不符的標示原因，讓使用者知道為什麼不能選
+    // 委託管理合約的受託人：列出自家組織全部的執業主體，不符的標示原因，讓使用者知道為什麼不能選。
+    // 登錄只回自家組織的執業主體（MIL-200），不會列出別的組織
     const isMandatary = isMandataryEntity(routing, requirement.entitySource);
     const entities = await registry.listEntities(isMandatary ? undefined : { licenseKind });
     const entityOptions = await Promise.all(
@@ -391,7 +396,6 @@ export async function loadSeatOptions(
           practitioners.push({
             id: c.id,
             name: c.name,
-            email: c.accountEmail,
             ...(c.certificateKind ? { title: practitionerTitle(c.certificateKind) } : {}),
             renewalWindow: status.renewalWindow,
           });
@@ -402,7 +406,7 @@ export async function loadSeatOptions(
         return {
           id: entity.id,
           name: entity.name,
-          partySigners: partySigners.map(({ id, name, email }) => ({ id, name, email })),
+          partySigners: partySigners.map(({ id, name }) => ({ id, name })),
           practitioners,
         };
       }),
@@ -420,6 +424,14 @@ export async function loadSeatOptions(
 }
 
 // ── 存指派時的檢查 ───────────────────────────────────────────
+
+/**
+ * 別的組織的人與不存在的人，錯誤訊息必須相同，不洩漏別的組織有沒有這個執業主體或這個人（MIL-200，ADR-0012 決議 8）。
+ * 這三句只在「ID 不屬於自家組織」或「不存在」時回，所以不能再細分原因。
+ */
+export const NOT_OWN_ASSIGNMENT = '所選的執業主體不在自家組織內';
+export const NOT_OWN_PRACTITIONER = '所選的執業人員不在這個席位的候選清單內';
+export const NOT_OWN_PARTY_SIGNER = '當事人簽署人必須是所選執業主體的成員';
 
 /**
  * 存草稿的指派時檢查：席位存在、執業主體持有對應業別、執業人員在該席位的候選清單內、
@@ -450,9 +462,11 @@ export async function validateAssignments(
     const licenseKind = seat && licenseKindForSeat(routing, seat);
     if (!seat?.practitioner || !licenseKind) return `目前的簽署序列沒有這個執業人員席位：${a.slot}`;
 
-    const entity = await registry.getEntity(a.entityId);
+    // 只認自家組織的執業主體：別的組織的與不存在的是同一個回應（MIL-200，ADR-0029 決議 3）
+    const entity = (await registry.listEntities()).find((e) => e.id === a.entityId);
+    if (!entity) return NOT_OWN_ASSIGNMENT;
     const isMandatary = isMandataryEntity(routing, seat.practitioner.entitySource);
-    if (!entity?.licenseKinds.includes(licenseKind)) {
+    if (!entity.licenseKinds.includes(licenseKind)) {
       return isMandatary ? MANDATARY_LICENSE_MISSING : '所選的執業主體沒有這個席位要求的業別';
     }
 
@@ -475,7 +489,7 @@ export async function validateAssignments(
         fullTime: seat.practitioner.fullTime,
         licenseKind,
       });
-      if (!candidates.some((c) => c.id === a.practitionerId)) return '所選的執業人員不在這個席位的候選清單內';
+      if (!candidates.some((c) => c.id === a.practitionerId)) return NOT_OWN_PRACTITIONER;
     }
     if (isMandatary) {
       const candidate = await registry.getPractitioner(a.practitionerId, { licenseKind });
@@ -488,7 +502,7 @@ export async function validateAssignments(
     if (a.partySignerId !== null) {
       if (!partyRoleOfEntitySource(seat.practitioner.entitySource)) return '這個席位的執業主體不是合約當事人，沒有當事人簽署人';
       const signer = await registry.getPartySigner(a.partySignerId);
-      if (!signer || signer.entityId !== a.entityId) return '當事人簽署人必須是所選執業主體的成員';
+      if (!signer || signer.entityId !== a.entityId) return NOT_OWN_PARTY_SIGNER;
     }
   }
   return null;
@@ -507,3 +521,60 @@ async function salesAgentIn(
 }
 
 export type { PrintedPractitioner, SendNotice };
+
+// ── 存指派時要寫的資料 ───────────────────────────────────────
+
+/** 存指派時補進合約欄位的當事人。email 是真實的，只在伺服端用，不回給瀏覽器（MIL-200）。 */
+export interface PartyFill {
+  role: ContractPartyRole;
+  name: string;
+  email: string;
+}
+
+export interface ResolvedAssignments {
+  /** 案件成員的席位資料：執業人員的 party 與關係。 */
+  seats: CaseSeatMember[];
+  /** 當事人簽署人的姓名與真實 email，依所選的人補進合約欄位。 */
+  partyFills: PartyFill[];
+}
+
+/**
+ * 存指派前，依已通過 `validateAssignments` 的指派，查出要寫進案件成員與合約欄位的資料。
+ * 全部用「依 ID 查單筆」讀：只有自家組織的人讀得到真實 email，別的組織的與不存在的回 null，得到同一句錯誤。
+ * 同一個人在兩個席位以同一種關係出現時拒絕：案件成員同一人同一關係同時只有一列有效。
+ */
+export async function resolveAssignmentFacts(
+  routing: RoutingFacts,
+  assignments: readonly PractitionerAssignmentInput[],
+  resolution: PracticeRegistryResolution,
+): Promise<{ ok: true; value: ResolvedAssignments } | { ok: false; error: string }> {
+  if (assignments.length === 0) return { ok: true, value: { seats: [], partyFills: [] } };
+  if (!resolution.available) return { ok: false, error: resolution.reason };
+  const route = routeSignatures(routing);
+  if (route.kind !== 'sequence') return { ok: false, error: '這個分流條件沒有簽署序列，不能指派執業人員' };
+  const { registry } = resolution;
+
+  const seats: CaseSeatMember[] = [];
+  const partyFills: PartyFill[] = [];
+  const seen = new Set<string>();
+  for (const a of assignments) {
+    const seat = route.plan.seats.find((s) => s.ruleId === a.slot && s.practitioner);
+    const licenseKind = seat && licenseKindForSeat(routing, seat);
+    if (!seat?.practitioner || !licenseKind) return { ok: false, error: `目前的簽署序列沒有這個執業人員席位：${a.slot}` };
+    const candidate = await registry.getPractitioner(a.practitionerId, { licenseKind });
+    if (!candidate || candidate.entityId !== a.entityId) return { ok: false, error: NOT_OWN_PRACTITIONER };
+    const relation = seat.practitioner.entitySource === 'broker_entity' ? 'broker' : 'practitioner';
+    const key = `${relation}:${candidate.partyId}`;
+    if (seen.has(key)) return { ok: false, error: '同一位人員不能同時指派到兩個席位' };
+    seen.add(key);
+    seats.push({ slot: a.slot, partyId: candidate.partyId, relation });
+
+    const partyRole = partyRoleOfEntitySource(seat.practitioner.entitySource);
+    if (partyRole && a.partySignerId) {
+      const signer = await registry.getPartySigner(a.partySignerId);
+      if (!signer || signer.entityId !== a.entityId) return { ok: false, error: NOT_OWN_PARTY_SIGNER };
+      partyFills.push({ role: partyRole, name: signer.name, email: signer.email });
+    }
+  }
+  return { ok: true, value: { seats, partyFills } };
+}

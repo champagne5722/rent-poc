@@ -26,6 +26,8 @@ import { getOwnershipGate } from '@/lib/ownership/repository';
 import { isUlid } from '@/lib/pg/ulid';
 import { getProperty } from '@/lib/properties';
 import { propertyNotFound } from '@/lib/properties/not-found';
+import { BROKER_NOT_ALLOWED_CODE, BROKER_NOT_ALLOWED_MESSAGE } from '@/lib/practitioner-assignment/broker-choice';
+import { canMediateBroker } from '@/lib/practitioner-assignment/broker-guard';
 import { routingInputError } from '@/lib/signature-routing';
 import { jsonOk, jsonError } from '@/lib/http';
 
@@ -82,6 +84,11 @@ async function createFromCaseKind(input: { contract_type?: unknown; property_id?
   return inOrgTxAs(async (tx, rc) => {
     // 平台營運者的組織沒有物件，也不建案件。與不存在同一個回應
     if (rc.orgKind === 'platform') return propertyNotFound();
+    // 居間只限主辦組織自己兼營經紀業（MIL-200）：伺服端查呼叫者自己組織的經紀業別，不接受前端的旗標。
+    // 屋主組織送 brokerMediated: true 在這裡被擋，在物件的授權之前，回應與沒有經紀業別的業者相同
+    if (brokerMediated && !(await canMediateBroker(tx, rc.orgKind))) {
+      return jsonError(409, BROKER_NOT_ALLOWED_MESSAGE, BROKER_NOT_ALLOWED_CODE);
+    }
     // 以物件為對象授權：看不到的物件、不存在的物件與沒有權限，Forbidden 轉成同一個「不存在」回應
     await authorize(tx, 'contract.draft_send', { type: 'property', id: propertyId });
     const property = await getProperty(tx, propertyId);
@@ -154,6 +161,10 @@ export async function POST(request: NextRequest) {
     if (type === 'sublease' && rc.orgKind === 'owner') return jsonError(400, '屋主組織不能建立轉租合約');
     const routingError = routingInputError(routing, type);
     if (routingError) return jsonError(400, routingError);
+    // 舊路徑同樣由伺服端檢查居間（MIL-200）
+    if ((routing as { brokerMediated?: unknown } | undefined)?.brokerMediated === true && !(await canMediateBroker(tx, rc.orgKind))) {
+      return jsonError(409, BROKER_NOT_ALLOWED_MESSAGE, BROKER_NOT_ALLOWED_CODE);
+    }
     // 沒有案件的路不經 createLeaseCase，所以在這裡檢查。有案件的路由 createLeaseCase 自己檢查
     if (rc.orgKind !== 'owner' && !canCreateCase(await getOwnershipGate(tx, property.rental_unit_id))) {
       return propertyNotVerified();

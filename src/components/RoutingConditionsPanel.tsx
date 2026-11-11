@@ -8,6 +8,7 @@ import { Alert, Col, Flex, Form, Radio, Row, Tag, Typography } from 'antd';
 import { RightOutlined } from '@ant-design/icons';
 import { BUSINESS_TYPES } from '@/lib/cases';
 import { BUSINESS_TYPE_LABELS } from '@/lib/labels';
+import type { BrokerChoice } from '@/lib/practitioner-assignment/broker-choice';
 import { evaluateRouting, hasPractitionerSeat } from '@/lib/signature-routing';
 import type { ContractRoutingConditions } from '@/lib/types';
 
@@ -15,6 +16,12 @@ interface Props {
   value: ContractRoutingConditions;
   onChange: (next: ContractRoutingConditions) => void;
   disabled?: boolean;
+  /**
+   * 居間選項的狀態（MIL-200）。由伺服端依呼叫者自己組織的經紀業別算出：
+   * 屋主組織與沒有經紀業別的組織是 hidden，登錄了但還沒驗證是 blocked 並附原因，已驗證是 allowed。
+   * 還沒載入時視為 hidden。合約已經勾了居間時，選項仍顯示但不能改，既有合約的條件不回寫。
+   */
+  brokerChoice?: BrokerChoice;
 }
 
 const YES_NO = [
@@ -22,9 +29,12 @@ const YES_NO = [
   { value: false, label: '否' },
 ];
 
-export default function RoutingConditionsPanel({ value, onChange, disabled }: Props) {
+export default function RoutingConditionsPanel({ value, onChange, disabled, brokerChoice = { kind: 'hidden' } }: Props) {
   const evaluation = evaluateRouting(value);
   const patch = (next: Partial<ContractRoutingConditions>) => onChange({ ...value, ...next });
+  const showBroker = brokerChoice.kind !== 'hidden' || value.brokerMediated;
+  const brokerLocked = brokerChoice.kind !== 'allowed';
+  const brokerSpan = showBroker ? 8 : 12;
 
   return (
     <Flex vertical gap={12}>
@@ -41,7 +51,7 @@ export default function RoutingConditionsPanel({ value, onChange, disabled }: Pr
               />
             </Form.Item>
           </Col>
-          <Col span={8}>
+          <Col span={brokerSpan}>
             <Form.Item label="承租人是否為包租業者" style={{ marginBottom: 0 }}>
               <Radio.Group
                 disabled={disabled}
@@ -51,16 +61,22 @@ export default function RoutingConditionsPanel({ value, onChange, disabled }: Pr
               />
             </Form.Item>
           </Col>
-          <Col span={8}>
-            <Form.Item label="是否有經紀業者居間" style={{ marginBottom: 0 }}>
-              <Radio.Group
-                disabled={disabled}
-                value={value.brokerMediated}
-                onChange={(e) => patch({ brokerMediated: e.target.value })}
-                options={YES_NO}
-              />
-            </Form.Item>
-          </Col>
+          {showBroker && (
+            <Col span={8}>
+              <Form.Item
+                label="是否有經紀業者居間"
+                style={{ marginBottom: 0 }}
+                extra={brokerChoice.kind === 'blocked' ? brokerChoice.reason : undefined}
+              >
+                <Radio.Group
+                  disabled={disabled || brokerLocked}
+                  value={value.brokerMediated}
+                  onChange={(e) => patch({ brokerMediated: e.target.value })}
+                  options={YES_NO}
+                />
+              </Form.Item>
+            </Col>
+          )}
         </Row>
       </Form>
 

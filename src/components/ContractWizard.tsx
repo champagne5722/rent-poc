@@ -26,6 +26,7 @@ import PractitionerAssignmentPanel, { type MergedSeatNotice, type PartySignerPic
 import { wizardUiFor } from '@/components/contract-wizard';
 import type { PractitionerAssignmentInput, PrintedPractitioner } from '@/lib/practitioner-assignment/seats';
 import { entityPartyRoles } from '@/lib/practitioner-assignment/seats';
+import type { BrokerChoice } from '@/lib/practitioner-assignment/broker-choice';
 import type { SeatOptions } from '@/lib/practitioner-assignment/service';
 import type { SendBlockReason, SendNotice } from '@/lib/send-preconditions';
 import {
@@ -176,6 +177,8 @@ function SeatChecklist({
 /** GET /api/contracts/[id]/practitioners 的回應。 */
 interface PractitionerData {
   options: SeatOptions;
+  /** 居間選項的狀態，由伺服端依自家組織的經紀業別算出（MIL-200）。 */
+  brokerChoice: BrokerChoice;
   assignments: PractitionerAssignmentInput[];
   printed: Record<string, PrintedPractitioner>;
   evaluation: { ok: boolean; reasons: SendBlockReason[]; notices: SendNotice[]; merges: MergedSeatNotice[] };
@@ -284,6 +287,15 @@ export default function ContractWizard({ id }: { id: string }) {
           message.error((await assignRes.json()).error ?? '執業人員指派儲存失敗');
           return false;
         }
+        // 當事人簽署人的 Email 由伺服端存指派時補進合約欄位（MIL-200），瀏覽器只知道姓名。存完後把伺服端補好的欄位讀回來
+        if (saved.some((a) => a.partySignerId)) {
+          const fresh = await fetch(`/api/contracts/${id}`);
+          if (fresh.ok) {
+            const { data } = (await fresh.json()) as { data: Contract };
+            setFields(data.fields);
+            if (ui) form.setFieldsValue(ui.formValuesOf(data.fields));
+          }
+        }
         // 委託標的清單在欄位與指派之後存。請求只帶租賃單位與範圍，快照由伺服器取，回傳的清單換掉記憶體裡的
         if (ui?.hasMandateItems && mandateItems) {
           const itemsRes = await fetch(`/api/contracts/${id}/mandate-items`, {
@@ -304,7 +316,7 @@ export default function ContractWizard({ id }: { id: string }) {
         setSaving(false);
       }
     },
-    [id, message, assignments, loadPractitioners, contract, ui, mandateItems]
+    [id, message, assignments, loadPractitioners, contract, ui, mandateItems, form]
   );
 
   if (loadFailed) {
@@ -417,9 +429,10 @@ export default function ContractWizard({ id }: { id: string }) {
     if (next.removed > 0) message.warning(`簽署序列已沒有對應的席位，已移除 ${next.removed} 個簽署區域`);
   };
 
-  // 選定當事人簽署人後，那一方的姓名與 Email 由簽署人帶入，不開放手填（ADR-0018 決議 2）
+  // 選定當事人簽署人後，那一方的姓名由簽署人帶入，不開放手填（ADR-0018 決議 2）。
+  // Email 不經過瀏覽器：存指派時由伺服端依所選的人補進合約欄位（MIL-200）
   const pickPartySigner = ({ role, signer }: PartySignerPick) => {
-    const person = signer ?? { name: '', email: '' };
+    const person = { name: signer?.name ?? '', email: '' };
     setFields((current) => (current ? applyPartySigner(current, role, person, contractType) : current));
     form.setFieldsValue(ui.partyFormValues(role, person));
   };
@@ -531,7 +544,12 @@ export default function ContractWizard({ id }: { id: string }) {
             fields={fields}
             routingPanel={
               <Flex vertical gap={12} style={{ marginBottom: 12 }}>
-                <RoutingConditionsPanel value={fields.routing ?? DEFAULT_ROUTING} onChange={changeRouting} disabled={saving} />
+                <RoutingConditionsPanel
+                  value={fields.routing ?? DEFAULT_ROUTING}
+                  onChange={changeRouting}
+                  disabled={saving}
+                  brokerChoice={practitionerData?.brokerChoice}
+                />
               </Flex>
             }
             saving={saving}
