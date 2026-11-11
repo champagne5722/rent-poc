@@ -3,6 +3,7 @@ import { useTxDriver, withTx } from '../pg/database';
 import { pgDriver } from '../pg/drivers';
 import { createPgTestDatabase, type PgTestDatabase } from '../pg/pg-database-kit';
 import { newUlid } from '../pg/ulid';
+import type { OrgTx } from '../pg/with-tx';
 import { findCoveringMandateCase, findCoveringMasterLeaseCase } from './index';
 
 // 從物件建立案件的入口查詢，真實 PostgreSQL 版（MIL-209）。PGlite 的完整行為在 src/app/api 的 route 測試。
@@ -70,16 +71,16 @@ describe.skipIf(!adminUrl)('從物件建立案件的入口查詢（真實 Postgr
     await dbh?.close();
   });
 
-  const inOrg = <T>(orgId: string, fn: Parameters<typeof withTx>[1]) => withTx({ kind: 'org', orgId, partyId: newUlid() }, fn) as Promise<T>;
+  const inOrg = <T>(orgId: string, fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId, partyId: newUlid() }, fn);
 
   it('自家有效的委託管理案件：查得到，優先回 active', async () => {
-    const found = await inOrg<Awaited<ReturnType<typeof findCoveringMandateCase>>>(orgA, (tx) => findCoveringMandateCase(tx, propertyId));
+    const found = await inOrg(orgA, (tx) => findCoveringMandateCase(tx, propertyId));
     expect(found).toEqual({ id: mandateA, state: 'active', coversRentalUnit: true });
     expect(found?.id).not.toBe(draftMandateA);
   });
 
   it('自家有效的包租案件：查得到', async () => {
-    const found = await inOrg<Awaited<ReturnType<typeof findCoveringMasterLeaseCase>>>(orgA, (tx) => findCoveringMasterLeaseCase(tx, unitId));
+    const found = await inOrg(orgA, (tx) => findCoveringMasterLeaseCase(tx, unitId));
     expect(found).toMatchObject({ id: masterLeaseA, orgId: orgA, state: 'active' });
   });
 
