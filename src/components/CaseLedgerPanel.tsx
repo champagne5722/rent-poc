@@ -72,7 +72,7 @@ export default function CaseLedgerPanel({ caseId }: { caseId: string }) {
     );
   }
   if (load.status === 'forbidden') {
-    return <Alert type="info" showIcon message="你看不到這個案件的帳務設定" />;
+    return <Alert type="info" showIcon title="你看不到這個案件的帳務設定" />;
   }
 
   const { setup } = load;
@@ -148,7 +148,7 @@ function SocialHousingSection({ caseId, setup, onChanged }: { caseId: string; se
         <Alert
           type="warning"
           showIcon
-          message="押金的持有人與社宅代管案件的規則衝突"
+          title="押金的持有人與社宅代管案件的規則衝突"
           description={
             <Flex vertical gap={token.marginXXS}>
               {setup.holderConflicts.map((c) => (
