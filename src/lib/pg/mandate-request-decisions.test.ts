@@ -5,7 +5,7 @@ import { STORED_STATUSES, TRANSITIONS, applyTransition, type RequestFacts, type 
 import { pgliteDriver } from './drivers';
 import { asRole, createTestDb, type TestDb } from './test-harness';
 import { newUlid } from './ulid';
-import { createWithTx, type OrgTx, type WithTx } from './with-tx';
+import { createWithTx, type OrgTx, type Tx, type WithTx } from './with-tx';
 
 // MIL-210 前半資料段：接受、未接受與結束（migration 0087）。一律以 app_rw 從外部觀察，看列或備資料時才換成 app_owner。
 // 轉移表在 status.ts，SQL 函式的放行與否在這裡逐格比對。併發的案例在 mandate-request-decisions.pg.test.ts（真實 PostgreSQL）。
@@ -143,10 +143,10 @@ async function seed(status: StoredStatus, options: { submittedAt?: Date; accepte
   return { id, units };
 }
 
-const accept = (tx: OrgTx, id: string, manager: string, now = NOW) =>
+const accept = (tx: Tx, id: string, manager: string, now = NOW) =>
   tx.query<{ outcome: string }>('SELECT * FROM registry.accept_mandate_request($1, $2, $3, $4)', [id, manager, newUlid(), now]);
-const decline = (tx: OrgTx, id: string, now = NOW) => tx.query<{ outcome: string }>('SELECT * FROM registry.decline_mandate_request($1, $2, $3)', [id, newUlid(), now]);
-const end = (tx: OrgTx, id: string, now = NOW) =>
+const decline = (tx: Tx, id: string, now = NOW) => tx.query<{ outcome: string }>('SELECT * FROM registry.decline_mandate_request($1, $2, $3)', [id, newUlid(), now]);
+const end = (tx: Tx, id: string, now = NOW) =>
   tx.query<{ outcome: string; ended_by: string | null }>('SELECT * FROM registry.end_mandate_request($1, $2, $3)', [id, newUlid(), now]);
 const withdraw = (tx: OrgTx, id: string) => tx.query<{ outcome: string }>('SELECT * FROM registry.withdraw_mandate_request($1, $2, $3)', [id, newUlid(), NOW]);
 const stored = async (id: string) => (await owner(() => db.query<Record<string, unknown>>('SELECT * FROM registry.mandate_requests WHERE id = $1', [id]))).rows[0];
