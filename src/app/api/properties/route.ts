@@ -2,12 +2,14 @@ import { NextRequest } from 'next/server';
 import { authorize } from '@/lib/authorize';
 import { jsonOk, jsonError } from '@/lib/http';
 import { inOrgTx, readJson } from '@/lib/org-route';
-import { listProperties, parsePropertyCreateInput, registerProperty } from '@/lib/properties';
+import { listProperties, listPropertyGroups, parsePropertyCreateInput, registerProperty } from '@/lib/properties';
 
-export async function GET() {
+// 預設回扁平列表：一列一個租賃單位。?group=object 回依物件分組的列表：一筆一個物件，底下帶出租賃單位與核對狀態（MIL-202）。
+export async function GET(request?: NextRequest) {
+  const grouped = request?.nextUrl.searchParams.get('group') === 'object';
   return inOrgTx(async (tx) => {
     await authorize(tx, 'property.read', { type: 'org' });
-    return jsonOk({ data: await listProperties(tx) });
+    return jsonOk({ data: grouped ? await listPropertyGroups(tx) : await listProperties(tx) });
   });
 }
 

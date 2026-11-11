@@ -10,6 +10,7 @@ export {
   createSubletUnit,
   getProperty,
   listProperties,
+  listPropertyGroups,
   listSiblingUnits,
   registerProperty,
   removeProperty,
