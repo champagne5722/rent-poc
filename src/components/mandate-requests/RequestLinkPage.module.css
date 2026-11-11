@@ -1,0 +1,32 @@
+/* 申請連結頁（MIL-206 畫面段）。登入前的獨立頁面，不套後台殼層。顏色與間距引用 DESIGN.md 的 CSS 變數。
+   手機掃 QR code 進來：窄螢幕的外框內距縮小，內容單欄排列，寬度有上限。 */
+.page {
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--space-lg);
+  background: var(--color-canvas);
+}
+
+.panel {
+  width: 100%;
+  max-width: calc(var(--space-xxl) * 13);
+  padding-block: var(--space-xl);
+}
+
+@media (max-width: 767.98px) {
+  .page {
+    padding: var(--space-md);
+  }
+
+  .panel {
+    padding-block: var(--space-md);
+  }
+}
+
+/* 品牌名稱放在內容外，用內文字重，不用標題層級 */
+.brand {
+  display: block;
+  margin-bottom: var(--space-md);
+  color: var(--color-ink-muted);
+}
