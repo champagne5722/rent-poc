@@ -62,17 +62,38 @@ demo 得先切換，條件是不放真實個資。開放給真實使用者或 pi
 
 ## CI/CD
 
-`.github/workflows/ci-deploy.yml` 有 3 個 job：
+`.github/workflows/ci-deploy.yml` 有 5 個 job。`check` 是彙整工作，上游是 `static` 與 `test`：
 
 | Job | 觸發時機 | 內容 |
 |---|---|---|
-| `check` | PR、push `dev`、push `demo`、手動 | `tsc`、ESLint、vitest（含真實 PostgreSQL 的測試） |
+| `static` | 同上 | `tsc` 與 ESLint，只跑一次 |
+| `test (N/8)` | 同上 | vitest 分 8 片平行跑，每片有自己的 PostgreSQL 18（含真實 PostgreSQL 的測試），輸出一份 JSON 報告 |
+| `check` | 同上 | 彙整。`static` 與 8 片都成功，且 `scripts/ci/check-pg-tests-ran.mjs` 合併 8 份報告後通過，才成功。名稱固定，`deploy` 與 `gh pr checks` 都用它 |
 | `image` | 同上 | 建置映像，執行 `deploy/smoke-test.sh` |
-| `deploy` | push `demo`、手動（選 `demo` 分支）。前兩個 job 通過，且已設定 `GCP_PROJECT_ID` | 推送映像，用 `app_owner` 跑 migration，部署 Cloud Run，檢查 `/api/health` |
+| `deploy` | push `demo`、手動（選 `demo` 分支）。`check` 與 `image` 通過，且已設定 `GCP_PROJECT_ID` | 推送映像，用 `app_owner` 跑 migration，部署 Cloud Run，檢查 `/api/health` |
 
 如果沒有設定 `GCP_PROJECT_ID`，`deploy` 會略過，`demo` 不會失敗。
 
-PR 的自動審查在另一個檔 `.github/workflows/pr-review.yml`，不屬於這 3 個 job，也不是必要檢查。金鑰名稱、停用方式與額度用完後的行為見 [`docs/agents/pr-review.md`](agents/pr-review.md)。
+### 測試分片（MIL-228）
+
+分片前，`check` 一個工作要 22.7 分鐘（2026-11-12 量測，上限 30 分鐘）。分片後，`check` 從開始到有結果約 5 分鐘。
+
+- `test` 工作用 matrix 加 vitest 的 `--shard=N/8`。vitest 依檔案路徑分片，每片的檔案數相同，執行時間不同。
+- 8 片各自輸出 `vitest-report-N.json`，上傳成 artifact。`check` 下載全部報告，交給 `scripts/ci/check-pg-tests-ran.mjs` 合併檢查。
+- 檢查腳本的 `--expect-reports 8` 確認剛好有 8 份報告。少一份代表某一片沒有跑完，`check` 失敗。
+- 改片數時，必須同時改三個地方：matrix 的 `shard` 清單、matrix 的 `total`、`check` 工作的 `--expect-reports`。
+- 每一片的 `timeout-minutes` 是 20。
+
+什麼時候要加片數：
+
+1. 看最慢的一片。在 Actions 的 run 頁面，比較 8 個 `test (N/8)` 工作的時間。
+2. 最慢的一片超過 8 分鐘，就把片數加 4，也就是改成 12 片。
+3. 單一測試檔自己就超過 4 分鐘時，加片數沒有用。把那個檔案拆成兩個。
+4. `static`（型別檢查與 ESLint）超過 5 分鐘時，它會變成瓶頸。分片幫不上它。
+
+每一個工作都要重跑 `npm ci`（約 1 分鐘），所以片數越多，總工作分鐘數越多。這個 repo 是公開的，Actions 分鐘數不計費。同時執行的工作數有上限（免費方案 20 個）。一次 CI 用 10 個工作（`static`、8 片、`image`），所以同時有兩個以上的 PR 在跑時，後面的工作會排隊。
+
+PR 的自動審查在另一個檔 `.github/workflows/pr-review.yml`，不屬於這 5 個 job，也不是必要檢查。金鑰名稱、停用方式與額度用完後的行為見 [`docs/agents/pr-review.md`](agents/pr-review.md)。
 
 ### 映像冒煙測試
 
