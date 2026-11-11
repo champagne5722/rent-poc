@@ -81,10 +81,20 @@ test('建約精靈：直接開網址時，伺服端擋下未核對的物件，�
   await expect(page).toHaveURL(new RegExp(`/properties/${property.id}$`));
 });
 
+test('委託管理合約的暫時入口：物件列表的次要動作進精靈，建立草稿後進入續編', async ({ page }) => {
+  await page.goto('/properties');
+  await clickUntil(page.getByRole('button', { name: '建立委託管理合約' }), page.getByText('委託管理合約不綁單一物件'));
+  await expect(page).toHaveURL(/\/contracts\/new\?kind=management$/);
+  await page.getByRole('button', { name: /下一步/ }).click();
+  await page.waitForURL(/\/contracts\/[^/]+\/edit$/);
+  await expect(page.getByRole('heading', { name: /草稿 #/ })).toBeVisible();
+});
+
 test('建約精靈：沒帶參數、參數不合法、物件看不到時，導到物件列表', async ({ page }) => {
   for (const url of [
     '/contracts/new',
     '/contracts/new?property=not-a-ulid&kind=lease',
+    '/contracts/new?kind=unknown',
     '/contracts/new?property=01JD3X7Z5K8M2N4P6Q8R0S2T4V&kind=management',
     // 格式正確但不存在，與別的組織的物件相同：導到物件列表
     '/contracts/new?property=01JD3X7Z5K8M2N4P6Q8R0S2T4V&kind=lease',

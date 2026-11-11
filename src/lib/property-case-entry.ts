@@ -20,6 +20,12 @@ export interface NewCaseParams {
   kind: PropertyCaseKind;
 }
 
+/**
+ * 委託管理合約的暫時入口（MIL-209 決定 6）。委託管理合約不綁單一物件，從物件建立屬於 MIL-212。
+ * 在那之前保留原本的建立方式：精靈用 `kind=management` 且不帶 `property`，建立草稿走舊路徑。
+ */
+export const MANAGEMENT_ENTRY_HREF = `${NEW_CASE_PATH}?kind=management`;
+
 /** 組出精靈的入口網址。 */
 export function newCaseHref(propertyId: string, kind: PropertyCaseKind): string {
   const query = new URLSearchParams({ property: propertyId, kind });
@@ -40,6 +46,11 @@ export function parseNewCaseParams(raw: { property?: RawParam; kind?: RawParam }
   const kind = firstOf(raw.kind);
   if (!isUlid(propertyId) || !isPropertyCaseKind(kind)) return null;
   return { propertyId, kind };
+}
+
+/** 是委託管理合約的暫時入口：`kind=management` 而且沒有 `property`。帶了 `property` 的組合不合法，導到物件列表。 */
+export function isManagementEntry(raw: { property?: RawParam; kind?: RawParam }): boolean {
+  return firstOf(raw.kind) === 'management' && firstOf(raw.property) === undefined;
 }
 
 /** 入口按鈕的文字，案件種類的名稱取自狀態呈現表。例：「建立租賃案件」。 */

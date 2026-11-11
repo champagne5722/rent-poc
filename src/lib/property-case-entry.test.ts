@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { PROPERTY_NOT_VERIFIED_CODE } from './ownership/gate';
-import { createCaseLabel, creationBlockedNext, newCaseHref, orderedCaseKinds, parseNewCaseParams } from './property-case-entry';
+import {
+  createCaseLabel,
+  creationBlockedNext,
+  isManagementEntry,
+  MANAGEMENT_ENTRY_HREF,
+  newCaseHref,
+  orderedCaseKinds,
+  parseNewCaseParams,
+} from './property-case-entry';
 
 const ID = '01JD3X7Z5K8M2N4P6Q8R0S2T4V';
 
@@ -36,6 +44,22 @@ describe('newCaseHref 與 parseNewCaseParams', () => {
 
   it('參數重複時取第一個', () => {
     expect(parseNewCaseParams({ property: [ID, 'x'], kind: ['sublease', 'lease'] })).toEqual({ propertyId: ID, kind: 'sublease' });
+  });
+});
+
+describe('委託管理合約的暫時入口', () => {
+  it('kind=management 且沒有 property 才是這個入口', () => {
+    expect(isManagementEntry({ kind: 'management' })).toBe(true);
+    expect(isManagementEntry({ kind: 'management', property: ID })).toBe(false);
+    expect(isManagementEntry({ kind: 'lease' })).toBe(false);
+    expect(isManagementEntry({})).toBe(false);
+  });
+
+  it('入口網址能被辨識，而且不會被當成從物件建立', () => {
+    const query = new URL(MANAGEMENT_ENTRY_HREF, 'http://localhost').searchParams;
+    const raw = { kind: query.get('kind') ?? undefined, property: query.get('property') ?? undefined };
+    expect(isManagementEntry(raw)).toBe(true);
+    expect(parseNewCaseParams(raw)).toBeNull();
   });
 });
 

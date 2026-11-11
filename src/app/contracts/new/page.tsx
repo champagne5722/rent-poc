@@ -1,18 +1,22 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { loadPropertyDetail, type PropertyDetailLoad } from '@/lib/property-detail-load';
-import { newCaseHref, parseNewCaseParams, PROPERTY_LIST_HREF } from '@/lib/property-case-entry';
+import { isManagementEntry, newCaseHref, parseNewCaseParams, PROPERTY_LIST_HREF } from '@/lib/property-case-entry';
 import { Unauthenticated } from '@/lib/request-context';
 import NewContractWizard from './NewContractWizard';
+import NewManagementContract from './NewManagementContract';
 
 export const metadata: Metadata = { title: '建立合約｜租房雲端管理平台' };
 
 // 建約精靈第一步（規格 §7，MIL-209）：物件與案件種類由入口帶入，精靈不再選物件。
 // 入口參數：`/contracts/new?property=<物件 ID>&kind=<案件種類>`，案件種類是 lease、master_lease、sublease。
 // 沒帶參數、參數不合法、物件看不到（別的組織的、不存在的、沒有權限的，對外是同一種情況）：導到物件列表。
+// 例外：`?kind=management` 而且沒有 property 是委託管理合約的暫時入口（MIL-209 決定 6，給 MIL-212），保留原本的建立方式。
 // 建立草稿後進 /contracts/[id]/edit 續走後三步。
 export default async function NewContractPage({ searchParams }: { searchParams: Promise<{ property?: string | string[]; kind?: string | string[] }> }) {
-  const params = parseNewCaseParams(await searchParams);
+  const raw = await searchParams;
+  if (isManagementEntry(raw)) return <NewManagementContract />;
+  const params = parseNewCaseParams(raw);
   if (!params) redirect(PROPERTY_LIST_HREF);
 
   let result: PropertyDetailLoad;

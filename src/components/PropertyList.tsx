@@ -12,6 +12,7 @@ import CreateCaseEntry from '@/components/property/CreateCaseEntry';
 import StatusTag from '@/components/StatusTag';
 import { formatEquipmentItem } from '@/lib/equipment';
 import { PROPERTY_NOT_VERIFIED_MESSAGE } from '@/lib/ownership/gate';
+import { MANAGEMENT_ENTRY_HREF } from '@/lib/property-case-entry';
 import { anchorSummary } from '@/lib/properties/anchor-display';
 import {
   archivedUnitCount,
@@ -151,9 +152,13 @@ function PropertyListInner({ groups, vocabulary }: PropertyListProps) {
         header={{
           title: '物件列表',
           extra: (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setEditing('new')}>
-              新增物件
-            </Button>
+            <Flex align="center" gap="small">
+              {/* 委託管理合約不綁單一物件，從物件建立屬於 MIL-212。在那之前保留原本的建立方式，放在次要動作（MIL-209） */}
+              <Button onClick={() => router.push(MANAGEMENT_ENTRY_HREF)}>建立委託管理合約</Button>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setEditing('new')}>
+                新增物件
+              </Button>
+            </Flex>
           ),
         }}
         filter={{
