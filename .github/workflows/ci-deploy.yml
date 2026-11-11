@@ -19,9 +19,35 @@ env:
   SERVICE: rent-poc-demo
 
 jobs:
-  check:
+  # 型別檢查與 ESLint 只跑一次，不放進每一片（MIL-228）。
+  static:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: 型別檢查
+        run: npx next typegen && npx tsc --noEmit
+      - name: ESLint
+        run: npm run lint
+
+  # vitest 分 8 片平行跑（MIL-228）。每一片有自己的 PostgreSQL service，各自輸出一份 JSON 報告。
+  # 片數寫在三個地方，改的時候必須一起改：matrix 的 shard 清單、matrix 的 total、`check` 工作的 --expect-reports。
+  # 三者不一致時，`check` 會因為報告份數不對而失敗。
+  test:
+    name: test (${{ matrix.shard }}/${{ matrix.total }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # 一片失敗時，其他片照樣跑完，才看得到所有失敗與各片的時間
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        total: [8]
     # 真實 PostgreSQL，跑 pg 驅動、advisory lock 與角色檢查（ADR-0012 決議 13）。
     # 主版本必須與 PGlite 回報的一致，pg-integration.test.ts 會檢查。Cloud SQL 也用 18（2026-11-08）。
     services:
@@ -43,21 +69,55 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci --ignore-scripts
-      - name: 型別檢查
-        run: npx next typegen && npx tsc --noEmit
-      - name: ESLint
-        run: npm run lint
       - name: vitest
-        # JSON 報告給下一步檢查 pg 測試有沒有真的跑到
-        run: npm test -- --reporter=default --reporter=json --outputFile.json=vitest-report.json
+        # JSON 報告給 `check` 工作檢查 pg 測試有沒有真的跑到
+        run: npm test -- --shard=${{ matrix.shard }}/${{ matrix.total }} --reporter=default --reporter=json --outputFile.json=vitest-report-${{ matrix.shard }}.json
         env:
           TEST_DATABASE_URL: postgres://postgres:ci-password@localhost:5432/postgres
           # 標準 runner 有 4 核心 16 GB。vitest.config.ts 預設 2 個 worker（MIL-163），完整測試跑不完 15 分鐘。
           VITEST_MAX_WORKERS: 4
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vitest-report-${{ matrix.shard }}
+          path: vitest-report-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 1
+
+  # 彙整工作。名稱必須維持 `check`：派工單、文件、`gh pr checks` 與 `deploy` 的 needs 都用這個名稱。
+  # 型別檢查、ESLint 與所有分片都通過，它才通過。
+  check:
+    needs: [static, test]
+    # 上游失敗時它也要執行並回報失敗，不能停在「略過」
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 確認型別檢查、ESLint 與所有分片都成功
+        env:
+          STATIC_RESULT: ${{ needs.static.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+        run: |
+          echo "static: $STATIC_RESULT"
+          echo "test: $TEST_RESULT"
+          if [ "$STATIC_RESULT" != "success" ] || [ "$TEST_RESULT" != "success" ]; then
+            echo "::error::型別檢查、ESLint 或某一片測試沒有成功"
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: vitest-report-*
+          merge-multiple: true
+          path: reports
       # *.pg.test.ts 在沒有 TEST_DATABASE_URL 時整組靜默跳過，vitest 仍然綠燈（MIL-89）。
-      # 這一步確認：變數有設、每個 pg 測試檔都有執行、沒有任何測試被跳過、通過數量不低於下限。
+      # 這一步合併所有分片的報告，確認：每個 pg 測試檔都有執行、沒有任何測試被跳過、通過數量不低於下限，
+      # 而且報告剛好有 8 份。這個工作不連資料庫。TEST_DATABASE_URL 只是讓腳本的第 1 條規則通過，
+      # 各片有沒有真的連上資料庫，由第 2 到 4 條規則從報告判斷。
       - name: 確認真實 PostgreSQL 的測試有執行
-        run: node scripts/ci/check-pg-tests-ran.mjs vitest-report.json --min 100
+        run: node scripts/ci/check-pg-tests-ran.mjs reports/*.json --min 100 --expect-reports 8
         env:
           TEST_DATABASE_URL: postgres://postgres:ci-password@localhost:5432/postgres
 
