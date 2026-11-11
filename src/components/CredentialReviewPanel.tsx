@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Alert, App as AntApp, Button, Card, Col, Descriptions, Form, Input, Radio, Row, Select } from 'antd';
+import { Alert, App as AntApp, Button, Card, Col, DatePicker, Descriptions, Form, Input, Radio, Row, Select } from 'antd';
+import dayjs from 'dayjs';
 import { useRouter } from 'next/navigation';
 import EvidenceCard from '@/components/desk/EvidenceCard';
 import styles from '@/components/desk/desk.module.css';
@@ -23,6 +24,13 @@ import { formatCertificateNumber } from '@/lib/practitioners/rules';
 // 由營運者依 resim 任職查詢判定哪一家相符。同意書相符後，任職標示「經所屬業者同意」，同意書保留。
 // 系統不接任何外部查詢：resim 是營運者人工查、人工登錄，也不繞過圖形驗證碼。
 // 資料由 server component 載入（src/app/desk/items/[id]/page.tsx）。
+
+// 效期欄用 antd DatePicker，表單裡的值仍是 YYYY-MM-DD 字串（空值是空字串），送出的格式與原生日期欄相同。
+const DATE_FORMAT = 'YYYY-MM-DD';
+const dateField = {
+  getValueProps: (value?: string) => ({ value: value ? dayjs(value, DATE_FORMAT) : null }),
+  normalize: (value: dayjs.Dayjs | null) => (value ? value.format(DATE_FORMAT) : ''),
+};
 
 const CHANNEL_OPTIONS = {
   certificate: [{ value: 'resim_manual', label: 'resim 證書查詢（人工查詢）' }],
@@ -267,13 +275,14 @@ function Inner({ review, nowIso }: { review: CredentialReview; nowIso: string })
                   extra="以 resim 為準。送件的效期只是預填，不一致時請改成 resim 的日期。"
                   rules={[{ required: true, message: '相符時請登錄 resim 查到的效期' }]}
                   className={styles.fieldDate}
+                  {...dateField}
                 >
-                  <Input type="date" />
+                  <DatePicker className={styles.fullWidth} />
                 </Form.Item>
               )}
               {result === 'match' && type === 'consent' && (
-                <Form.Item label="同意書有效期限（選填）" name="validUntil" extra="同意書沒有載明期限時留空。" className={styles.fieldDate}>
-                  <Input type="date" />
+                <Form.Item label="同意書有效期限（選填）" name="validUntil" extra="同意書沒有載明期限時留空。" className={styles.fieldDate} {...dateField}>
+                  <DatePicker className={styles.fullWidth} />
                 </Form.Item>
               )}
               <Form.Item
