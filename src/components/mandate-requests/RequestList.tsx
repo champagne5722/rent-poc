@@ -3,6 +3,7 @@
 import { Button } from 'antd';
 import type { TableProps } from 'antd';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import ListPage from '@/components/page/ListPage';
 import StatusTag from '@/components/StatusTag';
 import { formatTaipeiDateTime } from '@/lib/ownership/format';
@@ -24,6 +25,12 @@ const detailLink = (id: string) => (
 );
 
 export function PracticeRequestList({ requests, canCreate }: { requests: PracticeMandateRequest[]; canCreate: boolean }) {
+  const router = useRouter();
+  const create = (
+    <Button type="primary" onClick={() => router.push('/requests/new')}>
+      產生申請連結
+    </Button>
+  );
   const columns: TableProps<PracticeMandateRequest>['columns'] = [
     { title: '申請的種類', dataIndex: 'kind_label', width: 140 },
     { title: '狀態', width: 130, render: (_, r) => <StatusTag kind="mandateRequest" value={r.status} /> },
@@ -37,21 +44,13 @@ export function PracticeRequestList({ requests, canCreate }: { requests: Practic
     <ListPage<PracticeMandateRequest>
       header={{
         title: '申請列表',
-        extra: (
-          <Link href="/requests/new">
-            <Button type="primary">產生申請連結</Button>
-          </Link>
-        ),
+        extra: create,
       }}
       intro="產生連結後，自己把連結或 QR code 交給屋主。屋主登入、確認並送出後，申請會變成待業者接受。"
       table={{ rowKey: 'id', dataSource: requests, columns, scroll: { x: 'max-content' } }}
       empty={{
         description: canCreate ? '還沒有申請。產生申請連結，交給屋主。' : '還沒有申請。貴公司需要先通過代管業或包租業的核對，才能產生申請連結。',
-        action: (
-          <Link href="/requests/new">
-            <Button type="primary">產生申請連結</Button>
-          </Link>
-        ),
+        action: create,
       }}
     />
   );

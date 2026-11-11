@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, Descriptions, Flex, Form, Input, Skeleton, Tag, Typography } from 'antd';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import LogoutButton from '@/components/LogoutButton';
 import { PRODUCT_NAME } from '@/components/AuthPanel';
 import StatusTag from '@/components/StatusTag';
@@ -107,6 +108,7 @@ async function postClaim(code: string, ownerName: string | null): Promise<ClaimS
 function OwnerClaim({ code, view, needsName }: { code: string; view: MandateRequestLinkView; needsName: boolean }) {
   const [state, setState] = useState<ClaimState>({ phase: needsName ? 'idle' : 'claiming' });
   const [form] = Form.useForm<{ ownerName: string }>();
+  const router = useRouter();
 
   useEffect(() => {
     if (needsName) return;
@@ -139,9 +141,9 @@ function OwnerClaim({ code, view, needsName }: { code: string; view: MandateRequ
         <OwnerRequestFlow request={request} groups={null} onChange={(next) => setState({ phase: 'done', request: next })} />
         {request.status !== 'pending_owner' && (
           <Flex>
-            <Link href={`/requests/${request.id}`}>
-              <Button size="large">查看申請詳情</Button>
-            </Link>
+            <Button size="large" onClick={() => router.push(`/requests/${request.id}`)}>
+              查看申請詳情
+            </Button>
           </Flex>
         )}
       </Frame>

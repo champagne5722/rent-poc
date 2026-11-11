@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Alert, App as AntApp, Button, Checkbox, Flex, Form, Input, QRCode, Radio, Typography } from 'antd';
 import { CopyOutlined } from '@ant-design/icons';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import EmptyState from '@/components/page/EmptyState';
 import PageHeader from '@/components/page/PageHeader';
 import SettingsPage from '@/components/page/SettingsPage';
@@ -49,6 +49,7 @@ interface Generated {
 
 function GeneratedLinkView({ generated, onAgain }: { generated: Generated; onAgain: () => void }) {
   const { message } = AntApp.useApp();
+  const router = useRouter();
   const { created, url } = generated;
 
   const copy = async () => {
@@ -67,7 +68,7 @@ function GeneratedLinkView({ generated, onAgain }: { generated: Generated; onAga
         type="warning"
         showIcon
         title="離開這一頁後不能再顯示連結，需要時重新產生"
-        description="平台只留連結的雜湊值，之後沒有地方能取回。請現在複製連結，或讓屋主掃描 QR code。"
+        description="平台沒有保存連結本身，之後沒有地方能取回。請現在複製連結，或讓屋主掃描 QR code。"
       />
       {generated.transcriptError && (
         <Alert
@@ -94,15 +95,23 @@ function GeneratedLinkView({ generated, onAgain }: { generated: Generated; onAga
       </SettingsSection>
       <Flex gap="small" wrap>
         <Button onClick={onAgain}>再產生一個</Button>
-        <Link href={`/requests/${created.id}`}>
-          <Button>查看這份申請</Button>
-        </Link>
+        <Button onClick={() => router.push(`/requests/${created.id}`)}>查看這份申請</Button>
       </Flex>
     </Flex>
   );
 }
 
-export default function RequestNewPage({ creatableKinds }: { creatableKinds: MandateRequestKind[] }) {
+// antd 的 message 要在 App 底下才能用，各元件自己包一層（同 PropertyList、ContractList）
+export default function RequestNewPage(props: { creatableKinds: MandateRequestKind[] }) {
+  return (
+    <AntApp>
+      <RequestNewPageBody {...props} />
+    </AntApp>
+  );
+}
+
+function RequestNewPageBody({ creatableKinds }: { creatableKinds: MandateRequestKind[] }) {
+  const router = useRouter();
   const [generated, setGenerated] = useState<Generated | null>(null);
 
   if (creatableKinds.length === 0) {
@@ -112,9 +121,9 @@ export default function RequestNewPage({ creatableKinds }: { creatableKinds: Man
         <EmptyState
           description="貴公司還沒有通過驗證的代管業或包租業，不能產生申請連結。請先完成業別的核對。"
           action={
-            <Link href="/practice">
-              <Button type="primary">前往執業主體</Button>
-            </Link>
+            <Button type="primary" onClick={() => router.push('/practice')}>
+              前往執業主體
+            </Button>
           }
         />
       </Flex>

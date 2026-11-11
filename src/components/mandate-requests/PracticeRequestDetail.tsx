@@ -6,7 +6,7 @@ import NextStep from '@/components/page/NextStep';
 import SettingsSection from '@/components/page/SettingsSection';
 import StatusTag from '@/components/StatusTag';
 import { formatTaipeiDateTime } from '@/lib/ownership/format';
-import { draftBuildingText, practiceNextStep } from '@/lib/mandate-requests/view';
+import { draftBuildingNo, practiceNextStep } from '@/lib/mandate-requests/view';
 import type { PracticeMandateRequest } from '@/lib/types';
 
 // 業者的申請詳情（MIL-206 畫面段，驗收 13）。只顯示種類、狀態、建立與失效的時間、代填的摘要。
@@ -18,7 +18,7 @@ import type { PracticeMandateRequest } from '@/lib/types';
 export default function PracticeRequestDetail({ request }: { request: PracticeMandateRequest }) {
   const step = practiceNextStep(request);
   const draft = request.draft;
-  const building = draftBuildingText(draft);
+  const building = draftBuildingNo(draft);
 
   return (
     <DetailPage

@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, App as AntApp, Button, Checkbox, Descriptions, Flex, Typography } from 'antd';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import EmptyState from '@/components/page/EmptyState';
 import SettingsSection from '@/components/page/SettingsSection';
 import { formatTaipeiDateTime } from '@/lib/ownership/format';
-import { draftBuildingText, licenseKindTitles, ownerCanWithdraw, unitOptions, type UnitOption } from '@/lib/mandate-requests/view';
+import { draftBuildingNo, licenseKindTitles, ownerCanWithdraw, unitOptions, type UnitOption } from '@/lib/mandate-requests/view';
 import type { MandateRequestDraft, OwnerMandateRequest, PropertyGroup } from '@/lib/types';
 import styles from './mandate-requests.module.css';
 
@@ -58,7 +58,7 @@ async function fetchGroups(): Promise<PropertyGroup[] | null> {
 }
 
 function draftItems(draft: MandateRequestDraft) {
-  const building = draftBuildingText(draft);
+  const building = draftBuildingNo(draft);
   const items: Array<{ key: string; label: string; children: string }> = [
     { key: 'name', label: '物件名稱', children: draft.name },
     { key: 'address', label: '地址', children: draft.address },
@@ -74,7 +74,7 @@ function draftItems(draft: MandateRequestDraft) {
 function UnitChoice({ option, checked, disabled, onChange }: { option: UnitOption; checked: boolean; disabled: boolean; onChange: (checked: boolean) => void }) {
   return (
     <Checkbox className={checked ? styles.unitSelected : styles.unit} checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)}>
-      <Flex vertical gap="var(--space-xxs)">
+      <Flex vertical gap="var(--space-xxs)" className={styles.unitBody}>
         <Typography.Text strong>{option.name}</Typography.Text>
         <Typography.Text type="secondary">
           {option.kindText}，{option.address}
@@ -85,8 +85,18 @@ function UnitChoice({ option, checked, disabled, onChange }: { option: UnitOptio
   );
 }
 
-export default function OwnerRequestFlow({ request, groups, onChange, showPractice = true }: OwnerRequestFlowProps) {
+// antd 的 message 與 modal 要在 App 底下才能用，各元件自己包一層（同 PropertyList、ContractList）
+export default function OwnerRequestFlow(props: OwnerRequestFlowProps) {
+  return (
+    <AntApp>
+      <OwnerRequestFlowBody {...props} />
+    </AntApp>
+  );
+}
+
+function OwnerRequestFlowBody({ request, groups, onChange, showPractice = true }: OwnerRequestFlowProps) {
   const { message, modal } = AntApp.useApp();
+  const router = useRouter();
   const [fetchedGroups, setFetchedGroups] = useState<PropertyGroup[] | null>(null);
   const [picked, setPicked] = useState<string[]>(() => (request.confirmed_unit_id ? [request.confirmed_unit_id] : []));
   const [confirming, setConfirming] = useState<'agree' | 'decline' | null>(null);
@@ -146,7 +156,8 @@ export default function OwnerRequestFlow({ request, groups, onChange, showPracti
       if (unitId) setPicked((current) => (current.includes(unitId) ? current : [...current, unitId]));
       setConfirmed({ existing: json.data.existing === true, transcript: json.data.transcript ?? 'none' });
       await Promise.all([loadGroups(), refreshRequest()]);
-    } catch {
+    } catch (error) {
+      console.error('申請操作失敗', error);
       setConfirmError('網路發生問題。請檢查連線後再按一次。');
     } finally {
       setConfirming(null);
@@ -169,7 +180,8 @@ export default function OwnerRequestFlow({ request, groups, onChange, showPracti
       }
       message.success('申請已送出');
       onChange(json.data);
-    } catch {
+    } catch (error) {
+      console.error('申請操作失敗', error);
       setSubmitError('網路發生問題。請檢查連線後再按一次。');
     } finally {
       setSubmitting(false);
@@ -187,7 +199,8 @@ export default function OwnerRequestFlow({ request, groups, onChange, showPracti
       }
       message.success('申請已收回');
       onChange(json.data);
-    } catch {
+    } catch (error) {
+      console.error('申請操作失敗', error);
       message.error('網路發生問題。請檢查連線後再按一次。');
     } finally {
       setWithdrawing(false);
@@ -319,9 +332,7 @@ export default function OwnerRequestFlow({ request, groups, onChange, showPracti
             }
             action={
               !groupsLoading && !(hasDraft && !draftConfirmed) ? (
-                <Link href="/properties">
-                  <Button>前往物件列表</Button>
-                </Link>
+                <Button onClick={() => router.push('/properties')}>前往物件列表</Button>
               ) : undefined
             }
           />

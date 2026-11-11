@@ -45,11 +45,11 @@ export function requestLinkUrl(origin: string, linkPath: string): string {
   return `${origin.replace(/\/+$/, '')}${linkPath}`;
 }
 
-/** 代填資料的建號文字。沒有建號回 null。 */
-export function draftBuildingText(draft: MandateRequestDraft | null | undefined): string | null {
+/** 代填資料的建號，帶分號時一起顯示，例如 12345-000。沒有建號回 null。畫面自己加「建號」的標籤。 */
+export function draftBuildingNo(draft: MandateRequestDraft | null | undefined): string | null {
   const key = draft?.anchor?.key;
   if (!key || !key.buildingNo) return null;
-  return key.subNo ? `建號 ${key.buildingNo}-${key.subNo}` : `建號 ${key.buildingNo}`;
+  return key.subNo ? `${key.buildingNo}-${key.subNo}` : key.buildingNo;
 }
 
 /** 業者列表用的代填摘要：物件名稱與地址。沒有代填資料回 emptyText，預設「未代填」。 */

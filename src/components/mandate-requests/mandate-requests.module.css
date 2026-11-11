@@ -23,13 +23,19 @@
 .unit,
 .unitSelected {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   width: 100%;
+  height: auto;
   min-height: calc(var(--space-xxl) + var(--space-sm));
-  padding: var(--space-sm) var(--space-md);
+  padding-inline: var(--space-md);
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-md);
   background: var(--color-surface-1);
+}
+
+/* 文字區塊自己帶上下內距，列高跟著內容長，不被 antd 的行高截掉 */
+.unitBody {
+  padding-block: var(--space-sm);
 }
 
 .unitSelected {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { MandateRequestStatus, OwnerMandateRequest, PracticeMandateRequest, PropertyGroup } from '../types';
 import { STORED_STATUSES } from './status';
 import {
-  draftBuildingText,
+  draftBuildingNo,
   draftSummaryText,
   kindOptions,
   licenseKindTitles,
@@ -96,10 +96,10 @@ describe('代填資料的摘要', () => {
 
   it('建號帶分號時一起顯示', () => {
     const base = { name: 'a', address: 'b' };
-    expect(draftBuildingText({ ...base, anchor: { key: { city: 'A', town: '02', section: '0021', buildingNo: '12345', subNo: '000' } } })).toBe('建號 12345-000');
-    expect(draftBuildingText({ ...base, anchor: { key: { city: 'A', town: '02', section: '0021', buildingNo: '12345' } } })).toBe('建號 12345');
-    expect(draftBuildingText({ ...base })).toBeNull();
-    expect(draftBuildingText(null)).toBeNull();
+    expect(draftBuildingNo({ ...base, anchor: { key: { city: 'A', town: '02', section: '0021', buildingNo: '12345', subNo: '000' } } })).toBe('12345-000');
+    expect(draftBuildingNo({ ...base, anchor: { key: { city: 'A', town: '02', section: '0021', buildingNo: '12345' } } })).toBe('12345');
+    expect(draftBuildingNo({ ...base })).toBeNull();
+    expect(draftBuildingNo(null)).toBeNull();
   });
 });
 
