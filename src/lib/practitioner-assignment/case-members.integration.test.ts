@@ -16,7 +16,7 @@ import type { SigningDb } from '../signing-module/db';
 import { createMockProvider } from '../signing-module/mock-adapter';
 import { createSigningModule } from '../signing-module/module';
 import type { ContractFields, ContractRoutingConditions, SignatureField } from '../types';
-import { copyAssignments, getAssignments, replaceAssignments } from './repository';
+import { copyAssignments, getAssignments, replaceAssignments, type CaseSeatMember } from './repository';
 import { loadSendInputs, prepareContractSend } from './send';
 import type { PractitionerAssignmentInput } from './seats';
 import { resolveAssignmentFacts } from './service';
@@ -147,7 +147,7 @@ async function assignOnCase(id: string, assignments: PractitionerAssignmentInput
   const resolved = await resolveAssignmentFacts(routingLoad.facts, assignments, seed);
   if (!resolved.ok) throw new Error(resolved.error);
   // seed 的 partyId 不是 ULID，control.parties 放不下。換成真實的 ULID 再寫成案件成員
-  const seats = [];
+  const seats: CaseSeatMember[] = [];
   for (const s of resolved.value.seats) {
     const partyId = newUlid();
     await kit.asOwner((db) =>
