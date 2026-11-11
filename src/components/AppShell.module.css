@@ -35,3 +35,11 @@ aside.sider {
   padding: var(--space-xl);
   min-width: 0;
 }
+
+/* 窄螢幕：側欄收合成寬度 0，內容的左右留白縮小，申請詳情等頁面在 375px 寬不水平捲動 */
+@media (max-width: 767.98px) {
+  /* 上方多留一個收合鈕的高度：寬度 0 的側欄把展開鈕放在內容的左上角 */
+  .content {
+    padding: var(--space-xxl) var(--space-md) var(--space-md);
+  }
+}

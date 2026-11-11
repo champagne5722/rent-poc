@@ -34,7 +34,7 @@ import styles from './mandate-requests.module.css';
 // 這裡也沒有任何依這些情況而變的欄位或文字。
 // 待業者接受時，組織管理員在「下一步」看到「接受」與「不接受」。接受要先從候選名單選一位租賃住宅管理人員。
 // 已接受時，組織管理員看到「結束申請」。其他角色只看到說明。
-// 給 MIL-212：已接受的詳情要加「物件」與「擬約」的位置，放在 nextStep 的 children 之後、aside 的「申請資訊」之前。
+// 給 MIL-212：已接受的詳情要加「物件」與「擬約」的位置，放在主要內容的「申請資訊」上方（接受之後申請資訊占滿寬度）。
 // 狀態一律用 API 回傳的 status，這裡不算日期。
 
 export interface PracticeRequestDetailProps {
@@ -162,7 +162,7 @@ function PracticeRequestDetailBody({ request: initial, isAdmin, candidates, mana
           type="primary"
           disabled={noManager || busy !== null}
           onClick={() => {
-            setPicked(candidates.length === 1 ? candidates[0].employment_id : null);
+            setPicked(null);
             setAcceptError(null);
             setAcceptOpen(true);
           }}
@@ -196,6 +196,61 @@ function PracticeRequestDetailBody({ request: initial, isAdmin, candidates, mana
     return undefined;
   })();
 
+  // 接受之前：申請資訊在右側欄，左邊是代填資料。接受之後沒有代填資料，申請資訊放主要內容，占滿寬度，
+  // 給 MIL-212 的「物件」與「擬約」留在它的上方。
+  const info = (
+    <SettingsSection title="申請資訊">
+      <Descriptions
+        size="small"
+        column={1}
+        items={[
+          { key: 'kind', label: '申請的種類', children: request.kind_label },
+          { key: 'created', label: '建立時間', children: formatTaipeiDateTime(request.created_at) },
+          ...(deadlineText
+            ? [
+                {
+                  key: 'deadline',
+                  label: request.status === 'pending_practice' ? '業者回覆的期限' : request.status === 'accepted' ? '送出合約的期限' : '連結失效時間',
+                  children: deadlineText,
+                },
+              ]
+            : []),
+          ...(request.submitted_at ? [{ key: 'submitted', label: '屋主送出時間', children: formatTaipeiDateTime(request.submitted_at) }] : []),
+          ...(request.withdrawn_at ? [{ key: 'withdrawn', label: '屋主收回時間', children: formatTaipeiDateTime(request.withdrawn_at) }] : []),
+          ...(request.accepted_at ? [{ key: 'accepted', label: '接受時間', children: formatTaipeiDateTime(request.accepted_at) }] : []),
+          ...(request.accepted_at ? [{ key: 'manager', label: '指派的管理人員', children: managerName ?? '—' }] : []),
+          ...(request.status === 'declined' && request.closed_at ? [{ key: 'declined', label: '未接受時間', children: formatTaipeiDateTime(request.closed_at) }] : []),
+          ...(request.status === 'ended' && request.closed_at
+            ? [{ key: 'ended', label: '結束時間', children: closedByText ? `${formatTaipeiDateTime(request.closed_at)}，${closedByText}` : formatTaipeiDateTime(request.closed_at) }]
+            : []),
+          ...(request.unit_count !== null && mayShowUnits ? [{ key: 'units', label: '租賃單位', children: `${request.unit_count} 個` }] : []),
+        ]}
+      />
+    </SettingsSection>
+  );
+
+  const draftSection = (
+    <SettingsSection
+      title="代填的物件資料"
+      description="這是你替屋主填的資料。屋主確認前，不算登錄，不佔建號。連結失效、屋主送出或收回後，資料會刪除。"
+    >
+      {draft ? (
+        <Descriptions
+          size="small"
+          column={1}
+          items={[
+            { key: 'name', label: '物件名稱', children: draft.name },
+            { key: 'address', label: '地址', children: draft.address },
+            ...(building ? [{ key: 'building', label: '建號', children: building }] : []),
+            { key: 'transcript', label: '代傳的謄本', children: request.transcript_file_name ?? '沒有代傳' },
+          ]}
+        />
+      ) : (
+        <span>{request.status === 'pending_owner' ? '沒有代填資料。屋主會從自己已登錄的租賃單位選。' : '沒有代填資料，或資料已刪除。'}</span>
+      )}
+    </SettingsSection>
+  );
+
   return (
     <>
       <DetailPage
@@ -209,58 +264,9 @@ function PracticeRequestDetailBody({ request: initial, isAdmin, candidates, mana
             {nextStepNote}
           </NextStep>
         }
-        aside={
-          <SettingsSection title="申請資訊">
-            <Descriptions
-              size="small"
-              column={1}
-              items={[
-                { key: 'kind', label: '申請的種類', children: request.kind_label },
-                { key: 'created', label: '建立時間', children: formatTaipeiDateTime(request.created_at) },
-                ...(deadlineText
-                  ? [
-                      {
-                        key: 'deadline',
-                        label: request.status === 'pending_practice' ? '業者回覆的期限' : request.status === 'accepted' ? '送出合約的期限' : '連結失效時間',
-                        children: deadlineText,
-                      },
-                    ]
-                  : []),
-                ...(request.submitted_at ? [{ key: 'submitted', label: '屋主送出時間', children: formatTaipeiDateTime(request.submitted_at) }] : []),
-                ...(request.withdrawn_at ? [{ key: 'withdrawn', label: '屋主收回時間', children: formatTaipeiDateTime(request.withdrawn_at) }] : []),
-                ...(request.accepted_at ? [{ key: 'accepted', label: '接受時間', children: formatTaipeiDateTime(request.accepted_at) }] : []),
-                ...(request.accepted_at ? [{ key: 'manager', label: '指派的管理人員', children: managerName ?? '—' }] : []),
-                ...(request.status === 'declined' && request.closed_at ? [{ key: 'declined', label: '未接受時間', children: formatTaipeiDateTime(request.closed_at) }] : []),
-                ...(request.status === 'ended' && request.closed_at
-                  ? [{ key: 'ended', label: '結束時間', children: closedByText ? `${formatTaipeiDateTime(request.closed_at)}，${closedByText}` : formatTaipeiDateTime(request.closed_at) }]
-                  : []),
-                ...(request.unit_count !== null && mayShowUnits ? [{ key: 'units', label: '租賃單位', children: `${request.unit_count} 個` }] : []),
-              ]}
-            />
-          </SettingsSection>
-        }
+        aside={mayShowUnits ? info : null}
       >
-        {mayShowUnits && (
-          <SettingsSection
-            title="代填的物件資料"
-            description="這是你替屋主填的資料。屋主確認前，不算登錄，不佔建號。連結失效、屋主送出或收回後，資料會刪除。"
-          >
-            {draft ? (
-              <Descriptions
-                size="small"
-                column={1}
-                items={[
-                  { key: 'name', label: '物件名稱', children: draft.name },
-                  { key: 'address', label: '地址', children: draft.address },
-                  ...(building ? [{ key: 'building', label: '建號', children: building }] : []),
-                  { key: 'transcript', label: '代傳的謄本', children: request.transcript_file_name ?? '沒有代傳' },
-                ]}
-              />
-            ) : (
-              <span>{request.status === 'pending_owner' ? '沒有代填資料。屋主會從自己已登錄的租賃單位選。' : '沒有代填資料，或資料已刪除。'}</span>
-            )}
-          </SettingsSection>
-        )}
+        {mayShowUnits ? draftSection : info}
       </DetailPage>
       <Modal
         title="接受申請並指派管理人員"

@@ -99,3 +99,91 @@ export function unknownRequestCode(): string {
   for (let i = 0; i < 43; i += 1) out += alphabet[Math.floor(Math.random() * alphabet.length)];
   return out;
 }
+
+// MIL-210 前半畫面段的資料準備。只做加法。前置條件走既有的 API，被測的行為一律走畫面。
+
+/** 流水號。同一次執行內，每位管理人員的證號序號互不相同。 */
+let certificateCounter = 0;
+
+export interface PracticeManager {
+  /** 候選名單上顯示的姓名。 */
+  name: string;
+  employmentId: string;
+}
+
+const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
+/**
+ * 替已驗證的業者登錄一位租賃住宅管理人員：登入的使用者同意個資告知、登錄證書與任職，平台營運者核對證書與任職。
+ * 回傳後，業者的候選名單有這一位。email 的前半段是審核台項目上的登錄人名稱。
+ */
+export async function addVerifiedManager(browser: Browser, session: PracticeSession, email: string): Promise<PracticeManager> {
+  certificateCounter += 1;
+  const serial = String(Date.now() % 1_000_000).padStart(6, '0') + String(certificateCounter % 10);
+  const page = session.page;
+  const consent = await page.request.post('/api/practitioner/consent', { data: { decision: 'agree' } });
+  expect(consent.ok(), `同意個資告知：${consent.status()}`).toBe(true);
+  const cert = await page.request.post('/api/practitioner/certificates', {
+    multipart: {
+      certificateKind: 'rental_housing_manager',
+      certYear: '112',
+      certWord: '內授營',
+      certSerial: serial,
+      issuedOn: '2026-06-30',
+      validUntil: '2030-06-30',
+      startedOn: '2026-07-01',
+      files: { name: 'cert.png', mimeType: 'image/png', buffer: TINY_PNG },
+    },
+  });
+  expect(cert.ok(), `登錄證書：${cert.status()} ${await cert.text()}`).toBe(true);
+
+  const operator = await operatorPageOf(browser);
+  const partyName = email.split('@')[0];
+  // 證書核對後，任職項目才能核對，所以分兩輪
+  for (const type of ['certificate', 'employment']) {
+    let itemId: string | undefined;
+    await expect(async () => {
+      const items = await deskQueue(operator);
+      itemId = items.find((i) => i.type === type && i.summary?.partyName === partyName)?.id;
+      expect(itemId).toBeDefined();
+    }).toPass({ timeout: 20_000 });
+    await checkItem(operator, itemId as string, 'credential');
+  }
+
+  const candidates = await page.request.get('/api/mandate-requests/manager-candidates');
+  expect(candidates.ok()).toBe(true);
+  const list = ((await candidates.json()) as { data: Array<{ employment_id: string; display_name: string }> }).data;
+  expect(list.length).toBeGreaterThan(0);
+  return { name: list[0].display_name, employmentId: list[0].employment_id };
+}
+
+export interface SubmittedRequest {
+  requestId: string;
+  linkPath: string;
+}
+
+/**
+ * 業者產生連結，屋主用 API 綁定並選一個物件送出，申請變成待業者接受。
+ * 屋主的頁面必須已登入屋主組織。每份申請用不同的物件：同一個租賃單位同時只能在一份進行中的申請。
+ */
+export async function submitRequestToPractice(
+  owner: Page,
+  practice: PracticeSession,
+  propertyName: string,
+  kind: 'management' | 'master_lease' = 'management',
+): Promise<SubmittedRequest> {
+  const created = await practice.page.request.post('/api/mandate-requests', { data: { kind } });
+  expect(created.status(), `產生連結：${await created.text()}`).toBe(201);
+  const { id, link_path: linkPath } = ((await created.json()) as { data: { id: string; link_path: string } }).data;
+  const code = linkPath.split('/').pop() as string;
+  const claim = await owner.request.post(`/api/mandate-requests/link/${code}/claim`, { data: {} });
+  expect(claim.ok(), `綁定連結：${claim.status()} ${await claim.text()}`).toBe(true);
+  const groups = (await (await owner.request.get('/api/properties?group=object')).json()) as {
+    data: Array<{ units: Array<{ name: string; rental_unit_id: string }> }>;
+  };
+  const unit = groups.data.flatMap((g) => g.units).find((u) => u.name === propertyName);
+  expect(unit, `找不到物件 ${propertyName}`).toBeDefined();
+  const submit = await owner.request.post(`/api/mandate-requests/${id}/submit`, { data: { unit_ids: [unit!.rental_unit_id] } });
+  expect(submit.ok(), `送出申請：${submit.status()} ${await submit.text()}`).toBe(true);
+  return { requestId: id, linkPath };
+}

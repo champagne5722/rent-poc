@@ -331,7 +331,6 @@ function OwnerRequestFlowBody({ request, groups, onChange, showPractice = true, 
         )}
         {canEndRequest(request) && canEnd && (
           <Flex vertical gap="small">
-            <Typography.Text type="secondary">合約完成前，你能結束申請。</Typography.Text>
             <Flex>
               <Button danger size="large" loading={ending} onClick={askEnd}>
                 結束申請
