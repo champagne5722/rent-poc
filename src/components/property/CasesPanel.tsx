@@ -10,7 +10,7 @@ import EmptyState from '@/components/page/EmptyState';
 import StatusTag from '@/components/StatusTag';
 import { leasePeriodLabel, monthlyRentLabel } from '@/lib/case-display';
 import type { CaseSummary } from '@/lib/case-store';
-import { buildCaseLayers } from '@/lib/property-case-layers';
+import { buildCaseLayers, casesEmptyText } from '@/lib/property-case-layers';
 import { statusPresentation } from '@/lib/status-presentation';
 
 interface CaseRow {
@@ -37,7 +37,7 @@ function buildRows(cases: CaseSummary[]): CaseRow[] {
   });
 }
 
-export default function CasesPanel({ cases }: { cases: CaseSummary[] }) {
+export default function CasesPanel({ cases, verified }: { cases: CaseSummary[]; verified: boolean }) {
   const rows = buildRows(cases);
   return (
     <Card size="small" title="案件">
@@ -48,7 +48,7 @@ export default function CasesPanel({ cases }: { cases: CaseSummary[] }) {
         pagination={false}
         scroll={{ x: 'max-content' }}
         expandable={{ defaultExpandAllRows: true }}
-        locale={{ emptyText: <EmptyState description="這個物件還沒有案件。物件通過平台文件核對後，就能建立案件。" /> }}
+        locale={{ emptyText: <EmptyState description={casesEmptyText(verified)} /> }}
         columns={[
           {
             title: '案件',

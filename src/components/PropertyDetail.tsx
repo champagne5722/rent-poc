@@ -117,7 +117,7 @@ function PropertyDetailInner({ property, units, ownership, cases }: PropertyDeta
           </Card>
         }
       >
-        <CasesPanel cases={cases} />
+        <CasesPanel cases={cases} verified={property.verification_status === 'verified'} />
         <Tabs
           items={[
             { key: 'basic', label: '基本資料', children: <BasicPanel property={property} /> },

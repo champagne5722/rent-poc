@@ -43,3 +43,8 @@ export function buildCaseLayers<T extends LayerCase>(cases: readonly T[]): CaseL
   }
   return layers;
 }
+
+/** 物件詳情「案件」區沒有案件時的說明。已核對的物件已經能建立案件，不再提核對。 */
+export function casesEmptyText(verified: boolean): string {
+  return verified ? '這個物件還沒有案件。' : '這個物件還沒有案件。物件通過平台文件核對後，就能建立案件。';
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCaseLayers, type LayerCase } from './property-case-layers';
+import { buildCaseLayers, casesEmptyText, type LayerCase } from './property-case-layers';
 
 const c = (id: string, overrides: Partial<LayerCase> = {}): LayerCase => ({
   id,
@@ -40,5 +40,14 @@ describe('buildCaseLayers', () => {
       [null, 'M', 'management', ['L1', 'L2']],
       [null, 'P', 'master_lease', ['S']],
     ]);
+  });
+});
+
+describe('casesEmptyText', () => {
+  it('已核對的物件不提核對', () => {
+    expect(casesEmptyText(true)).toBe('這個物件還沒有案件。');
+  });
+  it('未核對的物件說明要先通過核對', () => {
+    expect(casesEmptyText(false)).toContain('通過平台文件核對');
   });
 });

@@ -18,7 +18,7 @@ test('已核對的物件：列表的租賃單位有「建立合約」，詳情�
   await expect(page.getByRole('heading', { name, level: 1 })).toBeVisible();
   await expect(page.getByRole('link', { name: /返回物件列表/ })).toBeVisible();
   await expect(page.getByLabel('下一步').getByText('物件已核對，可以建立合約')).toBeVisible();
-  await expect(page.getByText('這個物件還沒有案件')).toBeVisible();
+  await expect(page.getByText('這個物件還沒有案件。', { exact: true })).toBeVisible();
 
   await page.getByRole('link', { name: /返回物件列表/ }).click();
   await expect(page).toHaveURL(/\/properties$/);
