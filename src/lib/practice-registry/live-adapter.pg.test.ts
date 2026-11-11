@@ -2,6 +2,7 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { fromPgClient } from '../pg/executor';
 import { migrate } from '../pg/migrate';
+import { dropTestDatabase } from '../pg/pg-database-kit';
 import { withClusterLock } from '../pg/pg-test-support';
 import { MIGRATIONS_DIR } from '../pg/test-harness';
 import { newUlid } from '../pg/ulid';
@@ -64,10 +65,7 @@ describe.skipIf(!adminUrl)('registry.signing_view：真實 PostgreSQL', () => {
   });
   afterAll(async () => {
     await admin.end();
-    const root = new Client({ connectionString: adminUrl });
-    await root.connect();
-    await root.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
-    await root.end();
+    await dropTestDatabase(adminUrl!, dbName);
   });
 
   type View = { practitioners: Array<{ certificate_no: unknown; certificate_no_masked: string; account_email: string; employment_id: string }> };

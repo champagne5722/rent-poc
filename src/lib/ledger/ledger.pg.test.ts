@@ -1,8 +1,9 @@
-import { Client, Pool } from 'pg';
+import { Client, type Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pgDriver } from '../pg/drivers';
 import { fromPgClient } from '../pg/executor';
 import { migrate } from '../pg/migrate';
+import { closeTestPool, createTestPool, dropTestDatabase } from '../pg/pg-database-kit';
 import { withClusterLock } from '../pg/pg-test-support';
 import { seedCases, testCaseId } from '../pg/test-cases';
 import { MIGRATIONS_DIR } from '../pg/test-harness';
@@ -56,18 +57,15 @@ describe.skipIf(!adminUrl)('鏡像帳：真實 PostgreSQL', () => {
       await admin.query(`ALTER ROLE app_rw PASSWORD 'rw-test'`);
     });
     await admin.query(`INSERT INTO control.orgs (id, name, kind) VALUES ($1, 'A', 'owner'), ($2, 'B', 'owner')`, [orgA, orgB]);
-    pool = new Pool({ connectionString: urlFor('app_rw', 'rw-test', dbName), max: 8 });
+    pool = createTestPool({ connectionString: urlFor('app_rw', 'rw-test', dbName), max: 8 });
     withTx = createWithTx(pgDriver(pool));
     await seedCases(withTx, [orgA], [CASE_A]);
     await seedCases(withTx, [orgB], [CASE_B]);
   });
   afterAll(async () => {
-    await pool.end();
+    await closeTestPool(pool);
     await admin.end();
-    const root = new Client({ connectionString: adminUrl });
-    await root.connect();
-    await root.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
-    await root.end();
+    await dropTestDatabase(adminUrl!, dbName);
   });
 
   const inOrg = <T>(orgId: string, fn: (tx: OrgTx) => Promise<T>) => withTx({ kind: 'org', orgId }, fn);
