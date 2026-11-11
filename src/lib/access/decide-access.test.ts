@@ -309,6 +309,11 @@ const ORG_EXPECTATIONS: Record<string, { roles: OrgRole[] }> = {
   'request.confirm_draft': { roles: ['admin', 'staff'] },
   'request.submit': { roles: ['admin', 'staff'] },
   'request.withdraw': { roles: ['admin', 'staff'] },
+  'request.accept': { roles: ['admin'] },
+  'request.decline': { roles: ['admin'] },
+  'request.manager_candidates': { roles: ['admin'] },
+  'request.end': { roles: ['admin', 'staff'] },
+  'request.end_as_practice': { roles: ['admin'] },
   // 執業人員證書與任職（MIL-111）：看所有角色，登錄與結束任職 viewer 被拒
   'practitioner.register': { roles: ['admin', 'staff'] },
   'employment.end': { roles: ['admin', 'staff'] },

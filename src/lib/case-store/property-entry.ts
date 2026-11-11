@@ -9,13 +9,13 @@ import {
   type PracticeEligibility,
 } from '../cases';
 import { contractTypeForCaseKind } from '../contract-types/case-kind';
-import { credentialStatusAt } from '../credential-status';
 import type { ContractType } from '../labels';
 import { canCreateCase } from '../ownership/gate';
 import { getOwnershipGate } from '../ownership/repository';
 import type { OrgTx } from '../pg/with-tx';
 import { getMyRegistration } from '../practice-entities/applicant';
 import { listOrgEmployments } from '../practitioners/applicant';
+import { signableManagers } from '../practitioners/signable-managers';
 import type { ContractRoutingConditions } from '../types';
 import { createLeaseCase } from './commands';
 import { findCoveringMandateCase, findCoveringMasterLeaseCase } from './repository';
@@ -65,18 +65,7 @@ export async function loadPracticeEligibility(tx: OrgTx, now: Date = new Date())
   // 資格事實只算「管理人員」。兩種業別共用同一批人員，所以業別層用任一已驗證的業別判定，各業別自己的狀態在 licenses
   const anyVerified = licenses.management === 'verified' || licenses.master_lease === 'verified';
   const employments = anyVerified ? await listOrgEmployments(tx) : [];
-  const hasSignableManager = employments.some(
-    (e) =>
-      e.certificateKind === 'rental_housing_manager' &&
-      credentialStatusAt(
-        {
-          license: { state: 'verified', validUntil: null, latestCheckId: null },
-          practitioner: { state: e.practitionerState, validUntil: e.validUntil, latestCheckId: null },
-          employment: { state: e.state, startsOn: e.startedOn, endsOn: e.endedOn, latestCheckId: null },
-        },
-        now.toISOString(),
-      ).signable,
-  );
+  const hasSignableManager = signableManagers(employments, now).length > 0;
   return { licenses, hasSignableManager };
 }
 

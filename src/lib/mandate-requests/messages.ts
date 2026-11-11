@@ -43,3 +43,26 @@ export const SUBMITTED_NOTICE_BODY = (kind: MandateRequestKind, unitCount: numbe
   `屋主送出了一份${KIND_LABEL[kind]}，含 ${unitCount} 個租賃單位。`;
 export const WITHDRAWN_NOTICE_TITLE = '申請已收回';
 export const WITHDRAWN_NOTICE_BODY = (kind: MandateRequestKind) => `屋主收回了一份${KIND_LABEL[kind]}。`;
+
+// 業者接受、不接受與結束（MIL-210 前半）。同一類拒絕一律用同一句，不因原因不同而改字。
+
+export const NOT_PRACTICE_ORG_MESSAGE = '只有業者的組織能處理這份申請';
+/** 接受與不接受共用。已接受、未接受、已收回、已結束與已失效都回這一句，看不出是哪一種。 */
+export const NOT_PENDING_PRACTICE_MESSAGE = '這份申請已經不是待業者接受的狀態，不能再處理';
+export const NOT_ENDABLE_MESSAGE = '這份申請不是已接受的狀態，不能結束';
+export const MANAGER_REQUIRED_MESSAGE = '接受申請必須指派一位租賃住宅管理人員';
+export const NO_ELIGIBLE_MANAGER_MESSAGE = '貴公司目前沒有通過驗證的租賃住宅管理人員，請先完成人員驗證再接受申請';
+export const MANAGER_NOT_ELIGIBLE_MESSAGE = '指派的人不是貴公司通過驗證、任職中的租賃住宅管理人員';
+export const ACCEPT_LICENSE_NOT_VERIFIED_MESSAGE = '貴公司的這個業別已不是通過驗證的狀態，不能接受這份申請';
+
+/** 站內通知文字。只寫申請的種類與租賃單位的數量，不帶對方的 email 與名稱。與 migration 0087 的函式同文字。待法務確認。 */
+export const ACCEPTED_NOTICE_TITLE = '申請已接受';
+export const ACCEPTED_NOTICE_BODY = (kind: MandateRequestKind, unitCount: number) =>
+  `業者接受了你送出的${KIND_LABEL[kind]}，含 ${unitCount} 個租賃單位。`;
+/** 文字只寫「未接受」，沒有原因。 */
+export const DECLINED_NOTICE_TITLE = '申請未接受';
+export const DECLINED_NOTICE_BODY = (kind: MandateRequestKind) => `你送出的${KIND_LABEL[kind]}未接受。`;
+export const ENDED_BY_PRACTICE_NOTICE_TITLE = '業者已結束申請';
+export const ENDED_BY_PRACTICE_NOTICE_BODY = (kind: MandateRequestKind) => `業者結束了一份${KIND_LABEL[kind]}。`;
+export const ENDED_BY_OWNER_NOTICE_TITLE = '屋主已結束申請';
+export const ENDED_BY_OWNER_NOTICE_BODY = (kind: MandateRequestKind) => `屋主結束了一份${KIND_LABEL[kind]}。`;
