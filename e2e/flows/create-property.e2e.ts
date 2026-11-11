@@ -11,7 +11,7 @@ test('物件列表：建號必填，登錄後列表出現這個物件，核對�
   const buildingNo = uniqueBuildingNo();
 
   await page.goto('/properties');
-  await expect(page.getByRole('main').getByRole('heading', { name: '物件' })).toBeVisible();
+  await expect(page.getByRole('main').getByRole('heading', { name: '物件列表' })).toBeVisible();
 
   await clickUntil(page.getByRole('button', { name: /新增物件/ }), page.getByRole('dialog', { name: '新增物件' }));
   const dialog = page.getByRole('dialog', { name: '新增物件' });
@@ -35,16 +35,18 @@ test('物件列表：建號必填，登錄後列表出現這個物件，核對�
   await expect(page.getByText('已登錄，待平台核對文件')).toBeVisible();
   await expect(dialog).toBeHidden();
 
-  const row = page.getByRole('row').filter({ hasText: name });
-  await expect(row).toBeVisible();
-  await expect(row).toContainText(address);
-  await expect(row).toContainText('$26,000');
-  await expect(row).toContainText(`建號 ${buildingNo}-000`);
-  await expect(row).toContainText('待平台核對文件');
+  // 物件列表一列一個物件（ADR-0027 決議 5）：物件列有地址、建號與核對狀態，展開列是它底下的租賃單位
+  const groupRow = page.getByRole('row').filter({ hasText: name }).filter({ hasText: '待平台核對文件' });
+  await expect(groupRow).toBeVisible();
+  await expect(groupRow).toContainText(address);
+  await expect(groupRow).toContainText(`建號 ${buildingNo}-000`);
+  await expect(groupRow).toContainText('1 個');
+  // 租賃單位在物件底下，預設展開
+  await expect(page.getByRole('cell', { name: '$26,000' })).toBeVisible();
   // 畫面不出現「已送審核」與審核單號
   await expect(page.getByText(/已送審核|審核單號|已在平台登錄/)).toHaveCount(0);
 
   // 重新整理後仍在：資料真的存進去了
   await page.reload();
-  await expect(page.getByRole('row').filter({ hasText: name })).toBeVisible();
+  await expect(page.getByRole('row').filter({ hasText: name }).filter({ hasText: '待平台核對文件' })).toBeVisible();
 });

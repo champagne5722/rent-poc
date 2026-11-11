@@ -47,7 +47,8 @@ export function propertyNextStep(input: PropertyNextStepInput): PropertyNextStep
       return {
         headline: '修正文件後，重新送出謄本',
         owner: OWNER_ORG,
-        detail: input.messages[0] ?? null,
+        // 不符的訊息在「建號與核對」分頁完整列出，這裡不重複
+        detail: '不符的項目列在「建號與核對」分頁。',
         tone: 'error',
       };
     case 'pending_verification':

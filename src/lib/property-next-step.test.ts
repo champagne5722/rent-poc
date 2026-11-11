@@ -40,10 +40,10 @@ describe('propertyNextStep', () => {
     expect(step.tone).toBe('progress');
   });
 
-  it('文件不符時，帶出第一則訊息，請使用者修正後重送', () => {
+  it('文件不符時，請使用者修正後重送，訊息不重複', () => {
     const step = propertyNextStep({ ...base, verificationStatus: 'failed', nodeStatus: 'failed', messages: [KEY_MISMATCH_MESSAGE] });
     expect(step.headline).toBe('修正文件後，重新送出謄本');
-    expect(step.detail).toBe(KEY_MISMATCH_MESSAGE);
+    expect(step.detail).not.toContain(KEY_MISMATCH_MESSAGE);
     expect(step.tone).toBe('error');
   });
 
