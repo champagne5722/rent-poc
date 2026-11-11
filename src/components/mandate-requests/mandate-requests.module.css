@@ -44,8 +44,11 @@
   width: 100%;
 }
 
-.managerOption {
+/* 選擇器帶元素名稱，壓過 antd Radio 的樣式（特異性 0,1,0） */
+label.managerOption {
+  align-items: center;
   width: 100%;
+  min-height: calc(var(--space-xl) + var(--space-xs));
   padding: var(--space-sm) var(--space-md);
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-md);
