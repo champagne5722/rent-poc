@@ -215,11 +215,11 @@ export async function setupLiveKit(): Promise<LiveKit> {
   ]);
   await draft(world.selectingOrgId, []);
 
-  // 案件綁定：屋主組織的案件，成員是北辰的專任管理人員（relation = practitioner）
+  // 案件綁定：屋主組織的案件，受託人是北辰的專任管理人員（relation = mandatary）
   const caseId = newUlid();
   await withTx({ kind: 'org', orgId: world.caseBoundOrgId }, async (tx) => {
     await tx.query(`INSERT INTO org.cases (id, org_id, kind, state, business_type, title) VALUES ($1, $2, 'lease', 'draft', 'master_lease', '測試案件')`, [caseId, world.caseBoundOrgId]);
-    await tx.query(`INSERT INTO org.case_members (id, org_id, case_id, party_id, relation) VALUES ($1, $2, $3, $4, 'practitioner')`, [
+    await tx.query(`INSERT INTO org.case_members (id, org_id, case_id, party_id, relation) VALUES ($1, $2, $3, $4, 'mandatary')`, [
       newUlid(),
       world.caseBoundOrgId,
       caseId,

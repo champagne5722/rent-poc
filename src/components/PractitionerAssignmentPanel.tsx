@@ -1,11 +1,13 @@
 'use client';
 
 // 執業人員的指派欄位（MIL-69）：包租業者在建約 wizard 選專任管理人員與當事人簽署人。
-// 人選一律來自平台登錄（practiceRegistry），不開放手動輸入；執業人員的 Email 取自其帳號，畫面不能修改（ADR-0018 決議 10 第 6 項）。
+// 人選一律來自平台登錄（practiceRegistry），不開放手動輸入（ADR-0018 決議 10 第 6 項）。
+// 簽章人員只從自家組織指派（MIL-200，ADR-0029 決議 3）：選單只列自家組織的執業主體與人員，只顯示姓名。
+// 簽署人的 Email 由伺服端依所選的人帶入合約欄位與簽署信，畫面不顯示也不經過瀏覽器。
 // 候選清單只列目前可簽章的人。證書在換證窗口內仍可選，並顯示換證期限（ADR-0017 決議 8）。
 // 資格的判定與送簽前檢查在 src/lib/practitioner-assignment/ 與 src/lib/send-preconditions/，這裡只畫畫面。
 
-import { Alert, Col, Flex, Form, Input, Row, Select, Skeleton, Typography } from 'antd';
+import { Alert, Col, Flex, Form, Row, Select, Skeleton, Typography } from 'antd';
 import type { SeatOption, SeatOptions } from '@/lib/practitioner-assignment/service';
 import type { MergedSeats } from '@/lib/signature-routing';
 import type { PractitionerAssignmentInput } from '@/lib/practitioner-assignment/seats';
@@ -16,8 +18,8 @@ export type MergedSeatNotice = MergedSeats & { name: string };
 
 export interface PartySignerPick {
   role: ContractPartyRole;
-  /** null 代表清空（改選執業主體後，舊簽署人不再適用）。 */
-  signer: { name: string; email: string } | null;
+  /** null 代表清空（改選執業主體後，舊簽署人不再適用）。Email 由伺服端存指派時補進合約欄位，這裡只有姓名。 */
+  signer: { name: string } | null;
 }
 
 interface Props {
@@ -25,7 +27,7 @@ interface Props {
   /** 草稿中的選擇，可能還沒選完。 */
   assignments: readonly PractitionerAssignmentInput[];
   onChange: (next: PractitionerAssignmentInput[]) => void;
-  /** 選定或清空當事人簽署人時，呼叫端把姓名與 Email 帶入合約欄位。 */
+  /** 選定或清空當事人簽署人時，呼叫端把姓名帶入合約欄位。Email 存指派時由伺服端補。 */
   onPartySigner: (pick: PartySignerPick) => void;
   /** 合併的席位。送簽時這位簽署人只簽一次。 */
   merges?: readonly MergedSeatNotice[];
@@ -73,7 +75,7 @@ function SeatAssignment({
     const signer = entity?.partySigners.find((s) => s.id === partySignerId);
     if (!current || !signer || !seat.partyRole) return;
     onAssign({ ...current, partySignerId });
-    onPartySigner({ role: seat.partyRole, signer: { name: signer.name, email: signer.email } });
+    onPartySigner({ role: seat.partyRole, signer: { name: signer.name } });
   };
   const pickPractitioner = (practitionerId: string) => {
     if (current) onAssign({ ...current, practitionerId });
@@ -106,7 +108,7 @@ function SeatAssignment({
                 placeholder={entity ? '選擇當事人簽署人' : '請先選擇執業主體'}
                 value={current?.partySignerId ?? undefined}
                 onChange={pickPartySigner}
-                options={(entity?.partySigners ?? []).map((s) => ({ value: s.id, label: `${s.name}（${s.email}）` }))}
+                options={(entity?.partySigners ?? []).map((s) => ({ value: s.id, label: s.name }))}
               />
             </Form.Item>
           </Col>
@@ -123,11 +125,6 @@ function SeatAssignment({
                 label: [p.name, p.title ? `（${p.title}）` : '', p.renewalWindow ? `・換證期限 ${p.renewalWindow.validUntil}` : ''].join(''),
               }))}
             />
-          </Form.Item>
-        </Col>
-        <Col span={12}>
-          <Form.Item label="執業人員 Email（取自帳號，不能修改）" style={{ marginBottom: 0 }}>
-            <Input readOnly variant="filled" value={practitioner?.email ?? ''} placeholder="選定執業人員後帶入" />
           </Form.Item>
         </Col>
       </Row>
@@ -147,6 +144,7 @@ function SeatAssignment({
           }
         />
       )}
+      <Typography.Text type="secondary">只列自家組織的人員。簽署人的 Email 由系統帶入，這裡不顯示。</Typography.Text>
       {seat.notice && <Typography.Text type="secondary">{seat.notice}</Typography.Text>}
       {merged && (
         <Alert
@@ -187,7 +185,7 @@ export default function PractitionerAssignmentPanel({ options, assignments, onCh
     <Flex vertical gap={12}>
       <Typography.Text strong>執業人員簽章</Typography.Text>
       <Typography.Text type="secondary">
-        依簽署序列，這份合約需要執業人員簽章。人選來自平台登錄，只列目前可簽章的人。
+        依簽署序列，這份合約需要執業人員簽章。人選來自自家組織在平台登錄的人員，只列目前可簽章的人。
       </Typography.Text>
       {options.registryKind === 'seed' && (
         <Alert

@@ -45,32 +45,31 @@ vitest 的 `vitest.setup.ts` 設 `PRACTICE_REGISTRY=seed`，所以既有的 rout
 - `certificateNo`：格式 `112年內授營字第123456號`。`own` 關係是原文，其他關係是資料庫遮罩後的值。簽章紀錄只存 `maskCertificateNo()` 遮罩後的值。
 - `fullTime`：管理人員且任職已驗證。專任由 `employments_exclusive_verified` 保證（同一證號最多一筆已驗證的管理人員任職）。經紀人員沒有專任要求，永遠是 `false`。
 - `isResponsiblePerson`：登錄沒有負責人資料，永遠是 `false`。「負責人沒有證書」（P0-12 AC5）的情境在真實 adapter 不會出現，契約測試對這項只跑 seed。
-- `credential`：業別層取查詢指定的業別，沒有登錄時 `state` 是 `null`。證書層 `validUntil` 是 `YYYY-MM-DD`。任職層是任職期間。三層的 `latestCheckId` 只在 `own` 與 `bound` 有值。`accountEmail` 在 `selecting` 是遮罩的。
+- `credential`：業別層取查詢指定的業別，沒有登錄時 `state` 是 `null`。證書層 `validUntil` 是 `YYYY-MM-DD`。任職層是任職期間。三層的 `latestCheckId` 只在 `own` 與 `bound` 有值。`accountEmail` 只有 `own` 用 ID 查單筆（`getPractitioner`）時是真實的，列出（`listPractitioners`）與其他關係都是遮罩的（MIL-200）。
 
 ## `listPractitioners` 的篩選
 
-依序：證書種類、專任要求、人員本身查詢時點可簽章。第三項呼叫 `credentialStatusAt()`，但把業別層當成已驗證：證書或任職未驗證、已期滿、任職已結束的人不在清單內。業別層不排除，執業主體的業別未驗證時候選仍在，呼叫端靠判定事實說明原因（委託管理合約受託人的 `MANDATARY_LICENSE_UNVERIFIED` 靠這個）。seed adapter 套用同樣的篩選。`getPractitioner` 不套用任何資格條件，`selecting` 關係除外（見下）。
+依序：證書種類、專任要求、人員本身查詢時點可簽章。第三項呼叫 `credentialStatusAt()`，但把業別層當成已驗證：證書或任職未驗證、已期滿、任職已結束的人不在清單內。業別層不排除，執業主體的業別未驗證時候選仍在，呼叫端靠判定事實說明原因（委託管理合約受託人的 `MANDATARY_LICENSE_UNVERIFIED` 靠這個）。seed adapter 套用同樣的篩選。`getPractitioner` 不套用任何資格條件。
 
-## 跨組織：呼叫者與執業主體的關係
+## 簽章人員只從自家指派：呼叫者與執業主體的關係（MIL-200）
 
-`registry.caller_relation(entity_id)`（內部函式）由資料庫依交易的組織脈絡算出，呼叫者不能指定。`bound` 與 `selecting` 都是呼叫者自己能建立的關係（存一筆指派，或建一份草稿合約），所以它們看不到證號原文，也看不到未驗證與已失效的任職。
+ADR-0029 決議 3：合約上的簽章人與當事人簽署人，都由主辦組織從自家指派，任何組織都看不到別的組織的人員。`registry.caller_relation(entity_id)`（內部函式，migration 0084）由資料庫依交易的組織脈絡算出，呼叫者不能指定。
 
 | 關係 | 條件 | 證號 | email | 核對紀錄 ID | 列出任職時 |
 |---|---|---|---|---|---|
-| `own` | 呼叫者是該執業主體自己的組織，或平台營運者 | 原文 | 真實 | 有 | 全部（含待驗證、失效） |
-| `bound` | 呼叫者組織的案件成員（`mandatary`、`practitioner`、`broker`）屬於該執業主體的組織；或呼叫者組織的合約指派指向該執業主體 | 遮罩 | 真實 | 有 | 只回證書與任職都已驗證的人。用任職 ID 查單筆時回完整狀態 |
-| `selecting` | 呼叫者是屋主或執業主體組織，而且至少有一份草稿合約 | 遮罩 | 遮罩 | 無 | 只回證書與任職都已驗證的人 |
-| `none` | 其他 | 空，與執業主體不存在不可區分 | | | |
+| `own` | 呼叫者是該執業主體自己的組織，或平台營運者 | 原文 | 用 ID 查單筆時真實，列出時遮罩 | 有 | 全部（含待驗證、失效） |
+| `bound` | 呼叫者組織的案件成員，關係是 `mandatary`，而且屬於該執業主體的組織 | 遮罩 | 遮罩 | 有 | 只回證書與任職都已驗證的人。用任職 ID 查單筆時回完整狀態 |
+| `none` | 其他，包含只有草稿合約、只有合約指派的組織 | 空，與執業主體不存在不可區分 | | | |
 
-- 證號遮罩在 SQL 內做（`registry.mask_certificate_no`），原文不離開資料庫。規則與 `maskCertificateNo` 相同：`112年內授營字第1234567號` 只留最後 3 個字元。`maskCertificateNo` 對已遮罩的值結果不變，所以簽章紀錄的快照與以前相同。
-- email 遮罩保留第一個字元與網域：`c***@example.com`。姓名與 ID 照回。
-- `bound` 的真實 email 是送簽要寄信給簽署人所需。送簽前的 email 重複檢查發生在存指派之後，那時已是 `bound`。
+- 拿掉的兩條路：`selecting`（有草稿合約就能讀任何執業主體的人員），與「呼叫者自己存的合約指派造出 `bound`」。兩者都是呼叫者不需要任何人同意就能建立的關係。
+- `listEntities` 只列呼叫者自己組織的執業主體，業別還沒驗證的也列（自己的登錄，自己看得到）。依業別查時只列該業別已驗證的。營運者列出全平台已驗證的。別的組織的執業主體不出現。
+- 列出成員與任職（`listPartySigners`、`listPractitioners`）時，email 一律遮罩，連 `own` 也一樣：選單只需要姓名。合約欄位與簽署信要用的真實 email，由伺服端用 ID 查單筆讀（`getPartySigner`、`getPractitioner`），而且只有 `own` 拿到。這就是「依 ID 讀真實 email，只回自家組織的人」。
+- `validateAssignments` 與 `resolveAssignmentFacts`（`practitioner-assignment/service.ts`）只認自家組織：別的組織的與不存在的執業主體、人員、簽署人，回同一句錯誤訊息。
+- 證號遮罩在 SQL 內做（`registry.mask_certificate_no`），原文不離開資料庫。規則與 `maskCertificateNo` 相同：`112年內授營字第1234567號` 只留最後 3 個字元。email 遮罩保留第一個字元與網域：`c***@example.com`。
+- `getEntity` 沒有改：它走 `lookup_practice_entities`，任何組織都能依 ID 查名稱與業別狀態，用在簽章紀錄的名稱顯示（ID 不可猜，不回統編、組織 ID、人員）。送簽與存指派的路徑不用它判斷歸屬。
+- seed adapter 是示範用假資料，不分組織，每個呼叫者都看到全部。只用在 `PRACTICE_REGISTRY=seed` 的 mock 示範與測試，不是安全邊界。
 
-任何屋主或執業主體組織都能查（不分關係）：已驗證執業主體的名單（ID、名稱、已登錄業別），以及 `getEntity` 的名稱與業別。不回統編、組織 ID、人員。
-
-**遮罩 email 卡住的步驟：** 建約 wizard 的 `PractitionerAssignmentPanel` 在選定當事人簽署人時，把簽署人的 email 寫進合約的甲方或乙方欄位（`onPartySigner`）。選人階段是 `selecting`，拿到的是遮罩 email，寫進欄位會讓送簽前檢查的「甲方的姓名與 email 必須與所選的當事人簽署人相同」不通過。沒有放寬遮罩。需要 D 線的畫面配合：遮罩的 email 不要寫進欄位，改由使用者輸入，或存指派後重新讀選項（那時是 `bound`，email 是真實的）。API 流程（欄位的 email 由呼叫端提供）不受影響。
-
-`selecting` 是過渡做法。委託管理合約現在不建案件（MIL-116），選人時沒有任何綁定，卻必須讀別的組織的候選人。MIL-116 把指派搬成案件成員後，可把 `selecting` 拿掉：只改 `caller_relation` 的最後一個判斷。待法務確認：選人階段揭露已驗證人員的姓名與遮罩 email 給有草稿合約的組織，是否符合個資告知（MIL-62）。
+`bound` 仍存在，因為受託人（例如屋主組織的案件，受託人是業者組織的人員）是合法的跨組織關係。`bound` 只認 `relation = 'mandatary'`。`practitioner` 與 `broker` 是簽章席位，呼叫者能自己指派，所以不產生 `bound`：乙公司把同時是甲公司成員的人指派進席位，乙公司對甲公司的執業主體仍是 `none`。測試在 `registry-disclosure.test.ts` 的「簽章席位成員不產生 bound」。殘餘風險：`org.case_members` 的寫入入口目前只有共同承租人（`POST /api/cases/[id]/members`）與簽章人員的指派（要求執業人員屬於自家組織，見 `resolveAssignmentFacts`），但資料庫本身沒有限制成員必須經對方同意。若之後開放別的成員關係的寫入，必須同步檢查成員的 party 屬於主辦組織或已接受邀請。
 
 `registry.signing_facts()`（0047）沒有放寬，仍只給自己的組織與營運者。跨組織走 `registry.signing_view()`。
 
@@ -83,7 +82,7 @@ vitest 的 `vitest.setup.ts` 設 `PRACTICE_REGISTRY=seed`，所以既有的 rout
 1. `registry` schema 內授權給 `app_rw` 的每個函式，必須在 `src/lib/pg/rls-cases/<模組>.ts` 的 `registryFunctions` 登記 `disclosure`。測試從系統目錄列出這些函式，沒登記的讓測試失敗。
 2. 函式不回傳個資時，登記 `{ kind: 'none', reason }`，寫出為什麼不揭露。不能靠漏登記通過。
 3. 函式回傳個資時，登記 `{ kind: 'matrix', variants }`。每種呼叫方式一個 variant，每個 variant 對每種呼叫者關係各有一列期望值。
-4. 呼叫者自己能建立的關係，不得解鎖證號原文。判斷重點是「這個關係是誰能建立的」。建草稿合約、存一筆指派、替案件加成員、開一個執業主體組織，都不需要任何人同意，所以 `bound`、`selecting`、`unrelated` 都讀不到證號原文。
+4. 呼叫者自己能建立的關係，不得解鎖證號原文。判斷重點是「這個關係是誰能建立的」。建草稿合約、存一筆指派、替案件加成員、開一個執業主體組織，都不需要任何人同意，所以 `bound`、`draftAssigned`、`unrelated` 都讀不到證號原文。
 5. 沒有關係的組織探測真實對象，與探測不存在的對象，回應必須逐值相同。
 6. 期望值有兩種：回應含哪些個資欄位（空陣列代表成功但不含個資），或被拒（42501）。兩者不同。該拒絕卻回了空結果，測試會失敗。
 
@@ -105,29 +104,31 @@ vitest 的 `vitest.setup.ts` 設 `PRACTICE_REGISTRY=seed`，所以既有的 rout
 |---|---|---|
 | `own` | 自己的組織（執業主體組織的成員） | 否 |
 | `operator` | 平台營運者 | 否 |
-| `bound` | 已指派：草稿合約的指派指向該執業主體 | 是 |
-| `boundByCase` | 已指派：案件成員屬於該執業主體的組織 | 是 |
-| `selecting` | 選人階段：有草稿合約，沒有綁定 | 是 |
+| `draftAssigned` | 草稿合約的指派指向北辰。MIL-200 起不再綁定，與無關的組織相同，留著當對照 | 是 |
+| `bound` | 已綁定：案件的受託人屬於北辰 | 是 |
 | `unrelated` | 無關的組織：另一個執業主體組織的成員 | 是 |
 | `unrelatedOwner` | 無關的組織：沒有合約的屋主組織 | 是 |
 | `noContext` | 沒有組織脈絡 | 是 |
+
+MIL-200 刪掉了 `selecting`。
 
 ### 各函式的揭露規則
 
 下表只列有個資讀取路徑的函式。「空」代表成功但不含上列欄位。其他函式（寫入函式、產權函式）登記為「不揭露」，理由寫在各自的 `disclosure.reason`。
 
-| 函式 | own | operator | bound / boundByCase | selecting | unrelated / unrelatedOwner | noContext |
-|---|---|---|---|---|---|---|
-| `signing_view`（列出任職） | 證號原文、email、核對紀錄 ID、失效任職 | 同 own | email、核對紀錄 ID | 空 | 空 | 被拒 |
-| `signing_view`（用任職 ID 查單筆） | 證號原文、email、核對紀錄 ID、失效任職 | 同 own | email、核對紀錄 ID、失效任職 | 空 | 空 | 被拒 |
-| `party_signer_candidates` | email | email | email | 空（email 遮罩） | 空 | 被拒 |
-| `signing_facts` | 證號原文、核對紀錄 ID、失效任職 | 同 own | 空 | 空 | 空 | 被拒 |
-| `org_employments` | 證號原文、失效任職 | 被拒 | 空 | 空 | 空 | 被拒 |
-| `my_practitioner` | 證號原文（本人的） | 被拒 | 空 | 空 | 空 | 被拒 |
-| `my_registration` | 統編 | 空 | 空 | 空 | 空 | 被拒 |
-| `review_queue`、`review_item_detail` | 被拒 | 統編、證號原文、核對紀錄 ID、失效任職 | 被拒 | 被拒 | 被拒 | 被拒 |
-| `practitioner_party` | 被拒 | 空 | 被拒 | 被拒 | 被拒 | 被拒 |
-| `list_practice_entities`、`lookup_practice_entities`、`certificate_badges` | 空 | 空 | 空 | 空 | 空 | 被拒 |
+| 函式 | own | operator | bound | draftAssigned / unrelated / unrelatedOwner | noContext |
+|---|---|---|---|---|---|
+| `signing_view`（列出任職） | 證號原文、核對紀錄 ID、失效任職 | 同 own | 核對紀錄 ID | 空 | 被拒 |
+| `signing_view`（用任職 ID 查單筆） | 證號原文、email、核對紀錄 ID、失效任職 | 同 own | 核對紀錄 ID、失效任職 | 空 | 被拒 |
+| `party_signer_candidates`（列出成員） | 空（email 遮罩） | 空 | 空 | 空 | 被拒 |
+| `party_signer_candidates`（用成員 ID 查單筆） | email | email | 空（email 遮罩） | 空 | 被拒 |
+| `signing_facts` | 證號原文、核對紀錄 ID、失效任職 | 同 own | 空 | 空 | 被拒 |
+| `org_employments` | 證號原文、失效任職 | 被拒 | 空 | 空 | 被拒 |
+| `my_practitioner` | 證號原文（本人的） | 被拒 | 空 | 空 | 被拒 |
+| `my_registration` | 統編 | 空 | 空 | 空 | 被拒 |
+| `review_queue`、`review_item_detail` | 被拒 | 統編、證號原文、核對紀錄 ID、失效任職 | 被拒 | 被拒 | 被拒 |
+| `practitioner_party` | 被拒 | 空 | 被拒 | 被拒 | 被拒 |
+| `list_practice_entities`、`lookup_practice_entities`、`certificate_badges` | 空 | 空 | 空 | 空 | 被拒 |
 
 `signing_view` 單筆查詢的 `bound` 讀得到失效任職，是設計：送簽前檢查要說明被拒的原因。呼叫者必須先知道任職 ID，任職 ID 不可猜。
 
@@ -142,11 +143,7 @@ vitest 的 `vitest.setup.ts` 設 `PRACTICE_REGISTRY=seed`，所以既有的 rout
 
 ### 已知缺口
 
-目前行為與原則不符，已有人負責，期望值先登記目前的行為。每則缺口必須指向一張票。測試檔的「已知缺口仍然成立」會在缺口消失時失敗，提醒刪掉這一節與 `knownGaps`。
-
-| 函式 | 關係 | 缺口 | 負責 |
-|---|---|---|---|
-| `party_signer_candidates`、`signing_view` | `bound`、`boundByCase` | 回該執業主體全部成員（或全部已驗證人員）的真實 email，不限於被指派的人 | MIL-116 |
+目前沒有已知缺口。MIL-200 關掉了 MIL-116 留下的缺口（`bound` 回全部成員的真實 email）：`bound` 不再拿到真實 email，真實 email 只有 `own` 用 ID 查單筆才拿到。
 
 ### 殘餘風險：專任判定的阻擋結果（待法務確認）
 
@@ -181,15 +178,15 @@ vitest 的 `vitest.setup.ts` 設 `PRACTICE_REGISTRY=seed`，所以既有的 rout
 - 被阻擋的稽核事件由應用程式在同一個交易寫入。直接以 SQL 呼叫寫入函式的人不會留下稽核事件。要讓稽核事件與判定不可分，需要授權寫入函式的擁有者執行 `audit.append`，這會改變稽核模組的授權，尚未做。
 - 任職結束後（已驗證轉已失效），阻擋隨之解除。重複嘗試的人能觀察到解除的時間。
 
-### MIL-116 拿掉選人階段時
+### MIL-200 已做的四步（原「MIL-116 拿掉選人階段時」）
 
-1. 刪掉 `registry-disclosure-kit.ts` 的 `CALLER_RELATIONS` 裡 `selecting` 那一列。
-2. 刪掉 `rls-cases/` 內所有 `by.selecting` 的項目。測試會列出還沒刪的。
-3. 同一個 PR 把 `registry.caller_relation` 最後一個判斷拿掉。
-4. 若 `bound` 改成只回被指派的人的 email，刪掉 `party_signer_candidates` 與 `signing_view` 的 `knownGaps`，並調整 `bound` 的期望值。
+1. 刪掉 `registry-disclosure-kit.ts` 的 `CALLER_RELATIONS` 裡 `selecting` 那一列。已刪。
+2. 刪掉 `rls-cases/` 內所有 `by.selecting` 的項目。已刪。
+3. 同一個 PR 把 `registry.caller_relation` 最後一個判斷拿掉，並拿掉合約指派那一段（migration 0084）。已做。
+4. `bound` 改成不回真實 email，刪掉 `party_signer_candidates` 與 `signing_view` 的 `knownGaps`。已做。
 
 ## 給下游
 
-- MIL-116：分流條件「至少一名已驗證專任管理人員」可由 `listPractitioners(entityId, { certificateKinds: ['rental_housing_manager'], fullTime: true, licenseKind })` 是否非空推導。案件成員建立後，`bound` 關係自動成立，不必改 adapter。
+- MIL-116（已由 MIL-200 取代）：分流條件「至少一名已驗證專任管理人員」可由 `listPractitioners(entityId, { certificateKinds: ['rental_housing_manager'], fullTime: true, licenseKind })` 是否非空推導。
 - MIL-77：委託管理合約沿用同一個 seam。
 - F 線：標章用 `getCertificateBadges`（MIL-111），不走 registry seam。

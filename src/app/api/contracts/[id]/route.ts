@@ -12,6 +12,8 @@ import { contractIdOf, contractNotFound, type ContractRouteCtx } from '@/lib/con
 import { contractSubject, signing } from '@/lib/signing-module';
 import { jsonOk, jsonError } from '@/lib/http';
 import { inOrgTx, inOrgTxAs, readInOrgTx, readJson } from '@/lib/org-route';
+import { BROKER_NOT_ALLOWED_CODE, BROKER_NOT_ALLOWED_MESSAGE } from '@/lib/practitioner-assignment/broker-choice';
+import { canMediateBroker } from '@/lib/practitioner-assignment/broker-guard';
 import { routingInputError } from '@/lib/signature-routing';
 import { statusAnnexInputError } from '@/lib/status-annex';
 import type { ContractFields, SignatureField } from '@/lib/types';
@@ -43,7 +45,7 @@ export async function PUT(request: NextRequest, { params }: ContractRouteCtx) {
   const id = await contractIdOf(params);
   if (!id) return contractNotFound();
   const body = await readJson(request);
-  return inOrgTx(async (tx) => {
+  return inOrgTxAs(async (tx, rc) => {
     await authorizeIgnoringState(tx, 'contract.draft_send', { type: 'contract', id });
     // 鎖住這一列再讀：狀態檢查和寫入之間，送簽不能插進來
     const contract = await getContract(tx, id, 'update');
@@ -59,6 +61,12 @@ export async function PUT(request: NextRequest, { params }: ContractRouteCtx) {
     }
     const routingError = routingInputError(isRecord(body.fields) ? body.fields.routing : undefined, contract.contract_type);
     if (routingError) return jsonError(400, routingError);
+    // 居間只限主辦組織自己兼營經紀業（MIL-200）：從沒有居間改成有居間時，伺服端查呼叫者自己組織的經紀業別。
+    // 既有合約已經是有居間的條件，原樣再存不擋（既有合約的快照不回寫）
+    const nextRouting = isRecord(body.fields) ? body.fields.routing : undefined;
+    if (isRecord(nextRouting) && nextRouting.brokerMediated === true && contract.fields.routing?.brokerMediated !== true) {
+      if (!(await canMediateBroker(tx, rc.orgKind))) return jsonError(409, BROKER_NOT_ALLOWED_MESSAGE, BROKER_NOT_ALLOWED_CODE);
+    }
     // 現況確認附件隨草稿保存（MIL-71）。只檢查形狀，填沒填完由送簽前的必填檢核擋
     const annexError = statusAnnexInputError(isRecord(body.fields) ? body.fields.statusAnnex : undefined);
     if (annexError) return jsonError(400, annexError);

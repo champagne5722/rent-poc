@@ -7,14 +7,22 @@ import { TEST_PARTY_ID, TEST_USER_ID, type RouteDb } from '../pg/route-test-kit'
 export interface PracticeSeedOptions {
   orgId: string;
   /** 各業別的狀態。預設代管與包租都是 verified。null 代表沒有登錄這個業別。 */
-  licenses?: { management?: 'pending' | 'verified' | 'lapsed' | null; master_lease?: 'pending' | 'verified' | 'lapsed' | null };
+  licenses?: {
+    management?: 'pending' | 'verified' | 'lapsed' | null;
+    master_lease?: 'pending' | 'verified' | 'lapsed' | null;
+    /** 經紀業別。預設沒有登錄（MIL-200：居間只限自己兼營經紀業的組織）。 */
+    brokerage?: 'pending' | 'verified' | 'lapsed' | null;
+  };
   /** 預設有一位已驗證、任職中的租賃住宅管理人員。 */
   withManager?: boolean;
 }
 
 /** 把一個組織備成可建包租、轉租與代管案件的執業主體（走資料庫直接寫，不走送件流程）。 */
 export async function seedPracticeOrg(kit: RouteDb, options: PracticeSeedOptions): Promise<void> {
-  const licenses = { management: 'verified', master_lease: 'verified', ...options.licenses } as Record<'management' | 'master_lease', string | null>;
+  const licenses = { management: 'verified', master_lease: 'verified', brokerage: null, ...options.licenses } as Record<
+    'management' | 'master_lease' | 'brokerage',
+    string | null
+  >;
   const entityId = newUlid();
   const key = `rental_housing_manager:112:內授營:${Math.floor(100000 + Math.random() * 899999)}`;
   await kit.asOwner(async (db) => {
@@ -23,7 +31,7 @@ export async function seedPracticeOrg(kit: RouteDb, options: PracticeSeedOptions
       String(Math.floor(10000000 + Math.random() * 89999999)),
       options.orgId,
     ]);
-    for (const kind of ['management', 'master_lease'] as const) {
+    for (const kind of ['management', 'master_lease', 'brokerage'] as const) {
       if (licenses[kind] !== null) {
         await db.query(`INSERT INTO registry.practice_licenses (id, entity_id, kind, state) VALUES ($1, $2, $3, $4)`, [newUlid(), entityId, kind, licenses[kind]]);
       }

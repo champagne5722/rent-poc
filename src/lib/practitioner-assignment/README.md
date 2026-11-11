@@ -44,7 +44,7 @@ checkSendPreconditions(facts: SendPreconditionFacts): SendPreconditionResult
 - 判定事實的業別層是查詢時指定的那一種業別（`licenseKind`），因為執業主體得兼營。
 - `credentialStatusAt` 的證書層：已驗證卻沒有 `validUntil` 時不放行。業別層沒有 `validUntil` 代表不設期限。
 - `checkSendPreconditions` 第 2 項：C 線建案件後，把 `signers` 裡執業人員的來源從「合約的指派」改成「案件的 `practitioner` 成員」。檢查函式不改。`entities`（各取得來源指向的執業主體）也改由案件提供。
-- 指派表 `contract_practitioner_assignments` 是過渡做法。案件成員完成後，用案件成員取代，這張表與 `evaluateSend` 的 `assignments` 來源一起換掉。
+- 指派表 `contract_practitioner_assignments` 是過渡做法。MIL-200 起，合約掛在案件下時改存案件成員（見下節「簽章人員只從自家指派」），只有沒有案件的合約仍用這張表（MIL-203 移除）。
 
 ## 給 E 線 MIL-131
 
@@ -70,7 +70,24 @@ checkSendPreconditions(facts: SendPreconditionFacts): SendPreconditionResult
 
 - `PartySignerCandidate` 與 `PractitionerCandidate` 多一個必填欄位 `partyId`：自然人的 party ID。同一個人以兩種身分出現時，兩邊相同。合併靠它判定，真實 adapter 要提供，契約測試已加一項。
 - 合併的另一個條件是兩者的 `entityId` 相同。當事人簽署人的 `entityId` 是 `PartySignerCandidate.entityId`，執業人員的是 `PractitionerCandidate.entityId`。
-- MIL-116 把指派搬到案件成員時，`evaluateSend` 回傳的 `identities` 與 `merges` 要照樣算。身分資料來源換成案件成員，`findMergedSeats` 不改。
+- MIL-200 把指派搬到案件成員時，`evaluateSend` 回傳的 `identities` 與 `merges` 照樣算。身分資料來源換成案件成員，`findMergedSeats` 不改。
+
+## 簽章人員只從自家指派（MIL-200）
+
+依據：ADR-0029 決議 3。任何組織都只能指派自己組織的人，查別的組織的人，回應與查無資料相同。資料庫那一側的規則在 `src/lib/practice-registry/README.md`。
+
+| 項目 | 做法 |
+|---|---|
+| 選項 | `loadSeatOptions` 的回傳只有姓名，不含 email。`EntityOption.partySigners` 是 `{ id, name }`，`PractitionerOption` 沒有 `email` |
+| 存指派 | `validateAssignments` 只認自家組織的執業主體（`registry.listEntities()` 找得到才算）。別的組織的與不存在的，執業主體、人員、簽署人各用同一句訊息：`NOT_OWN_ASSIGNMENT`、`NOT_OWN_PRACTITIONER`、`NOT_OWN_PARTY_SIGNER` |
+| 補 email | `resolveAssignmentFacts` 用「依 ID 查單筆」讀執業人員的 party 與當事人簽署人的真實 email。route 在寫入的交易內把姓名與 email 補進合約的甲方或乙方欄位。瀏覽器只知道姓名 |
+| 來源 | 合約掛在案件下：指派存成案件成員（`org.case_members` 的 `slot`、`entity_id`、`employment_id`、`party_signer_id`，migration 0084），`relation` 是 `practitioner` 或 `broker`。沒有案件：仍用 `contract_practitioner_assignments` |
+| 寫入權限 | 合約掛在案件下時，PUT 還要 `case_member.manage`（主辦組織的 admin、staff） |
+| 送簽前提 | `getAssignments` 依合約有沒有案件讀案件成員或舊表，`evaluateSend` 不變。搬資料搬不動的舊列（沒有案件、別的組織的執業主體、任職查不到）留在舊表，案件裡沒有那個席位時仍讀得到，送簽前檢查會說明原因 |
+| 分流條件 | 合約掛在案件下時，案件種類與業務類型讀案件列（`loadContractRoutingFacts`），不讀合約快照。快照不回寫，「是否有居間」仍存在快照 |
+| 居間 | `broker-guard.ts`：只看呼叫者自己組織的 `registry.my_registration()`。屋主與平台組織不顯示居間選項，也不提示；執業主體組織的經紀業別已驗證才可勾；登錄了未驗證時顯示成不能選並寫原因；沒有登錄經紀業別不顯示。屋主組織送 `brokerMediated: true` 回 409 `broker_not_allowed` |
+
+仍走舊表的地方（給 MIL-203）：`replaceAssignments`、`getAssignments`、`copyAssignments` 裡 `caseId` 為空的分支；沒有案件的合約（舊建約路徑，業者組織走 `POST /api/contracts` 不帶 `case_kind`）；`ContractWizard` 的 `loadPractitioners` 對兩種來源一視同仁，不必改。
 
 ## 正式金鑰的判定
 
