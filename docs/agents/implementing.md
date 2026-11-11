@@ -180,7 +180,7 @@ npm run test:pg
 
 CI 的 `test (N/8)` 工作把同一組測試分成 8 片跑，每一片連自己的 PostgreSQL。`check` 工作合併 8 份報告，並用同一個檢查腳本。變數沒設、某個 pg 測試檔沒有執行或有測試被跳過、報告少於 8 份時，`check` 失敗。
 
-`check` 從開始到有結果約 5 分鐘（分片前約 23 分鐘，MIL-228）。`gh pr checks <編號> --watch` 的 timeout 設 600000 毫秒就夠。工作名稱固定：`check` 是彙整工作，要等的是它。分片與加片數的做法見 `docs/deployment.md` 的「測試分片」。
+`check` 從開始到有結果約 5 到 6 分鐘（分片前約 23 分鐘，MIL-228）。`gh pr checks <編號> --watch` 的 timeout 設 600000 毫秒就夠。工作名稱固定：`check` 是彙整工作，要等的是它。分片與加片數的做法見 `docs/deployment.md` 的「測試分片」。
 
 ### 只跑一個檔案
 
