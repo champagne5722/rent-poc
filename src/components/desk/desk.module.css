@@ -10,3 +10,8 @@
   margin: 0;
   padding-left: var(--space-lg);
 }
+
+/* 日期選擇器填滿欄位寬度 */
+.fullWidth {
+  width: 100%;
+}

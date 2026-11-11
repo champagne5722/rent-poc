@@ -14,13 +14,14 @@ import { casesNav } from './nav/cases';
 import { contractsNav } from './nav/contracts';
 import { designNav } from './nav/design';
 import { handoversNav } from './nav/handovers';
+import { membersNav } from './nav/members';
 import { notificationsNav } from './nav/notifications';
 import { ownerOverviewNav } from './nav/owner-overview';
 import { paymentAccountsNav } from './nav/payment-accounts';
 import { DESK_HREF, PRACTICE_HREF, practiceNav } from './nav/practice';
 import { PRACTITIONER_HREF, practitionerNav } from './nav/practitioner';
 import { propertiesNav } from './nav/properties';
-import { OWNER_ROOT_HREF, type NavRegistration } from './nav/shared';
+import { OWNER_ROOT_HREF, type IdentityKind, type NavRegistration } from './nav/shared';
 import { workbenchNav } from './nav/workbench';
 
 export { DESK_HREF, OWNER_ROOT_HREF, PRACTICE_HREF, PRACTITIONER_HREF };
@@ -37,6 +38,7 @@ const NAV_MODULES = [
   designNav,
   practiceNav,
   practitionerNav,
+  membersNav,
 ] as const;
 
 type NavModule = (typeof NAV_MODULES)[number];
@@ -70,15 +72,17 @@ export type IdentityNavItem = {
   key: IdentityNavKey;
   label: string;
   href: string;
-  /** 目前身分是這個種類時才顯示。 */
-  identity: 'practice' | 'operator';
+  /** 目前身分是這個種類（或多種之一）時才顯示。 */
+  identity: IdentityKind | readonly IdentityKind[];
 };
 
 export const IDENTITY_NAV_ITEMS: readonly IdentityNavItem[] = collect('identity') as readonly IdentityNavItem[];
 
 /** 目前身分該多看到哪些入口。身分還沒載入（null）或沒有專屬入口時是空陣列。 */
 export function identityNavItems(identityKind: string | null): readonly IdentityNavItem[] {
-  return IDENTITY_NAV_ITEMS.filter((item) => item.identity === identityKind);
+  return IDENTITY_NAV_ITEMS.filter((item) =>
+    typeof item.identity === 'string' ? item.identity === identityKind : (item.identity as readonly string[]).includes(identityKind ?? ''),
+  );
 }
 
 /** 執業主體與審核台頁面的選單高亮。 */

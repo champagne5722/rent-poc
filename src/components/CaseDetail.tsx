@@ -218,7 +218,7 @@ function CaseDetailBody({ caseId, detail, readOnly = false, backHref, backLabel 
                   <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email', message: '請填寫有效的 email' }]}>
                     <Input />
                   </Form.Item>
-                  <Button type="primary" htmlType="submit" loading={adding}>
+                  <Button htmlType="submit" loading={adding}>
                     加入
                   </Button>
                 </Form>

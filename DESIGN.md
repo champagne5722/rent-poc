@@ -17,6 +17,8 @@ colors:
   hairline: "#e4e5e8"
   hairline-strong: "#d0d3d8"
   semantic-success: "#1f9e3e"
+  semantic-success-subtle: "#eef6f0"
+  semantic-success-border: "#c5e0cc"
   semantic-error: "#d93843"
   semantic-warning: "#e08a2e"
   semantic-info: "#5e6ad2"
@@ -44,6 +46,10 @@ rounded:
   sm: 4px
   md: 6px
   lg: 8px
+
+motion:
+  ease-out: "cubic-bezier(0.22, 1, 0.36, 1)"
+  ease-in: "cubic-bezier(0.64, 0, 0.78, 0)"
 
 spacing:
   xxs: 4px
@@ -182,7 +188,14 @@ components:
 - 頁面底是 `canvas`，卡片與容器是 `surface-1`，浮層（Dropdown、Modal）是 `surface-2`。層級靠亮度差與 `hairline` 邊線表達，不用陰影堆疊。
 - 導覽（側欄、頂部選單）的選中態用灰階：底色 `hairline`，文字 `ink`。導覽不用強調色。
 - 文字三級：`ink` 主文、`ink-muted` 次要說明、`ink-subtle` 佔位與停用。不要自創第四級灰。
+- `semantic-success-subtle` 與 `semantic-success-border` 是成功提示（Alert、message）的底色與邊線，飽和度比 antd 由 `semantic-success` 自動派生的綠底低。文字色不變，仍是 `ink`，對比度不降。
 - 狀態色只用 `semantic-*`：成功綠、錯誤紅、警告橙。合約狀態 Tag 也從這三色與 `primary` 取，不引入新色。
+
+## Motion
+
+- 動態曲線只有兩條，定義在 front matter 的 `motion`：`ease-out`（指數減速，進場與展開）與 `ease-in`（退場）。
+- antd 預設的 `motionEaseOutBack` 與 `motionEaseInBack` 帶回彈（超過終點再回來），不符合後台的克制語氣。這兩個 antd token 被 `motion` 取代，Tabs、Checkbox、Radio、Switch 等元件的動態因此沒有回彈。
+- 頁面程式碼不手寫 `cubic-bezier`，不做回彈與彈性動畫。
 
 ## Typography
 
