@@ -2,13 +2,14 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import noInlineStyle from "./eslint-rules/no-inline-style.mjs";
-import inlineStyleBaseline from "./eslint-rules/inline-style-baseline.json" with { type: "json" };
 
-// 既有檔案的 inline style 先列為警告（MIL-174）。npm run lint:inline-style 設 INLINE_STYLE_REPORT=1，
-// 把基準內的違規逐處列成警告。平常的 npm run lint 不列，因為 --max-warnings=10 會被數百則警告擠爆。
-const reportInlineStyle = process.env.INLINE_STYLE_REPORT === "1";
-// files 的 glob 把 [ 當萬用字元，路徑裡的 [id] 要寫成 [[]id]
-const escapeGlob = (path) => path.replaceAll("[", "[[]");
+// 承租人端與 demo 頁不在 UI 重構範圍（MIL-167），不套用 inline style 規則。
+const inlineStyleExempt = [
+  "src/app/tenant/**",
+  "src/components/Tenant*.tsx",
+  "src/app/demo/**",
+  "src/components/DemoOtpList.tsx",
+];
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -24,20 +25,15 @@ const eslintConfig = defineConfig([
     ".claude/**",
     "public/pdf.worker.min.mjs",
   ]),
-  // inline style（style 屬性）一律禁止（MIL-174、ADR-0090）。新增與改動的檔案必須是 0。
-  // 既有檔案的違規記在 eslint-rules/inline-style-baseline.json，數量只降不升，隨頁面重構刪除條目。
+  // inline style（style 屬性）一律禁止（MIL-174、ADR-0090、MIL-185）。範圍內的違規是 0，任何新增都是錯誤。
+  // 例外只有承租人端與 demo 頁（上面的 inlineStyleExempt）。
   // 規則的說明在 eslint-rules/no-inline-style.mjs，用法在 docs/ui/composite-components.md。
   {
     files: ["src/**/*.{tsx,jsx}"],
+    ignores: inlineStyleExempt,
     plugins: { rent: { rules: { "no-inline-style": noInlineStyle } } },
     rules: { "rent/no-inline-style": "error" },
   },
-  ...Object.entries(inlineStyleBaseline).map(([path, count]) => ({
-    files: [escapeGlob(path)],
-    rules: {
-      "rent/no-inline-style": reportInlineStyle ? ["warn", { allow: 0 }] : ["error", { allow: count }],
-    },
-  })),
   // 型別感知的規則（MIL-80，ADR-0012 決議 14）：漏寫 await 時 tsc 不一定報錯，這兩條補上。
   // 需要 projectService，所以只套用在 src 的 TypeScript 檔案。
   {

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { seedNotification, uniqueSuffix } from '../helpers/api';
 import { signUpAsOwner } from '../helpers/login';
+import { collectConsoleProblems } from '../helpers/console';
 
 // 流程 6：站內通知的未讀列與標已讀（MIL-179、MIL-185）。
 // 用全新的帳號與組織，通知清單只有這一筆，不改共用登入狀態的未讀數。
@@ -14,9 +15,14 @@ test('通知列表：未讀列有「未讀」字樣，點「標為已讀」後�
   const title = `E2E 測試通知 ${suffix}`;
   await seedNotification(page, title);
 
+  // 未讀列有時間文字，server 與瀏覽器各算一次，不一致會造成 hydration 錯誤（MIL-185）
+  const problems = collectConsoleProblems(page);
+
   await page.goto('/notifications');
   const row = page.getByRole('row').filter({ hasText: title });
   await expect(row).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  expect(problems).toEqual([]);
   await expect(row.getByText('未讀', { exact: true })).toBeVisible();
   await expect(row.getByRole('button', { name: '標為已讀' })).toBeVisible();
   await expect(page.getByRole('button', { name: '全部標為已讀' })).toBeEnabled();

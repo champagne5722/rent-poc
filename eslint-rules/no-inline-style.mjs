@@ -1,12 +1,8 @@
 // 擋下 JSX 的 style 屬性（MIL-174、ADR-0090）。外觀只來自 DESIGN.md：
 // 版面用 antd 的 Flex、Space、Row 與 CSS Modules，顏色與間距引用 CSS 變數，不寫 inline style。
 //
-// 選項 allow：這個檔案既有的 inline style 數量（基準）。
-// - 違規數不超過 allow：不回報。既有檔案先不擋，隨頁面重構清除。
-// - 違規數超過 allow：超出的那幾處回報。新增 inline style 一律被擋。
-// - 違規數少於 allow：回報一則訊息，要求把基準降到實際數量或刪除條目。基準只降不升。
-// 沒有 allow（預設 0）的檔案，任何 style 屬性都回報。
-// 基準寫在 eslint-rules/inline-style-baseline.json，由 eslint.config.mjs 逐檔帶入。
+// 選項 allow：這個檔案容許的 inline style 數量，預設 0，任何 style 屬性都回報。
+// MIL-185 起範圍內的檔案都是 0，沒有檔案使用 allow。承租人端與 demo 頁由 eslint.config.mjs 排除。
 
 /** @type {import('eslint').Rule.RuleModule} */
 const rule = {
@@ -40,7 +36,7 @@ const rule = {
         if (found.length < allow) {
           context.report({
             node: program,
-            message: `這個檔案的 inline style 從 ${allow} 處降到 ${found.length} 處。請在 eslint-rules/inline-style-baseline.json 把它的基準改成 ${found.length}，降到 0 就刪除條目。`,
+            message: `這個檔案的 inline style 從 ${allow} 處降到 ${found.length} 處。請把 allow 改成 ${found.length}，降到 0 就刪除該選項。`,
           });
         }
       },

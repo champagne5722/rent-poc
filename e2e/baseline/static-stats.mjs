@@ -8,7 +8,8 @@ import path from 'node:path';
 import { PAGES, SHARED_SOURCES } from './pages.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
-const OUT = path.join(ROOT, 'docs', 'ui', 'baseline', 'data');
+// BASELINE_UI_DIR 改輸出位置：最終驗收（MIL-185）設成 docs/ui/final
+const OUT = path.join(ROOT, process.env.BASELINE_UI_DIR ?? path.join('docs', 'ui', 'baseline'), 'data');
 mkdirSync(OUT, { recursive: true });
 
 const SOURCE_EXT = /\.(tsx|ts|css)$/;

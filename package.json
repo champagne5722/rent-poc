@@ -10,7 +10,6 @@
     "build:local": "scripts/heavy.sh build next build",
     "start": "next start",
     "lint": "scripts/heavy.sh lint eslint",
-    "lint:inline-style": "INLINE_STYLE_REPORT=1 scripts/heavy.sh lint eslint",
     "typecheck": "scripts/heavy.sh typecheck sh -c 'next typegen && tsc --noEmit'",
     "test": "scripts/heavy.sh test vitest run",
     "test:scripts": "node --test \"scripts/hooks/*.test.mjs\" \"scripts/ci/*.test.mjs\" && scripts/heavy.test.sh",

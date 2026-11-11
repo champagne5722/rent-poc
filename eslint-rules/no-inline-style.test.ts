@@ -48,7 +48,7 @@ describe('rent/no-inline-style', () => {
   it('既有違規減少時，要求更新基準', () => {
     const messages = lint('const a = <div style={{}} />;', { allow: 4 });
     expect(messages).toHaveLength(1);
-    expect(messages[0].message).toContain('inline-style-baseline.json');
+    expect(messages[0].message).toContain('allow');
     expect(messages[0].message).toContain('4');
   });
 

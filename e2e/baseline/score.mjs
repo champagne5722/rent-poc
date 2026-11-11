@@ -6,7 +6,8 @@ import path from 'node:path';
 import { PAGES } from './pages.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
-const DATA = path.join(ROOT, 'docs', 'ui', 'baseline', 'data');
+// BASELINE_UI_DIR 改輸出位置：最終驗收（MIL-185）設成 docs/ui/final，並讀 e2e/baseline/score-final.mjs 的手填表
+const DATA = path.join(ROOT, process.env.BASELINE_UI_DIR ?? path.join('docs', 'ui', 'baseline'), 'data');
 const results = JSON.parse(readFileSync(path.join(DATA, 'results.json'), 'utf8'));
 const stats = JSON.parse(readFileSync(path.join(DATA, 'static-stats.json'), 'utf8'));
 const byId = new Map(results.pages.map((p) => [p.id, p]));
@@ -15,7 +16,8 @@ const byId = new Map(results.pages.map((p) => [p.id, p]));
 // 手填：一致、狀態、回饋，各一個 [分數, 理由]。manual 是 detect 抓不到、評分者看截圖後補記的 P0 與 P1。
 // back：詳情頁有返回列表的路徑（頁面上看得到的連結，量測腳本的字串比對抓不全，所以人工確認）。
 // defect：截圖上看得到的版面缺陷，視覺扣 1 分。
-const MANUAL = {
+// 最終驗收（BASELINE_UI_DIR 有設）改讀 e2e/baseline/score-final-manual.mjs 的手填表
+const MANUAL = process.env.BASELINE_UI_DIR ? (await import('./score-final-manual.mjs')).MANUAL : {
   '01-workbench': {
     c: [2, '四張數字卡加待辦與快捷入口，只有這頁用這個版型，標題與別頁的頁首不同'],
     st: [2, '待辦只列草稿，狀態標籤與合約列表同色，但沒有寫出下一步由誰處理'],

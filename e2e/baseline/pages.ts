@@ -105,6 +105,8 @@ export const PAGES: PageSpec[] = [
     sources: ['src/app/contracts/[id]/edit/page.tsx', ...WIZARD, 'src/components/PractitionerAssignmentPanel.tsx'],
   },
   { id: '35-design', title: '設計樣式頁（內部工具）', phase: 1, layout: '總覽', role: 'owner', route: '/design', sources: ['src/app/design/page.tsx', 'src/components/DesignShowcase.tsx'] },
+  { id: '36-mgmt-wizard-3-signature', title: '建約精靈 委託管理 步驟三 簽署區', phase: 2, layout: '精靈', role: 'owner', route: '/contracts/{mgmtDraft}/edit', sources: ['src/app/contracts/[id]/edit/page.tsx', 'src/components/contract-wizard/management', ...WIZARD] },
+  { id: '37-mgmt-wizard-2-fields', title: '建約精靈 委託管理 步驟二 填欄位與委託標的', phase: 2, layout: '精靈', role: 'owner', route: '/contracts/{mgmtDraft}/edit', sources: ['src/app/contracts/[id]/edit/page.tsx', 'src/components/contract-wizard/management', ...WIZARD] },
 ];
 
 /** 共用的殼層與跨頁元件，另列一行。 */

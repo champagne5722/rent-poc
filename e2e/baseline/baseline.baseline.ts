@@ -5,8 +5,8 @@ import { promisify } from 'node:util';
 import { chromium, expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { chooseOption } from '../helpers/ui';
 import { PAGES, TENANT_PAGES, type PageSpec } from './pages';
-import { seedSendableDraft, seedVerifiedProperty } from '../helpers/api';
-import { seedMasterLease, seedOwner, seedPracticeAndDesk, step, stepLog, type OwnerWorld } from './seed';
+import { seedNotification, seedOwnerHandover, seedSendableDraft, seedVerifiedProperty } from '../helpers/api';
+import { seedManagementDraft, seedMasterLease, seedOwner, seedPracticeAndDesk, step, stepLog, type OwnerWorld } from './seed';
 import { createOwnerOrg, createPracticeOrg, newUserContext, signIn } from './session';
 
 // 現況基準（MIL-170）。只量測與記錄，沒有斷言：任何一頁失敗都記下來，不中斷整輪。
@@ -18,7 +18,8 @@ import { createOwnerOrg, createPracticeOrg, newUserContext, signIn } from './ses
 
 const execFileAsync = promisify(execFile);
 const ROOT = path.join(__dirname, '..', '..');
-const OUT_DIR = path.join(ROOT, 'docs', 'ui', 'baseline');
+// BASELINE_UI_DIR 改輸出位置：最終驗收（MIL-185）設成 docs/ui/final，不覆蓋重構前的基準
+const OUT_DIR = path.join(ROOT, process.env.BASELINE_UI_DIR ?? path.join('docs', 'ui', 'baseline'));
 const DATA_DIR = path.join(OUT_DIR, 'data');
 const AUDIT_DIR = path.join(ROOT, 'e2e-results', 'baseline-audit');
 const CDP_PORT = Number(process.env.BASELINE_CDP_PORT ?? 9333);
@@ -113,7 +114,10 @@ test('準備資料', async () => {
     const all = await page.locator('a').evaluateAll((links) => links.map((a) => (a as HTMLAnchorElement).getAttribute('href') ?? ''));
     return all.map((h) => h.match(pattern)?.[1]).find(Boolean) ?? null;
   };
-  world.handover = await step('移交 ID', () => hrefs(owner, '/owner/handovers', /\/owner\/handovers\/([A-Za-z0-9_-]+)$/).then((v) => (v === 'new' ? null : v))) ?? null;
+  // 屋主端的移交資料在記憶體 adapter，真實登入的屋主沒有移交。MIL-185 起走 demo API 替屋主建立一筆草稿（見 e2e/helpers/api.ts）
+  world.handover = (await step('移交 ID（demo API 建立草稿）', () => seedOwnerHandover(owner, 'draft'))) ?? null;
+  await step('站內通知（未讀）', () => seedNotification(owner, '合約已送出簽署', '乙方王租客尚未簽署，請留意簽署進度。'));
+  world.mgmtDraftId = (await step('委託管理草稿（欄位、標的清單、簽署區備齊）', () => seedManagementDraft(owner, (world.propertyIds as unknown as string[]) ?? []))) ?? null;
   world.orgHandover = (await step('後台移交 ID（執業主體甲）', () => hrefs(practice, '/handovers', /\/handovers\/([A-Za-z0-9_-]+)$/))) ?? null;
 
   // 屋主二：同一位承租人（tenant@example.com）在第二個組織也有案件，MIL-121 驗收「兩個組織的案件都列出」
@@ -153,6 +157,7 @@ function resolveRoute(route: string): string | null {
     deskCredential: world.deskCredentialItemId,
     masterLease: world.masterLeaseContractId,
     masterLeaseDraft: world.masterLeaseDraftId,
+    mgmtDraft: world.mgmtDraftId,
     tenantCase: world.tenantCase,
   };
   let missing = false;
@@ -319,6 +324,11 @@ const PREPARE: Record<string, Prepare> = {
     await openLedgerSection(page);
     await page.getByText('押金台帳').first().waitFor({ timeout: 20_000 }).catch(() => undefined);
     await page.waitForLoadState('networkidle').catch(() => undefined);
+  },
+  // 委託管理草稿沒有執業人員的簽名框，精靈停在步驟三（簽署區）。步驟四要先指派執業人員，這裡不備
+  '37-mgmt-wizard-2-fields': async (page) => {
+    await page.getByRole('button', { name: /上一步/ }).click({ timeout: 10_000 });
+    await page.waitForTimeout(800);
   },
   '34-master-lease-wizard-fields': async (page) => {
     await page.getByText('填寫欄位', { exact: false }).first().click({ timeout: 10_000 }).catch(() => undefined);

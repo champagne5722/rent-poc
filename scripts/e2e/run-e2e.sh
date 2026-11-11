@@ -62,7 +62,7 @@ for p in "$PORT" "$PG_PORT"; do
   if lsof -nP -iTCP:"$p" -sTCP:LISTEN -t >/dev/null 2>&1; then echo "port $p 已被占用，停止" >&2; trap - EXIT; exit 65; fi
 done
 
-PG_PORT=$PG_PORT node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/smoke/pg-socket-server.mjs > "$PG_LOG" 2>&1 &
+PG_PORT=$PG_PORT node --max-old-space-size=6144 --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/smoke/pg-socket-server.mjs > "$PG_LOG" 2>&1 &
 PG_PID=$!
 wait_for "$PG_LOG" ready 120 || exit 1
 

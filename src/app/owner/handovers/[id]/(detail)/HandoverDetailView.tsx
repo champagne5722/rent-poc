@@ -324,39 +324,42 @@ function HandoverDetailInner({ detail, today }: { detail: HandoverDetail; today:
           actions={cancellable && <CancelButton id={record.id} onDone={setErrors} />}
         />
       }
-      aside={
-        <Card size="small" title="移交屬性">
-          <Descriptions column={1} size="small">
-            <Descriptions.Item label="交出方">{record.from.name}</Descriptions.Item>
-            <Descriptions.Item label="接收方">{targetLabel(record.target)}</Descriptions.Item>
-            <Descriptions.Item label="生效日">{record.effectiveDate ?? '未指定'}</Descriptions.Item>
-            {selfManagedAccount && (
-              <Descriptions.Item label="收款帳戶">
-                {selfManagedAccount.label}（{selfManagedAccount.holderName}）
-              </Descriptions.Item>
-            )}
-            <Descriptions.Item label="進度">
-              <SidesStatus sides={sides} />
-            </Descriptions.Item>
-            <Descriptions.Item label="租賃單位 ID">{record.rentalUnitId}</Descriptions.Item>
-            {record.snapshotHash && (
-              <Descriptions.Item label="快照雜湊">
-                <Typography.Text code className={styles.wrap}>
-                  {record.snapshotHash}
-                </Typography.Text>
-              </Descriptions.Item>
-            )}
-          </Descriptions>
-        </Card>
+      aside={null}
+      wide={
+        isDraft ? (
+          <Flex vertical gap="large">
+            <DraftForm detail={detail} today={today} setErrors={setErrors} onReasons={setReasons} />
+          </Flex>
+        ) : (
+          <Card size="small" title="移交包內容">
+            <SnapshotContent snapshot={snapshot} acknowledged={record.acknowledgedMissing} />
+          </Card>
+        )
       }
     >
-      {isDraft ? (
-        <DraftForm detail={detail} today={today} setErrors={setErrors} onReasons={setReasons} />
-      ) : (
-        <Card size="small" title="移交包內容">
-          <SnapshotContent snapshot={snapshot} acknowledged={record.acknowledgedMissing} />
-        </Card>
-      )}
+      <Card size="small" title="移交屬性">
+        <Descriptions column={1} size="small">
+          <Descriptions.Item label="交出方">{record.from.name}</Descriptions.Item>
+          <Descriptions.Item label="接收方">{targetLabel(record.target)}</Descriptions.Item>
+          <Descriptions.Item label="生效日">{record.effectiveDate ?? '未指定'}</Descriptions.Item>
+          {selfManagedAccount && (
+            <Descriptions.Item label="收款帳戶">
+              {selfManagedAccount.label}（{selfManagedAccount.holderName}）
+            </Descriptions.Item>
+          )}
+          <Descriptions.Item label="進度">
+            <SidesStatus sides={sides} />
+          </Descriptions.Item>
+          <Descriptions.Item label="租賃單位 ID">{record.rentalUnitId}</Descriptions.Item>
+          {record.snapshotHash && (
+            <Descriptions.Item label="快照雜湊">
+              <Typography.Text code className={styles.wrap}>
+                {record.snapshotHash}
+              </Typography.Text>
+            </Descriptions.Item>
+          )}
+        </Descriptions>
+      </Card>
     </DetailPage>
   );
 }

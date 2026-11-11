@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { seedDraft, seedProperty, seedVerifiedProperty, uniqueSuffix } from '../helpers/api';
 import { clickUntil } from '../helpers/ui';
+import { collectConsoleProblems } from '../helpers/console';
 
 // 流程 1：從物件建立案件並進建約精靈建立草稿（MIL-168、MIL-209、MIL-205）。只驗證使用者看得到的行為。
 // 建立案件的入口在物件上，精靈不再選物件，物件與案件種類由入口參數帶入。
@@ -107,11 +108,7 @@ test('建約精靈：沒帶參數、參數不合法、物件看不到時，導�
 
 test('建約精靈第一步：載入後沒有 console error，也沒有頁面錯誤（MIL-209）', async ({ page, browser }) => {
   const property = await seedVerifiedProperty(page, browser, `E2E 精靈主控台物件 ${uniqueSuffix()}`);
-  const problems: string[] = [];
-  page.on('console', (msg) => {
-    if (msg.type() === 'error' || msg.type() === 'warning') problems.push(`console.${msg.type()}: ${msg.text()}`);
-  });
-  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`));
+  const problems = collectConsoleProblems(page);
 
   await page.goto(`/contracts/new?property=${property.id}&kind=lease`);
   await expect(page.getByRole('heading', { name: '建立合約' })).toBeVisible();
@@ -124,11 +121,7 @@ test('建約精靈第一步：載入後沒有 console error，也沒有頁面錯
 test('建約精靈第二步：填寫欄位載入後沒有 console error，也沒有頁面錯誤（MIL-176）', async ({ page, browser }) => {
   const property = await seedVerifiedProperty(page, browser, `E2E 精靈第二步主控台物件 ${uniqueSuffix()}`);
   const draftId = await seedDraft(page, property.id);
-  const problems: string[] = [];
-  page.on('console', (msg) => {
-    if (msg.type() === 'error' || msg.type() === 'warning') problems.push(`console.${msg.type()}: ${msg.text()}`);
-  });
-  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`));
+  const problems = collectConsoleProblems(page);
 
   await page.goto(`/contracts/${draftId}/edit`);
   await expect(page.getByLabel('甲方（出租人）姓名')).toBeVisible();
