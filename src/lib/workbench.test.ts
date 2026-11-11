@@ -302,13 +302,13 @@ describe('workbenchStats（核心數據 4 卡）', () => {
 describe('快捷入口', () => {
   it('三項：建立合約（primary）、查看全部合約、管理物件', () => {
     expect([...WORKBENCH_QUICK_LINKS]).toEqual([
-      { key: 'create', label: '建立合約', href: '/contracts/new', primary: true },
+      { key: 'create', label: '建立合約', href: '/properties', primary: true },
       { key: 'contracts', label: '查看全部合約', href: '/contracts', primary: false },
       { key: 'properties', label: '管理物件', href: '/properties', primary: false },
     ]);
   });
 
-  it('建立合約走與側邊 CTA 相同的 wizard 入口', () => {
+  it('建立合約走與側邊 CTA 相同的入口（物件列表）', () => {
     expect(WORKBENCH_QUICK_LINKS[0].href).toBe(CREATE_CONTRACT_HREF);
   });
 });

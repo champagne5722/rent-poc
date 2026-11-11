@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { DisplayCode } from '@/components/DisplayCode';
 import ListPage from '@/components/page/ListPage';
 import PropertyEditorModal from '@/components/PropertyEditorModal';
+import CreateCaseEntry from '@/components/property/CreateCaseEntry';
 import StatusTag from '@/components/StatusTag';
 import { formatEquipmentItem } from '@/lib/equipment';
 import { anchorSummary } from '@/lib/properties/anchor-display';
@@ -28,7 +29,8 @@ import styles from './PropertyList.module.css';
 // 物件列表（MIL-177，ADR-0027 決議 5）：一列是一個物件，展開列是它底下自己組織的租賃單位。
 // 資料由 server component 載入後傳進來，這裡只管篩選、展開與列上操作。
 // 列上操作成功後呼叫 router.refresh()，讓 server component 重新載入資料。
-// 建立合約的入口在租賃單位列，物件還沒通過文件核對時不出現（ADR-0029 決議 1）。
+// 建立案件的入口在物件列與租賃單位列（CreateCaseEntry），物件還沒通過文件核對時不出現（ADR-0029 決議 1、MIL-205）。
+// 每一列不預先查能建的案件種類，使用者打開那一列的入口時才查。
 
 export interface PropertyListProps {
   groups: PropertyGroup[];
@@ -65,21 +67,6 @@ function PropertyListInner({ groups, vocabulary }: PropertyListProps) {
       message.success('物件已刪除');
     }
     refresh();
-  };
-
-  const createContract = async (propertyId: string) => {
-    const res = await fetch('/api/contracts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ property_id: propertyId }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      message.error(json.error ?? '建立合約失敗');
-      return;
-    }
-    // 從物件建約＝wizard 第①步已完成，直接進 wizard 續走後續步驟
-    router.push(`/contracts/${json.data.id}/edit`);
   };
 
   const unitTable = (group: PropertyGroup) => (
@@ -128,17 +115,13 @@ function PropertyListInner({ groups, vocabulary }: PropertyListProps) {
           {
             // 操作欄放最右，用文字連結，最常用的動作放第一個（docs/ui/composite-components.md）
             title: '操作',
-            width: 190,
+            width: 230,
             render: (_, unit) =>
               unit.archived_at ? (
                 <Typography.Text type="secondary">已封存，唯讀</Typography.Text>
               ) : (
                 <Flex align="center">
-                  {group.verification_status === 'verified' && (
-                    <Button type="link" size="small" onClick={() => void createContract(unit.id)}>
-                      建立合約
-                    </Button>
-                  )}
+                  {group.verification_status === 'verified' && <CreateCaseEntry propertyId={unit.id} type="link" size="small" />}
                   <Button type="link" size="small" onClick={() => setEditing(unit)}>
                     編輯
                   </Button>
@@ -208,7 +191,7 @@ function PropertyListInner({ groups, vocabulary }: PropertyListProps) {
           ),
         }}
         empty={{
-          description: '尚無物件。登錄第一個物件，通過平台文件核對後就能建立合約。',
+          description: '尚無物件。登錄第一個物件，通過平台文件核對後就能建立案件。',
           action: (
             <Button icon={<PlusOutlined />} onClick={() => setEditing('new')}>
               新增物件
@@ -237,15 +220,22 @@ function PropertyListInner({ groups, vocabulary }: PropertyListProps) {
             { title: '租賃單位', width: 96, render: (_, group) => `${group.units.length} 個` },
             {
               title: '操作',
-              width: 80,
+              width: 170,
               fixed: 'right',
-              render: (_, group) => (
-                <Link href={`/properties/${group.id}`}>
-                  <Button type="link" size="small">
-                    查看
-                  </Button>
-                </Link>
-              ),
+              render: (_, group) => {
+                const unit = representativeUnit(group);
+                return (
+                  <Flex align="center">
+                    {/* 物件列不預先查能建的種類，打開選單時才查代表單位（整戶）。物件沒通過核對或已封存時不出現 */}
+                    {group.verification_status === 'verified' && !unit.archived_at && <CreateCaseEntry propertyId={unit.id} type="link" size="small" />}
+                    <Link href={`/properties/${group.id}`}>
+                      <Button type="link" size="small">
+                        查看
+                      </Button>
+                    </Link>
+                  </Flex>
+                );
+              },
             },
           ],
         }}

@@ -199,7 +199,7 @@ function ContractListInner({ contracts, progress, displayCodes }: ContractListPr
         ),
       }}
       empty={{
-        description: '尚無合約。建立第一份合約，開始電子簽約。',
+        description: '尚無合約。從物件建立第一份合約，開始電子簽約。',
         action: (
           <Button type="primary" icon={<PlusOutlined />} onClick={() => router.push(CREATE_CONTRACT_HREF)}>
             建立合約

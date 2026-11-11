@@ -531,7 +531,7 @@ export default function ContractWizard({ id }: { id: string }) {
             fields={fields}
             routingPanel={
               <Flex vertical gap={12} style={{ marginBottom: 12 }}>
-                <RoutingConditionsPanel value={fields.routing ?? DEFAULT_ROUTING} onChange={changeRouting} disabled={saving} />
+                <RoutingConditionsPanel value={fields.routing ?? DEFAULT_ROUTING} onChange={changeRouting} disabled={saving} caseDerived />
               </Flex>
             }
             saving={saving}

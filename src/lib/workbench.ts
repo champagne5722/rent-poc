@@ -73,7 +73,7 @@ export function workbenchStats(
   ];
 }
 
-/** 快捷入口三項；建立合約走與側邊常駐 CTA 相同的 wizard 入口。 */
+/** 快捷入口三項；建立合約走與側邊常駐 CTA 相同的入口：物件列表（MIL-209）。 */
 export interface WorkbenchQuickLink {
   key: 'create' | 'contracts' | 'properties';
   label: string;

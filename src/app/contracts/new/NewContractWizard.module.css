@@ -1,0 +1,20 @@
+/* 建約精靈第一步（MIL-209）。尺寸引用 DESIGN.md 的 CSS 變數，不寫死數值。 */
+
+.title {
+  margin: 0 0 var(--space-sm);
+}
+
+/* 卡片與步驟條同寬，與草稿續編的步驟版面一致 */
+.card {
+  max-width: calc(var(--space-xxl) * 16);
+  margin-bottom: var(--space-sm);
+}
+
+.actions {
+  margin-top: var(--space-md);
+}
+
+.blocked {
+  max-width: calc(var(--space-xxl) * 16);
+  margin-bottom: var(--space-sm);
+}

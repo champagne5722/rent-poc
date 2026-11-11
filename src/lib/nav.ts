@@ -113,8 +113,9 @@ export function resolvePersonalNavKey(pathname: string): PersonalNavKey | null {
   return PERSONAL_NAV_ITEMS.find((item) => matches(pathname, item.href))?.key ?? null;
 }
 
-// 常駐建約 CTA 的目的地＝建約 wizard 的第①步（選物件與範本，規格 §7）
-export const CREATE_CONTRACT_HREF = '/contracts/new';
+// 常駐建約 CTA 的目的地＝物件列表（MIL-209，ADR-0029 決議 1）。案件從物件往下建立，建約精靈不再選物件，
+// 入口在物件列表的每一列與物件詳情，帶 `?property=&kind=` 進 /contracts/new。名稱沿用，以免動到其他畫面的匯入。
+export const CREATE_CONTRACT_HREF = '/properties';
 
 function matches(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);

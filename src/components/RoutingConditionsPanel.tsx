@@ -15,6 +15,8 @@ interface Props {
   value: ContractRoutingConditions;
   onChange: (next: ContractRoutingConditions) => void;
   disabled?: boolean;
+  /** 業務類型與「承租人是否為包租業者」由案件種類決定（MIL-209）。為 true 時這兩項只顯示，不給選。 */
+  caseDerived?: boolean;
 }
 
 const YES_NO = [
@@ -22,7 +24,7 @@ const YES_NO = [
   { value: false, label: '否' },
 ];
 
-export default function RoutingConditionsPanel({ value, onChange, disabled }: Props) {
+export default function RoutingConditionsPanel({ value, onChange, disabled, caseDerived }: Props) {
   const evaluation = evaluateRouting(value);
   const patch = (next: Partial<ContractRoutingConditions>) => onChange({ ...value, ...next });
 
@@ -34,7 +36,7 @@ export default function RoutingConditionsPanel({ value, onChange, disabled }: Pr
           <Col span={8}>
             <Form.Item label="業務類型" style={{ marginBottom: 0 }}>
               <Radio.Group
-                disabled={disabled}
+                disabled={disabled || caseDerived}
                 value={value.businessType}
                 onChange={(e) => patch({ businessType: e.target.value })}
                 options={BUSINESS_TYPES.map((type) => ({ value: type, label: BUSINESS_TYPE_LABELS[type] }))}
@@ -44,7 +46,7 @@ export default function RoutingConditionsPanel({ value, onChange, disabled }: Pr
           <Col span={8}>
             <Form.Item label="承租人是否為包租業者" style={{ marginBottom: 0 }}>
               <Radio.Group
-                disabled={disabled}
+                disabled={disabled || caseDerived}
                 value={value.lesseeIsMasterLessor}
                 onChange={(e) => patch({ lesseeIsMasterLessor: e.target.value })}
                 options={YES_NO}

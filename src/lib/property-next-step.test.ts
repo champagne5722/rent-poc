@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PROPERTY_NOT_VERIFIED_MESSAGE } from './ownership/gate';
 import { AWAITING_REVIEW_MESSAGE, KEY_MISMATCH_MESSAGE } from './ownership/messages';
 import { propertyNextStep, type PropertyNextStepInput } from './property-next-step';
 
@@ -47,10 +48,28 @@ describe('propertyNextStep', () => {
     expect(step.tone).toBe('error');
   });
 
-  it('已核對時，下一步是建立合約', () => {
+  it('已核對時，下一步是建立案件', () => {
     const step = propertyNextStep({ ...base, verificationStatus: 'verified', nodeStatus: 'verified' });
-    expect(step.headline).toBe('物件已核對，可以建立合約');
+    expect(step.headline).toBe('物件已核對，可以建立案件');
     expect(step.tone).toBe('success');
+  });
+
+  it('還沒通過核對的每一種狀態，都說明沒有建立案件入口的原因（MIL-205）', () => {
+    const states: PropertyNextStepInput[] = [
+      { ...base, hasKey: false },
+      base,
+      { ...base, nodeStatus: 'lapsed' },
+      { ...base, nodeStatus: 'pending_verification' },
+      { ...base, verificationStatus: 'failed', nodeStatus: 'failed' },
+    ];
+    for (const input of states) {
+      expect(propertyNextStep(input).detail).toContain(PROPERTY_NOT_VERIFIED_MESSAGE);
+    }
+  });
+
+  it('已核對與已封存時，不提核對', () => {
+    expect(propertyNextStep({ ...base, verificationStatus: 'verified', nodeStatus: 'verified' }).detail).toBeNull();
+    expect(propertyNextStep({ ...base, archived: true }).detail).not.toContain(PROPERTY_NOT_VERIFIED_MESSAGE);
   });
 
   it('每一種核對狀態都有下一步與負責人', () => {

@@ -60,7 +60,7 @@ export const PAGES: PageSpec[] = [
     route: '/contracts/{declined}',
     sources: ['src/app/contracts/[id]/page.tsx'],
   },
-  { id: '07-wizard-1-property', title: '建約精靈 步驟一 選物件', phase: 2, layout: '精靈', role: 'owner', route: '/contracts/new', sources: ['src/app/contracts/new/page.tsx', ...WIZARD] },
+  { id: '07-wizard-1-property', title: '建約精靈 步驟一 物件摘要', phase: 2, layout: '精靈', role: 'owner', route: '/contracts/new?property={property}&kind=lease', sources: ['src/app/contracts/new/page.tsx', 'src/app/contracts/new/NewContractWizard.tsx', ...WIZARD] },
   { id: '08-wizard-2-fields', title: '建約精靈 步驟二 填欄位', phase: 2, layout: '精靈', role: 'owner', route: '/contracts/{bareDraft}/edit', sources: ['src/app/contracts/[id]/edit/page.tsx', ...WIZARD] },
   { id: '09-wizard-3-signature', title: '建約精靈 步驟三 簽署區', phase: 2, layout: '精靈', role: 'owner', route: '/contracts/{readyDraft}/edit', sources: ['src/app/contracts/[id]/edit/page.tsx', 'src/components/SignatureFieldEditor.tsx', ...WIZARD] },
   { id: '10-wizard-4-confirm', title: '建約精靈 步驟四 確認送簽', phase: 2, layout: '精靈', role: 'owner', route: '/contracts/{readyDraft}/edit', sources: ['src/app/contracts/[id]/edit/page.tsx', ...WIZARD] },
