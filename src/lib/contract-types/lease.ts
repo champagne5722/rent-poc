@@ -6,7 +6,7 @@ import { contractEquipmentAnnex, toEquipmentAnnex } from '../equipment';
 import { TERMS, partyLabels } from '../labels';
 import { statusAnnexIssues, statusAnnexRequired } from '../status-annex';
 import { OPTIONAL_CLAUSE_LIBRARIES, TEMPLATES } from '../template-registry';
-import type { ContractPartyRole, ContractTemplate, LeaseContractFields, OptionalClause } from '../types';
+import type { ContractPartyRole, ContractTemplate, LeaseContractFields, LeaseTermsFields, OptionalClause } from '../types';
 import type { ContractListSummary, ContractTypeDefinition, InitialFieldsInput, LeasePartyFields, PartyIdentity } from './types';
 
 const LABELS = partyLabels('lease');
@@ -140,7 +140,7 @@ export type EditableFieldValues = Partial<
  * 底稿是草稿當下的完整欄位：物件快照、範本綁定與第①步勾選的條款快照都原樣留著，
  * 只有表單管的那幾個欄位被覆蓋；沒填的正規化成空字串或 null，不讓 undefined 進資料庫。
  */
-export function mergeEditableFields(base: LeaseContractFields, values: EditableFieldValues): LeaseContractFields {
+export function mergeEditableFields<F extends LeaseTermsFields>(base: F, values: EditableFieldValues): F {
   return {
     ...base,
     landlordName: values.landlordName ?? '',

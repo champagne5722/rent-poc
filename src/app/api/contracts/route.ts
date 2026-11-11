@@ -16,6 +16,7 @@ import {
   DEFAULT_CONTRACT_TYPE,
   contractTypeDefinition,
   initialFieldsFor,
+  routingSnapshotFor,
   type InitialFieldsInput,
 } from '@/lib/contract-types';
 import type { ContractType } from '@/lib/labels';
@@ -136,8 +137,11 @@ export async function POST(request: NextRequest) {
 
   if (!isUlid(input.property_id)) return jsonError(400, '請指定有效的物件');
   const propertyId = input.property_id;
-  // 分流條件由建約 wizard 第一步填寫，存進欄位快照隨草稿保存（ADR-0021 決議 1）；沒帶則視為自管
-  const routing = input.routing;
+  // 分流條件由建約 wizard 第一步填寫，存進欄位快照隨草稿保存（ADR-0021 決議 1）；沒帶則視為自管。
+  // 包租合約與轉租合約的快照由合約類型決定（MIL-199，案件種類由合約類型決定），只有「是否有經紀業者居間」取自輸入
+  const brokerMediated =
+    typeof input.routing === 'object' && input.routing !== null && (input.routing as { brokerMediated?: unknown }).brokerMediated === true;
+  const routing = routingSnapshotFor(type, brokerMediated) ?? input.routing;
 
   // 讀物件與建合約在同一個交易。別的組織的物件與不存在的物件同樣回 400；
   // 即使讀到之後物件被刪，複合外鍵 (org_id, property_id) 也會讓建立失敗並回滾
@@ -146,6 +150,8 @@ export async function POST(request: NextRequest) {
     const property = await getProperty(tx, propertyId);
     if (!property) return jsonError(400, '請指定有效的物件');
     if (property.archived_at) return jsonError(409, '物件已封存，不能建立合約');
+    // 轉租合約由包租業者擬定，屋主組織不辦轉租案件（ADR-0030 決議 1）
+    if (type === 'sublease' && rc.orgKind === 'owner') return jsonError(400, '屋主組織不能建立轉租合約');
     const routingError = routingInputError(routing, type);
     if (routingError) return jsonError(400, routingError);
     // 沒有案件的路不經 createLeaseCase，所以在這裡檢查。有案件的路由 createLeaseCase 自己檢查

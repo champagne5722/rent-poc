@@ -8,6 +8,8 @@ import type { ContractType } from '../labels';
 import type { ContractFields, ContractPartyRole } from '../types';
 import { leaseDefinition } from './lease';
 import { managementDefinition } from './management';
+import { masterLeaseDefinition } from './master-lease';
+import { subleaseDefinition } from './sublease';
 import type {
   ContractAttachments,
   ContractListSummary,
@@ -34,6 +36,7 @@ export {
   type EditableFieldValues,
 } from './lease';
 export { mergeManagementFields, type ManagementEditableValues } from './management';
+export { caseKindForContractType, contractTypeForCaseKind, routingSnapshotFor } from './case-kind';
 
 /** 沒有帶合約類型時的預設：舊資料與沒有類型欄位前建立的合約一律是租賃合約（ADR-0021 決議 2）。 */
 export const DEFAULT_CONTRACT_TYPE: ContractType = 'lease';
@@ -41,6 +44,8 @@ export const DEFAULT_CONTRACT_TYPE: ContractType = 'lease';
 const DEFINITIONS: Readonly<Record<ContractType, ContractTypeDefinition>> = {
   lease: leaseDefinition,
   management: managementDefinition,
+  master_lease: masterLeaseDefinition,
+  sublease: subleaseDefinition,
 };
 
 export const CONTRACT_TYPES = Object.keys(DEFINITIONS) as ContractType[];

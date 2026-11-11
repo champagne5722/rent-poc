@@ -31,6 +31,34 @@ export const MANAGEMENT_TEMPLATE: ContractTemplate = {
   legalReviewed: false,
 };
 
+/**
+ * 住宅包租契約範本 v1（MIL-199、ADR-0030 決議 6）：依內政部「住宅包租契約應約定及不得約定事項」逐點撰寫，
+ * 條文見 master-lease-clauses.ts，沒有選用條款。公告來源與取得日期見 docs/research/asset-mgmt-platform/legal-sources。
+ * 法務審閱前是未審閱，正式金鑰下擋下送簽（P0-10 AC5）。
+ */
+export const MASTER_LEASE_TEMPLATE: ContractTemplate = {
+  id: 'master-lease-agreement',
+  name: '住宅包租契約',
+  version: 1,
+  provider: '平台提供',
+  note: '條款依內政部住宅包租契約應約定及不得約定事項撰寫，尚未經法務審閱，不得用於正式簽約。',
+  legalReviewed: false,
+};
+
+/**
+ * 住宅轉租契約範本 v1（MIL-199、ADR-0030 決議 6）：依內政部「住宅轉租定型化契約應記載及不得記載事項」逐點撰寫，
+ * 條文見 sublease-clauses.ts，沒有選用條款。現況確認附件跟著轉租合約。
+ * 法務審閱前是未審閱，正式金鑰下擋下送簽（P0-10 AC5）。
+ */
+export const SUBLEASE_TEMPLATE: ContractTemplate = {
+  id: 'sublease-agreement',
+  name: '住宅轉租契約',
+  version: 1,
+  provider: '平台提供',
+  note: '條款依內政部住宅轉租定型化契約應記載及不得記載事項撰寫，尚未經法務審閱，不得用於正式簽約。',
+  legalReviewed: false,
+};
+
 /** 選用條款庫：逐約勾選後併入合約產出的條款區。 */
 export const OPTIONAL_CLAUSES: readonly OptionalClause[] = [
   {

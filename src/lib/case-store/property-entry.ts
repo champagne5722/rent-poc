@@ -8,6 +8,7 @@ import {
   type OrgKind,
   type PracticeEligibility,
 } from '../cases';
+import { contractTypeForCaseKind } from '../contract-types/case-kind';
 import { credentialStatusAt } from '../credential-status';
 import type { ContractType } from '../labels';
 import { canCreateCase } from '../ownership/gate';
@@ -34,10 +35,10 @@ export interface EntryProperty {
 
 /**
  * 由案件種類決定合約類型，全部集中在這裡（ADR-0030 決議 6）。
- * 包租合約與轉租合約的範本由 MIL-199 提供，還沒併入前沿用租賃合約。MIL-199 併入後，這個函式改呼叫它的 `contractTypeForCaseKind`。
+ * 對應表在 `contractTypeForCaseKind`（MIL-199）：租賃案件建租賃合約，包租案件建包租合約，轉租案件建轉租合約。
  */
-export function contractTypeForNewCase(_caseKind: NewLeaseCaseKind): ContractType {
-  return 'lease';
+export function contractTypeForNewCase(caseKind: NewLeaseCaseKind): ContractType {
+  return contractTypeForCaseKind(caseKind);
 }
 
 /**

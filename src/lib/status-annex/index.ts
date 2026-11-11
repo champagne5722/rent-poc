@@ -81,10 +81,11 @@ export function statusAnnexInputError(value: unknown): string | null {
 
 /**
  * 這份合約必不必附現況確認附件。只問簽章分流規則表：簽署序列有席位要求 `status_annex` 頁就必附。
- * 只有租賃合約有這個附件。分流條件沒有或不合法時不附。
+ * 附件跟著轉租合約（ADR-0030 決議 6）。轉租合約與案件種類是轉租的租賃合約（舊資料）有這個附件，
+ * 委託管理合約與包租合約沒有，包租合約即使規則表有要求也不附（MIL-199）。分流條件沒有或不合法時不附。
  */
 export function statusAnnexRequired(routing: unknown, contractType: ContractType): boolean {
-  if (contractType !== 'lease') return false;
+  if (contractType === 'management' || contractType === 'master_lease') return false;
   const evaluation = evaluateRouting(routing, contractType);
   return evaluation.ok && evaluation.plan.seats.some((seat) => seat.requiredFieldPages.includes('status_annex'));
 }
