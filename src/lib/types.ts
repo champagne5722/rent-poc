@@ -189,6 +189,29 @@ export interface Property {
   updated_at: string | null;
 }
 
+/**
+ * 物件列表依物件分組時，組內的一個租賃單位（MIL-202）。欄位同 Property，
+ * 但建號與核對狀態屬於物件，放在 PropertyGroup，單位不重複帶。
+ */
+export type PropertyGroupUnit = Omit<Property, 'anchor' | 'verification_status'>;
+
+/**
+ * 物件列表的一筆：一個物件，底下是呼叫者組織自己的租賃單位（MIL-202，GET /api/properties?group=object）。
+ * - id 是組內整戶單位的營運資料 ID（org.properties.id）。沒有整戶時是後綴最小的單位。
+ *   用它對應到建案入口：它就是 units 裡某一項的 id。
+ * - 不含登記庫的建號節點 ID，也不含別的組織的資料。
+ * - address 與 anchor 取自代表單位（同 id 的那一項）。
+ */
+export interface PropertyGroup {
+  id: string;
+  /** 物件對外的文件核對狀態。畫面一律用狀態呈現表的 propertyVerification。 */
+  verification_status: PropertyVerificationStatus;
+  anchor: PropertyAnchor | null;
+  address: string;
+  /** 依後綴排序，整戶（0000）在前。被合併的單位解析到存續單位，同一個存續單位只留一筆。封存的單位照樣列出。 */
+  units: PropertyGroupUnit[];
+}
+
 export const CONTRACT_STATUSES = [
   'draft',
   'awaiting_tenant',

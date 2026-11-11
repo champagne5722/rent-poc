@@ -29,6 +29,7 @@ import { DisplayCode } from '@/components/DisplayCode';
 import StatusTag from '@/components/StatusTag';
 import { anchorSummary, registeredMessage } from '@/lib/properties/anchor-display';
 import { buildAnchorPayload } from '@/lib/properties/anchor-form';
+import { flattenPropertyGroups } from '@/lib/properties/group-rows';
 import { unitShortText } from '@/lib/properties/unit-display';
 
 interface EquipmentPickerProps {
@@ -130,9 +131,9 @@ function PropertiesPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch('/api/properties');
+    const res = await fetch('/api/properties?group=object');
     const json = await res.json();
-    setItems(json.data);
+    setItems(flattenPropertyGroups(json.data));
     setLoading(false);
   }, []);
 
