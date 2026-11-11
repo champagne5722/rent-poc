@@ -9,9 +9,10 @@ test('已核對的物件：列表的租賃單位有「建立合約」，詳情�
   const property = await seedVerifiedProperty(page, browser, name);
 
   await page.goto('/properties');
-  const groupRow = page.getByRole('row').filter({ hasText: name }).filter({ hasText: '已核對' });
-  await expect(groupRow).toBeVisible();
-  await expect(page.getByRole('link', { name }).first()).toBeVisible();
+  // 物件列、展開列的外框與租賃單位列都含物件名稱，物件列在最前面
+  await expect(page.getByRole('row').filter({ hasText: name }).filter({ hasText: '已核對' }).first()).toBeVisible();
+  const unitRow = page.getByRole('row', { name: new RegExp(`整戶 ${name}`) });
+  await expect(unitRow.getByRole('button', { name: '建立合約' })).toBeVisible();
 
   await page.goto(`/properties/${property.id}`);
   await expect(page.getByRole('heading', { name, level: 1 })).toBeVisible();
