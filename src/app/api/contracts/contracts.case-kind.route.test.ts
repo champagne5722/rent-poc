@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { routingForNewCase } from '@/lib/case-store';
 import { activateCase, seedMandateCase, seedPracticeOrg } from '@/lib/case-store/entry-test-kit';
 import { PROPERTY_NOT_VERIFIED_CODE, PROPERTY_NOT_VERIFIED_MESSAGE } from '@/lib/ownership/gate';
 import { createPropertyAt } from '@/lib/ownership/test-kit';
@@ -85,6 +86,15 @@ describe('看不到物件、沒有權限、不存在：回應逐位元相同', (
   it('合約類型與案件種類不符：400', async () => {
     const propertyId = await createPropertyAt(kit, 'verified');
     expect((await create(propertyId, 'lease', { contract_type: 'management' })).status).toBe(400);
+    expect((await create(propertyId, 'lease', { contract_type: 'master_lease' })).status).toBe(400);
+    expect((await create(propertyId, 'master_lease', { contract_type: 'lease' })).status).toBe(400);
+    expect((await create(propertyId, 'sublease', { contract_type: 'master_lease' })).status).toBe(400);
+    expect(await counts()).toEqual({ cases: 0, contracts: 0 });
+  });
+
+  it('合約類型與案件種類相符：照案件種類建立', async () => {
+    const propertyId = await createPropertyAt(kit, 'verified');
+    expect((await create(propertyId, 'lease', { contract_type: 'lease' })).status).toBe(201);
   });
 });
 
@@ -179,8 +189,16 @@ describe('四種正常路徑', () => {
       [body.case_id],
     );
     expect(row).toEqual({ case_kind: 'master_lease', business_type: 'self_managed', linked_master_lease_case_id: null });
-    const [contract] = await rows<{ fields: { routing: unknown } }>(kit.orgA, 'SELECT fields FROM org.contracts WHERE id = $1', [body.id]);
+    const [contract] = await rows<{ contract_type: string; fields: { routing: unknown; templateId?: string; templateVersion?: number } }>(
+      kit.orgA,
+      'SELECT contract_type, fields FROM org.contracts WHERE id = $1',
+      [body.id],
+    );
+    // 包租案件建包租合約，綁包租範本（MIL-199）。合約的分流快照與案件的分流條件一致
+    expect(contract.contract_type).toBe('master_lease');
+    expect(contract.fields).toMatchObject({ templateId: 'master-lease-agreement', templateVersion: 1 });
     expect(contract.fields.routing).toEqual({ businessType: 'self_managed', lesseeIsMasterLessor: true, brokerMediated: true });
+    expect(contract.fields.routing).toEqual(routingForNewCase('practice', 'master_lease', true));
   });
 
   it('執業主體組織：轉租案件掛在自家有效的包租案件底下', async () => {
@@ -201,6 +219,16 @@ describe('四種正常路徑', () => {
       [body.case_id],
     );
     expect(row).toEqual({ case_kind: 'sublease', business_type: 'master_lease', linked_master_lease_case_id: master.case_id });
+    // 轉租案件建轉租合約，綁轉租範本（MIL-199）。合約的分流快照與案件的分流條件一致
+    const [contract] = await rows<{ contract_type: string; fields: { routing: unknown; templateId?: string; templateVersion?: number } }>(
+      kit.orgA,
+      'SELECT contract_type, fields FROM org.contracts WHERE id = $1',
+      [body.id],
+    );
+    expect(contract.contract_type).toBe('sublease');
+    expect(contract.fields).toMatchObject({ templateId: 'sublease-agreement', templateVersion: 1 });
+    expect(contract.fields.routing).toEqual({ businessType: 'master_lease', lesseeIsMasterLessor: false, brokerMediated: false });
+    expect(contract.fields.routing).toEqual(routingForNewCase('practice', 'sublease', false));
   });
 
   it('執業主體組織：代管的租賃案件掛在自家有效的委託管理案件底下', async () => {
